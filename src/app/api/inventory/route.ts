@@ -6,12 +6,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const warehouseId = searchParams.get('warehouseId')
     const category = searchParams.get('category')
+    const itemType = searchParams.get('itemType')
 
     const items = await db.inventoryItem.findMany({
       where: {
         isActive: true,
         ...(warehouseId ? { warehouseId } : {}),
         ...(category ? { category } : {}),
+        ...(itemType ? { itemType: itemType as 'PRODUCT' | 'SERVICE' } : {}),
       },
       include: {
         warehouse: {
@@ -49,8 +51,10 @@ export async function POST(request: Request) {
         code,
         name: body.name,
         nameAr: body.nameAr || null,
+        itemType: body.itemType || 'PRODUCT',
         unit: body.unit,
-        unitPrice: parseFloat(body.unitPrice) || 0,
+        purchasePrice: parseFloat(body.purchasePrice) || 0,
+        sellingPrice: parseFloat(body.sellingPrice) || 0,
         quantity: parseFloat(body.quantity) || 0,
         minQuantity: parseFloat(body.minQuantity) || 0,
         warehouseId: body.warehouseId,

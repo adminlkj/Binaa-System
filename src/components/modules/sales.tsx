@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  FileText, Plus, Search, RefreshCw, Eye, ArrowRight, X, Trash2,
+  FileText, Plus, Search, RefreshCw, Eye, ArrowRight, X, Trash2, Printer,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,30 +22,34 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, commonText } from '@/stores/app-store'
+import { InvoicePreview } from '@/components/invoice/invoice-preview'
+import type { InvoiceData, CompanySettings } from '@/components/invoice/invoice-preview'
 
 // ============ Types ============
 interface ClientOption { id: string; code: string; name: string }
 interface ProjectOption { id: string; code: string; name: string }
 
 interface SalesInvoiceItem {
-  id: string; description: string; quantity: number; unitPrice: number; totalPrice: number
+  id: string; description: string; descriptionEn?: string | null; quantity: number; unit?: string | null; unitPrice: number; totalPrice: number; itemType?: string
 }
 
 interface SalesInvoice {
-  id: string; invoiceNo: string; projectId: string | null; clientId: string
-  date: string; dueDate: string; subtotal: number; vatRate: number; vatAmount: number
-  totalAmount: number; paidAmount: number; status: string; notes: string | null
-  client: { id: string; name: string; code: string }
-  project: { id: string; name: string; code: string } | null
+  id: string; invoiceNo: string; projectId: string | null; contractId?: string | null; clientId: string
+  date: string; dueDate: string; subtotal: number; discountRate: number; discountAmount: number; netAmount: number
+  vatRate: number; vatAmount: number; totalAmount: number; paidAmount: number; status: string; invoiceType?: string
+  notes: string | null; paymentTerms?: string | null
+  amountInWordsAr?: string | null; amountInWordsEn?: string | null
+  client: { id: string; name: string; nameAr?: string | null; code: string; taxNumber?: string | null; phone?: string | null; email?: string | null; address?: string | null }
+  project: { id: string; name: string; nameAr?: string | null; code: string } | null
+  contract?: { id: string; contractNo: string } | null
   items: SalesInvoiceItem[]
 }
 
 interface LineItemForm {
-  description: string; quantity: number; unitPrice: number
+  description: string; descriptionEn?: string; quantity: number; unitPrice: number; unit: string
 }
 
 // formatSAR, formatDate, formatNumber imported from store
-
 function formatSAR(value: number, lang: 'ar' | 'en' = 'ar'): string {
   return storeFormatSAR(value, lang)
 }
@@ -67,7 +71,7 @@ const invoiceStatusColors: Record<string, string> = {
   CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
 }
 
-const defaultLineItem: LineItemForm = { description: '', quantity: 1, unitPrice: 0 }
+const defaultLineItem: LineItemForm = { description: '', quantity: 1, unitPrice: 0, unit: '' }
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
@@ -98,20 +102,30 @@ function SalesInvoiceFormDialog({
   const [date, setDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [discountType, setDiscountType] = useState<'none' | 'rate' | 'amount'>('none')
+  const [discountRate, setDiscountRate] = useState(0)
+  const [discountAmount, setDiscountAmount] = useState(0)
   const [lineItems, setLineItems] = useState<LineItemForm[]>([{ ...defaultLineItem }])
 
   React.useEffect(() => {
     if (open) {
       setClientId(''); setProjectId(''); setDate(''); setDueDate('')
       setNotes(''); setLineItems([{ ...defaultLineItem }])
+      setDiscountType('none'); setDiscountRate(0); setDiscountAmount(0)
     }
   }, [open])
 
   // Auto-calculate
   const subtotal = useMemo(() => lineItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0), [lineItems])
   const vatRate = 0.15
-  const vatAmount = subtotal * vatRate
-  const totalAmount = subtotal + vatAmount
+  const finalDiscountAmount = useMemo(() => {
+    if (discountType === 'rate') return subtotal * (discountRate / 100)
+    if (discountType === 'amount') return discountAmount
+    return 0
+  }, [subtotal, discountType, discountRate, discountAmount])
+  const netAmount = subtotal - finalDiscountAmount
+  const vatAmount = netAmount * vatRate
+  const totalAmount = netAmount + vatAmount
 
   const addLine = () => setLineItems([...lineItems, { ...defaultLineItem }])
   const removeLine = (idx: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, i) => i !== idx)) }
@@ -129,7 +143,9 @@ function SalesInvoiceFormDialog({
     e.preventDefault()
     createMutation.mutate({
       clientId, projectId: projectId || null, date, dueDate, notes,
-      items: lineItems.map(i => ({ description: i.description, quantity: i.quantity, unitPrice: i.unitPrice })),
+      discountRate: discountType === 'rate' ? discountRate / 100 : 0,
+      discountAmount: finalDiscountAmount,
+      items: lineItems.map(i => ({ description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, unit: i.unit || undefined })),
     })
   }
 
@@ -185,9 +201,13 @@ function SalesInvoiceFormDialog({
                     <Label className="text-xs">الوصف</Label>
                     <Input value={item.description} onChange={e => updateLine(idx, 'description', e.target.value)} placeholder="وصف البند" className="h-9" />
                   </div>
-                  <div className="w-20">
+                  <div className="w-16">
                     <Label className="text-xs">الكمية</Label>
                     <Input type="number" min="0" step="0.01" value={item.quantity || ''} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
+                  </div>
+                  <div className="w-20">
+                    <Label className="text-xs">الوحدة</Label>
+                    <Input value={item.unit} onChange={e => updateLine(idx, 'unit', e.target.value)} placeholder="وحدة" className="h-9" />
                   </div>
                   <div className="w-28">
                     <Label className="text-xs">سعر الوحدة</Label>
@@ -205,12 +225,46 @@ function SalesInvoiceFormDialog({
             </div>
           </div>
 
+          {/* Discount Section */}
+          <div className="space-y-3 p-3 rounded-lg border bg-gray-50">
+            <Label className="text-sm font-semibold">الخصم</Label>
+            <div className="flex items-center gap-3">
+              <Select value={discountType} onValueChange={(v) => setDiscountType(v as 'none' | 'rate' | 'amount')}>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">بدون خصم</SelectItem>
+                  <SelectItem value="rate">نسبة مئوية (%)</SelectItem>
+                  <SelectItem value="amount">مبلغ ثابت</SelectItem>
+                </SelectContent>
+              </Select>
+              {discountType === 'rate' && (
+                <Input type="number" min="0" max="100" step="0.1" value={discountRate || ''} onChange={e => setDiscountRate(parseFloat(e.target.value) || 0)} className="w-24" dir="ltr" placeholder="%" />
+              )}
+              {discountType === 'amount' && (
+                <Input type="number" min="0" step="0.01" value={discountAmount || ''} onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)} className="w-32" dir="ltr" placeholder="0.00" />
+              )}
+              {finalDiscountAmount > 0 && (
+                <span className="text-sm text-rose-600 font-medium">-{formatSAR(finalDiscountAmount, 'ar')}</span>
+              )}
+            </div>
+          </div>
+
           {/* Summary */}
           <Card className="bg-gray-50 border-dashed">
             <CardContent className="p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span>المجموع قبل الضريبة</span>
                 <span className="font-medium">{formatSAR(subtotal, 'ar')}</span>
+              </div>
+              {finalDiscountAmount > 0 && (
+                <div className="flex justify-between text-sm text-rose-600">
+                  <span>الخصم</span>
+                  <span className="font-medium">-{formatSAR(finalDiscountAmount, 'ar')}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm">
+                <span>صافي المبلغ</span>
+                <span className="font-medium">{formatSAR(netAmount, 'ar')}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span>ضريبة القيمة المضافة (15%)</span>
@@ -318,6 +372,12 @@ function InvoiceDetailView({ invoice, onBack }: { invoice: SalesInvoice; onBack:
                   <TableCell colSpan={3} className="text-left font-medium">المجموع قبل الضريبة</TableCell>
                   <TableCell className="font-semibold">{formatSAR(invoice.subtotal, 'ar')}</TableCell>
                 </TableRow>
+                {invoice.discountAmount > 0 && (
+                  <TableRow className="bg-rose-50">
+                    <TableCell colSpan={3} className="text-left font-medium text-rose-700">الخصم</TableCell>
+                    <TableCell className="font-semibold text-rose-700">-{formatSAR(invoice.discountAmount, 'ar')}</TableCell>
+                  </TableRow>
+                )}
                 <TableRow className="bg-gray-50">
                   <TableCell colSpan={3} className="text-left font-medium">ضريبة القيمة المضافة ({(invoice.vatRate * 100).toFixed(0)}%)</TableCell>
                   <TableCell className="font-semibold">{formatSAR(invoice.vatAmount, 'ar')}</TableCell>
@@ -359,6 +419,7 @@ export function SalesModule() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null)
+  const [previewInvoice, setPreviewInvoice] = useState<SalesInvoice | null>(null)
 
   const { data: invoices = [], isLoading, isError, refetch } = useQuery<SalesInvoice[]>({
     queryKey: ['sales-invoices'],
@@ -378,6 +439,16 @@ export function SalesModule() {
       return all.find(i => i.id === selectedInvoiceId)!
     },
     enabled: !!selectedInvoiceId,
+  })
+
+  // Company settings for invoice preview
+  const { data: companySettings } = useQuery<CompanySettings>({
+    queryKey: ['company-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/company-settings')
+      if (!res.ok) throw new Error('Failed to fetch')
+      return res.json()
+    },
   })
 
   const { data: clients = [] } = useQuery<ClientOption[]>({
@@ -419,6 +490,25 @@ export function SalesModule() {
   if (selectedInvoiceId && isLoadingDetail) {
     return <div className="p-6"><TableSkeleton /></div>
   }
+
+  // Default company settings for preview
+  const defaultCompany: CompanySettings = {
+    nameAr: 'شركة البناء الحديثة للمقاولات',
+    nameEn: 'Al Binaa Al Haditha Contracting Co.',
+    taxNumber: '300123456700003',
+    commercialReg: '1234567890',
+    address: 'الدمام - المملكة العربية السعودية',
+    phone: '0500000000',
+    email: 'info@albinaa.com',
+    bankName: 'الراجحي',
+    bankIban: 'SA00 8000 0000 6080 1016 7519',
+    bankAccountName: 'شركة البناء الحديثة للمقاولات',
+    defaultVatRate: 0.15,
+    currency: 'SAR',
+    invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
+  }
+
+  const company = companySettings || defaultCompany
 
   return (
     <div className="space-y-6">
@@ -513,7 +603,7 @@ export function SalesModule() {
                     <TableHead className="text-right">الإجمالي</TableHead>
                     <TableHead className="text-right">المدفوع</TableHead>
                     <TableHead className="text-right">الحالة</TableHead>
-                    <TableHead className="text-right">عرض</TableHead>
+                    <TableHead className="text-right">الإجراءات</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -531,9 +621,14 @@ export function SalesModule() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setSelectedInvoiceId(inv.id) }} title="عرض التفاصيل">
-                          <Eye className="size-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setSelectedInvoiceId(inv.id) }} title="عرض التفاصيل">
+                            <Eye className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="size-8 text-emerald-600 hover:text-emerald-700" onClick={e => { e.stopPropagation(); setPreviewInvoice(inv) }} title="عرض الفاتورة">
+                            <Printer className="size-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -551,6 +646,21 @@ export function SalesModule() {
         clients={clients}
         projects={projects}
       />
+
+      {/* Invoice Preview Dialog */}
+      <Dialog open={!!previewInvoice} onOpenChange={(open) => { if (!open) setPreviewInvoice(null) }}>
+        <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto p-0" showCloseButton={true}>
+          <div className="p-6 invoice-print-root">
+            {previewInvoice && (
+              <InvoicePreview
+                invoice={previewInvoice as unknown as InvoiceData}
+                company={company}
+                onClose={() => setPreviewInvoice(null)}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

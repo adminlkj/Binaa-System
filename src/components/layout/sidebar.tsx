@@ -138,10 +138,10 @@ function SidebarContent() {
         </div>
         <div className="flex flex-col flex-1 min-w-0">
           <span className="text-lg font-bold text-white tracking-wide truncate">
-            {lang === 'ar' ? 'ERP مقاولات' : 'Construction ERP'}
+            {lang === 'ar' ? 'بِنَاء ERP' : 'Binaa ERP'}
           </span>
           <span className="text-[11px] text-emerald-200 truncate">
-            {lang === 'ar' ? 'نظام إدارة المقاولات' : 'Contractor Management System'}
+            {lang === 'ar' ? 'نظام إدارة المقاولات' : 'Construction Management System'}
           </span>
         </div>
       </div>

@@ -5,6 +5,11 @@ export async function GET() {
   try {
     const equipment = await db.equipment.findMany({
       where: { isActive: true },
+      include: {
+        supplier: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
+      },
       orderBy: { code: 'asc' },
     })
     return NextResponse.json(equipment)
@@ -40,10 +45,21 @@ export async function POST(request: Request) {
         model: body.model || null,
         serialNumber: body.serialNumber || null,
         status: body.status || 'AVAILABLE',
+        supplierId: body.supplierId || null,
+        clientId: body.clientId || null,
+        purchasePrice: parseFloat(body.purchasePrice) || 0,
+        sellingPrice: parseFloat(body.sellingPrice) || 0,
         hourlyRate: parseFloat(body.hourlyRate) || 0,
         dailyRate: parseFloat(body.dailyRate) || 0,
+        monthlyRate: parseFloat(body.monthlyRate) || 0,
         purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
+        warrantyExpiry: body.warrantyExpiry ? new Date(body.warrantyExpiry) : null,
         isActive: true,
+      },
+      include: {
+        supplier: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
       },
     })
 

@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Package, Plus, Search, RefreshCw, AlertTriangle,
+  Package, Plus, Search, RefreshCw, AlertTriangle, Tag, Wrench,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,8 +25,10 @@ import { useAppStore, formatSAR, formatDate, formatNumber } from '@/stores/app-s
 interface Warehouse { id: string; code: string; name: string; branch: { id: string; code: string; name: string } }
 
 interface InventoryItem {
-  id: string; code: string; name: string; nameAr: string | null; unit: string
-  unitPrice: number; quantity: number; minQuantity: number; warehouseId: string
+  id: string; code: string; name: string; nameAr: string | null
+  itemType: string; unit: string
+  purchasePrice: number; sellingPrice: number
+  quantity: number; minQuantity: number; warehouseId: string
   category: string | null; isActive: boolean
   warehouse: Warehouse
 }
@@ -41,8 +43,20 @@ const categoryOptions = [
   { value: 'سباكة', label: { ar: 'سباكة', en: 'Plumbing' } },
   { value: 'كهرباء', label: { ar: 'كهرباء', en: 'Electrical' } },
   { value: 'أدوات', label: { ar: 'أدوات', en: 'Tools' } },
+  { value: 'خدمات', label: { ar: 'خدمات', en: 'Services' } },
   { value: 'أخرى', label: { ar: 'أخرى', en: 'Other' } },
 ]
+
+// Item type config
+const itemTypeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+  PRODUCT: { label: { ar: 'منتج', en: 'Product' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+  SERVICE: { label: { ar: 'خدمة', en: 'Service' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+}
+
+function ItemTypeBadge({ itemType, lang }: { itemType: string; lang: 'ar' | 'en' }) {
+  const cfg = itemTypeConfig[itemType] || itemTypeConfig.PRODUCT
+  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+}
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
@@ -67,8 +81,10 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [nameAr, setNameAr] = useState('')
+  const [itemType, setItemType] = useState('PRODUCT')
   const [unit, setUnit] = useState('')
-  const [unitPrice, setUnitPrice] = useState('')
+  const [purchasePrice, setPurchasePrice] = useState('')
+  const [sellingPrice, setSellingPrice] = useState('')
   const [quantity, setQuantity] = useState('')
   const [minQuantity, setMinQuantity] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
@@ -76,8 +92,9 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
 
   React.useEffect(() => {
     if (open) {
-      setName(''); setNameAr(''); setUnit(''); setUnitPrice('')
-      setQuantity(''); setMinQuantity(''); setWarehouseId(''); setCategory('')
+      setName(''); setNameAr(''); setItemType('PRODUCT'); setUnit('')
+      setPurchasePrice(''); setSellingPrice(''); setQuantity('')
+      setMinQuantity(''); setWarehouseId(''); setCategory('')
     }
   }, [open])
 
@@ -90,15 +107,20 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate({ name, nameAr, unit, unitPrice, quantity, minQuantity, warehouseId, category: category || null })
+    createMutation.mutate({
+      name, nameAr, itemType, unit, purchasePrice, sellingPrice,
+      quantity, minQuantity, warehouseId, category: category || null,
+    })
   }
+
+  const isService = itemType === 'SERVICE'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{lang === 'ar' ? 'صنف مخزون جديد' : 'New Inventory Item'}</DialogTitle>
-          <DialogDescription>{lang === 'ar' ? 'إضافة صنف جديد للمخزون' : 'Add new inventory item'}</DialogDescription>
+          <DialogDescription>{lang === 'ar' ? 'إضافة صنف جديد (منتج أو خدمة)' : 'Add new item (product or service)'}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -109,6 +131,17 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
             <div className="space-y-2">
               <Label>{lang === 'ar' ? 'الاسم بالعربي' : 'Arabic Name'}</Label>
               <Input value={nameAr} onChange={e => setNameAr(e.target.value)} placeholder={lang === 'ar' ? 'الاسم بالعربية' : 'Arabic name'} />
+            </div>
+            <div className="space-y-2">
+              <Label>{lang === 'ar' ? 'النوع *' : 'Type *'}</Label>
+              <Select value={itemType} onValueChange={setItemType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(itemTypeConfig).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>{lang === 'ar' ? 'الوحدة *' : 'Unit *'}</Label>
@@ -123,6 +156,9 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
                   <SelectItem value="لتر">{lang === 'ar' ? 'لتر' : 'Liter'}</SelectItem>
                   <SelectItem value="كرتون">{lang === 'ar' ? 'كرتون' : 'Carton'}</SelectItem>
                   <SelectItem value="باكت">{lang === 'ar' ? 'باكت' : 'Packet'}</SelectItem>
+                  <SelectItem value="خدمة">{lang === 'ar' ? 'خدمة' : 'Service'}</SelectItem>
+                  <SelectItem value="ساعة">{lang === 'ar' ? 'ساعة' : 'Hour'}</SelectItem>
+                  <SelectItem value="يوم">{lang === 'ar' ? 'يوم' : 'Day'}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -136,18 +172,6 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'سعر الوحدة *' : 'Unit Price *'}</Label>
-              <Input type="number" min="0" step="0.01" value={unitPrice} onChange={e => setUnitPrice(e.target.value)} dir="ltr" required />
-            </div>
-            <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'الكمية *' : 'Quantity *'}</Label>
-              <Input type="number" min="0" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} dir="ltr" required />
-            </div>
-            <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'الحد الأدنى' : 'Min Quantity'}</Label>
-              <Input type="number" min="0" step="0.01" value={minQuantity} onChange={e => setMinQuantity(e.target.value)} dir="ltr" />
-            </div>
-            <div className="space-y-2">
               <Label>{lang === 'ar' ? 'المستودع *' : 'Warehouse *'}</Label>
               <Select value={warehouseId} onValueChange={setWarehouseId}>
                 <SelectTrigger><SelectValue placeholder={lang === 'ar' ? 'اختر المستودع' : 'Select warehouse'} /></SelectTrigger>
@@ -156,6 +180,26 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>{lang === 'ar' ? 'سعر الشراء' : 'Purchase Price'}</Label>
+              <Input type="number" min="0" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} dir="ltr" placeholder="0.00" />
+            </div>
+            <div className="space-y-2">
+              <Label>{lang === 'ar' ? 'سعر البيع' : 'Selling Price'}</Label>
+              <Input type="number" min="0" step="0.01" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} dir="ltr" placeholder="0.00" />
+            </div>
+            {!isService && (
+              <>
+                <div className="space-y-2">
+                  <Label>{lang === 'ar' ? 'الكمية' : 'Quantity'}</Label>
+                  <Input type="number" min="0" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} dir="ltr" placeholder="0" />
+                </div>
+                <div className="space-y-2">
+                  <Label>{lang === 'ar' ? 'الحد الأدنى' : 'Min Quantity'}</Label>
+                  <Input type="number" min="0" step="0.01" value={minQuantity} onChange={e => setMinQuantity(e.target.value)} dir="ltr" placeholder="0" />
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
@@ -174,6 +218,7 @@ export function InventoryModule() {
   const { lang } = useAppStore()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const { data: items = [], isLoading, isError, refetch } = useQuery<InventoryItem[]>({
@@ -196,16 +241,19 @@ export function InventoryModule() {
 
   const filtered = items.filter(item => {
     const matchCategory = categoryFilter === 'all' || item.category === categoryFilter
+    const matchType = typeFilter === 'all' || item.itemType === typeFilter
     const matchSearch = !search ||
       item.name.toLowerCase().includes(search.toLowerCase()) ||
       item.code.toLowerCase().includes(search.toLowerCase())
-    return matchCategory && matchSearch
+    return matchCategory && matchType && matchSearch
   })
 
   // Summary
   const totalItems = items.length
-  const lowStockItems = items.filter(i => i.quantity <= i.minQuantity)
-  const stockValue = items.reduce((s, i) => s + (i.quantity * i.unitPrice), 0)
+  const productItems = items.filter(i => i.itemType === 'PRODUCT')
+  const serviceItems = items.filter(i => i.itemType === 'SERVICE')
+  const lowStockItems = productItems.filter(i => i.quantity <= i.minQuantity)
+  const stockValue = productItems.reduce((s, i) => s + (i.quantity * i.purchasePrice), 0)
 
   return (
     <div className="space-y-6">
@@ -213,7 +261,7 @@ export function InventoryModule() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{lang === 'ar' ? 'المخزون' : 'Inventory'}</h1>
-          <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إدارة أصناف المخزون' : 'Manage inventory items'}</p>
+          <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إدارة المنتجات والخدمات' : 'Manage products and services'}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={() => refetch()} title={lang === 'ar' ? 'تحديث' : 'Refresh'}>
@@ -226,7 +274,7 @@ export function InventoryModule() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card className="bg-emerald-50 border-emerald-200">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center">
@@ -235,6 +283,17 @@ export function InventoryModule() {
             <div>
               <p className="text-sm text-emerald-600">{lang === 'ar' ? 'إجمالي الأصناف' : 'Total Items'}</p>
               <p className="text-xl font-bold text-emerald-700">{formatNumber(totalItems)}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-teal-50 border-teal-200">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="size-10 rounded-full bg-teal-100 flex items-center justify-center">
+              <Tag className="size-5 text-teal-600" />
+            </div>
+            <div>
+              <p className="text-sm text-teal-600">{lang === 'ar' ? 'قيمة المخزون' : 'Stock Value'}</p>
+              <p className="text-lg font-bold text-teal-700">{formatSAR(stockValue, lang)}</p>
             </div>
           </CardContent>
         </Card>
@@ -249,14 +308,14 @@ export function InventoryModule() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-teal-50 border-teal-200">
+        <Card className="bg-purple-50 border-purple-200">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="size-10 rounded-full bg-teal-100 flex items-center justify-center">
-              <Package className="size-5 text-teal-600" />
+            <div className="size-10 rounded-full bg-purple-100 flex items-center justify-center">
+              <Wrench className="size-5 text-purple-600" />
             </div>
             <div>
-              <p className="text-sm text-teal-600">{lang === 'ar' ? 'قيمة المخزون' : 'Stock Value'}</p>
-              <p className="text-xl font-bold text-teal-700">{formatSAR(stockValue, lang)}</p>
+              <p className="text-sm text-purple-600">{lang === 'ar' ? 'خدمات' : 'Services'}</p>
+              <p className="text-xl font-bold text-purple-700">{formatNumber(serviceItems.length)}</p>
             </div>
           </CardContent>
         </Card>
@@ -291,6 +350,17 @@ export function InventoryModule() {
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input placeholder={lang === 'ar' ? 'بحث بالاسم أو الكود...' : 'Search by name or code...'} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
             </div>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-full sm:w-40">
+                <SelectValue placeholder={lang === 'ar' ? 'كل الأنواع' : 'All Types'} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{lang === 'ar' ? 'كل الأنواع' : 'All Types'}</SelectItem>
+                {Object.entries(itemTypeConfig).map(([k, v]) => (
+                  <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
               <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={lang === 'ar' ? 'كل الفئات' : 'All Categories'} /></SelectTrigger>
               <SelectContent>
@@ -327,17 +397,18 @@ export function InventoryModule() {
                   <TableRow>
                     <TableHead className="text-right">{lang === 'ar' ? 'الكود' : 'Code'}</TableHead>
                     <TableHead className="text-right">{lang === 'ar' ? 'الاسم' : 'Name'}</TableHead>
+                    <TableHead className="text-right">{lang === 'ar' ? 'النوع' : 'Type'}</TableHead>
                     <TableHead className="text-right">{lang === 'ar' ? 'الوحدة' : 'Unit'}</TableHead>
+                    <TableHead className="text-right">{lang === 'ar' ? 'سعر الشراء' : 'Purchase Price'}</TableHead>
+                    <TableHead className="text-right">{lang === 'ar' ? 'سعر البيع' : 'Selling Price'}</TableHead>
                     <TableHead className="text-right">{lang === 'ar' ? 'الكمية' : 'Qty'}</TableHead>
                     <TableHead className="text-right">{lang === 'ar' ? 'الحد الأدنى' : 'Min Qty'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'السعر' : 'Price'}</TableHead>
                     <TableHead className="text-right">{lang === 'ar' ? 'المستودع' : 'Warehouse'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'الفئة' : 'Category'}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map(item => {
-                    const isLow = item.quantity <= item.minQuantity
+                    const isLow = item.itemType === 'PRODUCT' && item.quantity <= item.minQuantity
                     return (
                       <TableRow key={item.id} className={isLow ? 'bg-amber-50' : ''}>
                         <TableCell className="font-mono text-sm">{item.code}</TableCell>
@@ -345,14 +416,13 @@ export function InventoryModule() {
                           {item.name}
                           {isLow && <AlertTriangle className="size-3.5 inline mr-1 text-amber-500" />}
                         </TableCell>
+                        <TableCell><ItemTypeBadge itemType={item.itemType} lang={lang} /></TableCell>
                         <TableCell>{item.unit}</TableCell>
+                        <TableCell className="text-teal-700">{formatSAR(item.purchasePrice, lang)}</TableCell>
+                        <TableCell className="text-purple-700">{formatSAR(item.sellingPrice, lang)}</TableCell>
                         <TableCell className={isLow ? 'font-bold text-amber-700' : ''}>{formatNumber(item.quantity)}</TableCell>
                         <TableCell>{formatNumber(item.minQuantity)}</TableCell>
-                        <TableCell>{formatSAR(item.unitPrice, lang)}</TableCell>
                         <TableCell className="text-muted-foreground">{item.warehouse.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="bg-gray-50">{item.category || '—'}</Badge>
-                        </TableCell>
                       </TableRow>
                     )
                   })}

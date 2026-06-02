@@ -25,19 +25,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params
     const body = await request.json()
 
+    const data: Record<string, unknown> = {}
+
+    if (body.name !== undefined) data.name = body.name
+    if (body.nameAr !== undefined) data.nameAr = body.nameAr || null
+    if (body.itemType !== undefined) data.itemType = body.itemType
+    if (body.unit !== undefined) data.unit = body.unit
+    if (body.purchasePrice !== undefined) data.purchasePrice = parseFloat(body.purchasePrice) || 0
+    if (body.sellingPrice !== undefined) data.sellingPrice = parseFloat(body.sellingPrice) || 0
+    if (body.quantity !== undefined) data.quantity = parseFloat(body.quantity) || 0
+    if (body.minQuantity !== undefined) data.minQuantity = parseFloat(body.minQuantity) || 0
+    if (body.warehouseId !== undefined) data.warehouseId = body.warehouseId
+    if (body.category !== undefined) data.category = body.category || null
+    if (body.isActive !== undefined) data.isActive = body.isActive
+
     const item = await db.inventoryItem.update({
       where: { id },
-      data: {
-        name: body.name,
-        nameAr: body.nameAr || null,
-        unit: body.unit,
-        unitPrice: body.unitPrice !== undefined ? parseFloat(body.unitPrice) : undefined,
-        quantity: body.quantity !== undefined ? parseFloat(body.quantity) : undefined,
-        minQuantity: body.minQuantity !== undefined ? parseFloat(body.minQuantity) : undefined,
-        warehouseId: body.warehouseId,
-        category: body.category || null,
-        isActive: body.isActive !== undefined ? body.isActive : undefined,
-      },
+      data,
       include: {
         warehouse: { select: { id: true, code: true, name: true } },
       },

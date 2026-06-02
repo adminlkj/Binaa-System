@@ -5,9 +5,13 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
+    const category = searchParams.get('category')
 
     const expenses = await db.expense.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: {
+        ...(projectId ? { projectId } : {}),
+        ...(category ? { category } : {}),
+      },
       include: {
         project: { select: { id: true, code: true, name: true } },
       },
@@ -26,7 +30,7 @@ export async function POST(request: Request) {
 
     const expense = await db.expense.create({
       data: {
-        projectId: body.projectId,
+        projectId: body.projectId || null,
         category: body.category,
         description: body.description,
         amount: parseFloat(body.amount),

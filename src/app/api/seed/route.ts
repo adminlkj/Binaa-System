@@ -6,6 +6,9 @@ export async function POST() {
     // ============ CLEAR EXISTING DATA (respect relations) ============
     // Delete in reverse dependency order
 
+    // Company settings (top-level, no dependents)
+    await db.companySetting.deleteMany()
+
     // Journal lines first (depends on JournalEntry, Account, CostCenter)
     await db.journalLine.deleteMany()
     await db.journalEntry.deleteMany()
@@ -40,6 +43,10 @@ export async function POST() {
     await db.equipmentFuelLog.deleteMany()
     await db.equipmentMaintenance.deleteMany()
 
+    // Equipment rentals & expenses (depend on Equipment)
+    await db.equipmentRental.deleteMany()
+    await db.equipmentExpense.deleteMany()
+
     // Petty cash & advances
     await db.pettyCash.deleteMany()
     await db.employeeAdvance.deleteMany()
@@ -71,7 +78,6 @@ export async function POST() {
     await db.account.deleteMany()
 
     // VAT Returns
-    // VAT Returns - using correct Prisma client name
     await db.vATReturn.deleteMany()
 
     // Attachments & Audit logs
@@ -85,6 +91,25 @@ export async function POST() {
     await db.branch.deleteMany()
 
     // ============ SEED DATA ============
+
+    // 0. Company Settings
+    await db.companySetting.create({
+      data: {
+        nameAr: 'شركة البناء الحديثة للمقاولات',
+        nameEn: 'Al Binaa Al Haditha Contracting Co.',
+        taxNumber: '300123456700003',
+        commercialReg: '1234567890',
+        address: 'الدمام - المملكة العربية السعودية',
+        phone: '0500000000',
+        email: 'info@albinaa.com',
+        bankName: 'الراجحي',
+        bankIban: 'SA00 8000 0000 6080 1016 7519',
+        bankAccountName: 'شركة البناء الحديثة للمقاولات',
+        defaultVatRate: 0.15,
+        currency: 'SAR',
+        invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
+      }
+    })
 
     // 1. Branch
     const branch = await db.branch.create({
@@ -533,130 +558,166 @@ export async function POST() {
       db.progressClaim.create({ data: { projectId: projects[2].id, contractId: contracts[2].id, claimNo: 'CLM-003-04', date: new Date('2025-01-15'), percentage: 20, amount: 190000, vatRate: 0.15, vatAmount: 28500, totalAmount: 218500, status: 'APPROVED', approvedDate: new Date('2025-01-31'), notes: 'المستخلص الأخير' } }),
     ])
 
-    // 12. Sales Invoices
+    // 12. Sales Invoices (updated with new fields)
     const salesInvoices = await Promise.all([
       db.salesInvoice.create({
         data: {
-          invoiceNo: 'SI-2024-001',
+          invoiceNo: 'INV-2024-001',
           projectId: projects[0].id,
+          contractId: contracts[0].id,
           clientId: clients[0].id,
           date: new Date('2024-05-01'),
           dueDate: new Date('2024-06-01'),
           subtotal: 450000,
+          discountRate: 0,
+          discountAmount: 0,
+          netAmount: 450000,
           vatRate: 0.15,
           vatAmount: 67500,
           totalAmount: 517500,
           paidAmount: 517500,
           status: 'PAID',
+          invoiceType: 'TAX_INVOICE',
+          paymentTerms: '30 days',
           notes: 'فاتورة المستخلص الأول - مجمع الملقا',
           items: {
             create: [
-              { description: 'أعمال الحفر والتسوية - مستخلص 1', quantity: 25000, unitPrice: 18, totalPrice: 450000 },
+              { description: 'أعمال الحفر والتسوية - مستخلص 1', quantity: 25000, unit: 'م²', unitPrice: 18, totalPrice: 450000, itemType: 'SERVICE' },
             ]
           }
         },
       }),
       db.salesInvoice.create({
         data: {
-          invoiceNo: 'SI-2024-002',
+          invoiceNo: 'INV-2024-002',
           projectId: projects[0].id,
+          contractId: contracts[0].id,
           clientId: clients[0].id,
           date: new Date('2024-07-01'),
           dueDate: new Date('2024-08-01'),
           subtotal: 675000,
+          discountRate: 0,
+          discountAmount: 0,
+          netAmount: 675000,
           vatRate: 0.15,
           vatAmount: 101250,
           totalAmount: 776250,
           paidAmount: 776250,
           status: 'PAID',
+          invoiceType: 'TAX_INVOICE',
+          paymentTerms: '30 days',
           notes: 'فاتورة المستخلص الثاني - مجمع الملقا',
           items: {
             create: [
-              { description: 'أعمال القواعد الخرسانية - مستخلص 2', quantity: 1, unitPrice: 675000, totalPrice: 675000 },
+              { description: 'أعمال القواعد الخرسانية - مستخلص 2', quantity: 1, unit: 'مقطوعية', unitPrice: 675000, totalPrice: 675000, itemType: 'SERVICE' },
             ]
           }
         },
       }),
       db.salesInvoice.create({
         data: {
-          invoiceNo: 'SI-2024-003',
+          invoiceNo: 'INV-2024-003',
           projectId: projects[1].id,
+          contractId: contracts[1].id,
           clientId: clients[3].id,
           date: new Date('2024-09-01'),
           dueDate: new Date('2024-10-01'),
           subtotal: 420000,
+          discountRate: 0,
+          discountAmount: 0,
+          netAmount: 420000,
           vatRate: 0.15,
           vatAmount: 63000,
           totalAmount: 483000,
           paidAmount: 483000,
           status: 'PAID',
+          invoiceType: 'TAX_INVOICE',
+          paymentTerms: '30 days',
           notes: 'فاتورة المستخلص الأول - مدرسة النسيم',
           items: {
             create: [
-              { description: 'أعمال الحفر والأساسات - مستخلص 1', quantity: 1, unitPrice: 420000, totalPrice: 420000 },
+              { description: 'أعمال الحفر والأساسات - مستخلص 1', quantity: 1, unit: 'مقطوعية', unitPrice: 420000, totalPrice: 420000, itemType: 'SERVICE' },
             ]
           }
         },
       }),
       db.salesInvoice.create({
         data: {
-          invoiceNo: 'SI-2024-004',
+          invoiceNo: 'INV-2024-004',
           projectId: projects[0].id,
+          contractId: contracts[0].id,
           clientId: clients[0].id,
           date: new Date('2024-09-15'),
           dueDate: new Date('2024-10-15'),
           subtotal: 900000,
+          discountRate: 0,
+          discountAmount: 0,
+          netAmount: 900000,
           vatRate: 0.15,
           vatAmount: 135000,
           totalAmount: 1035000,
           paidAmount: 500000,
           status: 'PARTIALLY_PAID',
+          invoiceType: 'TAX_INVOICE',
+          paymentTerms: '30 days',
           notes: 'فاتورة المستخلص الثالث - مجمع الملقا',
           items: {
             create: [
-              { description: 'أعمال الهيكل الخرساني - مستخلص 3', quantity: 1, unitPrice: 900000, totalPrice: 900000 },
+              { description: 'أعمال الهيكل الخرساني - مستخلص 3', quantity: 1, unit: 'مقطوعية', unitPrice: 900000, totalPrice: 900000, itemType: 'SERVICE' },
             ]
           }
         },
       }),
       db.salesInvoice.create({
         data: {
-          invoiceNo: 'SI-2024-005',
+          invoiceNo: 'INV-2024-005',
           projectId: projects[2].id,
+          contractId: contracts[2].id,
           clientId: clients[1].id,
           date: new Date('2024-11-01'),
           dueDate: new Date('2024-12-01'),
           subtotal: 475000,
+          discountRate: 0,
+          discountAmount: 0,
+          netAmount: 475000,
           vatRate: 0.15,
           vatAmount: 71250,
           totalAmount: 546250,
           paidAmount: 546250,
           status: 'PAID',
+          invoiceType: 'TAX_INVOICE',
+          paymentTerms: '30 days',
           notes: 'فاتورة المستخلصين الأول والثاني - فيلا الورود',
           items: {
             create: [
-              { description: 'أعمال التشطيب - مستخلصات 1 و2', quantity: 1, unitPrice: 475000, totalPrice: 475000 },
+              { description: 'أعمال التشطيب - مستخلصات 1 و2', quantity: 1, unit: 'مقطوعية', unitPrice: 475000, totalPrice: 475000, itemType: 'SERVICE' },
             ]
           }
         },
       }),
       db.salesInvoice.create({
         data: {
-          invoiceNo: 'SI-2024-006',
+          invoiceNo: 'INV-2024-006',
           projectId: projects[0].id,
+          contractId: contracts[0].id,
           clientId: clients[0].id,
           date: new Date('2024-11-15'),
           dueDate: new Date('2024-12-15'),
           subtotal: 675000,
+          discountRate: 0,
+          discountAmount: 0,
+          netAmount: 675000,
           vatRate: 0.15,
           vatAmount: 101250,
           totalAmount: 776250,
           paidAmount: 0,
           status: 'SENT',
+          invoiceType: 'TAX_INVOICE',
+          paymentTerms: '30 days',
           notes: 'فاتورة المستخلص الرابع - مجمع الملقا',
           items: {
             create: [
-              { description: 'أعمال البلوك - مستخلص 4', quantity: 1, unitPrice: 675000, totalPrice: 675000 },
+              { description: 'أعمال البلوك - مستخلص 4', quantity: 1, unit: 'مقطوعية', unitPrice: 675000, totalPrice: 675000, itemType: 'SERVICE' },
             ]
           }
         },
@@ -948,18 +1009,22 @@ export async function POST() {
       }),
     ])
 
-    // 15. Expenses per project
+    // 15. Expenses per project (using ExpenseCategory enum)
     await Promise.all([
       // Project 1 expenses
-      db.expense.create({ data: { projectId: projects[0].id, category: 'مواد بناء', description: 'مواد لاصقة ومكملات', amount: 45000, vatAmount: 6750, date: new Date('2024-05-10'), reference: 'EXP-001' } }),
-      db.expense.create({ data: { projectId: projects[0].id, category: 'نقل ومواصلات', description: 'نقل مواد من المستودع للموقع', amount: 15000, vatAmount: 2250, date: new Date('2024-06-15'), reference: 'EXP-002' } }),
-      db.expense.create({ data: { projectId: projects[0].id, category: 'إيجارات', description: 'إيجار سكن عمال', amount: 36000, vatAmount: 5400, date: new Date('2024-07-01'), reference: 'EXP-003' } }),
-      db.expense.create({ data: { projectId: projects[0].id, category: 'صيانة', description: 'صيانة معدات الموقع', amount: 12000, vatAmount: 1800, date: new Date('2024-08-20'), reference: 'EXP-004' } }),
+      db.expense.create({ data: { projectId: projects[0].id, category: 'CONSUMABLES', description: 'مواد لاصقة ومكملات', amount: 45000, vatAmount: 6750, date: new Date('2024-05-10'), reference: 'EXP-001' } }),
+      db.expense.create({ data: { projectId: projects[0].id, category: 'TRANSPORT', description: 'نقل مواد من المستودع للموقع', amount: 15000, vatAmount: 2250, date: new Date('2024-06-15'), reference: 'EXP-002' } }),
+      db.expense.create({ data: { projectId: projects[0].id, category: 'RENT', description: 'إيجار سكن عمال', amount: 36000, vatAmount: 5400, date: new Date('2024-07-01'), reference: 'EXP-003' } }),
+      db.expense.create({ data: { projectId: projects[0].id, category: 'MAINTENANCE', description: 'صيانة معدات الموقع', amount: 12000, vatAmount: 1800, date: new Date('2024-08-20'), reference: 'EXP-004' } }),
       // Project 2 expenses
-      db.expense.create({ data: { projectId: projects[1].id, category: 'مواد بناء', description: 'مواد تكسية خارجية', amount: 28000, vatAmount: 4200, date: new Date('2024-08-01'), reference: 'EXP-005' } }),
-      db.expense.create({ data: { projectId: projects[1].id, category: 'نقل ومواصلات', description: 'نقل رمال وأحجار', amount: 8000, vatAmount: 1200, date: new Date('2024-09-10'), reference: 'EXP-006' } }),
+      db.expense.create({ data: { projectId: projects[1].id, category: 'CONSUMABLES', description: 'مواد تكسية خارجية', amount: 28000, vatAmount: 4200, date: new Date('2024-08-01'), reference: 'EXP-005' } }),
+      db.expense.create({ data: { projectId: projects[1].id, category: 'TRANSPORT', description: 'نقل رمال وأحجار', amount: 8000, vatAmount: 1200, date: new Date('2024-09-10'), reference: 'EXP-006' } }),
       // Project 3 expenses
-      db.expense.create({ data: { projectId: projects[2].id, category: 'مواد تشطيب', description: 'مستلزمات تشطيب متنوعة', amount: 22000, vatAmount: 3300, date: new Date('2024-10-05'), reference: 'EXP-007' } }),
+      db.expense.create({ data: { projectId: projects[2].id, category: 'CONSUMABLES', description: 'مستلزمات تشطيب متنوعة', amount: 22000, vatAmount: 3300, date: new Date('2024-10-05'), reference: 'EXP-007' } }),
+      // General expenses (no project)
+      db.expense.create({ data: { projectId: null, category: 'OFFICE', description: 'مستلزمات مكتبية وقرطاسية', amount: 3500, vatAmount: 525, date: new Date('2024-04-15'), reference: 'EXP-008' } }),
+      db.expense.create({ data: { projectId: null, category: 'INSURANCE', description: 'تأمين شامل على المعدات', amount: 18000, vatAmount: 2700, date: new Date('2024-01-01'), reference: 'EXP-009' } }),
+      db.expense.create({ data: { projectId: null, category: 'HOSPITALITY', description: 'ضيافة اجتماع المقاولين', amount: 5500, vatAmount: 825, date: new Date('2024-07-20'), reference: 'EXP-010' } }),
     ])
 
     // 16. Labor Costs
@@ -972,7 +1037,7 @@ export async function POST() {
       db.laborCost.create({ data: { projectId: projects[2].id, description: 'عمال تشطيب - جبس ودهان', workers: 12, days: 30, dailyRate: 200, totalAmount: 72000, date: new Date('2024-10-01') } }),
     ])
 
-    // 17. Equipment
+    // 17. Equipment (updated with new fields)
     const equipmentItems = await Promise.all([
       db.equipment.create({
         data: {
@@ -983,9 +1048,14 @@ export async function POST() {
           model: 'CAT 320',
           serialNumber: 'CAT320-2022-001',
           status: 'IN_USE',
+          supplierId: suppliers[4].id,
+          purchasePrice: 1200000,
+          sellingPrice: 0,
           hourlyRate: 350,
           dailyRate: 2800,
+          monthlyRate: 55000,
           purchaseDate: new Date('2022-01-15'),
+          warrantyExpiry: new Date('2024-01-15'),
           isActive: true,
         },
       }),
@@ -998,8 +1068,12 @@ export async function POST() {
           model: 'KOMATSU PC200',
           serialNumber: 'KOM-2023-001',
           status: 'IN_USE',
+          supplierId: suppliers[4].id,
+          purchasePrice: 950000,
+          sellingPrice: 0,
           hourlyRate: 300,
           dailyRate: 2400,
+          monthlyRate: 48000,
           purchaseDate: new Date('2023-03-20'),
           isActive: true,
         },
@@ -1013,9 +1087,14 @@ export async function POST() {
           model: 'LIEBHERR 150EC-B',
           serialNumber: 'LIE-2021-003',
           status: 'IN_USE',
+          supplierId: suppliers[4].id,
+          purchasePrice: 2800000,
+          sellingPrice: 0,
           hourlyRate: 500,
           dailyRate: 4000,
+          monthlyRate: 85000,
           purchaseDate: new Date('2021-06-10'),
+          warrantyExpiry: new Date('2023-06-10'),
           isActive: true,
         },
       }),
@@ -1027,10 +1106,34 @@ export async function POST() {
           type: 'قلاب',
           model: 'VOLVO FMX 500',
           serialNumber: 'VOL-2022-004',
-          status: 'AVAILABLE',
+          status: 'RENTED',
+          supplierId: suppliers[4].id,
+          purchasePrice: 650000,
+          sellingPrice: 0,
           hourlyRate: 250,
           dailyRate: 2000,
+          monthlyRate: 40000,
           purchaseDate: new Date('2022-09-01'),
+          isActive: true,
+        },
+      }),
+      db.equipment.create({
+        data: {
+          code: 'EQ-005',
+          name: 'رافعة شوكية Toyota',
+          nameAr: 'رافعة شوكية Toyota',
+          type: 'رافعة شوكية',
+          model: 'Toyota 8FD25',
+          serialNumber: 'TOY-2024-005',
+          status: 'AVAILABLE',
+          supplierId: suppliers[4].id,
+          purchasePrice: 280000,
+          sellingPrice: 0,
+          hourlyRate: 150,
+          dailyRate: 1200,
+          monthlyRate: 22000,
+          purchaseDate: new Date('2024-01-10'),
+          warrantyExpiry: new Date('2026-01-10'),
           isActive: true,
         },
       }),
@@ -1045,7 +1148,97 @@ export async function POST() {
       db.equipmentUsage.create({ data: { equipmentId: equipmentItems[0].id, projectId: projects[1].id, date: new Date('2024-08-01'), hours: 100, description: 'أعمال الحفر - مدرسة النسيم', cost: 35000 } }),
     ])
 
-    // 19. Petty Cash
+    // 19. Equipment Rentals
+    await Promise.all([
+      db.equipmentRental.create({
+        data: {
+          equipmentId: equipmentItems[3].id,
+          clientId: clients[2].id,
+          projectId: null,
+          startDate: new Date('2024-10-01'),
+          endDate: new Date('2025-03-31'),
+          rateType: 'MONTHLY',
+          rate: 40000,
+          totalAmount: 240000,
+          status: 'ACTIVE',
+          notes: 'تأجير قلاب فولفو لشركة التطوير العقاري - 6 أشهر',
+        },
+      }),
+      db.equipmentRental.create({
+        data: {
+          equipmentId: equipmentItems[4].id,
+          clientId: clients[4].id,
+          projectId: null,
+          startDate: new Date('2024-12-01'),
+          endDate: new Date('2025-02-28'),
+          rateType: 'MONTHLY',
+          rate: 22000,
+          totalAmount: 66000,
+          status: 'ACTIVE',
+          notes: 'تأجير رافعة شوكية لشركة المشاريع الصناعية - 3 أشهر',
+        },
+      }),
+      db.equipmentRental.create({
+        data: {
+          equipmentId: equipmentItems[0].id,
+          clientId: clients[1].id,
+          projectId: projects[2].id,
+          startDate: new Date('2024-09-15'),
+          endDate: new Date('2024-10-15'),
+          rateType: 'DAILY',
+          rate: 2800,
+          totalAmount: 84000,
+          status: 'RETURNED',
+          notes: 'تأجير حفارة لمشروع فيلا الورود - شهر واحد',
+        },
+      }),
+    ])
+
+    // 20. Equipment Expenses
+    await Promise.all([
+      db.equipmentExpense.create({
+        data: {
+          equipmentId: equipmentItems[0].id,
+          category: 'DELIVERY',
+          description: 'نقل الحفارة من موقع الملقا لموقع النسيم',
+          amount: 8000,
+          date: new Date('2024-07-25'),
+          reference: 'EQ-EXP-001',
+        },
+      }),
+      db.equipmentExpense.create({
+        data: {
+          equipmentId: equipmentItems[2].id,
+          category: 'INSURANCE',
+          description: 'تأمين شامل للكرين البرجي - سنة 2024',
+          amount: 45000,
+          date: new Date('2024-01-01'),
+          reference: 'EQ-EXP-002',
+        },
+      }),
+      db.equipmentExpense.create({
+        data: {
+          equipmentId: equipmentItems[1].id,
+          category: 'MAINTENANCE',
+          description: 'صيانة دورية للشيول - تغيير فلاتر وزيوت',
+          amount: 12000,
+          date: new Date('2024-06-15'),
+          reference: 'EQ-EXP-003',
+        },
+      }),
+      db.equipmentExpense.create({
+        data: {
+          equipmentId: equipmentItems[3].id,
+          category: 'DELIVERY',
+          description: 'نقل القلاب لموقع العميل - التطوير العقاري',
+          amount: 5000,
+          date: new Date('2024-10-01'),
+          reference: 'EQ-EXP-004',
+        },
+      }),
+    ])
+
+    // 21. Petty Cash
     await Promise.all([
       db.pettyCash.create({ data: { branchId: branch.id, description: 'شراء مستلزمات مكتبية', amount: 2500, date: new Date('2024-04-01'), category: 'مصروفات إدارية', reference: 'PC-001' } }),
       db.pettyCash.create({ data: { branchId: branch.id, description: 'صيانة تكييف المكتب', amount: 1800, date: new Date('2024-05-15'), category: 'صيانة', reference: 'PC-002' } }),
@@ -1054,7 +1247,7 @@ export async function POST() {
       db.pettyCash.create({ data: { branchId: branch.id, description: 'شراء أدوات أمن وسلامة', amount: 4200, date: new Date('2024-10-01'), category: 'أمن وسلامة', reference: 'PC-005' } }),
     ])
 
-    // 20. Employee Advances
+    // 22. Employee Advances
     await Promise.all([
       db.employeeAdvance.create({ data: { employeeId: employees[0].id, amount: 5000, date: new Date('2024-04-01'), settledAmount: 5000, status: 'SETTLED', description: 'سلفة مؤقتة - مصاريف ميدانية' } }),
       db.employeeAdvance.create({ data: { employeeId: employees[1].id, amount: 3000, date: new Date('2024-06-15'), settledAmount: 3000, status: 'SETTLED', description: 'سلفة نقل' } }),
@@ -1062,21 +1255,26 @@ export async function POST() {
       db.employeeAdvance.create({ data: { employeeId: employees[4].id, amount: 2000, date: new Date('2024-10-01'), settledAmount: 0, status: 'PENDING', description: 'سلفة شخصية' } }),
     ])
 
-    // 21. Inventory Items
+    // 23. Inventory Items (updated with itemType, purchasePrice/sellingPrice, plus service items)
     await Promise.all([
-      db.inventoryItem.create({ data: { code: 'INV-001', name: 'إسمنت بورتلاندي', nameAr: 'إسمنت بورتلاندي', unit: 'كيس', unitPrice: 18, quantity: 200, minQuantity: 50, warehouseId: warehouse.id, category: 'مواد بناء', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-002', name: 'رمل خشن', nameAr: 'رمل خشن', unit: 'م³', unitPrice: 45, quantity: 500, minQuantity: 100, warehouseId: warehouse.id, category: 'مواد بناء', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-003', name: 'حديد تسليح 12 مم', nameAr: 'حديد تسليح 12 مم', unit: 'طن', unitPrice: 4200, quantity: 25, minQuantity: 10, warehouseId: warehouse.id, category: 'حديد', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-004', name: 'حديد تسليح 16 مم', nameAr: 'حديد تسليح 16 مم', unit: 'طن', unitPrice: 4300, quantity: 8, minQuantity: 10, warehouseId: warehouse.id, category: 'حديد', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-005', name: 'بلوك خرساني 20 سم', nameAr: 'بلوك خرساني 20 سم', unit: 'م²', unitPrice: 65, quantity: 3000, minQuantity: 500, warehouseId: warehouse.id, category: 'مواد بناء', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-006', name: 'أنابيب PVC 4 بوصة', nameAr: 'أنابيب PVC 4 بوصة', unit: 'متر', unitPrice: 25, quantity: 15, minQuantity: 50, warehouseId: warehouse.id, category: 'سباكة', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-007', name: 'كابل كهربائي 2.5 مم²', nameAr: 'كابل كهربائي 2.5 مم²', unit: 'لفة', unitPrice: 450, quantity: 5, minQuantity: 10, warehouseId: warehouse.id, category: 'كهرباء', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-008', name: 'ألواح جبس', nameAr: 'ألواح جبس', unit: 'لوح', unitPrice: 18, quantity: 3, minQuantity: 50, warehouseId: warehouse.id, category: 'تشطيب', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-009', name: 'دهان داخلي أبيض', nameAr: 'دهان داخلي أبيض', unit: 'جالون', unitPrice: 120, quantity: 20, minQuantity: 15, warehouseId: warehouse.id, category: 'دهان', isActive: true } }),
-      db.inventoryItem.create({ data: { code: 'INV-010', name: 'مادة عزل مائي', nameAr: 'مادة عزل مائي', unit: 'جالون', unitPrice: 180, quantity: 10, minQuantity: 20, warehouseId: warehouse.id, category: 'عزل', isActive: true } }),
+      // Product items
+      db.inventoryItem.create({ data: { code: 'INV-001', name: 'إسمنت بورتلاندي', nameAr: 'إسمنت بورتلاندي', itemType: 'PRODUCT', unit: 'كيس', purchasePrice: 15, sellingPrice: 18, quantity: 200, minQuantity: 50, warehouseId: warehouse.id, category: 'مواد بناء', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-002', name: 'رمل خشن', nameAr: 'رمل خشن', itemType: 'PRODUCT', unit: 'م³', purchasePrice: 35, sellingPrice: 45, quantity: 500, minQuantity: 100, warehouseId: warehouse.id, category: 'مواد بناء', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-003', name: 'حديد تسليح 12 مم', nameAr: 'حديد تسليح 12 مم', itemType: 'PRODUCT', unit: 'طن', purchasePrice: 3900, sellingPrice: 4200, quantity: 25, minQuantity: 10, warehouseId: warehouse.id, category: 'حديد', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-004', name: 'حديد تسليح 16 مم', nameAr: 'حديد تسليح 16 مم', itemType: 'PRODUCT', unit: 'طن', purchasePrice: 4000, sellingPrice: 4300, quantity: 8, minQuantity: 10, warehouseId: warehouse.id, category: 'حديد', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-005', name: 'بلوك خرساني 20 سم', nameAr: 'بلوك خرساني 20 سم', itemType: 'PRODUCT', unit: 'م²', purchasePrice: 55, sellingPrice: 65, quantity: 3000, minQuantity: 500, warehouseId: warehouse.id, category: 'مواد بناء', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-006', name: 'أنابيب PVC 4 بوصة', nameAr: 'أنابيب PVC 4 بوصة', itemType: 'PRODUCT', unit: 'متر', purchasePrice: 20, sellingPrice: 25, quantity: 15, minQuantity: 50, warehouseId: warehouse.id, category: 'سباكة', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-007', name: 'كابل كهربائي 2.5 مم²', nameAr: 'كابل كهربائي 2.5 مم²', itemType: 'PRODUCT', unit: 'لفة', purchasePrice: 380, sellingPrice: 450, quantity: 5, minQuantity: 10, warehouseId: warehouse.id, category: 'كهرباء', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-008', name: 'ألواح جبس', nameAr: 'ألواح جبس', itemType: 'PRODUCT', unit: 'لوح', purchasePrice: 14, sellingPrice: 18, quantity: 3, minQuantity: 50, warehouseId: warehouse.id, category: 'تشطيب', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-009', name: 'دهان داخلي أبيض', nameAr: 'دهان داخلي أبيض', itemType: 'PRODUCT', unit: 'جالون', purchasePrice: 95, sellingPrice: 120, quantity: 20, minQuantity: 15, warehouseId: warehouse.id, category: 'دهان', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-010', name: 'مادة عزل مائي', nameAr: 'مادة عزل مائي', itemType: 'PRODUCT', unit: 'جالون', purchasePrice: 140, sellingPrice: 180, quantity: 10, minQuantity: 20, warehouseId: warehouse.id, category: 'عزل', isActive: true } }),
+      // Service items
+      db.inventoryItem.create({ data: { code: 'INV-011', name: 'خدمة النقل', nameAr: 'خدمة النقل', itemType: 'SERVICE', unit: 'رحلة', purchasePrice: 0, sellingPrice: 1500, quantity: 0, minQuantity: 0, warehouseId: warehouse.id, category: 'خدمات', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-012', name: 'خدمة التركيب', nameAr: 'خدمة التركيب', itemType: 'SERVICE', unit: 'م²', purchasePrice: 0, sellingPrice: 45, quantity: 0, minQuantity: 0, warehouseId: warehouse.id, category: 'خدمات', isActive: true } }),
+      db.inventoryItem.create({ data: { code: 'INV-013', name: 'خدمة الفحص الهندسي', nameAr: 'خدمة الفحص الهندسي', itemType: 'SERVICE', unit: 'زيارة', purchasePrice: 0, sellingPrice: 2000, quantity: 0, minQuantity: 0, warehouseId: warehouse.id, category: 'خدمات', isActive: true } }),
     ])
 
-    // 22. Chart of Accounts (Accounts)
+    // 24. Chart of Accounts (Accounts)
     const accounts = await Promise.all([
       // Assets
       db.account.create({ data: { code: '1000', name: 'الأصول', nameAr: 'الأصول', type: 'ASSET', isActive: true } }),
@@ -1118,7 +1316,7 @@ export async function POST() {
     await db.account.update({ where: { code: '1100' }, data: { parentId: accountMap['1000'] } })
     await db.account.update({ where: { code: '1200' }, data: { parentId: accountMap['1000'] } })
 
-    // 23. Cost Centers
+    // 25. Cost Centers
     const costCenters = await Promise.all([
       db.costCenter.create({ data: { code: 'CC-001', name: 'مشروع مجمع الملقا' } }),
       db.costCenter.create({ data: { code: 'CC-002', name: 'مشروع مدرسة النسيم' } }),
@@ -1126,7 +1324,7 @@ export async function POST() {
       db.costCenter.create({ data: { code: 'CC-004', name: 'مصروفات إدارية عامة' } }),
     ])
 
-    // 24. Journal Entries with Lines
+    // 26. Journal Entries with Lines
     // JE 1: Revenue from first claim - Project 1
     const je1 = await db.journalEntry.create({
       data: {
@@ -1194,7 +1392,7 @@ export async function POST() {
       },
     })
 
-    // 25. VAT Return
+    // 27. VAT Return
     await db.vATReturn.create({
       data: {
         period: 'Q3-2024',
@@ -1210,6 +1408,7 @@ export async function POST() {
       success: true,
       message: 'تم تهيئة البيانات التجريبية بنجاح',
       data: {
+        companySettings: 1,
         branches: 1,
         warehouses: 1,
         clients: clients.length,
@@ -1225,7 +1424,10 @@ export async function POST() {
         purchaseInvoices: 5,
         subcontractorInvoices: 4,
         equipment: equipmentItems.length,
-        inventoryItems: 10,
+        equipmentRentals: 3,
+        equipmentExpenses: 4,
+        expenses: 10,
+        inventoryItems: 13,
         accounts: accounts.length,
         costCenters: costCenters.length,
         journalEntries: 4,

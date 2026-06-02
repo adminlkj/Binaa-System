@@ -120,3 +120,75 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ============ Invoice Print Styles ============ */
+@media print {
+  /* Hide everything except the invoice */
+  body > *:not(.invoice-print-root) {
+    display: none !important;
+  }
+
+  .invoice-print-root {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    z-index: 99999 !important;
+    background: white !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide non-print elements */
+  .no-print {
+    display: none !important;
+  }
+
+  /* A4 paper sizing */
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  /* Invoice document - remove shadow and border radius for print */
+  .invoice-document {
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Ensure good print colors */
+  .invoice-document * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Prevent page breaks inside important sections */
+  .invoice-document table {
+    page-break-inside: auto;
+  }
+
+  .invoice-document tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  .invoice-document thead {
+    display: table-header-group;
+  }
+
+  /* Ensure the ZATCA footer stays together */
+  .invoice-document > div:last-child {
+    page-break-inside: avoid;
+  }
+
+  /* Clean up shadows for print */
+  * {
+    box-shadow: none !important;
+  }
+}

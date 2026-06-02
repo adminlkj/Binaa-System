@@ -1,5 +1,5 @@
-// Construction ERP - Complete Schema
-// نظام ERP مقاولات متكامل
+// نظام بِنَاء ERP - Complete Schema
+// Binaa Construction ERP
 
 generator client {
   provider = "prisma-client-js"
@@ -65,6 +65,7 @@ enum EquipmentStatus {
   IN_USE
   MAINTENANCE
   OUT_OF_SERVICE
+  RENTED
 }
 
 enum AdvanceStatus {
@@ -72,6 +73,50 @@ enum AdvanceStatus {
   PARTIALLY_SETTLED
   SETTLED
   CANCELLED
+}
+
+enum InventoryItemType {
+  PRODUCT
+  SERVICE
+}
+
+enum ExpenseCategory {
+  RENT
+  MAINTENANCE
+  TRANSPORT
+  DELIVERY
+  CONSUMABLES
+  SERVICES
+  INSURANCE
+  FUEL
+  PERMITS
+  OFFICE
+  HOSPITALITY
+  OTHER
+}
+
+// ============ COMPANY SETTINGS ============
+
+model CompanySetting {
+  id              String   @id @default(cuid())
+  nameAr          String
+  nameEn          String
+  logo            String?
+  commercialReg   String?
+  taxNumber       String?
+  address         String?
+  phone           String?
+  email           String?
+  website         String?
+  bankName        String?
+  bankIban        String?
+  bankAccountName String?
+  stamp           String?   // digital stamp image
+  defaultVatRate  Float     @default(0.15)
+  currency        String    @default("SAR")
+  invoiceTerms    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 // ============ CORE / SETTINGS ============
@@ -179,6 +224,7 @@ model Supplier {
 
   purchaseOrders  PurchaseOrder[]
   purchaseInvoices PurchaseInvoice[]
+  equipment       Equipment[]
 }
 
 model Subcontractor {
@@ -268,6 +314,7 @@ model Contract {
 
   project        Project        @relation(fields: [projectId], references: [id])
   progressClaims ProgressClaim[]
+  salesInvoices  SalesInvoice[]
 }
 
 // ============ BOQ (Bill of Quantities) ============
@@ -314,34 +361,46 @@ model ProgressClaim {
 // ============ SALES / CLIENT INVOICES ============
 
 model SalesInvoice {
-  id          String        @id @default(cuid())
-  invoiceNo   String        @unique
-  projectId   String?
-  clientId    String
-  date        DateTime
-  dueDate     DateTime
-  subtotal    Float
-  vatRate     Float         @default(0.15)
-  vatAmount   Float
-  totalAmount Float
-  paidAmount  Float         @default(0)
-  status      InvoiceStatus @default(DRAFT)
-  notes       String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  invoiceNo     String        @unique
+  projectId     String?
+  contractId    String?
+  clientId      String
+  date          DateTime
+  dueDate       DateTime
+  subtotal      Float
+  discountRate  Float         @default(0)
+  discountAmount Float        @default(0)
+  netAmount     Float         @default(0)
+  vatRate       Float         @default(0.15)
+  vatAmount     Float
+  totalAmount   Float
+  paidAmount    Float         @default(0)
+  status        InvoiceStatus @default(DRAFT)
+  invoiceType   String        @default("TAX_INVOICE") // TAX_INVOICE, PROGRESS_CLAIM, RENTAL
+  notes         String?
+  paymentTerms  String?
+  amountInWordsAr String?
+  amountInWordsEn String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
-  project Project? @relation(fields: [projectId], references: [id])
-  client  Client   @relation(fields: [clientId], references: [id])
-  items   SalesInvoiceItem[]
+  project   Project?  @relation(fields: [projectId], references: [id])
+  contract  Contract? @relation(fields: [contractId], references: [id])
+  client    Client    @relation(fields: [clientId], references: [id])
+  items     SalesInvoiceItem[]
 }
 
 model SalesInvoiceItem {
-  id          String   @id @default(cuid())
-  invoiceId   String
-  description String
-  quantity    Float
-  unitPrice   Float
-  totalPrice  Float
+  id            String   @id @default(cuid())
+  invoiceId     String
+  description   String
+  descriptionEn String?
+  quantity      Float
+  unit          String?
+  unitPrice     Float
+  totalPrice    Float
+  itemType      String   @default("PRODUCT") // PRODUCT, SERVICE, RENTAL
 
   invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 }
@@ -467,18 +526,18 @@ model SubcontractorInvoice {
 // ============ EXPENSES ============
 
 model Expense {
-  id          String   @id @default(cuid())
-  projectId   String
-  category    String
+  id          String         @id @default(cuid())
+  projectId   String?
+  category    ExpenseCategory
   description String
   amount      Float
   vatAmount   Float?
   date        DateTime
   reference   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id])
 }
 
 // ============ LABOR COSTS ============
@@ -498,27 +557,39 @@ model LaborCost {
   project Project @relation(fields: [projectId], references: [id])
 }
 
-// ============ EQUIPMENT ============
+// ============ EQUIPMENT (Enhanced for Rental) ============
 
 model Equipment {
-  id           String          @id @default(cuid())
-  code         String          @unique
-  name         String
-  nameAr       String?
-  type         String?
-  model        String?
-  serialNumber String?
-  status       EquipmentStatus @default(AVAILABLE)
-  hourlyRate   Float           @default(0)
-  dailyRate    Float           @default(0)
-  purchaseDate DateTime?
-  isActive     Boolean         @default(true)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  code           String          @unique
+  name           String
+  nameAr         String?
+  type           String?
+  model          String?
+  serialNumber   String?
+  status         EquipmentStatus @default(AVAILABLE)
+  // Rental fields
+  supplierId     String?
+  clientId       String?
+  purchasePrice  Float           @default(0)
+  sellingPrice   Float           @default(0)  // Rental/selling price
+  hourlyRate     Float           @default(0)
+  dailyRate      Float           @default(0)
+  monthlyRate    Float           @default(0)
+  // Purchase info
+  purchaseDate   DateTime?
+  warrantyExpiry DateTime?
+  // Status
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  usages     EquipmentUsage[]
+  supplier    Supplier?             @relation(fields: [supplierId], references: [id])
+  usages      EquipmentUsage[]
   maintenance EquipmentMaintenance[]
-  fuelLogs   EquipmentFuelLog[]
+  fuelLogs    EquipmentFuelLog[]
+  rentals     EquipmentRental[]
+  expenses    EquipmentExpense[]
 }
 
 model EquipmentUsage {
@@ -571,6 +642,39 @@ model EquipmentCost {
   project Project @relation(fields: [projectId], references: [id])
 }
 
+// Rental contracts for equipment
+model EquipmentRental {
+  id           String        @id @default(cuid())
+  equipmentId  String
+  clientId     String
+  projectId    String?
+  startDate    DateTime
+  endDate      DateTime?
+  rateType     String        @default("DAILY") // HOURLY, DAILY, MONTHLY
+  rate         Float
+  totalAmount  Float
+  status       String        @default("ACTIVE") // ACTIVE, RETURNED, OVERDUE
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+}
+
+// Equipment-specific expenses (delivery, insurance, permits, etc.)
+model EquipmentExpense {
+  id          String         @id @default(cuid())
+  equipmentId String
+  category    ExpenseCategory
+  description String
+  amount      Float
+  date        DateTime
+  reference   String?
+  createdAt   DateTime       @default(now())
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+}
+
 // ============ PETTY CASH & ADVANCES ============
 
 model PettyCash {
@@ -601,22 +705,24 @@ model EmployeeAdvance {
   employee Employee @relation(fields: [employeeId], references: [id])
 }
 
-// ============ INVENTORY ============
+// ============ INVENTORY (Enhanced) ============
 
 model InventoryItem {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  nameAr      String?
-  unit        String
-  unitPrice   Float    @default(0)
-  quantity    Float    @default(0)
-  minQuantity Float    @default(0)
-  warehouseId String
-  category    String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String            @id @default(cuid())
+  code         String            @unique
+  name         String
+  nameAr       String?
+  itemType     InventoryItemType @default(PRODUCT)
+  unit         String
+  purchasePrice Float           @default(0)  // سعر الشراء
+  sellingPrice  Float           @default(0)  // سعر البيع
+  quantity     Float            @default(0)
+  minQuantity  Float            @default(0)
+  warehouseId  String
+  category     String?
+  isActive     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 }
