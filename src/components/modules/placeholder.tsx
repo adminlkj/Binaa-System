@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   TrendingUp,
   Users,
+  Users2,
   ClipboardList,
   HardHat,
   Truck,
@@ -17,6 +18,11 @@ import {
   Percent,
   BarChart3,
   Settings,
+  FileCheck,
+  FileSpreadsheet,
+  FileMinus,
+  CreditCard,
+  Wrench,
   type LucideIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,35 +36,50 @@ interface ModuleInfo {
 }
 
 const moduleInfoMap: Record<ModuleKey, ModuleInfo> = {
+  // Main
   dashboard: {
-    label: 'لوحة التحكم',
+    label: 'الرئيسية',
     description: 'نظرة شاملة على أداء المشاريع والمتابعة المالية',
     icon: LayoutDashboard,
     color: 'emerald',
   },
+  // Equipment Rental
+  contracts: {
+    label: 'العقود',
+    description: 'إدارة عقود إيجار المعدات والاتفاقيات',
+    icon: FileText,
+    color: 'amber',
+  },
+  'delivery-orders': {
+    label: 'أوامر التوصيل',
+    description: 'إدارة أوامر توصيل المعدات للمواقع',
+    icon: FileCheck,
+    color: 'orange',
+  },
+  timesheets: {
+    label: 'ساعات العمل',
+    description: 'تسجيل ومتابعة ساعات عمل المعدات',
+    icon: ClipboardList,
+    color: 'cyan',
+  },
+  'rental-invoices': {
+    label: 'فواتير الإيجار',
+    description: 'إدارة فواتير إيجار المعدات بناءً على العقود',
+    icon: FileSpreadsheet,
+    color: 'emerald',
+  },
+  equipment: {
+    label: 'المعدات',
+    description: 'إدارة المعدات والآليات ومتابعة الصيانة',
+    icon: Wrench,
+    color: 'slate',
+  },
+  // Projects
   projects: {
     label: 'المشاريع',
     description: 'إدارة وتتبع جميع المشاريع الحكومية والخاصة',
     icon: Building2,
     color: 'teal',
-  },
-  contracts: {
-    label: 'العقود',
-    description: 'إدارة العقود والاتفاقيات مع العملاء والموردين',
-    icon: FileText,
-    color: 'amber',
-  },
-  sales: {
-    label: 'المبيعات',
-    description: 'إدارة فواتير المبيعات والعملاء',
-    icon: Receipt,
-    color: 'green',
-  },
-  purchases: {
-    label: 'المشتريات',
-    description: 'إدارة أوامر الشراء والموردين',
-    icon: ShoppingCart,
-    color: 'orange',
   },
   'progress-claims': {
     label: 'المستخلصات',
@@ -66,18 +87,51 @@ const moduleInfoMap: Record<ModuleKey, ModuleInfo> = {
     icon: TrendingUp,
     color: 'cyan',
   },
+  boq: {
+    label: 'جدول الكميات',
+    description: 'إدارة جداول الكميات والأسعار',
+    icon: ClipboardList,
+    color: 'sky',
+  },
+  // Services
+  'service-invoices': {
+    label: 'فواتير الخدمات',
+    description: 'إدارة فواتير الخدمات المقدمة للعملاء',
+    icon: CreditCard,
+    color: 'teal',
+  },
+  clients: {
+    label: 'العملاء',
+    description: 'إدارة بيانات العملاء والمتعاملين',
+    icon: Users2,
+    color: 'teal',
+  },
+  // Purchases
+  'purchase-orders': {
+    label: 'أوامر الشراء',
+    description: 'إدارة أوامر شراء المواد والخدمات',
+    icon: ShoppingCart,
+    color: 'orange',
+  },
+  'supplier-invoices': {
+    label: 'فواتير الموردين',
+    description: 'إدارة فواتير الموردين الواردة',
+    icon: FileMinus,
+    color: 'rose',
+  },
+  suppliers: {
+    label: 'الموردين',
+    description: 'إدارة بيانات الموردين والمتعاقدين',
+    icon: Truck,
+    color: 'amber',
+  },
   subcontractors: {
     label: 'مقاولو الباطن',
     description: 'إدارة مقاولي الباطن والعقود الفرعية',
     icon: Users,
     color: 'violet',
   },
-  boq: {
-    label: 'جدول الكميات BOQ',
-    description: 'إدارة جداول الكميات والأسعار',
-    icon: ClipboardList,
-    color: 'blue',
-  },
+  // Costs
   expenses: {
     label: 'المصروفات',
     description: 'تتبع وإدارة المصروفات التشغيلية',
@@ -90,11 +144,11 @@ const moduleInfoMap: Record<ModuleKey, ModuleInfo> = {
     icon: HardHat,
     color: 'yellow',
   },
-  equipment: {
-    label: 'المعدات',
-    description: 'إدارة المعدات والآليات ومتابعة الصيانة',
-    icon: Truck,
-    color: 'slate',
+  advances: {
+    label: 'العهد والسلف',
+    description: 'إدارة العهد والسلف والمتابعة المالية',
+    icon: Wallet,
+    color: 'fuchsia',
   },
   'petty-cash': {
     label: 'الصندوق النقدي',
@@ -102,23 +156,12 @@ const moduleInfoMap: Record<ModuleKey, ModuleInfo> = {
     icon: Wallet,
     color: 'lime',
   },
-  advances: {
-    label: 'العهد والسلف',
-    description: 'إدارة العهد والسلف والمتابعة المالية',
-    icon: Wallet,
-    color: 'fuchsia',
-  },
-  inventory: {
-    label: 'المخزون',
-    description: 'إدارة المخزون والمستودعات وحركة المواد',
-    icon: Package,
-    color: 'sky',
-  },
+  // Accounting
   accounting: {
     label: 'المحاسبة',
     description: 'القيود المحاسبية والتقارير المالية',
     icon: Calculator,
-    color: 'indigo',
+    color: 'emerald',
   },
   vat: {
     label: 'ضريبة القيمة المضافة',
@@ -126,18 +169,14 @@ const moduleInfoMap: Record<ModuleKey, ModuleInfo> = {
     icon: Percent,
     color: 'red',
   },
-  clients: {
-    label: 'العملاء',
-    description: 'إدارة بيانات العملاء والمتعاملين',
-    icon: Users,
-    color: 'teal',
+  // Inventory
+  inventory: {
+    label: 'المخزون',
+    description: 'إدارة المخزون والمستودعات وحركة المواد',
+    icon: Package,
+    color: 'sky',
   },
-  suppliers: {
-    label: 'الموردين',
-    description: 'إدارة بيانات الموردين والمتعاقدين',
-    icon: Users,
-    color: 'amber',
-  },
+  // Reports & Settings
   reports: {
     label: 'التقارير',
     description: 'التقارير والإحصائيات الشاملة',
@@ -149,6 +188,19 @@ const moduleInfoMap: Record<ModuleKey, ModuleInfo> = {
     description: 'إعدادات النظام والتخصيص',
     icon: Settings,
     color: 'gray',
+  },
+  // Legacy
+  sales: {
+    label: 'فواتير الخدمات',
+    description: 'إدارة فواتير الخدمات والعملاء',
+    icon: Receipt,
+    color: 'green',
+  },
+  purchases: {
+    label: 'أوامر الشراء',
+    description: 'إدارة أوامر الشراء والموردين',
+    icon: ShoppingCart,
+    color: 'orange',
   },
 }
 

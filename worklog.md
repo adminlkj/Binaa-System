@@ -1,119 +1,57 @@
-# Binaa ERP Worklog
+# نظام بِنَاء ERP - Work Log
 
 ---
 Task ID: 1
-Agent: Main Orchestrator
-Task: Inspect current codebase state
+Agent: Main
+Task: Fix expenses enum error and reseed database
 
 Work Log:
-- Read all key files: prisma/schema.prisma, app-store.ts, page.tsx, layout.tsx, globals.css, Layout components
-- Verified all 21 navigation modules exist with UI + API routes
-- Found invoice-preview.tsx with existing ZATCA QR and amount-in-words
-- Found currency-symbol.tsx with SVG Saudi Riyal symbol renderer
-- Found settings.tsx with company data, currency config, live preview
+- Added new expense categories to Prisma schema: SALARIES, INTERNET, ELECTRICITY, WATER, MANAGEMENT_CARS
+- Added contractValue field to Project model
+- Added currencySymbolFile field to CompanySetting model
+- Force-reset and re-seeded database with corrected data
+- All seed data uses proper enum values (no Arabic in enum fields)
+- New administrative expenses added (رواتب، إيجارات، كهرباء، إنترنت، مياه، سيارات الإدارة)
 
 Stage Summary:
-- Complete codebase inspection done
-- Identified key areas for improvement: currency symbol consistency, corporate invoice template, ZATCA number formatting, invoice numbering
+- Database schema updated and pushed successfully
+- All data properly seeded with correct enum values
+- Expenses API now works without enum errors
 
 ---
-Task ID: 2
-Agent: full-stack-developer subagent
-Task: Create unified MoneyDisplay component and update app store
+Task ID: 2, 4, 7
+Agent: Subagent (full-stack-developer)
+Task: Sidebar reorganization, Project Card enhancement, Expenses module enhancement
 
 Work Log:
-- Created src/components/ui/money-display.tsx with MoneyDisplay component
-- Supports 'system' mode (with thousand separators) and 'official' mode (ZATCA - no separators)
-- Bilingual AR/EN with SVG Saudi Riyal symbol rendering via CurrencySymbol
-- Size variants: xs/sm/md/lg/xl
-- Exported formatAmount() and formatMoney() helper functions
-- Updated src/stores/app-store.ts with numberFormatMode, useThousandSeparatorsSystem, useThousandSeparatorsOfficial
-- Updated formatSAR() to accept mode parameter (backward compatible)
-- Added formatAmount() to store
+- Reorganized sidebar into 9 sections reflecting 3 business workflows
+- Created placeholder components for new module keys
+- Enhanced Project Card (كرت المشروع) with professional card-style report
+- Updated expenses module with tab-based layout (project vs administrative)
+- Added new administrative expense categories with bilingual labels
+- Used MoneyDisplay component for all financial amounts
 
 Stage Summary:
-- MoneyDisplay component created and working
-- Store updated with ZATCA formatting support
-- Zero lint errors
+- Sidebar reorganized: تأجير المعدات → المشاريع → الخدمات → المشتريات → التكاليف → المحاسبة → المخزون → التقارير والإعدادات
+- Project Card shows: قيمة العقد، المستخلصات، المشتريات، المصروفات، الربح، هامش الربح
+- Expenses split into project expenses and administrative expenses with separate tabs
+- 5 new placeholder module components created
 
 ---
-Task ID: 4
-Agent: full-stack-developer subagent
-Task: Rebuild corporate invoice template following 10-step layout
+Task ID: 5, 6
+Agent: Subagent (full-stack-developer)
+Task: VAT/Tax Declaration and Accounting module updates
 
 Work Log:
-- Rewrote src/components/invoice/invoice-preview.tsx with complete 10-step layout
-- Step 1: Full-width emerald gradient HEADER with logo + company name
-- Step 2: Company Data bar (commercial reg, tax number, phone, email, address)
-- Step 3: Invoice Title + Number (big prominent display)
-- Step 4: Invoice Info + Client Info (2 columns)
-- Step 5: Project & Contract Data section
-- Step 6: Items Table with currency symbol on every amount
-- Step 7: QR Code + Totals (side by side, QR min 120px)
-- Step 8: Amount in Words (Arabic + English)
-- Step 9: Signatures + Company Stamp (3 columns, stamp 120-160px)
-- Step 10: Full-width emerald FOOTER with ZATCA compliance
-- Updated InvoiceData interface with all new fields
-- fmt() uses ZATCA format (no thousand separators)
-- Added fmtDeliveryMonth() helper for Arabic month names
+- Implemented tax declaration with Year → Quarter → Create (no editable fields)
+- Updated VAT API with auto-calculation from invoices
+- Updated accounting module with 3 tabs (Automatic Entries, Chart of Accounts, Account Statement)
+- Removed manual journal entry creation in V1
+- All amounts use MoneyDisplay component
+- Added account statement API with running balance
 
 Stage Summary:
-- Corporate invoice template fully rebuilt
-- All 10 steps implemented
-- ZATCA format for amounts (no thousand separators)
-- QR min 120px, stamp 120-160px
-
----
-Task ID: 5
-Agent: full-stack-developer subagent
-Task: Update settings with number format settings
-
-Work Log:
-- Added useThousandSeparatorsSystem and useThousandSeparatorsOfficial to CompanySettings interface
-- Added Hash icon, MoneyDisplay component, Switch component imports
-- Created "تنسيق المبالغ" card with two toggle switches
-- Added live preview using MoneyDisplay component showing both modes
-- Updated save handler to sync with global Zustand store
-- Fixed infinite loop bug in useEffect by using settingsLoadedRef
-
-Stage Summary:
-- Number format settings card added to Settings page
-- System mode toggle (default ON) and Official mode toggle (default OFF)
-- Live preview showing 42,514.85 vs 42514.85
-
----
-Task ID: 7
-Agent: full-stack-developer subagent
-Task: Update sales-invoices API for TYPE-YEAR-SEQ numbering
-
-Work Log:
-- Verified existing code already had TYPE-YEAR-SEQ format
-- Refined startsWith filter for precise year matching
-- Improved sequence parsing robustness with split + parseInt
-- Invoice types: TAX_INVOICE→SRV, PROGRESS_CLAIM→PCL, RENTAL→RNT
-
-Stage Summary:
-- Invoice numbering format: SRV-2026-0001, PCL-2026-0001, RNT-2026-0001
-- Per-type per-year sequence numbering
-
----
-Task ID: 8
-Agent: Main Orchestrator
-Task: Final integration and database schema update
-
-Work Log:
-- Added useThousandSeparatorsSystem and useThousandSeparatorsOfficial to Prisma schema
-- Pushed schema to database with db:push
-- Updated company-settings API route with new fields
-- Fixed infinite loop bug in settings component (useMemo→useRef)
-- Verified with Agent Browser: Sales module, Invoice preview, Settings page all working
-- Lint passes with zero errors
-- No browser console errors
-
-Stage Summary:
-- All changes integrated and working
-- Database schema updated with new boolean fields
-- Corporate invoice template renders correctly with 10-step layout
-- Currency symbol (﷼) appears next to all amounts
-- ZATCA format (no thousand separators) in official documents
-- Settings page with number format configuration and live preview
+- Tax declaration: Year + Quarter + Create button only, auto-calculated VAT amounts
+- Accounting: Read-only automatic entries, chart of accounts tree, account statement
+- No manual journal entries in V1
+- All amounts displayed with MoneyDisplay component

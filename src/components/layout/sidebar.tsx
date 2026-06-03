@@ -22,6 +22,11 @@ import {
   Construction,
   Globe,
   Clock,
+  FileCheck,
+  FileSpreadsheet,
+  FileMinus,
+  CreditCard,
+  Wrench,
 } from 'lucide-react'
 import { useAppStore, type ModuleKey, labels, sectionLabels } from '@/stores/app-store'
 import { cn } from '@/lib/utils'
@@ -45,36 +50,59 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    key: 'salesPurchases',
+    key: 'equipmentRental',
     items: [
-      { key: 'sales', icon: Receipt },
-      { key: 'purchases', icon: ShoppingCart },
+      { key: 'contracts', icon: FileText },
+      { key: 'delivery-orders', icon: FileCheck },
+      { key: 'timesheets', icon: Clock },
+      { key: 'rental-invoices', icon: FileSpreadsheet },
+      { key: 'equipment', icon: Wrench },
+    ],
+  },
+  {
+    key: 'projectsSection',
+    items: [
+      { key: 'projects', icon: Building2 },
       { key: 'progress-claims', icon: TrendingUp },
+      { key: 'boq', icon: ClipboardList },
+    ],
+  },
+  {
+    key: 'services',
+    items: [
+      { key: 'service-invoices', icon: CreditCard },
       { key: 'clients', icon: Users2 },
+    ],
+  },
+  {
+    key: 'purchases',
+    items: [
+      { key: 'purchase-orders', icon: ShoppingCart },
+      { key: 'supplier-invoices', icon: FileMinus },
       { key: 'suppliers', icon: Truck },
       { key: 'subcontractors', icon: Users },
     ],
   },
   {
-    key: 'projectsCosts',
+    key: 'costs',
     items: [
-      { key: 'projects', icon: Building2 },
-      { key: 'contracts', icon: FileText },
-      { key: 'timesheets', icon: Clock },
-      { key: 'boq', icon: ClipboardList },
       { key: 'expenses', icon: Receipt },
       { key: 'labor', icon: HardHat },
-      { key: 'equipment', icon: Truck },
       { key: 'advances', icon: Wallet },
       { key: 'petty-cash', icon: Warehouse },
     ],
   },
   {
-    key: 'inventoryAccounting',
+    key: 'accounting',
     items: [
-      { key: 'inventory', icon: Package },
       { key: 'accounting', icon: Calculator },
       { key: 'vat', icon: Percent },
+    ],
+  },
+  {
+    key: 'inventory',
+    items: [
+      { key: 'inventory', icon: Package },
     ],
   },
   {
@@ -154,7 +182,7 @@ function SidebarContent() {
                 </div>
               )}
               <div className="mb-1 mt-2 px-3">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-600/70">
                   {sectionLabels[section.key as keyof typeof sectionLabels]?.[lang] || section.key}
                 </span>
               </div>

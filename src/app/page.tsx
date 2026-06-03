@@ -25,36 +25,71 @@ import { AccountingModule } from '@/components/modules/accounting'
 import { VATModule } from '@/components/modules/vat'
 import { ReportsModule } from '@/components/modules/reports'
 import { SettingsModule } from '@/components/modules/settings'
+// New module placeholders
+import { RentalInvoicesModule } from '@/components/modules/rental-invoices'
+import { DeliveryOrdersModule } from '@/components/modules/delivery-orders'
+import { ServiceInvoicesModule } from '@/components/modules/service-invoices'
+import { PurchaseOrdersModule } from '@/components/modules/purchase-orders'
+import { SupplierInvoicesModule } from '@/components/modules/supplier-invoices'
 
 function ModuleRouter() {
   const { activeModule } = useAppStore()
 
+  // Main
   if (activeModule === 'dashboard') {
     return <DashboardModule />
   }
 
-  if (activeModule === 'projects') {
-    return <ProjectsModule />
-  }
-
+  // Equipment Rental
   if (activeModule === 'contracts') {
     return <ContractsModule />
   }
 
-  if (activeModule === 'boq') {
-    return <BOQModule />
+  if (activeModule === 'delivery-orders') {
+    return <DeliveryOrdersModule />
   }
 
   if (activeModule === 'timesheets') {
     return <TimesheetsModule />
   }
 
+  if (activeModule === 'rental-invoices') {
+    return <RentalInvoicesModule />
+  }
+
+  if (activeModule === 'equipment') {
+    return <EquipmentModule />
+  }
+
+  // Projects
+  if (activeModule === 'projects') {
+    return <ProjectsModule />
+  }
+
   if (activeModule === 'progress-claims') {
     return <ProgressClaimsModule />
   }
 
+  if (activeModule === 'boq') {
+    return <BOQModule />
+  }
+
+  // Services
+  if (activeModule === 'service-invoices') {
+    return <ServiceInvoicesModule />
+  }
+
   if (activeModule === 'clients') {
     return <ClientsModule />
+  }
+
+  // Purchases
+  if (activeModule === 'purchase-orders') {
+    return <PurchaseOrdersModule />
+  }
+
+  if (activeModule === 'supplier-invoices') {
+    return <SupplierInvoicesModule />
   }
 
   if (activeModule === 'suppliers') {
@@ -65,14 +100,7 @@ function ModuleRouter() {
     return <SubcontractorsModule />
   }
 
-  if (activeModule === 'sales') {
-    return <SalesModule />
-  }
-
-  if (activeModule === 'purchases') {
-    return <PurchasesModule />
-  }
-
+  // Costs
   if (activeModule === 'expenses') {
     return <ExpensesModule />
   }
@@ -81,22 +109,15 @@ function ModuleRouter() {
     return <LaborModule />
   }
 
-  if (activeModule === 'equipment') {
-    return <EquipmentModule />
+  if (activeModule === 'advances') {
+    return <AdvancesModule />
   }
 
   if (activeModule === 'petty-cash') {
     return <PettyCashModule />
   }
 
-  if (activeModule === 'advances') {
-    return <AdvancesModule />
-  }
-
-  if (activeModule === 'inventory') {
-    return <InventoryModule />
-  }
-
+  // Accounting
   if (activeModule === 'accounting') {
     return <AccountingModule />
   }
@@ -105,12 +126,27 @@ function ModuleRouter() {
     return <VATModule />
   }
 
+  // Inventory
+  if (activeModule === 'inventory') {
+    return <InventoryModule />
+  }
+
+  // Reports & Settings
   if (activeModule === 'reports') {
     return <ReportsModule />
   }
 
   if (activeModule === 'settings') {
     return <SettingsModule />
+  }
+
+  // Legacy keys - redirect to new modules
+  if (activeModule === 'sales') {
+    return <SalesModule />
+  }
+
+  if (activeModule === 'purchases') {
+    return <PurchasesModule />
   }
 
   return <ModulePlaceholder moduleKey={activeModule} />

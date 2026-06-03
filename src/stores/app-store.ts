@@ -2,26 +2,40 @@ import { create } from 'zustand'
 
 export type ModuleKey =
   | 'dashboard'
-  | 'projects'
-  | 'boq'
-  | 'progress-claims'
+  // Equipment Rental
   | 'contracts'
+  | 'delivery-orders'
+  | 'timesheets'
+  | 'rental-invoices'
+  | 'equipment'
+  // Projects
+  | 'projects'
+  | 'progress-claims'
+  | 'boq'
+  // Services
+  | 'service-invoices'
   | 'clients'
+  // Purchases
+  | 'purchase-orders'
+  | 'supplier-invoices'
   | 'suppliers'
   | 'subcontractors'
-  | 'sales'
-  | 'purchases'
+  // Costs
   | 'expenses'
   | 'labor'
-  | 'equipment'
-  | 'petty-cash'
   | 'advances'
-  | 'inventory'
+  | 'petty-cash'
+  // Accounting
   | 'accounting'
   | 'vat'
+  // Inventory
+  | 'inventory'
+  // Reports & Settings
   | 'reports'
   | 'settings'
-  | 'timesheets'
+  // Legacy keys (kept for backward compatibility)
+  | 'sales'
+  | 'purchases'
 
 export type Lang = 'ar' | 'en'
 
@@ -78,42 +92,55 @@ export const useAppStore = create<AppState>((set) => ({
 
 // Bilingual labels
 export const labels: Record<ModuleKey, { ar: string; en: string }> = {
-  dashboard: { ar: 'لوحة التحكم', en: 'Dashboard' },
-  projects: { ar: 'المشاريع', en: 'Projects' },
-  boq: { ar: 'جدول الكميات BOQ', en: 'Bill of Quantities' },
-  'progress-claims': { ar: 'المستخلصات', en: 'Progress Claims' },
+  // Main
+  dashboard: { ar: 'الرئيسية', en: 'Dashboard' },
+  // Equipment Rental
   contracts: { ar: 'العقود', en: 'Contracts' },
+  'delivery-orders': { ar: 'أوامر التوصيل', en: 'Delivery Orders' },
+  timesheets: { ar: 'ساعات العمل', en: 'Timesheets' },
+  'rental-invoices': { ar: 'فواتير الإيجار', en: 'Rental Invoices' },
+  equipment: { ar: 'المعدات', en: 'Equipment' },
+  // Projects
+  projects: { ar: 'المشاريع', en: 'Projects' },
+  'progress-claims': { ar: 'المستخلصات', en: 'Progress Claims' },
+  boq: { ar: 'جدول الكميات', en: 'BOQ' },
+  // Services
+  'service-invoices': { ar: 'فواتير الخدمات', en: 'Service Invoices' },
   clients: { ar: 'العملاء', en: 'Clients' },
+  // Purchases
+  'purchase-orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },
+  'supplier-invoices': { ar: 'فواتير الموردين', en: 'Supplier Invoices' },
   suppliers: { ar: 'الموردين', en: 'Suppliers' },
   subcontractors: { ar: 'مقاولو الباطن', en: 'Subcontractors' },
-  sales: { ar: 'المبيعات', en: 'Sales' },
-  purchases: { ar: 'المشتريات', en: 'Purchases' },
+  // Costs
   expenses: { ar: 'المصروفات', en: 'Expenses' },
   labor: { ar: 'تكاليف العمالة', en: 'Labor Costs' },
-  equipment: { ar: 'المعدات', en: 'Equipment' },
-  'petty-cash': { ar: 'الصندوق النقدي', en: 'Petty Cash' },
   advances: { ar: 'العهد والسلف', en: 'Advances' },
-  inventory: { ar: 'المخزون', en: 'Inventory' },
+  'petty-cash': { ar: 'الصندوق النقدي', en: 'Petty Cash' },
+  // Accounting
   accounting: { ar: 'المحاسبة', en: 'Accounting' },
   vat: { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
+  // Inventory
+  inventory: { ar: 'المخزون', en: 'Inventory' },
+  // Reports & Settings
   reports: { ar: 'التقارير', en: 'Reports' },
   settings: { ar: 'الإعدادات', en: 'Settings' },
-  timesheets: { ar: 'ساعات العمل', en: 'Timesheets' },
+  // Legacy (kept for backward compatibility)
+  sales: { ar: 'فواتير الخدمات', en: 'Service Invoices' },
+  purchases: { ar: 'أوامر الشراء', en: 'Purchase Orders' },
 }
 
 // Section labels
 export const sectionLabels = {
   main: { ar: 'الرئيسية', en: 'Main' },
-  salesPurchases: { ar: 'المبيعات والمشتريات', en: 'Sales & Purchases' },
-  projectsCosts: { ar: 'المشاريع والتكاليف', en: 'Projects & Costs' },
-  inventoryAccounting: { ar: 'المخزون والمحاسبة', en: 'Inventory & Accounting' },
-  reportsSettings: { ar: 'التقارير والإعدادات', en: 'Reports & Settings' },
+  equipmentRental: { ar: 'تأجير المعدات', en: 'Equipment Rental' },
+  projectsSection: { ar: 'المشاريع', en: 'Projects' },
+  services: { ar: 'الخدمات', en: 'Services' },
+  purchases: { ar: 'المشتريات', en: 'Purchases' },
   costs: { ar: 'التكاليف', en: 'Costs' },
-  inventory: { ar: 'المخزون', en: 'Inventory' },
   accounting: { ar: 'المحاسبة', en: 'Accounting' },
-  reports: { ar: 'التقارير', en: 'Reports' },
-  settings: { ar: 'الإعدادات', en: 'Settings' },
-  timesheets: { ar: 'ساعات العمل', en: 'Timesheets' },
+  inventory: { ar: 'المخزون', en: 'Inventory' },
+  reportsSettings: { ar: 'التقارير والإعدادات', en: 'Reports & Settings' },
 }
 
 // Format SAR with English digits and proper currency symbol

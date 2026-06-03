@@ -81,6 +81,7 @@ enum InventoryItemType {
 }
 
 enum ExpenseCategory {
+  // Project expenses
   RENT
   MAINTENANCE
   TRANSPORT
@@ -93,6 +94,12 @@ enum ExpenseCategory {
   OFFICE
   HOSPITALITY
   OTHER
+  // Administrative expenses (بدون مشروع)
+  SALARIES
+  INTERNET
+  ELECTRICITY
+  WATER
+  MANAGEMENT_CARS
 }
 
 // ============ COMPANY SETTINGS ============
@@ -121,6 +128,7 @@ model CompanySetting {
   invoiceTerms    String?
   useThousandSeparatorsSystem  Boolean  @default(true)  // Use thousand separators in system screens
   useThousandSeparatorsOfficial Boolean @default(false)  // Use thousand separators in official docs (ZATCA: false)
+  currencySymbolFile String?   // Path to uploaded currency symbol file (SVG/PNG/JPG)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -273,19 +281,20 @@ model Employee {
 // ============ PROJECTS ============
 
 model Project {
-  id          String        @id @default(cuid())
-  code        String        @unique
-  name        String
-  nameAr      String?
-  location    String?
-  branchId    String
-  clientId    String
-  startDate   DateTime
-  endDate     DateTime?
-  status      ProjectStatus @default(PLANNING)
-  description String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id            String        @id @default(cuid())
+  code          String        @unique
+  name          String
+  nameAr        String?
+  location      String?
+  branchId      String
+  clientId      String
+  startDate     DateTime
+  endDate       DateTime?
+  contractValue Float         @default(0)  // قيمة العقد الإجمالية
+  status        ProjectStatus @default(PLANNING)
+  description   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   branch         Branch           @relation(fields: [branchId], references: [id])
   client         Client           @relation(fields: [clientId], references: [id])

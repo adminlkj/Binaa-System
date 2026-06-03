@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, commonText } from '@/stores/app-store'
+import { MoneyDisplay } from '@/components/ui/money-display'
 
 // ============ Types ============
 interface Client { id: string; code: string; name: string }
@@ -50,12 +51,13 @@ interface ProgressClaimItem {
 }
 
 interface CostSheet {
-  revenue: number; purchases: number; subcontractors: number
+  contractValue: number; revenue: number; purchases: number; subcontractors: number
   labor: number; equipment: number; expenses: number
-  totalCosts: number; profit: number
+  totalCosts: number; profit: number; profitMargin: number
 }
 
 interface ProjectDetail extends Omit<ProjectListItem, 'contracts' | '_count'> {
+  contractValue: number
   contracts: (ContractSummary & { progressClaims: ProgressClaimItem[] })[]
   boqItems: BOQItem[]
   progressClaims: ProgressClaimItem[]
@@ -127,6 +129,7 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 interface ProjectFormData {
   code: string; name: string; nameAr: string; clientId: string; branchId: string
   location: string; startDate: string; endDate: string; status: string; description: string
+  contractValue: string
 }
 
 function ProjectFormDialog({
@@ -142,6 +145,7 @@ function ProjectFormDialog({
   const [form, setForm] = useState<ProjectFormData>({
     code: '', name: '', nameAr: '', clientId: '', branchId: '',
     location: '', startDate: '', endDate: '', status: 'PLANNING', description: '',
+    contractValue: '',
   })
 
   React.useEffect(() => {
@@ -158,9 +162,10 @@ function ProjectFormDialog({
           endDate: editingProject.endDate ? new Date(editingProject.endDate).toISOString().split('T')[0] : '',
           status: editingProject.status,
           description: editingProject.description || '',
+          contractValue: '',
         })
       } else {
-        setForm({ code: '', name: '', nameAr: '', clientId: '', branchId: '', location: '', startDate: '', endDate: '', status: 'PLANNING', description: '' })
+        setForm({ code: '', name: '', nameAr: '', clientId: '', branchId: '', location: '', startDate: '', endDate: '', status: 'PLANNING', description: '', contractValue: '' })
       }
     }
   }, [open, editingProject])
@@ -236,6 +241,10 @@ function ProjectFormDialog({
               <Label htmlFor="endDate">تاريخ الانتهاء</Label>
               <Input id="endDate" type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="contractValue">قيمة العقد</Label>
+              <Input id="contractValue" type="number" min="0" step="0.01" value={form.contractValue} onChange={e => setForm(f => ({ ...f, contractValue: e.target.value }))} placeholder="0.00" dir="ltr" />
+            </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>الحالة</Label>
               <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}>
@@ -266,56 +275,119 @@ function ProjectFormDialog({
   )
 }
 
-// ============ Cost Sheet Component ============
-function CostSheetView({ costSheet, lang }: { costSheet: CostSheet; lang: 'ar' | 'en' }) {
-  const items = [
-    { label: 'إيرادات المشروع', value: costSheet.revenue, color: 'text-emerald-600', bg: 'bg-emerald-50', icon: TrendingUp },
-    { label: 'مشتريات المشروع', value: costSheet.purchases, color: 'text-rose-600', bg: 'bg-rose-50', icon: FileText },
-    { label: 'مقاولو الباطن', value: costSheet.subcontractors, color: 'text-orange-600', bg: 'bg-orange-50', icon: Building2 },
-    { label: 'العمالة', value: costSheet.labor, color: 'text-amber-600', bg: 'bg-amber-50', icon: Calculator },
-    { label: 'المعدات', value: costSheet.equipment, color: 'text-cyan-600', bg: 'bg-cyan-50', icon: Calculator },
-    { label: 'المصروفات', value: costSheet.expenses, color: 'text-purple-600', bg: 'bg-purple-50', icon: Calculator },
+// ============ Cost Sheet Component (كرت المشروع) ============
+function CostSheetView({ costSheet, projectName, lang }: { costSheet: CostSheet; projectName: string; lang: 'ar' | 'en' }) {
+  const isProfit = costSheet.profit >= 0
+  const profitColor = isProfit ? 'text-emerald-600' : 'text-rose-600'
+  const profitBg = isProfit ? 'bg-emerald-50' : 'bg-rose-50'
+  const profitBorder = isProfit ? 'border-emerald-300' : 'border-rose-300'
+
+  // Bilingual labels for cost sheet
+  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+
+  const rows = [
+    { label: t('قيمة العقد', 'Contract Value'), value: costSheet.contractValue, color: 'text-emerald-700', bg: 'bg-emerald-50/50', type: 'revenue' as const },
+    { label: t('المستخلصات الصادرة', 'Progress Claims Issued'), value: costSheet.revenue, color: 'text-emerald-600', bg: 'bg-emerald-50/30', type: 'revenue' as const },
+    { label: t('المشتريات', 'Purchases'), value: costSheet.purchases, color: 'text-rose-600', bg: 'bg-rose-50/30', type: 'cost' as const },
+    { label: t('مصروفات المشروع', 'Project Expenses'), value: costSheet.expenses, color: 'text-rose-600', bg: 'bg-rose-50/30', type: 'cost' as const },
+    { label: t('مقاولو الباطن', 'Subcontractors'), value: costSheet.subcontractors, color: 'text-orange-600', bg: 'bg-orange-50/30', type: 'cost' as const },
+    { label: t('تكاليف العمالة', 'Labor Costs'), value: costSheet.labor, color: 'text-amber-600', bg: 'bg-amber-50/30', type: 'cost' as const },
+    { label: t('تكاليف المعدات', 'Equipment Costs'), value: costSheet.equipment, color: 'text-cyan-600', bg: 'bg-cyan-50/30', type: 'cost' as const },
   ]
 
-  const profitPercent = costSheet.revenue > 0 ? ((costSheet.profit / costSheet.revenue) * 100).toFixed(1) : '0'
-
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {items.map(item => (
-          <Card key={item.label} className={`${item.bg} border-0`}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">{item.label}</p>
-              <p className={`text-lg font-bold ${item.color}`}>{formatSAR(item.value, lang)}</p>
-            </CardContent>
-          </Card>
-        ))}
+    <div className="space-y-0">
+      {/* Header */}
+      <div className="bg-gradient-to-l from-emerald-700 to-emerald-800 rounded-t-lg px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-lg bg-white/20">
+            <Calculator className="size-5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-lg font-bold text-white">{t('كرت المشروع', 'Project Card')}</h3>
+            <p className="text-sm text-emerald-200">{projectName}</p>
+          </div>
+        </div>
       </div>
-      <Separator />
-      <Card className={`border-2 ${costSheet.profit >= 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">ربح المشروع</p>
-              <p className={`text-2xl font-bold ${costSheet.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {formatSAR(costSheet.profit, lang)}
-              </p>
+
+      {/* Body */}
+      <div className="border-x border-b rounded-b-lg border-gray-200 overflow-hidden">
+        {/* Revenue Section */}
+        <div className="px-6 pt-4 pb-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-3">
+            {t('الإيرادات', 'Revenue')}
+          </p>
+          {rows.filter(r => r.type === 'revenue').map((row, idx) => (
+            <div key={idx} className={`flex items-center justify-between py-2.5 ${idx < rows.filter(r => r.type === 'revenue').length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
+              <span className="text-sm font-medium text-gray-700">{row.label}</span>
+              <span className={row.color}>
+                <MoneyDisplay value={row.value} mode="system" lang={lang} bold size="md" />
+              </span>
             </div>
-            <div className="text-left">
-              <p className="text-sm text-muted-foreground">هامش الربح</p>
-              <p className={`text-xl font-bold ${costSheet.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                {profitPercent}%
+          ))}
+        </div>
+
+        <div className="mx-6 border-t-2 border-emerald-200" />
+
+        {/* Costs Section */}
+        <div className="px-6 pt-3 pb-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-rose-600 mb-3">
+            {t('التكاليف', 'Costs')}
+          </p>
+          {rows.filter(r => r.type === 'cost').map((row, idx) => (
+            <div key={idx} className={`flex items-center justify-between py-2.5 ${idx < rows.filter(r => r.type === 'cost').length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
+              <span className="text-sm font-medium text-gray-700">{row.label}</span>
+              <span className={row.color}>
+                <MoneyDisplay value={row.value} mode="system" lang={lang} bold size="md" />
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* Total Costs */}
+        <div className="mx-6 border-t-2 border-rose-200" />
+        <div className="px-6 py-3 bg-rose-50/50">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-gray-800">{t('إجمالي التكلفة', 'Total Cost')}</span>
+            <span className="text-rose-700">
+              <MoneyDisplay value={costSheet.totalCosts} mode="system" lang={lang} bold size="lg" />
+            </span>
+          </div>
+        </div>
+
+        <div className="mx-6 border-t-2 border-gray-200" />
+
+        {/* Profit Section */}
+        <div className={`px-6 py-4 ${profitBg}`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`flex size-10 items-center justify-center rounded-full ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                <TrendingUp className={`size-5 ${profitColor}`} />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-gray-800">{t('الربح', 'Profit')}</p>
+                <span className={profitColor}>
+                  <MoneyDisplay value={costSheet.profit} mode="system" lang={lang} bold size="xl" />
+                </span>
+              </div>
+            </div>
+            <div className={`text-center rounded-xl px-5 py-3 ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+              <p className="text-xs font-medium text-gray-500 mb-1">{t('هامش الربح', 'Profit Margin')}</p>
+              <p className={`text-3xl font-bold ${profitColor}`}>
+                {Math.abs(costSheet.profitMargin).toFixed(2)}%
               </p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
 
 // ============ Project Detail View ============
 function ProjectDetailView({ project, onBack, lang }: { project: ProjectDetail; onBack: () => void; lang: 'ar' | 'en' }) {
+  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -335,28 +407,36 @@ function ProjectDetailView({ project, onBack, lang }: { project: ProjectDetail; 
       </div>
 
       {/* Info Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <Card>
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">العميل</p>
+            <p className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value')}</p>
+            <p className="text-sm font-medium text-emerald-700">
+              <MoneyDisplay value={project.contractValue || 0} mode="system" lang={lang} bold size="sm" />
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">{t('العميل', 'Client')}</p>
             <p className="text-sm font-medium truncate">{project.client.name}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">الموقع</p>
+            <p className="text-xs text-muted-foreground">{t('الموقع', 'Location')}</p>
             <p className="text-sm font-medium truncate">{project.location || '—'}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">تاريخ البدء</p>
+            <p className="text-xs text-muted-foreground">{t('تاريخ البدء', 'Start Date')}</p>
             <p className="text-sm font-medium">{formatDate(project.startDate, lang)}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">تاريخ الانتهاء</p>
+            <p className="text-xs text-muted-foreground">{t('تاريخ الانتهاء', 'End Date')}</p>
             <p className="text-sm font-medium">{formatDate(project.endDate, lang)}</p>
           </CardContent>
         </Card>
@@ -366,29 +446,22 @@ function ProjectDetailView({ project, onBack, lang }: { project: ProjectDetail; 
       <Tabs defaultValue="cost-sheet" dir="rtl">
         <TabsList>
           <TabsTrigger value="cost-sheet" className="gap-1.5">
-            <Calculator className="size-4" /> كرتة المشروع
+            <Calculator className="size-4" /> {t('كرت المشروع', 'Project Card')}
           </TabsTrigger>
           <TabsTrigger value="contracts" className="gap-1.5">
-            <FileText className="size-4" /> العقود
+            <FileText className="size-4" /> {t('العقود', 'Contracts')}
           </TabsTrigger>
           <TabsTrigger value="boq" className="gap-1.5">
-            <ClipboardList className="size-4" /> جدول الكميات
+            <ClipboardList className="size-4" /> {t('جدول الكميات', 'BOQ')}
           </TabsTrigger>
           <TabsTrigger value="claims" className="gap-1.5">
-            <TrendingUp className="size-4" /> المستخلصات
+            <TrendingUp className="size-4" /> {t('المستخلصات', 'Claims')}
           </TabsTrigger>
         </TabsList>
 
         {/* Cost Sheet Tab */}
         <TabsContent value="cost-sheet">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">كرتة المشروع (كلفة المشروع)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CostSheetView costSheet={project.costSheet} lang={lang} />
-            </CardContent>
-          </Card>
+          <CostSheetView costSheet={project.costSheet} projectName={project.name} lang={lang} />
         </TabsContent>
 
         {/* Contracts Tab */}

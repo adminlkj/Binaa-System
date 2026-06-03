@@ -36,18 +36,31 @@ export async function GET(
       return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
     }
 
-    // Compute cost sheet
-    const revenue = project.progressClaims.reduce((sum, c) => sum + c.amount, 0)
+    // Compute cost sheet for "كرت المشروع"
+    const contractValue = project.contractValue || 0
+    const progressClaimsTotal = project.progressClaims.reduce((sum, c) => sum + c.amount, 0)
     const purchases = project.purchaseOrders.reduce((sum, p) => sum + p.totalAmount, 0)
     const subcontractors = project.subcontractorInvoices.reduce((sum, s) => sum + s.totalAmount, 0)
     const labor = project.laborCosts.reduce((sum, l) => sum + l.totalAmount, 0)
     const equipment = project.equipmentCosts.reduce((sum, e) => sum + e.amount, 0) +
       project.equipmentUsages.reduce((sum, e) => sum + e.cost, 0)
-    const expenses = project.expenses.reduce((sum, e) => sum + e.amount, 0)
-    const totalCosts = purchases + subcontractors + labor + equipment + expenses
-    const profit = revenue - totalCosts
+    const projectExpenses = project.expenses.reduce((sum, e) => sum + e.amount, 0)
+    const totalCosts = purchases + subcontractors + labor + equipment + projectExpenses
+    const profit = progressClaimsTotal - totalCosts
+    const profitMargin = progressClaimsTotal > 0 ? ((profit / progressClaimsTotal) * 100) : 0
 
-    const costSheet = { revenue, purchases, subcontractors, labor, equipment, expenses, totalCosts, profit }
+    const costSheet = {
+      contractValue,
+      revenue: progressClaimsTotal,
+      purchases,
+      subcontractors,
+      labor,
+      equipment,
+      expenses: projectExpenses,
+      totalCosts,
+      profit,
+      profitMargin,
+    }
 
     return NextResponse.json({ ...project, costSheet })
   } catch (error) {
@@ -63,7 +76,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { code, name, nameAr, clientId, branchId, location, startDate, endDate, status, description } = body
+    const { code, name, nameAr, clientId, branchId, location, startDate, endDate, status, description, contractValue } = body
 
     const existing = await db.project.findUnique({ where: { id } })
     if (!existing) {
@@ -90,6 +103,7 @@ export async function PUT(
         ...(endDate !== undefined && { endDate: endDate ? new Date(endDate) : null }),
         ...(status !== undefined && { status }),
         ...(description !== undefined && { description: description || null }),
+        ...(contractValue !== undefined && { contractValue: parseFloat(contractValue) || 0 }),
       },
       include: {
         client: { select: { id: true, name: true, code: true } },

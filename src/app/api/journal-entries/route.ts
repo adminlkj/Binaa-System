@@ -5,9 +5,20 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+
+    const where: Record<string, unknown> = {}
+    if (status) where.status = status
+    if (startDate || endDate) {
+      const dateFilter: Record<string, Date> = {}
+      if (startDate) dateFilter.gte = new Date(startDate)
+      if (endDate) dateFilter.lte = new Date(endDate)
+      where.date = dateFilter
+    }
 
     const entries = await db.journalEntry.findMany({
-      where: status ? { status: status as 'DRAFT' | 'POSTED' | 'CANCELLED' } : undefined,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         lines: {
           include: {

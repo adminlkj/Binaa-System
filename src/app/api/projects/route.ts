@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { code, name, nameAr, clientId, branchId, location, startDate, endDate, status, description } = body
+    const { code, name, nameAr, clientId, branchId, location, startDate, endDate, status, description, contractValue } = body
 
     if (!code || !name || !clientId || !branchId || !startDate) {
       return NextResponse.json({ error: 'الحقول المطلوبة: الكود، الاسم، العميل، الفرع، تاريخ البدء' }, { status: 400 })
@@ -46,6 +46,7 @@ export async function POST(request: Request) {
         endDate: endDate ? new Date(endDate) : null,
         status: status || 'PLANNING',
         description: description || null,
+        contractValue: contractValue ? parseFloat(contractValue) : 0,
       },
       include: {
         client: { select: { id: true, name: true, code: true } },
