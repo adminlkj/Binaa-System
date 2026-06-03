@@ -123,35 +123,59 @@
 
 /* ============ Invoice Print Styles ============ */
 @media print {
-  /* Hide everything except the invoice */
-  body > *:not(.invoice-print-root) {
+  /* Hide sidebar, header, and app shell chrome */
+  .no-print,
+  nav,
+  aside,
+  header,
+  .sidebar,
+  [data-sidebar] {
     display: none !important;
   }
 
+  /* Hide the app shell sidebar and header areas */
+  .flex.h-screen > :first-child,
+  .flex.h-screen > :nth-child(2) {
+    display: none !important;
+  }
+
+  /* Make the main content fill the page */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Remove app shell constraints */
+  .flex.h-screen {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .flex.h-screen > div {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+  }
+
+  /* Make invoice print root take full page */
   .invoice-print-root {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    bottom: 0 !important;
+    position: static !important;
     width: 100% !important;
     height: auto !important;
-    z-index: 99999 !important;
     background: white !important;
     overflow: visible !important;
     padding: 0 !important;
     margin: 0 !important;
   }
 
-  /* Hide non-print elements */
-  .no-print {
-    display: none !important;
-  }
-
-  /* A4 paper sizing */
-  @page {
-    size: A4 portrait;
-    margin: 8mm;
+  /* Ensure invoice preview wrapper fills page */
+  .invoice-preview-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   /* Invoice document - remove shadow and border radius for print */
@@ -159,6 +183,12 @@
     box-shadow: none !important;
     border-radius: 0 !important;
     max-width: 100% !important;
+  }
+
+  /* A4 paper sizing */
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
   }
 
   /* Ensure good print colors */
@@ -190,5 +220,115 @@
   /* Clean up shadows for print */
   * {
     box-shadow: none !important;
+  }
+}
+
+/* ============ Report Print Styles ============ */
+@media print {
+  /* Show only the report print area */
+  .report-print-area {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    z-index: 99999 !important;
+    background: white !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Hide non-print elements in report context */
+  .report-no-print {
+    display: none !important;
+  }
+
+  /* Report page setup */
+  .report-print-area .report-page {
+    padding: 12mm;
+    max-width: 100% !important;
+  }
+
+  /* Ensure good print colors for reports */
+  .report-print-area * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Report header on every page */
+  .report-header {
+    position: running(reportHeader);
+  }
+
+  /* Table styling for print */
+  .report-print-area table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+  }
+
+  .report-print-area th,
+  .report-print-area td {
+    border: 1px solid #333 !important;
+    padding: 4px 8px !important;
+    font-size: 10pt !important;
+  }
+
+  .report-print-area th {
+    background-color: #f0f0f0 !important;
+    font-weight: bold !important;
+  }
+
+  /* Alternating row colors for print */
+  .report-print-area tr:nth-child(even) td {
+    background-color: #f9f9f9 !important;
+  }
+
+  /* Prevent page breaks inside rows */
+  .report-print-area tr {
+    page-break-inside: avoid;
+  }
+
+  /* Keep thead on every page */
+  .report-print-area thead {
+    display: table-header-group;
+  }
+
+  .report-print-area tfoot {
+    display: table-footer-group;
+  }
+
+  /* Profit/Loss cards for print */
+  .report-print-area .project-card-profit {
+    border-left: 4px solid #059669 !important;
+  }
+
+  .report-print-area .project-card-loss {
+    border-left: 4px solid #dc2626 !important;
+  }
+
+  /* Page number */
+  .report-page-number::after {
+    content: counter(page);
+  }
+
+  /* Report footer */
+  .report-print-footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 8pt;
+    color: #999;
+    padding: 4mm 0;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
   }
 }

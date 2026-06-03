@@ -7,11 +7,13 @@ export async function GET(request: Request) {
     const clientId = searchParams.get('clientId')
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
+    const invoiceType = searchParams.get('invoiceType')
 
     const where: Record<string, unknown> = {}
     if (clientId) where.clientId = clientId
     if (projectId) where.projectId = projectId
     if (status) where.status = status
+    if (invoiceType) where.invoiceType = invoiceType
 
     const invoices = await db.salesInvoice.findMany({
       where,
@@ -61,6 +63,7 @@ export async function POST(request: Request) {
       TAX_INVOICE: 'SRV',
       PROGRESS_CLAIM: 'PCL',
       RENTAL: 'RNT',
+      SERVICE: 'SVC',
     }
     const prefix = typePrefixMap[invoiceType] || 'INV'
     const year = new Date().getFullYear()

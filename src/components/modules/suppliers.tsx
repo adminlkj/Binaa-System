@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Truck, Plus, Search, Pencil, Trash2, RefreshCw, ToggleLeft, ToggleRight,
+  Printer, Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useAppStore, commonText } from '@/stores/app-store'
+import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
 interface SupplierItem {
@@ -190,6 +192,27 @@ export function SuppliersModule() {
       (s.contactPerson?.toLowerCase().includes(q)) || (s.phone?.includes(q))
   })
 
+  // Export handler
+  const handleExport = () => {
+    const columns: CSVColumn[] = [
+      { key: 'code', label: 'الكود' },
+      { key: 'name', label: 'الاسم' },
+      { key: 'contactPerson', label: 'جهة الاتصال' },
+      { key: 'phone', label: 'الهاتف' },
+      { key: 'taxNumber', label: 'الرقم الضريبي' },
+      { key: 'status', label: 'الحالة', format: (v) => v ? 'نشط' : 'غير نشط' },
+    ]
+    const rows = filtered.map(s => ({
+      code: s.code,
+      name: s.name,
+      contactPerson: s.contactPerson || '',
+      phone: s.phone || '',
+      taxNumber: s.taxNumber || '',
+      status: s.isActive,
+    }))
+    exportToCSV(rows, `suppliers-${new Date().toISOString().slice(0, 10)}`, columns)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -199,6 +222,12 @@ export function SuppliersModule() {
           <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إدارة بيانات الموردين والبائعين' : 'Manage supplier and vendor data'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => window.print()} title="طباعة">
+            <Printer className="size-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={handleExport} title="تصدير CSV">
+            <Download className="size-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} title="تحديث">
             <RefreshCw className="size-4" />
           </Button>

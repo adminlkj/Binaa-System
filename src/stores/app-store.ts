@@ -47,6 +47,8 @@ interface AppState {
   currencySymbol: string    // Arabic symbol (default: ﷼)
   currencySymbolEn: string  // English symbol (default: SAR)
   currencySymbolAr: string  // Arabic abbreviation (default: ﷼)
+  // Currency symbol image (takes priority over text symbols when set)
+  currencySymbolImage: string | null
   // Number formatting settings
   numberFormatMode: 'system' | 'official'  // system = with thousand separators, official = without (ZATCA)
   useThousandSeparatorsSystem: boolean     // default: true (show separators in system screens)
@@ -57,6 +59,7 @@ interface AppState {
   setLang: (lang: Lang) => void
   toggleLang: () => void
   setCurrencySymbol: (ar: string, en: string, arAbbr?: string) => void
+  setCurrencySymbolImage: (url: string | null) => void
   setNumberFormatMode: (mode: 'system' | 'official') => void
   setThousandSeparatorSettings: (system: boolean, official: boolean) => void
 }
@@ -69,6 +72,8 @@ export const useAppStore = create<AppState>((set) => ({
   currencySymbol: '\uFDFC',  // ﷼
   currencySymbolEn: 'SAR',
   currencySymbolAr: '\uFDFC', // ﷼
+  // Currency symbol image (takes priority over text symbols when set)
+  currencySymbolImage: null as string | null,
   // Number formatting - system uses separators, official (ZATCA) does not
   numberFormatMode: 'system',
   useThousandSeparatorsSystem: true,
@@ -83,6 +88,7 @@ export const useAppStore = create<AppState>((set) => ({
     currencySymbolEn: en,
     currencySymbolAr: arAbbr || ar,
   }),
+  setCurrencySymbolImage: (url) => set({ currencySymbolImage: url }),
   setNumberFormatMode: (mode) => set({ numberFormatMode: mode }),
   setThousandSeparatorSettings: (system, official) => set({
     useThousandSeparatorsSystem: system,

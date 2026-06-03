@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins, Users,
   Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon, Hash,
+  Upload, X, Loader2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -55,6 +56,143 @@ interface CompanySettings {
   invoiceTerms: string | null
   logoUrl: string | null
   stamp: string | null
+  currencySymbolImage: string | null
+  headerImage: string | null
+  footerImage: string | null
+}
+
+// ============ ImageUploadField Component ============
+function ImageUploadField({ 
+  value, 
+  onChange, 
+  label, 
+  labelAr,
+  lang,
+  hint,
+  hintAr,
+  previewHeight = 'h-24',
+  accept = 'image/svg+xml,image/png,image/jpeg,image/webp',
+}: {
+  value: string | null
+  onChange: (url: string | null) => void
+  label: string
+  labelAr: string
+  lang: 'ar' | 'en'
+  hint?: string
+  hintAr?: string
+  previewHeight?: string
+  accept?: string
+}) {
+  const [uploading, setUploading] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const uploadFile = useCallback(async (file: File) => {
+    if (file.size > 5 * 1024 * 1024) {
+      alert(lang === 'ar' ? 'حجم الملف يتجاوز 5 ميجابايت' : 'File size exceeds 5MB')
+      return
+    }
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      if (!res.ok) throw new Error('Upload failed')
+      const data = await res.json()
+      onChange(data.url)
+    } catch {
+      alert(lang === 'ar' ? 'فشل في رفع الملف' : 'Failed to upload file')
+    } finally {
+      setUploading(false)
+    }
+  }, [lang, onChange])
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) uploadFile(file)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) uploadFile(file)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(true)
+  }
+
+  const handleDragLeave = () => setDragOver(false)
+
+  const displayLabel = lang === 'ar' ? labelAr : label
+  const displayHint = lang === 'ar' ? hintAr : hint
+
+  return (
+    <div className="space-y-2">
+      <Label>{displayLabel}</Label>
+      {value ? (
+        <div className={`relative rounded-lg border bg-white p-2 ${previewHeight} flex items-center justify-center group`}>
+          <img
+            src={value}
+            alt={displayLabel}
+            className="max-h-20 max-w-full object-contain"
+            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+          />
+          <Button
+            variant="destructive"
+            size="icon"
+            className="absolute top-1 left-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={() => onChange(null)}
+            type="button"
+          >
+            <X className="size-3" />
+          </Button>
+        </div>
+      ) : (
+        <div
+          className={`rounded-lg border-2 border-dashed transition-colors cursor-pointer ${
+            dragOver ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300 bg-gray-50 hover:border-emerald-300 hover:bg-emerald-50/50'
+          } ${previewHeight} flex flex-col items-center justify-center gap-1`}
+          onClick={() => fileInputRef.current?.click()}
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+        >
+          {uploading ? (
+            <>
+              <Loader2 className="size-5 text-emerald-500 animate-spin" />
+              <span className="text-xs text-muted-foreground">
+                {lang === 'ar' ? 'جاري الرفع...' : 'Uploading...'}
+              </span>
+            </>
+          ) : (
+            <>
+              <Upload className="size-5 text-gray-400" />
+              <span className="text-xs text-muted-foreground">
+                {lang === 'ar' ? 'اسحب الملف هنا أو انقر للاختيار' : 'Drag & drop or click to upload'}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {lang === 'ar' ? 'SVG, PNG, JPG - حد أقصى 5MB' : 'SVG, PNG, JPG - Max 5MB'}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={accept}
+        onChange={handleFileChange}
+        className="hidden"
+      />
+      {displayHint && (
+        <p className="text-xs text-muted-foreground">{displayHint}</p>
+      )}
+    </div>
+  )
 }
 
 function TableSkeleton({ rows = 3 }: { rows?: number }) {
@@ -73,7 +211,7 @@ function TableSkeleton({ rows = 3 }: { rows?: number }) {
 
 // ============ Company Settings Tab ============
 function CompanySettingsTab() {
-  const { lang, setCurrencySymbol, setThousandSeparatorSettings: updateStoreSeparators } = useAppStore()
+  const { lang, setCurrencySymbol, setCurrencySymbolImage, setThousandSeparatorSettings: updateStoreSeparators } = useAppStore()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<CompanySettings>({
     nameAr: '',
@@ -96,6 +234,9 @@ function CompanySettingsTab() {
     invoiceTerms: '',
     logoUrl: '',
     stamp: '',
+    currencySymbolImage: '',
+    headerImage: '',
+    footerImage: '',
   })
 
   const { data: settings, isLoading } = useQuery<CompanySettings>({
@@ -128,6 +269,9 @@ function CompanySettingsTab() {
     invoiceTerms: settings.invoiceTerms || '',
     logoUrl: settings.logoUrl || '',
     stamp: settings.stamp || '',
+    currencySymbolImage: settings.currencySymbolImage || '',
+    headerImage: settings.headerImage || '',
+    footerImage: settings.footerImage || '',
   } : null
 
   // Sync form when settings load (only once)
@@ -157,6 +301,8 @@ function CompanySettingsTab() {
         data.currencySymbolEn || 'SAR',
         data.currencySymbolAr || 'ر.س'
       )
+      // Update currency symbol image in global store
+      setCurrencySymbolImage(data.currencySymbolImage || null)
       // Update thousand separator settings in global store
       updateStoreSeparators(
         data.useThousandSeparatorsSystem ?? true,
@@ -352,6 +498,18 @@ function CompanySettingsTab() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Currency Symbol Image Upload */}
+          <ImageUploadField
+            value={form.currencySymbolImage}
+            onChange={url => updateField('currencySymbolImage', url)}
+            label="Currency Symbol Image"
+            labelAr="صورة رمز العملة"
+            lang={lang}
+            hint="When set, this image replaces text currency symbols in MoneyDisplay. SVG/PNG recommended."
+            hintAr="عند التعيين، تحل هذه الصورة محل رموز العملة النصية في عرض المبالغ. يُفضل SVG/PNG."
+            previewHeight="h-28"
+          />
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>{lang === 'ar' ? 'رمز العملة (عربي)' : 'Currency Symbol (Arabic)'}</Label>
@@ -402,25 +560,46 @@ function CompanySettingsTab() {
                 <p className="text-xs text-muted-foreground mb-1">
                   {lang === 'ar' ? 'عرض عربي' : 'Arabic Display'}
                 </p>
-                <p className="text-lg font-bold" dir="rtl">
-                  150,000.00 {form.currencySymbol}
-                </p>
+                <MoneyDisplay
+                  value={150000}
+                  mode="system"
+                  lang="ar"
+                  symbolAr={form.currencySymbol}
+                  symbolEn={form.currencySymbolEn}
+                  symbolImage={form.currencySymbolImage}
+                  size="lg"
+                  bold
+                />
               </div>
               <div className="rounded-md bg-white p-3 text-center border">
                 <p className="text-xs text-muted-foreground mb-1">
                   {lang === 'ar' ? 'عرض إنجليزي' : 'English Display'}
                 </p>
-                <p className="text-lg font-bold" dir="ltr">
-                  {form.currencySymbolEn} 150,000.00
-                </p>
+                <MoneyDisplay
+                  value={150000}
+                  mode="system"
+                  lang="en"
+                  symbolAr={form.currencySymbol}
+                  symbolEn={form.currencySymbolEn}
+                  symbolImage={form.currencySymbolImage}
+                  size="lg"
+                  bold
+                />
               </div>
               <div className="rounded-md bg-white p-3 text-center border">
                 <p className="text-xs text-muted-foreground mb-1">
                   {lang === 'ar' ? 'اختصار عربي' : 'Arabic Abbreviation'}
                 </p>
-                <p className="text-lg font-bold" dir="rtl">
-                  150,000.00 {form.currencySymbolAr}
-                </p>
+                <MoneyDisplay
+                  value={150000}
+                  mode="system"
+                  lang="ar"
+                  symbolAr={form.currencySymbolAr}
+                  symbolEn={form.currencySymbolEn}
+                  symbolImage={form.currencySymbolImage}
+                  size="lg"
+                  bold
+                />
               </div>
             </div>
           </div>
@@ -515,6 +694,7 @@ function CompanySettingsTab() {
                   lang={lang}
                   symbolAr={form.currencySymbol}
                   symbolEn={form.currencySymbolEn}
+                  symbolImage={form.currencySymbolImage}
                   size="lg"
                   bold
                 />
@@ -529,6 +709,7 @@ function CompanySettingsTab() {
                   lang={lang}
                   symbolAr={form.currencySymbol}
                   symbolEn={form.currencySymbolEn}
+                  symbolImage={form.currencySymbolImage}
                   size="lg"
                   bold
                 />
@@ -547,6 +728,28 @@ function CompanySettingsTab() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ImageUploadField
+              value={form.headerImage}
+              onChange={url => updateField('headerImage', url)}
+              label="Invoice Header Image"
+              labelAr="صورة رأس الفاتورة"
+              lang={lang}
+              hint="Displayed at the top of invoices. SVG/PNG recommended."
+              hintAr="تعرض في أعلى الفاتورة. يُفضل SVG/PNG."
+              previewHeight="h-28"
+            />
+            <ImageUploadField
+              value={form.footerImage}
+              onChange={url => updateField('footerImage', url)}
+              label="Invoice Footer Image"
+              labelAr="صورة تذييل الفاتورة"
+              lang={lang}
+              hint="Displayed at the bottom of invoices. SVG/PNG recommended."
+              hintAr="تعرض في أسفل الفاتورة. يُفضل SVG/PNG."
+              previewHeight="h-28"
+            />
+          </div>
           <div className="space-y-2">
             <Label>{lang === 'ar' ? 'شروط الفاتورة' : 'Invoice Terms'}</Label>
             <Textarea
@@ -570,44 +773,26 @@ function CompanySettingsTab() {
           </CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>{lang === 'ar' ? 'رابط الشعار (Logo URL)' : 'Logo URL'}</Label>
-            <Input
-              value={form.logoUrl || ''}
-              onChange={e => updateField('logoUrl', e.target.value)}
-              placeholder="https://example.com/logo.png"
-              dir="ltr"
-            />
-            {form.logoUrl && (
-              <div className="mt-2 rounded-md border bg-white p-2 flex items-center justify-center h-20">
-                <img
-                  src={form.logoUrl}
-                  alt="Logo Preview"
-                  className="max-h-16 max-w-full object-contain"
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-              </div>
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label className="flex items-center gap-1"><Stamp className="size-3" /> {lang === 'ar' ? 'رابط الختم (Stamp URL)' : 'Stamp URL'}</Label>
-            <Input
-              value={form.stamp || ''}
-              onChange={e => updateField('stamp', e.target.value)}
-              placeholder="https://example.com/stamp.png"
-              dir="ltr"
-            />
-            {form.stamp && (
-              <div className="mt-2 rounded-md border bg-white p-2 flex items-center justify-center h-20">
-                <img
-                  src={form.stamp}
-                  alt="Stamp Preview"
-                  className="max-h-16 max-w-full object-contain"
-                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-              </div>
-            )}
-          </div>
+          <ImageUploadField
+            value={form.logoUrl}
+            onChange={url => updateField('logoUrl', url)}
+            label="Company Logo"
+            labelAr="شعار الشركة"
+            lang={lang}
+            hint="SVG/PNG/JPG. Used in invoices and official documents."
+            hintAr="SVG/PNG/JPG. يُستخدم في الفواتير والمستندات الرسمية."
+            previewHeight="h-28"
+          />
+          <ImageUploadField
+            value={form.stamp}
+            onChange={url => updateField('stamp', url)}
+            label="Company Stamp"
+            labelAr="ختم الشركة"
+            lang={lang}
+            hint="SVG preferred, PNG/JPG. Recommended size: 120-160px."
+            hintAr="يُفضل SVG، PNG/JPG. الحجم الموصى به: 120-160 بكسل."
+            previewHeight="h-28"
+          />
         </CardContent>
       </Card>
     </div>

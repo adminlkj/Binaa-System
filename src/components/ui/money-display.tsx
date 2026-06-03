@@ -35,6 +35,8 @@ export interface MoneyDisplayProps {
   symbolAr?: string
   /** English currency symbol (default: SAR) */
   symbolEn?: string
+  /** URL of the currency symbol image (takes priority over text symbols when set) */
+  symbolImage?: string | null
   /** Text size variant */
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   /** Whether to show the currency symbol */
@@ -65,6 +67,15 @@ const symbolSizeMap: Record<string, 'xs' | 'sm' | 'md' | 'lg'> = {
   md: 'sm',
   lg: 'md',
   xl: 'lg',
+}
+
+// Image size mapping for symbol images (in pixels)
+const symbolImageSizeMap: Record<string, number> = {
+  xs: 12,
+  sm: 16,
+  md: 20,
+  lg: 24,
+  xl: 30,
 }
 
 /**
@@ -131,6 +142,7 @@ export function MoneyDisplay({
   lang = 'ar',
   symbolAr = '\uFDFC',
   symbolEn = 'SAR',
+  symbolImage,
   size = 'md',
   showSymbol = true,
   bold = false,
@@ -165,6 +177,21 @@ export function MoneyDisplay({
   // Render symbol component
   const renderSymbol = () => {
     if (!showSymbol) return null
+
+    // If a symbol image is provided, render it (takes priority over text symbols)
+    if (symbolImage) {
+      const imgSize = symbolImageSizeMap[size] || 16
+      return (
+        <img
+          src={symbolImage}
+          alt={lang === 'ar' ? symbolAr : symbolEn}
+          width={imgSize}
+          height={imgSize}
+          className="inline-block align-middle object-contain"
+          style={{ maxWidth: imgSize * 1.5, maxHeight: imgSize * 1.5 }}
+        />
+      )
+    }
 
     if (lang === 'ar') {
       if (isRiyalSymbol) {

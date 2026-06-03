@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Printer, Building2, FileText, Stamp } from 'lucide-react'
+import { Printer, Building2, FileText, Stamp, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { numberToArabicWords, numberToEnglishWords } from '@/lib/amount-to-words'
 import { generateZATCAQR } from '@/lib/zatca-qr'
 import { CurrencySymbol } from '@/components/ui/currency-symbol'
@@ -123,6 +124,7 @@ const invoiceTypeLabels: Record<string, { ar: string; en: string }> = {
   TAX_INVOICE: { ar: 'فاتورة ضريبية', en: 'Tax Invoice' },
   PROGRESS_CLAIM: { ar: 'مستخلص', en: 'Progress Claim' },
   RENTAL: { ar: 'فاتورة إيجار', en: 'Rental Invoice' },
+  SERVICE: { ar: 'فاتورة خدمة', en: 'Service Invoice' },
 }
 
 // ============ Helpers ============
@@ -246,6 +248,24 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
             <Printer className="size-4" />
             طباعة الفاتورة
           </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={handlePrint}
+                  disabled={isPrinting}
+                >
+                  <FileDown className="size-4" />
+                  تصدير PDF
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p>اختر حفظ كـ PDF في نافذة الطباعة</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         {onClose && (
           <Button variant="outline" onClick={onClose}>

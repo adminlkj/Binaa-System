@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Truck, Plus, Search, RefreshCw, Wrench, Fuel, Clock,
   ArrowRight, DollarSign, Calendar, Shield, FileText, Receipt,
-  HandMetal, ChevronLeft,
+  HandMetal, ChevronLeft, Printer, Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAppStore, formatSAR, formatNumber, formatDate } from '@/stores/app-store'
+import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
 interface Supplier {
@@ -1167,6 +1168,35 @@ export function EquipmentModule() {
   const rented = equipment.filter(e => e.status === 'RENTED').length
   const maintenanceCount = equipment.filter(e => e.status === 'MAINTENANCE').length
 
+  // Export handler
+  const handleExport = () => {
+    const columns: CSVColumn[] = [
+      { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+      { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+      { key: 'type', label: lang === 'ar' ? 'النوع' : 'Type' },
+      { key: 'model', label: lang === 'ar' ? 'الموديل' : 'Model' },
+      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status', format: (v) => statusConfig[v as string]?.label[lang] || String(v) },
+      { key: 'supplier', label: lang === 'ar' ? 'المورد' : 'Supplier' },
+      { key: 'purchasePrice', label: lang === 'ar' ? 'سعر الشراء' : 'Purchase Price', format: (v) => Number(v).toFixed(2) },
+      { key: 'hourlyRate', label: lang === 'ar' ? 'الأجر بالساعة' : 'Hourly Rate', format: (v) => Number(v).toFixed(2) },
+      { key: 'dailyRate', label: lang === 'ar' ? 'الأجر اليومي' : 'Daily Rate', format: (v) => Number(v).toFixed(2) },
+      { key: 'monthlyRate', label: lang === 'ar' ? 'الأجر الشهري' : 'Monthly Rate', format: (v) => Number(v).toFixed(2) },
+    ]
+    const rows = filtered.map(eq => ({
+      code: eq.code,
+      name: eq.name,
+      type: eq.type || '',
+      model: eq.model || '',
+      status: eq.status,
+      supplier: eq.supplier?.name || '',
+      purchasePrice: eq.purchasePrice,
+      hourlyRate: eq.hourlyRate,
+      dailyRate: eq.dailyRate,
+      monthlyRate: eq.monthlyRate,
+    }))
+    exportToCSV(rows, `equipment-${new Date().toISOString().slice(0, 10)}`, columns)
+  }
+
   if (selectedEquipmentId) {
     return <EquipmentDetailView equipmentId={selectedEquipmentId} onBack={() => setSelectedEquipmentId(null)} />
   }
@@ -1180,6 +1210,12 @@ export function EquipmentModule() {
           <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إدارة معدات المشاريع والتأجير' : 'Manage project & rental equipment'}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => window.print()} title={lang === 'ar' ? 'طباعة' : 'Print'}>
+            <Printer className="size-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={handleExport} title={lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}>
+            <Download className="size-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} title={lang === 'ar' ? 'تحديث' : 'Refresh'}>
             <RefreshCw className="size-4" />
           </Button>

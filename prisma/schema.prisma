@@ -128,7 +128,9 @@ model CompanySetting {
   invoiceTerms    String?
   useThousandSeparatorsSystem  Boolean  @default(true)  // Use thousand separators in system screens
   useThousandSeparatorsOfficial Boolean @default(false)  // Use thousand separators in official docs (ZATCA: false)
-  currencySymbolFile String?   // Path to uploaded currency symbol file (SVG/PNG/JPG)
+  currencySymbolImage String?  // Path to uploaded currency symbol image file (SVG/PNG/JPG)
+  headerImage         String?  // Path to invoice header image file (SVG/PNG/JPG)
+  footerImage         String?  // Path to invoice footer image file (SVG/PNG/JPG)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -611,12 +613,13 @@ model Equipment {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  supplier    Supplier?             @relation(fields: [supplierId], references: [id])
-  usages      EquipmentUsage[]
-  maintenance EquipmentMaintenance[]
-  fuelLogs    EquipmentFuelLog[]
-  rentals     EquipmentRental[]
-  expenses    EquipmentExpense[]
+  supplier       Supplier?             @relation(fields: [supplierId], references: [id])
+  usages         EquipmentUsage[]
+  maintenance    EquipmentMaintenance[]
+  fuelLogs       EquipmentFuelLog[]
+  rentals        EquipmentRental[]
+  expenses       EquipmentExpense[]
+  deliveryOrders EquipmentDeliveryOrder[]
 }
 
 model EquipmentUsage {
@@ -686,6 +689,27 @@ model EquipmentRental {
   updatedAt    DateTime      @updatedAt
 
   equipment Equipment @relation(fields: [equipmentId], references: [id])
+  deliveryOrders EquipmentDeliveryOrder[]
+}
+
+// Equipment delivery orders
+model EquipmentDeliveryOrder {
+  id            String   @id @default(cuid())
+  orderNo       String   @unique
+  rentalId      String?  // Link to rental contract
+  equipmentId   String
+  clientId      String
+  projectId     String?
+  site          String?  // Delivery site / location
+  deliveryDate  DateTime
+  returnDate    DateTime? // Expected return date
+  status        String   @default("PENDING") // PENDING, DELIVERED, RETURNED, CANCELLED
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  rental    EquipmentRental? @relation(fields: [rentalId], references: [id])
 }
 
 // Equipment-specific expenses (delivery, insurance, permits, etc.)
@@ -799,15 +823,19 @@ model JournalLine {
 // ============ VAT ============
 
 model VATReturn {
-  id          String    @id @default(cuid())
-  period      String    @unique
-  salesVAT    Float     @default(0)
-  purchaseVAT Float     @default(0)
-  netVAT      Float     @default(0)
-  status      String    @default("DRAFT")
-  filedDate   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id              String    @id @default(cuid())
+  period          String    @unique
+  year            Int       @default(0)
+  quarter         Int       @default(0)
+  totalSales      Float     @default(0)
+  outputVat       Float     @default(0)
+  totalPurchases  Float     @default(0)
+  inputVat        Float     @default(0)
+  netVat          Float     @default(0)
+  status          String    @default("DRAFT")
+  filedDate       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 // ============ TIMESHEETS ============

@@ -150,6 +150,62 @@ export async function GET(request: Request) {
         return NextResponse.json({ accounts: data, totalRevenue, totalExpenses, netIncome })
       }
 
+      case 'project-card': {
+        const projects = await db.project.findMany({
+          include: {
+            client: { select: { name: true } },
+            contracts: { select: { totalValue: true } },
+            expenses: { select: { amount: true, category: true } },
+            laborCosts: { select: { totalAmount: true } },
+            equipmentCosts: { select: { amount: true } },
+            purchaseOrders: { select: { totalAmount: true } },
+            progressClaims: { select: { totalAmount: true, status: true } },
+            subcontractorInvoices: { select: { totalAmount: true } },
+          },
+          orderBy: { code: 'asc' },
+        })
+        const projectCards = projects.map(p => {
+          const contractValue = p.contracts.reduce((s, c) => s + c.totalValue, 0)
+          const issuedExtracts = p.progressClaims.reduce((s, c) => s + c.totalAmount, 0)
+          const purchases = p.purchaseOrders.reduce((s, po) => s + po.totalAmount, 0) +
+            p.subcontractorInvoices.reduce((s, si) => s + si.totalAmount, 0)
+          const projectExpenses = p.expenses.reduce((s, e) => s + e.amount, 0) +
+            p.laborCosts.reduce((s, l) => s + l.totalAmount, 0) +
+            p.equipmentCosts.reduce((s, e) => s + e.amount, 0)
+          const totalCost = purchases + projectExpenses
+          const profit = contractValue - totalCost
+          const profitMargin = contractValue > 0 ? (profit / contractValue) * 100 : 0
+          return {
+            id: p.id,
+            code: p.code,
+            name: p.name,
+            nameAr: p.nameAr,
+            client: p.client.name,
+            status: p.status,
+            contractValue,
+            issuedExtracts,
+            purchases,
+            projectExpenses,
+            totalCost,
+            profit,
+            profitMargin,
+          }
+        })
+        const totals = {
+          contractValue: projectCards.reduce((s, p) => s + p.contractValue, 0),
+          issuedExtracts: projectCards.reduce((s, p) => s + p.issuedExtracts, 0),
+          purchases: projectCards.reduce((s, p) => s + p.purchases, 0),
+          projectExpenses: projectCards.reduce((s, p) => s + p.projectExpenses, 0),
+          totalCost: projectCards.reduce((s, p) => s + p.totalCost, 0),
+          profit: projectCards.reduce((s, p) => s + p.profit, 0),
+          profitMargin: 0,
+        }
+        totals.profitMargin = totals.contractValue > 0
+          ? (totals.profit / totals.contractValue) * 100
+          : 0
+        return NextResponse.json({ projects: projectCards, totals })
+      }
+
       default:
         return NextResponse.json({ error: 'نوع التقرير غير معروف' }, { status: 400 })
     }

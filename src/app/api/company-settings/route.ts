@@ -63,6 +63,9 @@ export async function PUT(request: Request) {
       invoiceTerms: body.invoiceTerms ?? null,
       useThousandSeparatorsSystem: body.useThousandSeparatorsSystem ?? true,
       useThousandSeparatorsOfficial: body.useThousandSeparatorsOfficial ?? false,
+      currencySymbolImage: body.currencySymbolImage ?? null,
+      headerImage: body.headerImage ?? null,
+      footerImage: body.footerImage ?? null,
     }
 
     let settings
@@ -96,6 +99,9 @@ export async function PUT(request: Request) {
           invoiceTerms: body.invoiceTerms ?? defaultSettings.invoiceTerms,
           useThousandSeparatorsSystem: body.useThousandSeparatorsSystem ?? true,
           useThousandSeparatorsOfficial: body.useThousandSeparatorsOfficial ?? false,
+          currencySymbolImage: body.currencySymbolImage ?? null,
+          headerImage: body.headerImage ?? null,
+          footerImage: body.footerImage ?? null,
         },
       })
     }

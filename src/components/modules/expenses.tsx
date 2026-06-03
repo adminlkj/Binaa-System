@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Receipt, Plus, Search, RefreshCw, TrendingUp, Tag,
-  Building2, Briefcase,
+  Building2, Briefcase, Printer, Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,8 +21,9 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAppStore, formatDate } from '@/stores/app-store'
+import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
+import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
 interface ProjectOption { id: string; code: string; name: string }
@@ -334,6 +335,32 @@ export function ExpensesModule() {
 
   const currentCategoryOptions = activeTab === 'project' ? projectCategoryOptions : adminCategoryOptions
 
+  // Export handler
+  const handleExport = () => {
+    const columns: CSVColumn[] = [
+      { key: 'projectName', label: t('المشروع', 'Project') },
+      { key: 'category', label: t('الفئة', 'Category'), format: (v) => expenseCategoryLabels[v as string]?.[lang] || String(v) },
+      { key: 'description', label: t('الوصف', 'Description') },
+      { key: 'amount', label: t('المبلغ', 'Amount'), format: (v) => Number(v).toFixed(2) },
+      { key: 'vatAmount', label: t('الضريبة', 'VAT'), format: (v) => v ? Number(v).toFixed(2) : '' },
+      { key: 'date', label: t('التاريخ', 'Date') },
+      { key: 'reference', label: t('المرجع', 'Reference') },
+    ]
+    const rows = filtered.map(exp => ({
+      projectName: exp.project?.name || (activeTab === 'admin' ? '' : t('عام', 'General')),
+      category: exp.category,
+      description: exp.description,
+      amount: exp.amount,
+      vatAmount: exp.vatAmount,
+      date: formatDate(exp.date, lang),
+      reference: exp.reference || '',
+    }))
+    const filename = activeTab === 'project'
+      ? `project-expenses-${new Date().toISOString().slice(0, 10)}`
+      : `admin-expenses-${new Date().toISOString().slice(0, 10)}`
+    exportToCSV(rows, filename, columns)
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -343,6 +370,12 @@ export function ExpensesModule() {
           <p className="text-sm text-muted-foreground">{t('إدارة المصروفات العامة والمشاريع', 'Manage general and project expenses')}</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" size="icon" onClick={() => window.print()} title={t('طباعة', 'Print')}>
+            <Printer className="size-4" />
+          </Button>
+          <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير CSV', 'Export CSV')}>
+            <Download className="size-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
