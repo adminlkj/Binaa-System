@@ -10,11 +10,12 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
-import { useAppStore, labels, commonText } from '@/stores/app-store'
+import { useAppStore, sectionLabels, subModuleLabels, commonText } from '@/stores/app-store'
 
 export function Header() {
-  const { activeModule, toggleSidebar, lang } = useAppStore()
-  const currentLabel = labels[activeModule]?.[lang] || 'Dashboard'
+  const { activeSection, activeSubModule, toggleSidebar, lang } = useAppStore()
+  const sectionLabel = sectionLabels[activeSection]?.[lang] || 'Dashboard'
+  const subLabel = subModuleLabels[activeSubModule]?.[lang] || ''
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-gray-200 bg-white/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-white/80 lg:px-6 shrink-0">
@@ -40,9 +41,19 @@ export function Header() {
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbPage className="font-medium text-gray-800">
-              {currentLabel}
+              {sectionLabel}
             </BreadcrumbPage>
           </BreadcrumbItem>
+          {subLabel && subLabel !== sectionLabel && (
+            <>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage className="text-sm text-gray-600">
+                  {subLabel}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </>
+          )}
         </BreadcrumbList>
       </Breadcrumb>
 

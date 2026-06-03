@@ -1,63 +1,82 @@
 import { create } from 'zustand'
 
-export type ModuleKey =
+// ============ NAVIGATION TYPES ============
+
+// 10 main sidebar sections
+export type SectionKey =
   | 'dashboard'
-  // Equipment Rental
-  | 'contracts'
-  | 'delivery-orders'
-  | 'timesheets'
-  | 'rental-invoices'
-  | 'equipment'
-  // Projects
   | 'projects'
-  | 'progress-claims'
-  | 'boq'
-  // Services
-  | 'service-invoices'
-  | 'clients'
-  // Purchases
-  | 'purchase-orders'
-  | 'supplier-invoices'
-  | 'suppliers'
-  | 'subcontractors'
-  // Costs
-  | 'expenses'
-  | 'labor'
-  | 'advances'
-  | 'petty-cash'
-  // Accounting
-  | 'accounting'
-  | 'vat'
-  // Inventory
-  | 'inventory'
-  // Reports & Settings
+  | 'resources'
+  | 'supply-chain'
+  | 'warehouses'
+  | 'rental'
+  | 'finance'
+  | 'crm'
   | 'reports'
-  | 'settings'
-  // Legacy keys (kept for backward compatibility)
-  | 'sales'
-  | 'purchases'
+  | 'admin'
+
+// Sub-module keys within each section
+export type SubModuleKey =
+  // Dashboard
+  | 'dashboard-main'
+  // Projects (when no project selected - shows list)
+  | 'project-list'
+  // Projects (when project selected - tabs)
+  | 'project-overview' | 'project-contracting' | 'project-planning' | 'project-execution'
+  | 'project-boq' | 'project-quality' | 'project-safety' | 'project-correspondence'
+  | 'project-extracts' | 'project-costs' | 'project-documents'
+  // Resources
+  | 'employees' | 'employee-contracts' | 'employee-attendance' | 'employee-salaries'
+  | 'equipment-list' | 'equipment-operations' | 'equipment-maintenance' | 'equipment-fuel'
+  | 'teams' | 'team-assignments' | 'resource-distribution'
+  // Supply Chain
+  | 'suppliers' | 'subcontractors' | 'purchase-requests' | 'purchase-orders'
+  | 'goods-receipt' | 'supplier-invoices'
+  // Warehouses
+  | 'warehouse-list' | 'warehouse-items' | 'warehouse-movements' | 'warehouse-inventory' | 'warehouse-transfers'
+  // Rental
+  | 'rental-contracts' | 'rental-equipment' | 'rental-delivery-orders' | 'rental-hours' | 'rental-invoices'
+  // Finance
+  | 'treasury' | 'banks' | 'checks'
+  | 'journal-entries' | 'chart-of-accounts' | 'general-ledger'
+  | 'receivables' | 'payables'
+  | 'fixed-assets' | 'depreciation'
+  | 'vat' | 'budgets' | 'cash-flow'
+  // CRM
+  | 'clients' | 'opportunities' | 'quotations' | 'follow-ups'
+  // Reports
+  | 'report-projects' | 'report-finance' | 'report-equipment' | 'report-purchases' | 'report-inventory' | 'report-hr'
+  // Admin
+  | 'users' | 'permissions' | 'workflow' | 'settings'
 
 export type Lang = 'ar' | 'en'
 
 interface AppState {
-  activeModule: ModuleKey
+  // Navigation
+  activeSection: SectionKey
+  activeSubModule: SubModuleKey
   sidebarOpen: boolean
   lang: Lang
+  // Project drill-down
+  selectedProjectId: string | null
   // Currency symbols - configurable from company settings
-  currencySymbol: string    // Arabic symbol (default: ﷼)
-  currencySymbolEn: string  // English symbol (default: SAR)
-  currencySymbolAr: string  // Arabic abbreviation (default: ﷼)
-  // Currency symbol image (takes priority over text symbols when set)
+  currencySymbol: string
+  currencySymbolEn: string
+  currencySymbolAr: string
   currencySymbolImage: string | null
   // Number formatting settings
-  numberFormatMode: 'system' | 'official'  // system = with thousand separators, official = without (ZATCA)
-  useThousandSeparatorsSystem: boolean     // default: true (show separators in system screens)
-  useThousandSeparatorsOfficial: boolean   // default: false (no separators in official docs - ZATCA)
-  setActiveModule: (module: ModuleKey) => void
-  toggleSidebar: () => void
+  numberFormatMode: 'system' | 'official'
+  useThousandSeparatorsSystem: boolean
+  useThousandSeparatorsOfficial: boolean
+  // Actions
+  setActiveSection: (section: SectionKey) => void
+  setActiveSubModule: (sub: SubModuleKey) => void
+  navigateTo: (section: SectionKey, sub: SubModuleKey) => void
   setSidebarOpen: (open: boolean) => void
+  toggleSidebar: () => void
   setLang: (lang: Lang) => void
   toggleLang: () => void
+  selectProject: (projectId: string | null) => void
   setCurrencySymbol: (ar: string, en: string, arAbbr?: string) => void
   setCurrencySymbolImage: (url: string | null) => void
   setNumberFormatMode: (mode: 'system' | 'official') => void
@@ -65,24 +84,26 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  activeModule: 'dashboard',
+  activeSection: 'dashboard',
+  activeSubModule: 'dashboard-main',
   sidebarOpen: true,
   lang: 'ar',
-  // Default to Saudi Riyal Unicode symbol (U+FDFC) - loaded from font files
-  currencySymbol: '\uFDFC',  // ﷼
+  selectedProjectId: null,
+  currencySymbol: '\uFDFC',
   currencySymbolEn: 'SAR',
-  currencySymbolAr: '\uFDFC', // ﷼
-  // Currency symbol image (takes priority over text symbols when set)
-  currencySymbolImage: null as string | null,
-  // Number formatting - system uses separators, official (ZATCA) does not
+  currencySymbolAr: '\uFDFC',
+  currencySymbolImage: null,
   numberFormatMode: 'system',
   useThousandSeparatorsSystem: true,
   useThousandSeparatorsOfficial: false,
-  setActiveModule: (module) => set({ activeModule: module }),
-  toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
+  setActiveSection: (section) => set({ activeSection: section }),
+  setActiveSubModule: (sub) => set({ activeSubModule: sub }),
+  navigateTo: (section, sub) => set({ activeSection: section, activeSubModule: sub }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
+  toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setLang: (lang) => set({ lang }),
-  toggleLang: () => set((state) => ({ lang: state.lang === 'ar' ? 'en' : 'ar' })),
+  toggleLang: () => set((s) => ({ lang: s.lang === 'ar' ? 'en' : 'ar' })),
+  selectProject: (projectId) => set({ selectedProjectId: projectId }),
   setCurrencySymbol: (ar, en, arAbbr) => set({
     currencySymbol: ar,
     currencySymbolEn: en,
@@ -96,80 +117,118 @@ export const useAppStore = create<AppState>((set) => ({
   }),
 }))
 
-// Bilingual labels
-export const labels: Record<ModuleKey, { ar: string; en: string }> = {
-  // Main
-  dashboard: { ar: 'الرئيسية', en: 'Dashboard' },
-  // Equipment Rental
-  contracts: { ar: 'العقود', en: 'Contracts' },
-  'delivery-orders': { ar: 'أوامر التوصيل', en: 'Delivery Orders' },
-  timesheets: { ar: 'ساعات العمل', en: 'Timesheets' },
-  'rental-invoices': { ar: 'فواتير الإيجار', en: 'Rental Invoices' },
-  equipment: { ar: 'المعدات', en: 'Equipment' },
+// ============ BILINGUAL LABELS ============
+
+export const sectionLabels: Record<SectionKey, { ar: string; en: string }> = {
+  'dashboard': { ar: 'لوحة التحكم', en: 'Dashboard' },
+  'projects': { ar: 'المشاريع', en: 'Projects' },
+  'resources': { ar: 'الموارد', en: 'Resources' },
+  'supply-chain': { ar: 'سلسلة التوريد', en: 'Supply Chain' },
+  'warehouses': { ar: 'المخازن', en: 'Warehouses' },
+  'rental': { ar: 'التأجير', en: 'Rental' },
+  'finance': { ar: 'المالية', en: 'Finance' },
+  'crm': { ar: 'إدارة العلاقات', en: 'CRM' },
+  'reports': { ar: 'التقارير', en: 'Reports' },
+  'admin': { ar: 'الإدارة', en: 'Administration' },
+}
+
+export const subModuleLabels: Record<SubModuleKey, { ar: string; en: string }> = {
+  // Dashboard
+  'dashboard-main': { ar: 'نظرة عامة', en: 'Overview' },
   // Projects
-  projects: { ar: 'المشاريع', en: 'Projects' },
-  'progress-claims': { ar: 'المستخلصات', en: 'Progress Claims' },
-  boq: { ar: 'جدول الكميات', en: 'BOQ' },
-  // Services
-  'service-invoices': { ar: 'فواتير الخدمات', en: 'Service Invoices' },
-  clients: { ar: 'العملاء', en: 'Clients' },
-  // Purchases
+  'project-list': { ar: 'قائمة المشاريع', en: 'Project List' },
+  'project-overview': { ar: 'نظرة عامة', en: 'Overview' },
+  'project-contracting': { ar: 'التعاقد', en: 'Contracting' },
+  'project-planning': { ar: 'التخطيط', en: 'Planning' },
+  'project-execution': { ar: 'التنفيذ', en: 'Execution' },
+  'project-boq': { ar: 'الأعمال والكميات', en: 'BOQ' },
+  'project-quality': { ar: 'الجودة', en: 'Quality' },
+  'project-safety': { ar: 'السلامة', en: 'Safety' },
+  'project-correspondence': { ar: 'المراسلات', en: 'Correspondence' },
+  'project-extracts': { ar: 'المستخلصات', en: 'Extracts' },
+  'project-costs': { ar: 'التكاليف', en: 'Costs' },
+  'project-documents': { ar: 'الوثائق', en: 'Documents' },
+  // Resources - Employees
+  'employees': { ar: 'الموظفون', en: 'Employees' },
+  'employee-contracts': { ar: 'العقود', en: 'Contracts' },
+  'employee-attendance': { ar: 'الحضور', en: 'Attendance' },
+  'employee-salaries': { ar: 'الرواتب', en: 'Salaries' },
+  // Resources - Equipment
+  'equipment-list': { ar: 'المعدات', en: 'Equipment' },
+  'equipment-operations': { ar: 'التشغيل', en: 'Operations' },
+  'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
+  'equipment-fuel': { ar: 'الوقود', en: 'Fuel' },
+  // Resources - Teams
+  'teams': { ar: 'فرق العمل', en: 'Teams' },
+  'team-assignments': { ar: 'توزيع الموارد', en: 'Resource Allocation' },
+  'resource-distribution': { ar: 'توزيع الموارد', en: 'Distribution' },
+  // Supply Chain
+  'suppliers': { ar: 'الموردون', en: 'Suppliers' },
+  'subcontractors': { ar: 'المقاولون الفرعيون', en: 'Subcontractors' },
+  'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
   'purchase-orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },
+  'goods-receipt': { ar: 'الاستلام', en: 'Goods Receipt' },
   'supplier-invoices': { ar: 'فواتير الموردين', en: 'Supplier Invoices' },
-  suppliers: { ar: 'الموردين', en: 'Suppliers' },
-  subcontractors: { ar: 'مقاولو الباطن', en: 'Subcontractors' },
-  // Costs
-  expenses: { ar: 'المصروفات', en: 'Expenses' },
-  labor: { ar: 'تكاليف العمالة', en: 'Labor Costs' },
-  advances: { ar: 'العهد والسلف', en: 'Advances' },
-  'petty-cash': { ar: 'الصندوق النقدي', en: 'Petty Cash' },
-  // Accounting
-  accounting: { ar: 'المحاسبة', en: 'Accounting' },
-  vat: { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
-  // Inventory
-  inventory: { ar: 'المخزون', en: 'Inventory' },
-  // Reports & Settings
-  reports: { ar: 'التقارير', en: 'Reports' },
-  settings: { ar: 'الإعدادات', en: 'Settings' },
-  // Legacy (kept for backward compatibility)
-  sales: { ar: 'فواتير الخدمات', en: 'Service Invoices' },
-  purchases: { ar: 'أوامر الشراء', en: 'Purchase Orders' },
+  // Warehouses
+  'warehouse-list': { ar: 'المخازن', en: 'Warehouses' },
+  'warehouse-items': { ar: 'الأصناف', en: 'Items' },
+  'warehouse-movements': { ar: 'الحركات', en: 'Movements' },
+  'warehouse-inventory': { ar: 'الجرد', en: 'Inventory' },
+  'warehouse-transfers': { ar: 'التحويلات', en: 'Transfers' },
+  // Rental
+  'rental-contracts': { ar: 'العقود', en: 'Contracts' },
+  'rental-equipment': { ar: 'المعدات المؤجرة', en: 'Rented Equipment' },
+  'rental-delivery-orders': { ar: 'أوامر التوصيل', en: 'Delivery Orders' },
+  'rental-hours': { ar: 'ساعات التشغيل', en: 'Operating Hours' },
+  'rental-invoices': { ar: 'الفواتير', en: 'Invoices' },
+  // Finance
+  'treasury': { ar: 'الخزينة', en: 'Treasury' },
+  'banks': { ar: 'البنوك', en: 'Banks' },
+  'checks': { ar: 'الشيكات', en: 'Checks' },
+  'journal-entries': { ar: 'القيود', en: 'Journal Entries' },
+  'chart-of-accounts': { ar: 'دليل الحسابات', en: 'Chart of Accounts' },
+  'general-ledger': { ar: 'اليومية العامة', en: 'General Ledger' },
+  'receivables': { ar: 'الذمم المدينة', en: 'Receivables' },
+  'payables': { ar: 'الذمم الدائنة', en: 'Payables' },
+  'fixed-assets': { ar: 'الأصول الثابتة', en: 'Fixed Assets' },
+  'depreciation': { ar: 'الإهلاك', en: 'Depreciation' },
+  'vat': { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
+  'budgets': { ar: 'الموازنات', en: 'Budgets' },
+  'cash-flow': { ar: 'التدفق النقدي', en: 'Cash Flow' },
+  // CRM
+  'clients': { ar: 'العملاء', en: 'Clients' },
+  'opportunities': { ar: 'الفرص', en: 'Opportunities' },
+  'quotations': { ar: 'العروض', en: 'Quotations' },
+  'follow-ups': { ar: 'المتابعة', en: 'Follow-ups' },
+  // Reports
+  'report-projects': { ar: 'مشاريع', en: 'Projects' },
+  'report-finance': { ar: 'مالية', en: 'Finance' },
+  'report-equipment': { ar: 'معدات', en: 'Equipment' },
+  'report-purchases': { ar: 'مشتريات', en: 'Purchases' },
+  'report-inventory': { ar: 'مخزون', en: 'Inventory' },
+  'report-hr': { ar: 'موارد بشرية', en: 'HR' },
+  // Admin
+  'users': { ar: 'المستخدمون', en: 'Users' },
+  'permissions': { ar: 'الصلاحيات', en: 'Permissions' },
+  'workflow': { ar: 'سير العمل', en: 'Workflow' },
+  'settings': { ar: 'الإعدادات العامة', en: 'Settings' },
 }
 
-// Section labels
-export const sectionLabels = {
-  main: { ar: 'الرئيسية', en: 'Main' },
-  equipmentRental: { ar: 'تأجير المعدات', en: 'Equipment Rental' },
-  projectsSection: { ar: 'المشاريع', en: 'Projects' },
-  services: { ar: 'الخدمات', en: 'Services' },
-  purchases: { ar: 'المشتريات', en: 'Purchases' },
-  costs: { ar: 'التكاليف', en: 'Costs' },
-  accounting: { ar: 'المحاسبة', en: 'Accounting' },
-  inventory: { ar: 'المخزون', en: 'Inventory' },
-  reportsSettings: { ar: 'التقارير والإعدادات', en: 'Reports & Settings' },
-}
+// ============ FORMAT HELPERS ============
 
-// Format SAR with English digits and proper currency symbol
-// The symbol is configurable and comes from company settings
-// mode: 'system' = with thousand separators, 'official' = no separators (ZATCA compliance)
 export function formatSAR(value: number, lang: Lang = 'ar', symbol?: string, mode: 'system' | 'official' = 'system'): string {
   const formatted = mode === 'official'
-    ? value.toFixed(2)  // No thousand separators for ZATCA
+    ? value.toFixed(2)
     : value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   if (lang === 'ar') {
-    // Arabic: number followed by symbol (RTL - symbol appears on right)
-    // Use the provided symbol or default to ﷼ (Saudi Riyal Unicode U+FDFC)
     const arSymbol = symbol || '\uFDFC'
     return `${formatted} ${arSymbol}`
   }
-  // English: symbol followed by number
   const enSymbol = symbol || 'SAR'
   return `${enSymbol} ${formatted}`
 }
 
-// Format just the number without symbol
-// mode: 'system' = with thousand separators, 'official' = no separators (ZATCA compliance)
 export function formatAmount(value: number, mode: 'system' | 'official' = 'system'): string {
   if (mode === 'official') {
     return value.toFixed(2)
@@ -177,12 +236,10 @@ export function formatAmount(value: number, mode: 'system' | 'official' = 'syste
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-// Format number with English digits
 export function formatNumber(value: number): string {
   return value.toLocaleString('en-US')
 }
 
-// Format date bilingual
 export function formatDate(dateStr: string, lang: Lang = 'ar'): string {
   const date = new Date(dateStr)
   if (lang === 'ar') {
@@ -214,4 +271,12 @@ export const commonText = {
   new: { ar: 'جديد', en: 'New' },
   home: { ar: 'الرئيسية', en: 'Home' },
   currency: { ar: '\uFDFC', en: 'SAR' },
+  print: { ar: 'طباعة', en: 'Print' },
+  export: { ar: 'تصدير', en: 'Export' },
+  back: { ar: 'رجوع', en: 'Back' },
+  view: { ar: 'عرض', en: 'View' },
+  close: { ar: 'إغلاق', en: 'Close' },
+  confirm: { ar: 'تأكيد', en: 'Confirm' },
+  yes: { ar: 'نعم', en: 'Yes' },
+  no: { ar: 'لا', en: 'No' },
 }
