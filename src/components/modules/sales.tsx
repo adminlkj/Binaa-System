@@ -21,6 +21,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
+import { Switch } from '@/components/ui/switch'
 import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, commonText } from '@/stores/app-store'
 import { InvoicePreview } from '@/components/invoice/invoice-preview'
 import type { InvoiceData, CompanySettings } from '@/components/invoice/invoice-preview'
@@ -39,6 +40,9 @@ interface SalesInvoice {
   vatRate: number; vatAmount: number; totalAmount: number; paidAmount: number; status: string; invoiceType?: string
   notes: string | null; paymentTerms?: string | null
   amountInWordsAr?: string | null; amountInWordsEn?: string | null
+  referenceNo?: string | null; contractNo?: string | null; contractType?: string | null
+  contractPeriodStart?: string | null; contractPeriodEnd?: string | null
+  deliveryMonth?: string | null; includeDelivery?: boolean; deliveryAmount?: number; includeVat?: boolean
   client: { id: string; name: string; nameAr?: string | null; code: string; taxNumber?: string | null; phone?: string | null; email?: string | null; address?: string | null }
   project: { id: string; name: string; nameAr?: string | null; code: string } | null
   contract?: { id: string; contractNo: string } | null
@@ -71,6 +75,19 @@ const invoiceStatusColors: Record<string, string> = {
   CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
 }
 
+const invoiceTypeOptions = [
+  { value: 'TAX_INVOICE', label: 'فاتورة ضريبية / Tax Invoice' },
+  { value: 'PROGRESS_CLAIM', label: 'مستخلص / Progress Claim' },
+  { value: 'RENTAL', label: 'فاتورة إيجار / Rental Invoice' },
+]
+
+const contractTypeOptions = [
+  { value: 'Lump Sum', label: 'مقطوعية / Lump Sum' },
+  { value: 'Unit Rate', label: 'أسعار وحدوية / Unit Rate' },
+  { value: 'Cost Plus', label: 'تكلفة + هامش / Cost Plus' },
+  { value: 'Time & Materials', label: 'وقت ومواد / Time & Materials' },
+]
+
 const defaultLineItem: LineItemForm = { description: '', quantity: 1, unitPrice: 0, unit: '' }
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
@@ -99,9 +116,20 @@ function SalesInvoiceFormDialog({
 
   const [clientId, setClientId] = useState('')
   const [projectId, setProjectId] = useState('')
+  const [invoiceType, setInvoiceType] = useState('TAX_INVOICE')
   const [date, setDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [paymentTerms, setPaymentTerms] = useState('30 days')
+  const [referenceNo, setReferenceNo] = useState('')
+  const [contractNo, setContractNo] = useState('')
+  const [contractType, setContractType] = useState('')
+  const [contractPeriodStart, setContractPeriodStart] = useState('')
+  const [contractPeriodEnd, setContractPeriodEnd] = useState('')
+  const [deliveryMonth, setDeliveryMonth] = useState('')
+  const [includeDelivery, setIncludeDelivery] = useState(false)
+  const [deliveryAmount, setDeliveryAmount] = useState(0)
+  const [includeVat, setIncludeVat] = useState(true)
   const [discountType, setDiscountType] = useState<'none' | 'rate' | 'amount'>('none')
   const [discountRate, setDiscountRate] = useState(0)
   const [discountAmount, setDiscountAmount] = useState(0)
@@ -112,6 +140,16 @@ function SalesInvoiceFormDialog({
       setClientId(''); setProjectId(''); setDate(''); setDueDate('')
       setNotes(''); setLineItems([{ ...defaultLineItem }])
       setDiscountType('none'); setDiscountRate(0); setDiscountAmount(0)
+      setInvoiceType('TAX_INVOICE'); setPaymentTerms('30 days')
+      setReferenceNo(''); setContractNo(''); setContractType('')
+      setContractPeriodStart(''); setContractPeriodEnd('')
+      setDeliveryMonth(''); setIncludeDelivery(false); setDeliveryAmount(0)
+      setIncludeVat(true)
+
+      // Auto-suggest reference number
+      const year = new Date().getFullYear()
+      const rand = Math.floor(1000 + Math.random() * 9000)
+      setReferenceNo(`REF-${year}-${rand}`)
     }
   }, [open])
 
@@ -124,8 +162,9 @@ function SalesInvoiceFormDialog({
     return 0
   }, [subtotal, discountType, discountRate, discountAmount])
   const netAmount = subtotal - finalDiscountAmount
-  const vatAmount = netAmount * vatRate
-  const totalAmount = netAmount + vatAmount
+  const deliveryTotal = includeDelivery ? deliveryAmount : 0
+  const vatAmount = includeVat ? (netAmount + deliveryTotal) * vatRate : 0
+  const totalAmount = netAmount + deliveryTotal + vatAmount
 
   const addLine = () => setLineItems([...lineItems, { ...defaultLineItem }])
   const removeLine = (idx: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, i) => i !== idx)) }
@@ -142,7 +181,17 @@ function SalesInvoiceFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     createMutation.mutate({
-      clientId, projectId: projectId || null, date, dueDate, notes,
+      clientId, projectId: projectId || null, date, dueDate, notes, paymentTerms,
+      invoiceType,
+      referenceNo: referenceNo || null,
+      contractNo: contractNo || null,
+      contractType: contractType || null,
+      contractPeriodStart: contractPeriodStart || null,
+      contractPeriodEnd: contractPeriodEnd || null,
+      deliveryMonth: deliveryMonth || null,
+      includeDelivery,
+      deliveryAmount: includeDelivery ? deliveryAmount : 0,
+      includeVat,
       discountRate: discountType === 'rate' ? discountRate / 100 : 0,
       discountAmount: finalDiscountAmount,
       items: lineItems.map(i => ({ description: i.description, quantity: i.quantity, unitPrice: i.unitPrice, unit: i.unit || undefined })),
@@ -151,13 +200,14 @@ function SalesInvoiceFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>فاتورة مبيعات جديدة</DialogTitle>
           <DialogDescription>إنشاء فاتورة مبيعات جديدة مع البنود</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Basic Info Row */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>العميل *</Label>
               <Select value={clientId} onValueChange={setClientId}>
@@ -177,12 +227,95 @@ function SalesInvoiceFormDialog({
               </Select>
             </div>
             <div className="space-y-2">
+              <Label>نوع الفاتورة</Label>
+              <Select value={invoiceType} onValueChange={setInvoiceType}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {invoiceTypeOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div className="space-y-2">
               <Label htmlFor="si-date">تاريخ الفاتورة *</Label>
               <Input id="si-date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="si-due">تاريخ الاستحقاق *</Label>
               <Input id="si-due" type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="si-payment-terms">شروط السداد</Label>
+              <Input id="si-payment-terms" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} placeholder="30 days" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="si-ref">رقم المرجع</Label>
+              <Input id="si-ref" value={referenceNo} onChange={e => setReferenceNo(e.target.value)} placeholder="REF-2026-0001" dir="ltr" />
+            </div>
+          </div>
+
+          {/* Contract Section */}
+          <div className="space-y-3 p-3 rounded-lg border bg-gray-50">
+            <Label className="text-sm font-semibold">بيانات العقد (اختياري)</Label>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">رقم العقد</Label>
+                <Input value={contractNo} onChange={e => setContractNo(e.target.value)} placeholder="CTR-001" dir="ltr" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">نوع العقد</Label>
+                <Select value={contractType} onValueChange={setContractType}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="اختر النوع" /></SelectTrigger>
+                  <SelectContent>
+                    {contractTypeOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">بداية فترة العمل</Label>
+                <Input type="date" value={contractPeriodStart} onChange={e => setContractPeriodStart(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">نهاية فترة العمل</Label>
+                <Input type="date" value={contractPeriodEnd} onChange={e => setContractPeriodEnd(e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Delivery & VAT Section */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Delivery */}
+            <div className="space-y-3 p-3 rounded-lg border bg-gray-50">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">رسوم التوصيل</Label>
+                <Switch checked={includeDelivery} onCheckedChange={setIncludeDelivery} />
+              </div>
+              {includeDelivery && (
+                <div className="space-y-1">
+                  <Label className="text-xs">مبلغ التوصيل</Label>
+                  <Input type="number" min="0" step="0.01" value={deliveryAmount || ''} onChange={e => setDeliveryAmount(parseFloat(e.target.value) || 0)} className="w-full" dir="ltr" placeholder="0.00" />
+                </div>
+              )}
+            </div>
+            {/* VAT Toggle */}
+            <div className="space-y-3 p-3 rounded-lg border bg-gray-50">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold">ضريبة القيمة المضافة (15%)</Label>
+                <Switch checked={includeVat} onCheckedChange={setIncludeVat} />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {includeVat ? 'سيتم احتساب ضريبة القيمة المضافة' : 'لن يتم احتساب ضريبة القيمة المضافة'}
+              </p>
+            </div>
+          </div>
+
+          {/* Delivery Month */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="si-delivery-month">شهر التسليم (اختياري)</Label>
+              <Input id="si-delivery-month" type="month" value={deliveryMonth} onChange={e => setDeliveryMonth(e.target.value)} />
             </div>
           </div>
 
@@ -266,10 +399,18 @@ function SalesInvoiceFormDialog({
                 <span>صافي المبلغ</span>
                 <span className="font-medium">{formatSAR(netAmount, 'ar')}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span>ضريبة القيمة المضافة (15%)</span>
-                <span className="font-medium">{formatSAR(vatAmount, 'ar')}</span>
-              </div>
+              {includeDelivery && deliveryAmount > 0 && (
+                <div className="flex justify-between text-sm text-amber-700">
+                  <span>رسوم التوصيل</span>
+                  <span className="font-medium">{formatSAR(deliveryAmount, 'ar')}</span>
+                </div>
+              )}
+              {includeVat && (
+                <div className="flex justify-between text-sm">
+                  <span>ضريبة القيمة المضافة (15%)</span>
+                  <span className="font-medium">{formatSAR(vatAmount, 'ar')}</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between text-lg font-bold">
                 <span>الإجمالي</span>
@@ -376,6 +517,12 @@ function InvoiceDetailView({ invoice, onBack }: { invoice: SalesInvoice; onBack:
                   <TableRow className="bg-rose-50">
                     <TableCell colSpan={3} className="text-left font-medium text-rose-700">الخصم</TableCell>
                     <TableCell className="font-semibold text-rose-700">-{formatSAR(invoice.discountAmount, 'ar')}</TableCell>
+                  </TableRow>
+                )}
+                {invoice.includeDelivery && (invoice.deliveryAmount ?? 0) > 0 && (
+                  <TableRow className="bg-amber-50">
+                    <TableCell colSpan={3} className="text-left font-medium text-amber-700">رسوم التوصيل</TableCell>
+                    <TableCell className="font-semibold text-amber-700">{formatSAR(invoice.deliveryAmount ?? 0, 'ar')}</TableCell>
                   </TableRow>
                 )}
                 <TableRow className="bg-gray-50">
@@ -505,6 +652,9 @@ export function SalesModule() {
     bankAccountName: 'شركة البناء الحديثة للمقاولات',
     defaultVatRate: 0.15,
     currency: 'SAR',
+    currencySymbol: '\uFDFC',
+    currencySymbolEn: 'SAR',
+    currencySymbolAr: '\uFDFC',
     invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
   }
 
@@ -649,8 +799,8 @@ export function SalesModule() {
 
       {/* Invoice Preview Dialog */}
       <Dialog open={!!previewInvoice} onOpenChange={(open) => { if (!open) setPreviewInvoice(null) }}>
-        <DialogContent className="max-w-4xl max-h-[95vh] overflow-y-auto p-0" showCloseButton={true}>
-          <div className="p-6 invoice-print-root">
+        <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto p-0" showCloseButton={true}>
+          <div className="p-6 invoice-print-root overflow-x-auto">
             {previewInvoice && (
               <InvoicePreview
                 invoice={previewInvoice as unknown as InvoiceData}

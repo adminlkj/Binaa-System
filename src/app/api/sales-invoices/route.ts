@@ -18,6 +18,7 @@ export async function GET(request: Request) {
       include: {
         client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
         project: { select: { id: true, name: true, nameAr: true, code: true } },
+        contract: { select: { id: true, contractNo: true } },
         items: true,
       },
       orderBy: { date: 'desc' },
@@ -32,7 +33,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { clientId, projectId, contractId, date, dueDate, notes, items, vatRate = 0.15, discountRate = 0, discountAmount = 0, invoiceType = 'TAX_INVOICE', paymentTerms } = body
+    const {
+      clientId, projectId, contractId, date, dueDate, notes, items,
+      vatRate = 0.15, discountRate = 0, discountAmount = 0,
+      invoiceType = 'TAX_INVOICE', paymentTerms,
+      referenceNo, contractNo, contractType, contractPeriodStart, contractPeriodEnd,
+      deliveryMonth, includeDelivery = false, deliveryAmount = 0, includeVat = true,
+    } = body
 
     if (!clientId || !date || !dueDate || !items?.length) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
@@ -45,21 +52,31 @@ export async function POST(request: Request) {
     
     const finalDiscountAmount = discountAmount || (subtotal * discountRate)
     const netAmount = subtotal - finalDiscountAmount
-    const vatAmount = netAmount * vatRate
-    const totalAmount = netAmount + vatAmount
+    const deliveryTotal = includeDelivery ? deliveryAmount : 0
+    const vatAmount = includeVat ? (netAmount + deliveryTotal) * vatRate : 0
+    const totalAmount = netAmount + deliveryTotal + vatAmount
 
-    // Auto-generate invoice number
+    // Auto-generate invoice number based on type
+    const prefixMap: Record<string, string> = {
+      TAX_INVOICE: 'SRV',
+      PROGRESS_CLAIM: 'PCL',
+      RENTAL: 'RNT',
+    }
+    const prefix = prefixMap[invoiceType] || 'INV'
+    const year = new Date().getFullYear()
+
     const lastInvoice = await db.salesInvoice.findFirst({
+      where: { invoiceNo: { startsWith: `${prefix}-${year}` } },
       orderBy: { invoiceNo: 'desc' },
       select: { invoiceNo: true },
     })
 
     let nextNum = 1
     if (lastInvoice?.invoiceNo) {
-      const match = lastInvoice.invoiceNo.match(/SI-(\d+)/)
+      const match = lastInvoice.invoiceNo.match(/-(\d+)$/)
       if (match) nextNum = parseInt(match[1]) + 1
     }
-    const invoiceNo = `INV-${String(nextNum).padStart(4, '0')}`
+    const invoiceNo = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`
 
     const invoice = await db.salesInvoice.create({
       data: {
@@ -81,6 +98,15 @@ export async function POST(request: Request) {
         invoiceType,
         notes: notes || null,
         paymentTerms: paymentTerms || null,
+        referenceNo: referenceNo || null,
+        contractNo: contractNo || null,
+        contractType: contractType || null,
+        contractPeriodStart: contractPeriodStart ? new Date(contractPeriodStart) : null,
+        contractPeriodEnd: contractPeriodEnd ? new Date(contractPeriodEnd) : null,
+        deliveryMonth: deliveryMonth || null,
+        includeDelivery,
+        deliveryAmount: includeDelivery ? deliveryAmount : 0,
+        includeVat,
         items: {
           create: items.map((item: { description: string; descriptionEn?: string; quantity: number; unit?: string; unitPrice: number; itemType?: string }) => ({
             description: item.description,
@@ -96,6 +122,7 @@ export async function POST(request: Request) {
       include: {
         client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
         project: { select: { id: true, name: true, nameAr: true, code: true } },
+        contract: { select: { id: true, contractNo: true } },
         items: true,
       },
     })

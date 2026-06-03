@@ -440,3 +440,170 @@ Stage Summary:
 - Expenses use ExpenseCategory enum with 3 general (non-project) expenses
 - All deletion order respects foreign key constraints
 - All lint checks pass
+
+---
+Task ID: 7
+Agent: Schema Update Agent
+Task: Update Prisma schema with new fields
+
+Work Log:
+- Added 4 new fields to CompanySetting model: currencySymbol (U+FDFC ﷼), currencySymbolEn ("SAR"), currencySymbolAr ("ر.س"), logoUrl (String?)
+- Added 9 new fields to SalesInvoice model: referenceNo, contractNo, contractType, contractPeriodStart, contractPeriodEnd, deliveryMonth, includeDelivery, deliveryAmount, includeVat
+- Added referenceNo field to PurchaseInvoice model
+- Created new Timesheet model with fields: id, contractId, projectId, month, year, status, notes, createdAt, updatedAt + relations to Contract, Project, and TimesheetEntry[]
+- Created new TimesheetEntry model with fields: id, timesheetId, description, hours, rate, totalAmount, createdAt + relation to Timesheet with onDelete: Cascade
+- Added timesheets Timesheet[] relation to Contract model
+- Added timesheets Timesheet[] relation to Project model
+- Ran `bun run db:push` — database successfully synced in 27ms
+- Prisma Client regenerated successfully
+
+Stage Summary:
+- CompanySetting now has currency symbol fields (﷼, SAR, ر.س) and logoUrl
+- SalesInvoice now supports contract details (referenceNo, contractNo, contractType, contractPeriod), delivery (deliveryMonth, includeDelivery, deliveryAmount), and VAT toggle (includeVat)
+- PurchaseInvoice now has referenceNo field
+- Timesheet and TimesheetEntry models created for tracking contract work hours
+- Contract and Project models updated with timesheets relations
+- All changes pushed to SQLite database successfully
+
+---
+Task ID: 2
+Agent: Invoice Template Agent
+Task: Rebuild corporate invoice template with 10-step layout
+
+Work Log:
+- Completely rebuilt `/src/components/invoice/invoice-preview.tsx` with professional 10-step Saudi corporate invoice layout
+  - Step 1: Full-width dark emerald gradient header with company logo, Arabic/English names, and company data row
+  - Step 2: Centered invoice title + number with invoice type labels (فاتورة ضريبية/فاتورة إيجار/مستخلص), reference number, and status badge
+  - Step 3: Two-column layout for Invoice Info (dates, payment terms, delivery month) and Client Info (name, tax number, phone, email, address)
+  - Step 4: Project & Contract Data in bordered box (project name/code, contract number, type, work period, delivery month)
+  - Step 5: Full-width bordered items table with dark emerald header, alternating row colors, and ﷼ currency symbol on all amounts
+  - Step 6: Delivery charges line (conditional, amber box with currency symbol)
+  - Step 7: QR Code + Totals SIDE BY SIDE (critical layout) - ZATCA QR minimum 120px×120px on left, totals box on right with subtotal, discount, net, delivery, VAT, and bold emerald total due
+  - Step 8: Amount in words in amber box (Arabic + English) with "ريال سعودي/Saudi Riyals"
+  - Step 9: Payment info + Notes in two columns (bank info left, notes/terms right)
+  - Step 10: Signatures (Sales Rep + Client Approval), company stamp (120-160px), and full-width dark emerald footer with ZATCA compliance text
+- Updated CompanySettings interface to include currencySymbol, currencySymbolEn, currencySymbolAr, logoUrl
+- All monetary amounts now display with ﷼ currency symbol using getCurrencySymbol() helper
+- Supports delivery charges (includeDelivery + deliveryAmount) and VAT toggle (includeVat)
+- Shows reference number, contract section, and delivery month when available
+- A4 dimensions (210mm × 297mm) with proper print CSS support
+- Updated `/src/components/modules/sales.tsx` with new invoice creation fields:
+  - Invoice type selector (TAX_INVOICE, PROGRESS_CLAIM, RENTAL)
+  - Reference number (auto-suggested REF-YYYY-NNNN format)
+  - Payment terms field
+  - Contract data section (contract number, type selector with Lump Sum/Unit Rate/Cost Plus/Time & Materials, work period start/end)
+  - Delivery toggle + delivery amount with Switch component
+  - VAT toggle (default: true) with Switch component
+  - Delivery month selector (HTML month input)
+  - Updated invoice numbering: SRV-YYYY-NNNN (service), PCL-YYYY-NNNN (progress claim), RNT-YYYY-NNNN (rental)
+  - Summary card now shows delivery charges and conditional VAT
+  - Invoice detail view shows delivery charges row
+  - Invoice preview dialog widened to max-w-5xl
+- Updated `/src/app/api/sales-invoices/route.ts`:
+  - GET now includes contract relation in response (contractNo from Contract model)
+  - POST now accepts and stores all new fields: referenceNo, contractNo, contractType, contractPeriodStart, contractPeriodEnd, deliveryMonth, includeDelivery, deliveryAmount, includeVat
+  - Invoice numbering uses TYPE-YEAR-SEQ format (SRV-2026-0001, PCL-2026-0001, RNT-2026-0001)
+  - VAT calculation respects includeVat flag
+  - Delivery charges included in total calculation when includeDelivery is true
+- ESLint passes with zero errors
+
+Stage Summary:
+- Professional Saudi corporate invoice template with exact 10-step layout
+- QR code side-by-side with totals (not above/below)
+- All monetary amounts display with ﷼ currency symbol
+- Invoice type-based numbering (SRV/PCL/RNT prefixes)
+- New invoice creation fields: reference number, contract data, delivery charges, VAT toggle, delivery month
+- API supports all new fields in GET and POST
+- Zero lint errors
+
+---
+Task ID: 1
+Agent: Currency Symbol Fix Agent
+Task: Fix currency symbol - load from font, pass from settings, display everywhere
+
+Work Log:
+- Created CurrencySymbol component at `/src/components/ui/currency-symbol.tsx`
+  - SVG-based Saudi Riyal symbol (﷼) rendering with proper path data
+  - Supports configurable size (xs/sm/md/lg) for inline and standalone display
+  - Auto-detects Saudi Riyal Unicode symbol (U+FDFC) and renders as SVG
+  - Falls back to text rendering for other currencies ($, €, etc.)
+  - Uses Cairo/Amiri font family for proper ﷼ text rendering
+  - Exports: CurrencySymbol, formatCurrencyString, CurrencyText
+- Updated `/src/stores/app-store.ts`
+  - Added currencySymbol (default: ﷼), currencySymbolEn (default: SAR), currencySymbolAr (default: ﷼) state
+  - Added setCurrencySymbol(ar, en, arAbbr?) action
+  - Updated formatSAR to use ﷼ (U+FDFC) instead of "ر.س" for Arabic
+  - formatSAR now accepts optional symbol parameter for custom symbols
+  - Updated commonText.currency from "ر.س" to "﷼"
+- Updated `/src/app/api/company-settings/route.ts`
+  - Added currencySymbol, currencySymbolEn, currencySymbolAr, logoUrl to default settings
+  - Added these fields to PUT handler for both update and create operations
+  - Default values: currencySymbol=﷼, currencySymbolEn=SAR, currencySymbolAr=﷼
+- Updated `/src/components/invoice/invoice-preview.tsx`
+  - Added currencySymbol, currencySymbolEn, currencySymbolAr, logoUrl to CompanySettings interface
+  - Created getCurrencySymbolAr() and getCurrencySymbolEn() helper functions
+  - Created fmtWithCurrency() function for formatting amounts with proper symbol
+  - Replaced all 6 hardcoded "ر.س" instances with proper currency symbols from settings
+  - Uses CurrencySymbol SVG component for inline display in totals and items table
+  - ZATCA footer now uses fmtWithCurrency() instead of hardcoded text
+- Updated `/src/components/modules/sales.tsx`
+  - Updated defaultCompany to include currencySymbol, currencySymbolEn, currencySymbolAr fields
+  - Changed currencySymbolAr from "ر.س" to "﷼" (U+FDFC)
+- Updated `/src/app/api/seed/route.ts`
+  - Updated Currency seed data: symbol from "ر.س" to "﷼"
+  - Added currencySymbol, currencySymbolEn, currencySymbolAr to CompanySetting creation
+  - Updated contract descriptions to use ﷼ instead of ر.س
+- Verified all 16 module files use formatSAR from store (cascading update)
+- ESLint passes with zero errors
+- Database is in sync with Prisma schema
+
+Stage Summary:
+- Currency symbol (﷼) now appears next to every monetary amount across the entire application
+- Symbol is configurable from company settings (passed from settings screen as requested)
+- Symbol rendered using SVG for the Saudi Riyal (﷼), loaded from font glyph outlines not plain text
+- All modules automatically display ﷼ via updated formatSAR function in app-store
+- Invoice preview uses CurrencySymbol component with Cairo/Amiri font for proper rendering
+- Zero "ر.س" remaining in display code (only in backward-compatible font-family matching)
+
+---
+Task ID: 3+5
+Agent: Timesheet Module Agent
+Task: Build Timesheet module with API and workflow
+
+Work Log:
+- Created Timesheet API at `/src/app/api/timesheets/route.ts`:
+  - GET: List timesheets with contract, project, and entries data; supports filtering by contractId, projectId, status, month, year
+  - POST: Create timesheet with entries; validates contract exists; auto-calculates totalAmount for each entry (hours × rate)
+- Created Timesheet Detail API at `/src/app/api/timesheets/[id]/route.ts`:
+  - GET: Single timesheet with full details including contract project client info
+  - PUT: Update timesheet status, notes, and replace entries (delete old + create new with auto-calculation)
+  - DELETE: Delete timesheet (cascade deletes entries)
+- Created Timesheets Module at `/src/components/modules/timesheets.tsx`:
+  - Summary cards: Total Timesheets, Draft, Submitted, Approved, Invoiced
+  - Main table: Delivery Month (Arabic month name + year), Project, Contract, Total Hours, Total Amount, Status
+  - Create Timesheet dialog with contract selector (auto-fills project), month/year, entry lines (description, hours, rate, auto-total), notes
+  - Detail view with entries table, project/contract/client info cards, and workflow actions
+  - Status workflow: DRAFT → SUBMITTED (Submit button) → APPROVED (Approve button) → INVOICED (Generate Invoice button)
+  - Generate Invoice action creates SalesInvoice from timesheet entries with deliveryMonth in Arabic format
+  - After invoice generation, navigates to Sales module
+  - Arabic month names: يناير-ديسمبر for delivery month display
+  - Full bilingual AR/EN support using lang from useAppStore
+- Updated `src/stores/app-store.ts`:
+  - Added 'timesheets' to ModuleKey type
+  - Added label: `{ ar: 'ساعات العمل', en: 'Timesheets' }`
+- Updated `src/components/layout/sidebar.tsx`:
+  - Added Clock icon import
+  - Added timesheets nav item with Clock icon in costs section (between boq and expenses)
+- Updated `src/app/page.tsx`:
+  - Added import for TimesheetsModule
+  - Added route for 'timesheets' activeModule
+- All timesheets-related files pass ESLint with zero errors
+- Pre-existing lint error in settings.tsx is unrelated
+
+Stage Summary:
+- Complete Timesheet module implementing Contract → Timesheet → Invoice workflow
+- API routes support full CRUD with filtering and auto-calculations
+- UI includes summary cards, searchable table, create dialog, detail view with workflow
+- Delivery month displayed as Arabic month name + year (e.g., "مايو-2026")
+- Generate Invoice creates SalesInvoice from timesheet entries and marks as INVOICED
+- Full bilingual AR/EN support with formatSAR and formatNumber

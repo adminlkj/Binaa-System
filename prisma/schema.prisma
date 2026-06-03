@@ -114,6 +114,10 @@ model CompanySetting {
   stamp           String?   // digital stamp image
   defaultVatRate  Float     @default(0.15)
   currency        String    @default("SAR")
+  currencySymbol  String    @default("\uFDFC") // Saudi Riyal Unicode symbol (U+FDFC)
+  currencySymbolEn String   @default("SAR") // English currency text
+  currencySymbolAr String   @default("ر.س") // Arabic currency abbreviation
+  logoUrl         String?   // Alternative name for logo field URL
   invoiceTerms    String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
@@ -294,6 +298,7 @@ model Project {
   equipmentCosts EquipmentCost[]
   equipmentUsages EquipmentUsage[]
   subcontractorInvoices SubcontractorInvoice[]
+  timesheets            Timesheet[]
 }
 
 model Contract {
@@ -315,6 +320,7 @@ model Contract {
   project        Project        @relation(fields: [projectId], references: [id])
   progressClaims ProgressClaim[]
   salesInvoices  SalesInvoice[]
+  timesheets     Timesheet[]
 }
 
 // ============ BOQ (Bill of Quantities) ============
@@ -382,6 +388,15 @@ model SalesInvoice {
   paymentTerms  String?
   amountInWordsAr String?
   amountInWordsEn String?
+  referenceNo      String?   // Reference number (format: REF-2026-1589)
+  contractNo       String?   // Contract number display field
+  contractType     String?   // Contract type (e.g., "Lump Sum", "Unit Rate")
+  contractPeriodStart DateTime? // Contract work period start
+  contractPeriodEnd   DateTime? // Contract work period end
+  deliveryMonth    String?   // Delivery month from timesheet (e.g., "مايو-2026")
+  includeDelivery  Boolean   @default(false) // Whether delivery charges apply
+  deliveryAmount   Float     @default(0) // Delivery charges amount
+  includeVat       Boolean   @default(true) // Whether VAT is included (can be toggled per invoice)
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -482,6 +497,7 @@ model PurchaseInvoice {
   paidAmount       Float         @default(0)
   status           InvoiceStatus @default(DRAFT)
   notes            String?
+  referenceNo      String?   // Reference number
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -781,4 +797,34 @@ model VATReturn {
   filedDate   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+// ============ TIMESHEETS ============
+
+model Timesheet {
+  id          String   @id @default(cuid())
+  contractId  String
+  projectId   String
+  month       Int      // 1-12
+  year        Int      // e.g. 2026
+  status      String   @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, INVOICED
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  project  Project  @relation(fields: [projectId], references: [id])
+  entries  TimesheetEntry[]
+}
+
+model TimesheetEntry {
+  id          String   @id @default(cuid())
+  timesheetId String
+  description String
+  hours       Float
+  rate        Float
+  totalAmount Float
+  createdAt   DateTime @default(now())
+
+  timesheet Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
 }

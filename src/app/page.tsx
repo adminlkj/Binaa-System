@@ -8,6 +8,7 @@ import { DashboardModule } from '@/components/modules/dashboard'
 import { ProjectsModule } from '@/components/modules/projects'
 import { ContractsModule } from '@/components/modules/contracts'
 import { BOQModule } from '@/components/modules/boq'
+import { TimesheetsModule } from '@/components/modules/timesheets'
 import { ProgressClaimsModule } from '@/components/modules/progress-claims'
 import { ClientsModule } from '@/components/modules/clients'
 import { SuppliersModule } from '@/components/modules/suppliers'
@@ -42,6 +43,10 @@ function ModuleRouter() {
 
   if (activeModule === 'boq') {
     return <BOQModule />
+  }
+
+  if (activeModule === 'timesheets') {
+    return <TimesheetsModule />
   }
 
   if (activeModule === 'progress-claims') {

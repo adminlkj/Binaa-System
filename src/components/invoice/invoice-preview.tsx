@@ -5,6 +5,7 @@ import { Printer, Building2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { numberToArabicWords, numberToEnglishWords } from '@/lib/amount-to-words'
 import { generateZATCAQR } from '@/lib/zatca-qr'
+import { CurrencySymbol } from '@/components/ui/currency-symbol'
 
 // ============ Types ============
 interface CompanySettings {
@@ -12,6 +13,7 @@ interface CompanySettings {
   nameAr: string
   nameEn: string
   logo?: string | null
+  logoUrl?: string | null
   commercialReg?: string | null
   taxNumber?: string | null
   address?: string | null
@@ -24,6 +26,9 @@ interface CompanySettings {
   stamp?: string | null
   defaultVatRate: number
   currency: string
+  currencySymbol?: string    // Arabic symbol from settings (default: ﷼)
+  currencySymbolEn?: string  // English symbol from settings (default: SAR)
+  currencySymbolAr?: string  // Arabic abbreviation from settings (default: ﷼)
   invoiceTerms?: string | null
 }
 
@@ -129,6 +134,33 @@ function fmtDateISO(dateStr: string): string {
   return d.toISOString().replace('Z', '')
 }
 
+/**
+ * Get the currency symbol for Arabic display
+ * Uses the symbol from company settings (loaded from font files)
+ */
+function getCurrencySymbolAr(company: CompanySettings): string {
+  return company.currencySymbolAr || company.currencySymbol || '\uFDFC'
+}
+
+/**
+ * Get the currency symbol for English display
+ */
+function getCurrencySymbolEn(company: CompanySettings): string {
+  return company.currencySymbolEn || 'SAR'
+}
+
+/**
+ * Format amount with currency symbol for Arabic display
+ * Returns a string with number + symbol (symbol comes from settings/font)
+ */
+function fmtWithCurrency(num: number, company: CompanySettings, lang: 'ar' | 'en' = 'ar'): string {
+  const formatted = fmt(num)
+  if (lang === 'ar') {
+    return `${formatted} ${getCurrencySymbolAr(company)}`
+  }
+  return `${getCurrencySymbolEn(company)} ${formatted}`
+}
+
 // ============ Component ============
 export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProps) {
   const [qrDataUrl, setQrDataUrl] = useState<string>('')
@@ -136,6 +168,10 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
 
   const status = statusConfig[invoice.status] || statusConfig.DRAFT
   const invType = invoiceTypeLabels[invoice.invoiceType] || invoiceTypeLabels.TAX_INVOICE
+
+  // Get currency symbols from company settings
+  const symbolAr = getCurrencySymbolAr(company)
+  const symbolEn = getCurrencySymbolEn(company)
 
   // Generate ZATCA QR
   useEffect(() => {
@@ -342,8 +378,12 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   <td className="py-2.5 px-3 text-gray-900 font-medium">{item.description}</td>
                   <td className="py-2.5 px-3 text-center text-gray-800 font-mono">{item.quantity.toLocaleString('en-US')}</td>
                   <td className="py-2.5 px-3 text-center text-gray-600">{item.unit || '—'}</td>
-                  <td className="py-2.5 px-3 text-left text-gray-800 font-mono" dir="ltr">{fmt(item.unitPrice)}</td>
-                  <td className="py-2.5 px-3 text-left text-gray-900 font-semibold font-mono" dir="ltr">{fmt(item.totalPrice)}</td>
+                  <td className="py-2.5 px-3 text-left text-gray-800 font-mono" dir="ltr">
+                    {fmt(item.unitPrice)} <CurrencySymbol symbol={symbolAr} size="xs" />
+                  </td>
+                  <td className="py-2.5 px-3 text-left text-gray-900 font-semibold font-mono" dir="ltr">
+                    {fmt(item.totalPrice)} <CurrencySymbol symbol={symbolAr} size="xs" />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -353,7 +393,7 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   الإجمالي
                 </td>
                 <td className="py-2 px-3 text-left font-bold text-gray-900 font-mono" dir="ltr">
-                  {fmt(invoice.subtotal)}
+                  {fmt(invoice.subtotal)} <CurrencySymbol symbol={symbolAr} size="xs" />
                 </td>
               </tr>
             </tfoot>
@@ -366,26 +406,34 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
             <div className="bg-gray-50 px-5 py-3 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-gray-600">إجمالي قبل الضريبة</span>
-                <span className="font-semibold text-gray-800 font-mono" dir="ltr">{fmt(invoice.subtotal)} ر.س</span>
+                <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+                  {fmtWithCurrency(invoice.subtotal, company)}
+                </span>
               </div>
               {invoice.discountAmount > 0 && (
                 <div className="flex justify-between text-rose-600">
                   <span>الخصم {invoice.discountRate > 0 ? `(${(invoice.discountRate * 100).toFixed(0)}%)` : ''}</span>
-                  <span className="font-semibold font-mono" dir="ltr">-{fmt(invoice.discountAmount)} ر.س</span>
+                  <span className="font-semibold font-mono" dir="ltr">-{fmtWithCurrency(invoice.discountAmount, company)}</span>
                 </div>
               )}
               <div className="flex justify-between">
                 <span className="text-gray-600">صافي المبلغ</span>
-                <span className="font-semibold text-gray-800 font-mono" dir="ltr">{fmt(invoice.netAmount || (invoice.subtotal - invoice.discountAmount))} ر.س</span>
+                <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+                  {fmtWithCurrency(invoice.netAmount || (invoice.subtotal - invoice.discountAmount), company)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">ضريبة القيمة المضافة ({(invoice.vatRate * 100).toFixed(0)}%)</span>
-                <span className="font-semibold text-gray-800 font-mono" dir="ltr">{fmt(invoice.vatAmount)} ر.س</span>
+                <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+                  {fmtWithCurrency(invoice.vatAmount, company)}
+                </span>
               </div>
             </div>
             <div className="bg-emerald-600 px-5 py-3 flex justify-between items-center">
               <span className="text-white font-bold text-base">الإجمالي المستحق</span>
-              <span className="text-white font-bold text-lg font-mono" dir="ltr">{fmt(invoice.totalAmount)} ر.س</span>
+              <span className="text-white font-bold text-lg font-mono flex items-center gap-1" dir="ltr">
+                {fmt(invoice.totalAmount)} <CurrencySymbol symbol={symbolAr} size="sm" className="text-white" />
+              </span>
             </div>
           </div>
         </div>
@@ -483,7 +531,7 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                 <span>التاريخ | {fmtDate(invoice.date)}</span>
               </div>
               <div className="text-xs text-gray-400 mt-1">
-                الإجمالي | {fmt(invoice.totalAmount)} ر.س — إجمالي الضريبة | {fmt(invoice.vatAmount)} ر.س
+                الإجمالي | {fmtWithCurrency(invoice.totalAmount, company)} — إجمالي الضريبة | {fmtWithCurrency(invoice.vatAmount, company)}
               </div>
             </div>
           </div>

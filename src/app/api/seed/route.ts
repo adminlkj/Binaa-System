@@ -107,6 +107,9 @@ export async function POST() {
         bankAccountName: 'شركة البناء الحديثة للمقاولات',
         defaultVatRate: 0.15,
         currency: 'SAR',
+        currencySymbol: '\uFDFC',
+        currencySymbolEn: 'SAR',
+        currencySymbolAr: '\uFDFC',
         invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
       }
     })
@@ -136,7 +139,7 @@ export async function POST() {
       data: {
         code: 'SAR',
         name: 'ريال سعودي',
-        symbol: 'ر.س',
+        symbol: '\uFDFC',
         rate: 1.0,
         isActive: true,
       },
@@ -464,7 +467,7 @@ export async function POST() {
           startDate: new Date('2024-03-01'),
           endDate: new Date('2025-06-30'),
           status: 'ACTIVE',
-          description: 'عقد إنشاء مجمع سكني بالملقا - القيمة الإجمالية 4,500,000 ر.س',
+          description: 'عقد إنشاء مجمع سكني بالملقا - القيمة الإجمالية 4,500,000 ﷼',
         },
       }),
       db.contract.create({
@@ -479,7 +482,7 @@ export async function POST() {
           startDate: new Date('2024-06-15'),
           endDate: new Date('2025-03-31'),
           status: 'ACTIVE',
-          description: 'عقد إنشاء مدرسة بحي النسيم - القيمة الإجمالية 2,800,000 ر.س',
+          description: 'عقد إنشاء مدرسة بحي النسيم - القيمة الإجمالية 2,800,000 ﷼',
         },
       }),
       db.contract.create({
@@ -494,7 +497,7 @@ export async function POST() {
           startDate: new Date('2024-09-01'),
           endDate: new Date('2025-01-31'),
           status: 'ACTIVE',
-          description: 'عقد تشطيب فيلا بحي الورود - القيمة الإجمالية 950,000 ر.س',
+          description: 'عقد تشطيب فيلا بحي الورود - القيمة الإجمالية 950,000 ﷼',
         },
       }),
     ])

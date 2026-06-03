@@ -8,9 +8,11 @@ import {
   ShoppingCart,
   TrendingUp,
   Users,
+  Users2,
   ClipboardList,
   HardHat,
   Truck,
+  Warehouse,
   Wallet,
   Package,
   Calculator,
@@ -19,6 +21,7 @@ import {
   Settings,
   Construction,
   Globe,
+  Clock,
 } from 'lucide-react'
 import { useAppStore, type ModuleKey, labels, sectionLabels } from '@/stores/app-store'
 import { cn } from '@/lib/utils'
@@ -39,8 +42,6 @@ const navSections: NavSection[] = [
     key: 'main',
     items: [
       { key: 'dashboard', icon: LayoutDashboard },
-      { key: 'projects', icon: Building2 },
-      { key: 'contracts', icon: FileText },
     ],
   },
   {
@@ -49,41 +50,37 @@ const navSections: NavSection[] = [
       { key: 'sales', icon: Receipt },
       { key: 'purchases', icon: ShoppingCart },
       { key: 'progress-claims', icon: TrendingUp },
+      { key: 'clients', icon: Users2 },
+      { key: 'suppliers', icon: Truck },
       { key: 'subcontractors', icon: Users },
     ],
   },
   {
-    key: 'costs',
+    key: 'projectsCosts',
     items: [
+      { key: 'projects', icon: Building2 },
+      { key: 'contracts', icon: FileText },
+      { key: 'timesheets', icon: Clock },
       { key: 'boq', icon: ClipboardList },
       { key: 'expenses', icon: Receipt },
       { key: 'labor', icon: HardHat },
       { key: 'equipment', icon: Truck },
       { key: 'advances', icon: Wallet },
+      { key: 'petty-cash', icon: Warehouse },
     ],
   },
   {
-    key: 'inventory',
+    key: 'inventoryAccounting',
     items: [
       { key: 'inventory', icon: Package },
-    ],
-  },
-  {
-    key: 'accounting',
-    items: [
       { key: 'accounting', icon: Calculator },
       { key: 'vat', icon: Percent },
     ],
   },
   {
-    key: 'reports',
+    key: 'reportsSettings',
     items: [
       { key: 'reports', icon: BarChart3 },
-    ],
-  },
-  {
-    key: 'settings',
-    items: [
       { key: 'settings', icon: Settings },
     ],
   },

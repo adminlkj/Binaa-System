@@ -13,6 +13,10 @@ const defaultSettings = {
   bankIban: 'SA00 8000 0000 6080 1016 7519',
   bankAccountName: 'شركة البناء الحديثة للمقاولات',
   defaultVatRate: 0.15,
+  currency: 'SAR',
+  currencySymbol: '\uFDFC',     // Saudi Riyal Unicode symbol (﷼)
+  currencySymbolEn: 'SAR',     // English currency text
+  currencySymbolAr: '\uFDFC',  // Arabic currency symbol (﷼)
   invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
 }
 
@@ -34,28 +38,34 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const existing = await db.companySetting.findFirst()
 
+    const updateData = {
+      nameAr: body.nameAr,
+      nameEn: body.nameEn,
+      logo: body.logo ?? null,
+      logoUrl: body.logoUrl ?? null,
+      commercialReg: body.commercialReg ?? null,
+      taxNumber: body.taxNumber ?? null,
+      address: body.address ?? null,
+      phone: body.phone ?? null,
+      email: body.email ?? null,
+      website: body.website ?? null,
+      bankName: body.bankName ?? null,
+      bankIban: body.bankIban ?? null,
+      bankAccountName: body.bankAccountName ?? null,
+      stamp: body.stamp ?? null,
+      defaultVatRate: body.defaultVatRate ?? 0.15,
+      currency: body.currency ?? 'SAR',
+      currencySymbol: body.currencySymbol ?? '\uFDFC',
+      currencySymbolEn: body.currencySymbolEn ?? 'SAR',
+      currencySymbolAr: body.currencySymbolAr ?? '\uFDFC',
+      invoiceTerms: body.invoiceTerms ?? null,
+    }
+
     let settings
     if (existing) {
       settings = await db.companySetting.update({
         where: { id: existing.id },
-        data: {
-          nameAr: body.nameAr,
-          nameEn: body.nameEn,
-          logo: body.logo ?? null,
-          commercialReg: body.commercialReg ?? null,
-          taxNumber: body.taxNumber ?? null,
-          address: body.address ?? null,
-          phone: body.phone ?? null,
-          email: body.email ?? null,
-          website: body.website ?? null,
-          bankName: body.bankName ?? null,
-          bankIban: body.bankIban ?? null,
-          bankAccountName: body.bankAccountName ?? null,
-          stamp: body.stamp ?? null,
-          defaultVatRate: body.defaultVatRate ?? 0.15,
-          currency: body.currency ?? 'SAR',
-          invoiceTerms: body.invoiceTerms ?? null,
-        },
+        data: updateData,
       })
     } else {
       settings = await db.companySetting.create({
@@ -63,6 +73,7 @@ export async function PUT(request: Request) {
           nameAr: body.nameAr || defaultSettings.nameAr,
           nameEn: body.nameEn || defaultSettings.nameEn,
           logo: body.logo ?? null,
+          logoUrl: body.logoUrl ?? null,
           commercialReg: body.commercialReg ?? defaultSettings.commercialReg,
           taxNumber: body.taxNumber ?? defaultSettings.taxNumber,
           address: body.address ?? defaultSettings.address,
@@ -75,6 +86,9 @@ export async function PUT(request: Request) {
           stamp: body.stamp ?? null,
           defaultVatRate: body.defaultVatRate ?? defaultSettings.defaultVatRate,
           currency: body.currency ?? 'SAR',
+          currencySymbol: body.currencySymbol ?? defaultSettings.currencySymbol,
+          currencySymbolEn: body.currencySymbolEn ?? defaultSettings.currencySymbolEn,
+          currencySymbolAr: body.currencySymbolAr ?? defaultSettings.currencySymbolAr,
           invoiceTerms: body.invoiceTerms ?? defaultSettings.invoiceTerms,
         },
       })

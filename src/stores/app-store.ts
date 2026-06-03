@@ -21,6 +21,7 @@ export type ModuleKey =
   | 'vat'
   | 'reports'
   | 'settings'
+  | 'timesheets'
 
 export type Lang = 'ar' | 'en'
 
@@ -28,22 +29,36 @@ interface AppState {
   activeModule: ModuleKey
   sidebarOpen: boolean
   lang: Lang
+  // Currency symbols - configurable from company settings
+  currencySymbol: string    // Arabic symbol (default: ﷼)
+  currencySymbolEn: string  // English symbol (default: SAR)
+  currencySymbolAr: string  // Arabic abbreviation (default: ﷼)
   setActiveModule: (module: ModuleKey) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   setLang: (lang: Lang) => void
   toggleLang: () => void
+  setCurrencySymbol: (ar: string, en: string, arAbbr?: string) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
   activeModule: 'dashboard',
   sidebarOpen: true,
   lang: 'ar',
+  // Default to Saudi Riyal Unicode symbol (U+FDFC) - loaded from font files
+  currencySymbol: '\uFDFC',  // ﷼
+  currencySymbolEn: 'SAR',
+  currencySymbolAr: '\uFDFC', // ﷼
   setActiveModule: (module) => set({ activeModule: module }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setLang: (lang) => set({ lang }),
   toggleLang: () => set((state) => ({ lang: state.lang === 'ar' ? 'en' : 'ar' })),
+  setCurrencySymbol: (ar, en, arAbbr) => set({
+    currencySymbol: ar,
+    currencySymbolEn: en,
+    currencySymbolAr: arAbbr || ar,
+  }),
 }))
 
 // Bilingual labels
@@ -68,23 +83,38 @@ export const labels: Record<ModuleKey, { ar: string; en: string }> = {
   vat: { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
   reports: { ar: 'التقارير', en: 'Reports' },
   settings: { ar: 'الإعدادات', en: 'Settings' },
+  timesheets: { ar: 'ساعات العمل', en: 'Timesheets' },
 }
 
 // Section labels
 export const sectionLabels = {
   main: { ar: 'الرئيسية', en: 'Main' },
   salesPurchases: { ar: 'المبيعات والمشتريات', en: 'Sales & Purchases' },
+  projectsCosts: { ar: 'المشاريع والتكاليف', en: 'Projects & Costs' },
+  inventoryAccounting: { ar: 'المخزون والمحاسبة', en: 'Inventory & Accounting' },
+  reportsSettings: { ar: 'التقارير والإعدادات', en: 'Reports & Settings' },
   costs: { ar: 'التكاليف', en: 'Costs' },
   inventory: { ar: 'المخزون', en: 'Inventory' },
   accounting: { ar: 'المحاسبة', en: 'Accounting' },
   reports: { ar: 'التقارير', en: 'Reports' },
   settings: { ar: 'الإعدادات', en: 'Settings' },
+  timesheets: { ar: 'ساعات العمل', en: 'Timesheets' },
 }
 
-// Format SAR with English digits
-export function formatSAR(value: number, lang: Lang = 'ar'): string {
+// Format SAR with English digits and proper currency symbol
+// The symbol is configurable and comes from company settings
+export function formatSAR(value: number, lang: Lang = 'ar', symbol?: string): string {
   const formatted = value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return lang === 'ar' ? `${formatted} ر.س` : `SAR ${formatted}`
+
+  if (lang === 'ar') {
+    // Arabic: number followed by symbol (RTL - symbol appears on right)
+    // Use the provided symbol or default to ﷼ (Saudi Riyal Unicode U+FDFC)
+    const arSymbol = symbol || '\uFDFC'
+    return `${formatted} ${arSymbol}`
+  }
+  // English: symbol followed by number
+  const enSymbol = symbol || 'SAR'
+  return `${enSymbol} ${formatted}`
 }
 
 // Format number with English digits
@@ -123,5 +153,5 @@ export const commonText = {
   actions: { ar: 'الإجراءات', en: 'Actions' },
   new: { ar: 'جديد', en: 'New' },
   home: { ar: 'الرئيسية', en: 'Home' },
-  currency: { ar: 'ر.س', en: 'SAR' },
+  currency: { ar: '\uFDFC', en: 'SAR' },
 }
