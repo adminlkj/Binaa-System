@@ -33,12 +33,18 @@ interface AppState {
   currencySymbol: string    // Arabic symbol (default: ﷼)
   currencySymbolEn: string  // English symbol (default: SAR)
   currencySymbolAr: string  // Arabic abbreviation (default: ﷼)
+  // Number formatting settings
+  numberFormatMode: 'system' | 'official'  // system = with thousand separators, official = without (ZATCA)
+  useThousandSeparatorsSystem: boolean     // default: true (show separators in system screens)
+  useThousandSeparatorsOfficial: boolean   // default: false (no separators in official docs - ZATCA)
   setActiveModule: (module: ModuleKey) => void
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   setLang: (lang: Lang) => void
   toggleLang: () => void
   setCurrencySymbol: (ar: string, en: string, arAbbr?: string) => void
+  setNumberFormatMode: (mode: 'system' | 'official') => void
+  setThousandSeparatorSettings: (system: boolean, official: boolean) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -49,6 +55,10 @@ export const useAppStore = create<AppState>((set) => ({
   currencySymbol: '\uFDFC',  // ﷼
   currencySymbolEn: 'SAR',
   currencySymbolAr: '\uFDFC', // ﷼
+  // Number formatting - system uses separators, official (ZATCA) does not
+  numberFormatMode: 'system',
+  useThousandSeparatorsSystem: true,
+  useThousandSeparatorsOfficial: false,
   setActiveModule: (module) => set({ activeModule: module }),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
@@ -58,6 +68,11 @@ export const useAppStore = create<AppState>((set) => ({
     currencySymbol: ar,
     currencySymbolEn: en,
     currencySymbolAr: arAbbr || ar,
+  }),
+  setNumberFormatMode: (mode) => set({ numberFormatMode: mode }),
+  setThousandSeparatorSettings: (system, official) => set({
+    useThousandSeparatorsSystem: system,
+    useThousandSeparatorsOfficial: official,
   }),
 }))
 
@@ -103,8 +118,11 @@ export const sectionLabels = {
 
 // Format SAR with English digits and proper currency symbol
 // The symbol is configurable and comes from company settings
-export function formatSAR(value: number, lang: Lang = 'ar', symbol?: string): string {
-  const formatted = value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// mode: 'system' = with thousand separators, 'official' = no separators (ZATCA compliance)
+export function formatSAR(value: number, lang: Lang = 'ar', symbol?: string, mode: 'system' | 'official' = 'system'): string {
+  const formatted = mode === 'official'
+    ? value.toFixed(2)  // No thousand separators for ZATCA
+    : value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
   if (lang === 'ar') {
     // Arabic: number followed by symbol (RTL - symbol appears on right)
@@ -115,6 +133,15 @@ export function formatSAR(value: number, lang: Lang = 'ar', symbol?: string): st
   // English: symbol followed by number
   const enSymbol = symbol || 'SAR'
   return `${enSymbol} ${formatted}`
+}
+
+// Format just the number without symbol
+// mode: 'system' = with thousand separators, 'official' = no separators (ZATCA compliance)
+export function formatAmount(value: number, mode: 'system' | 'official' = 'system'): string {
+  if (mode === 'official') {
+    return value.toFixed(2)
+  }
+  return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 // Format number with English digits

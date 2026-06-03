@@ -18,6 +18,8 @@ const defaultSettings = {
   currencySymbolEn: 'SAR',     // English currency text
   currencySymbolAr: '\uFDFC',  // Arabic currency symbol (﷼)
   invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
+  useThousandSeparatorsSystem: true,
+  useThousandSeparatorsOfficial: false,
 }
 
 export async function GET() {
@@ -59,6 +61,8 @@ export async function PUT(request: Request) {
       currencySymbolEn: body.currencySymbolEn ?? 'SAR',
       currencySymbolAr: body.currencySymbolAr ?? '\uFDFC',
       invoiceTerms: body.invoiceTerms ?? null,
+      useThousandSeparatorsSystem: body.useThousandSeparatorsSystem ?? true,
+      useThousandSeparatorsOfficial: body.useThousandSeparatorsOfficial ?? false,
     }
 
     let settings
@@ -90,6 +94,8 @@ export async function PUT(request: Request) {
           currencySymbolEn: body.currencySymbolEn ?? defaultSettings.currencySymbolEn,
           currencySymbolAr: body.currencySymbolAr ?? defaultSettings.currencySymbolAr,
           invoiceTerms: body.invoiceTerms ?? defaultSettings.invoiceTerms,
+          useThousandSeparatorsSystem: body.useThousandSeparatorsSystem ?? true,
+          useThousandSeparatorsOfficial: body.useThousandSeparatorsOfficial ?? false,
         },
       })
     }

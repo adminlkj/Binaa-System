@@ -56,27 +56,32 @@ export async function POST(request: Request) {
     const vatAmount = includeVat ? (netAmount + deliveryTotal) * vatRate : 0
     const totalAmount = netAmount + deliveryTotal + vatAmount
 
-    // Auto-generate invoice number based on type
-    const prefixMap: Record<string, string> = {
+    // Auto-generate invoice number: TYPE-YEAR-SEQ format (e.g. SRV-2026-0001)
+    const typePrefixMap: Record<string, string> = {
       TAX_INVOICE: 'SRV',
       PROGRESS_CLAIM: 'PCL',
       RENTAL: 'RNT',
     }
-    const prefix = prefixMap[invoiceType] || 'INV'
+    const prefix = typePrefixMap[invoiceType] || 'INV'
     const year = new Date().getFullYear()
+    const yearStr = String(year)
+    const likePattern = `${prefix}-${yearStr}-`
 
     const lastInvoice = await db.salesInvoice.findFirst({
-      where: { invoiceNo: { startsWith: `${prefix}-${year}` } },
+      where: { invoiceNo: { startsWith: likePattern } },
       orderBy: { invoiceNo: 'desc' },
       select: { invoiceNo: true },
     })
 
-    let nextNum = 1
-    if (lastInvoice?.invoiceNo) {
-      const match = lastInvoice.invoiceNo.match(/-(\d+)$/)
-      if (match) nextNum = parseInt(match[1]) + 1
+    let seq = 1
+    if (lastInvoice) {
+      const parts = lastInvoice.invoiceNo.split('-')
+      const parsedSeq = parseInt(parts[2])
+      if (!isNaN(parsedSeq)) {
+        seq = parsedSeq + 1
+      }
     }
-    const invoiceNo = `${prefix}-${year}-${String(nextNum).padStart(4, '0')}`
+    const invoiceNo = `${prefix}-${yearStr}-${String(seq).padStart(4, '0')}`
 
     const invoice = await db.salesInvoice.create({
       data: {

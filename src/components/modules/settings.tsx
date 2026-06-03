@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins, Users,
-  Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon,
+  Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon, Hash,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,8 @@ import {
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAppStore, formatNumber } from '@/stores/app-store'
+import { MoneyDisplay } from '@/components/ui/money-display'
+import { Switch } from '@/components/ui/switch'
 
 // ============ Types ============
 interface Branch { id: string; code: string; name: string; address: string | null; isActive: boolean }
@@ -48,6 +50,8 @@ interface CompanySettings {
   currencySymbol: string
   currencySymbolEn: string
   currencySymbolAr: string
+  useThousandSeparatorsSystem: boolean
+  useThousandSeparatorsOfficial: boolean
   invoiceTerms: string | null
   logoUrl: string | null
   stamp: string | null
@@ -69,7 +73,7 @@ function TableSkeleton({ rows = 3 }: { rows?: number }) {
 
 // ============ Company Settings Tab ============
 function CompanySettingsTab() {
-  const { lang, setCurrencySymbol } = useAppStore()
+  const { lang, setCurrencySymbol, setThousandSeparatorSettings: updateStoreSeparators } = useAppStore()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<CompanySettings>({
     nameAr: '',
@@ -87,6 +91,8 @@ function CompanySettingsTab() {
     currencySymbol: '\uFDFC',
     currencySymbolEn: 'SAR',
     currencySymbolAr: 'ر.س',
+    useThousandSeparatorsSystem: true,
+    useThousandSeparatorsOfficial: false,
     invoiceTerms: '',
     logoUrl: '',
     stamp: '',
@@ -117,16 +123,21 @@ function CompanySettingsTab() {
     currencySymbol: settings.currencySymbol || '\uFDFC',
     currencySymbolEn: settings.currencySymbolEn || 'SAR',
     currencySymbolAr: settings.currencySymbolAr || 'ر.س',
+    useThousandSeparatorsSystem: settings.useThousandSeparatorsSystem ?? true,
+    useThousandSeparatorsOfficial: settings.useThousandSeparatorsOfficial ?? false,
     invoiceTerms: settings.invoiceTerms || '',
     logoUrl: settings.logoUrl || '',
     stamp: settings.stamp || '',
   } : null
 
-  // Sync form when settings load
-  const initialForm = React.useMemo(() => settingsData, [settingsData])
+  // Sync form when settings load (only once)
+  const settingsLoadedRef = React.useRef(false)
   React.useEffect(() => {
-    if (initialForm) setForm(initialForm)
-  }, [initialForm])
+    if (settingsData && !settingsLoadedRef.current) {
+      settingsLoadedRef.current = true
+      setForm(settingsData)
+    }
+  }, [settingsData])
 
   const saveMutation = useMutation({
     mutationFn: (data: CompanySettings) =>
@@ -145,6 +156,11 @@ function CompanySettingsTab() {
         data.currencySymbol || '\uFDFC',
         data.currencySymbolEn || 'SAR',
         data.currencySymbolAr || 'ر.س'
+      )
+      // Update thousand separator settings in global store
+      updateStoreSeparators(
+        data.useThousandSeparatorsSystem ?? true,
+        data.useThousandSeparatorsOfficial ?? false
       )
     },
   })
@@ -425,6 +441,97 @@ function CompanySettingsTab() {
                 <span className="text-sm text-muted-foreground whitespace-nowrap">
                   ({(form.defaultVatRate * 100).toFixed(0)}%)
                 </span>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Number Format / تنسيق المبالغ */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Hash className="size-4 text-emerald-600" />
+            {lang === 'ar' ? 'تنسيق المبالغ' : 'Number Format'}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* System thousand separators toggle */}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">
+                {lang === 'ar' ? 'استخدام فواصل الآلاف داخل النظام' : 'Use thousand separators in system'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {lang === 'ar'
+                  ? 'عرض المبالغ بفواصل الآلاف في شاشات النظام الداخلية'
+                  : 'Display amounts with thousand separators in system screens'}
+              </p>
+            </div>
+            <Switch
+              checked={form.useThousandSeparatorsSystem}
+              onCheckedChange={(checked: boolean) =>
+                setForm(prev => ({ ...prev, useThousandSeparatorsSystem: checked }))
+              }
+            />
+          </div>
+
+          {/* Official documents thousand separators toggle */}
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">
+                {lang === 'ar' ? 'استخدام فواصل الآلاف في المستندات الرسمية' : 'Use thousand separators in official documents'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {lang === 'ar'
+                  ? 'عرض المبالغ بفواصل الآلاف في الفواتير والمستندات الرسمية (فاتورة ضريبية، مستخلصات...)'
+                  : 'Display amounts with thousand separators in invoices and official documents (tax invoices, claims...)'}
+              </p>
+            </div>
+            <Switch
+              checked={form.useThousandSeparatorsOfficial}
+              onCheckedChange={(checked: boolean) =>
+                setForm(prev => ({ ...prev, useThousandSeparatorsOfficial: checked }))
+              }
+            />
+          </div>
+
+          {/* Live Preview */}
+          <div className="rounded-lg border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Eye className="size-4 text-emerald-600" />
+              <span className="text-sm font-semibold text-emerald-700">
+                {lang === 'ar' ? 'معاينة مباشرة' : 'Live Preview'}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-md bg-white p-3 text-center border">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {lang === 'ar' ? 'داخل النظام' : 'Inside System'}
+                </p>
+                <MoneyDisplay
+                  value={42514.85}
+                  mode={form.useThousandSeparatorsSystem ? 'system' : 'official'}
+                  lang={lang}
+                  symbolAr={form.currencySymbol}
+                  symbolEn={form.currencySymbolEn}
+                  size="lg"
+                  bold
+                />
+              </div>
+              <div className="rounded-md bg-white p-3 text-center border">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {lang === 'ar' ? 'المستندات الرسمية' : 'Official Documents'}
+                </p>
+                <MoneyDisplay
+                  value={42514.85}
+                  mode={form.useThousandSeparatorsOfficial ? 'system' : 'official'}
+                  lang={lang}
+                  symbolAr={form.currencySymbol}
+                  symbolEn={form.currencySymbolEn}
+                  size="lg"
+                  bold
+                />
               </div>
             </div>
           </div>

@@ -119,6 +119,8 @@ model CompanySetting {
   currencySymbolAr String   @default("ر.س") // Arabic currency abbreviation
   logoUrl         String?   // Alternative name for logo field URL
   invoiceTerms    String?
+  useThousandSeparatorsSystem  Boolean  @default(true)  // Use thousand separators in system screens
+  useThousandSeparatorsOfficial Boolean @default(false)  // Use thousand separators in official docs (ZATCA: false)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
