@@ -2,52 +2,64 @@
 
 import { Providers } from '@/components/layout/providers'
 import { AppShell } from '@/components/layout/app-shell'
-import { useAppStore } from '@/stores/app-store'
-import { DashboardSection } from '@/components/sections/dashboard-section'
-import { ProjectsSection } from '@/components/sections/projects-section'
-import { ResourcesSection } from '@/components/sections/resources-section'
-import { SupplyChainSection } from '@/components/sections/supply-chain-section'
-import { WarehousesSection } from '@/components/sections/warehouses-section'
-import { RentalSection } from '@/components/sections/rental-section'
-import { FinanceSection } from '@/components/sections/finance-section'
-import { CRMSection } from '@/components/sections/crm-section'
-import { ReportsSection } from '@/components/sections/reports-section'
-import { AdminSection } from '@/components/sections/admin-section'
+import { useAppStore, type NavItem } from '@/stores/app-store'
+import { DashboardModule } from '@/components/modules/dashboard'
+import { SalesModule } from '@/components/modules/sales'
+import { PurchasesModule } from '@/components/modules/purchases'
+import { ProgressClaimsModule as ExtractsModule } from '@/components/modules/progress-claims'
+import { ClientsModule } from '@/components/modules/clients'
+import { SuppliersModule } from '@/components/modules/suppliers'
+import { SubcontractorsModule } from '@/components/modules/subcontractors'
+import { ProjectsModule } from '@/components/modules/projects'
+import { ContractsModule } from '@/components/modules/contracts'
+import { TimesheetsModule } from '@/components/modules/timesheets'
+import { BOQModule } from '@/components/modules/boq'
+import { ExpensesModule } from '@/components/modules/expenses'
+import { LaborModule } from '@/components/modules/labor'
+import { EquipmentModule } from '@/components/modules/equipment'
+import { AdvancesModule } from '@/components/modules/advances'
+import { PettyCashModule } from '@/components/modules/petty-cash'
+import { InventoryModule } from '@/components/modules/inventory'
+import { AccountingModule } from '@/components/modules/accounting'
+import { VATModule } from '@/components/modules/vat'
+import { ReportsModule } from '@/components/modules/reports'
+import { SettingsModule } from '@/components/modules/settings'
 
-function SectionRouter() {
-  const { activeSection } = useAppStore()
+const moduleMap: Record<NavItem, React.ComponentType> = {
+  'dashboard': DashboardModule,
+  'sales': SalesModule,
+  'purchases': PurchasesModule,
+  'extracts': ExtractsModule,
+  'clients': ClientsModule,
+  'suppliers': SuppliersModule,
+  'subcontractors': SubcontractorsModule,
+  'projects': ProjectsModule,
+  'contracts': ContractsModule,
+  'timesheets': TimesheetsModule,
+  'boq': BOQModule,
+  'expenses': ExpensesModule,
+  'labor-costs': LaborModule,
+  'equipment': EquipmentModule,
+  'advances': AdvancesModule,
+  'petty-cash': PettyCashModule,
+  'inventory': InventoryModule,
+  'accounting': AccountingModule,
+  'vat': VATModule,
+  'reports': ReportsModule,
+  'settings': SettingsModule,
+}
 
-  switch (activeSection) {
-    case 'dashboard':
-      return <DashboardSection />
-    case 'projects':
-      return <ProjectsSection />
-    case 'resources':
-      return <ResourcesSection />
-    case 'supply-chain':
-      return <SupplyChainSection />
-    case 'warehouses':
-      return <WarehousesSection />
-    case 'rental':
-      return <RentalSection />
-    case 'finance':
-      return <FinanceSection />
-    case 'crm':
-      return <CRMSection />
-    case 'reports':
-      return <ReportsSection />
-    case 'admin':
-      return <AdminSection />
-    default:
-      return <DashboardSection />
-  }
+function ModuleRouter() {
+  const { activeItem } = useAppStore()
+  const Module = moduleMap[activeItem] || DashboardModule
+  return <Module />
 }
 
 export default function Home() {
   return (
     <Providers>
       <AppShell>
-        <SectionRouter />
+        <ModuleRouter />
       </AppShell>
     </Providers>
   )

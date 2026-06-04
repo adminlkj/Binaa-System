@@ -19,7 +19,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { useAppStore, formatSAR, formatDate, formatNumber } from '@/stores/app-store'
+import { ModuleLayout } from '@/components/shared/module-layout'
+import { MoneyDisplay } from '@/components/ui/money-display'
+import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
 
 // ============ Types ============
 interface Employee { id: string; code: string; name: string; position: string | null }
@@ -30,6 +32,9 @@ interface Advance {
   employee: Employee
 }
 
+// ============ Bilingual Helpers ============
+const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
+
 // ============ Status Helpers ============
 const statusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
   PENDING: { label: { ar: 'غير مسددة', en: 'Pending' }, color: 'text-orange-700', bg: 'bg-orange-100' },
@@ -38,14 +43,14 @@ const statusConfig: Record<string, { label: { ar: string; en: string }; color: s
   CANCELLED: { label: { ar: 'ملغاة', en: 'Cancelled' }, color: 'text-gray-700', bg: 'bg-gray-100' },
 }
 
-function StatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+function AdvanceStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
   const cfg = statusConfig[status] || statusConfig.PENDING
   return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
 }
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 p-4">
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-4 p-3">
           <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
@@ -88,14 +93,14 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{lang === 'ar' ? 'سلفة جديدة' : 'New Advance'}</DialogTitle>
-          <DialogDescription>{lang === 'ar' ? 'إضافة سلفة لموظف' : 'Add employee advance'}</DialogDescription>
+          <DialogTitle>{t(lang, 'سلفة جديدة', 'New Advance')}</DialogTitle>
+          <DialogDescription>{t(lang, 'إضافة سلفة لموظف', 'Add employee advance')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label>{lang === 'ar' ? 'الموظف *' : 'Employee *'}</Label>
+            <Label>{t(lang, 'الموظف *', 'Employee *')}</Label>
             <Select value={employeeId} onValueChange={setEmployeeId}>
-              <SelectTrigger><SelectValue placeholder={lang === 'ar' ? 'اختر الموظف' : 'Select employee'} /></SelectTrigger>
+              <SelectTrigger><SelectValue placeholder={t(lang, 'اختر الموظف', 'Select employee')} /></SelectTrigger>
               <SelectContent>
                 {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
               </SelectContent>
@@ -103,22 +108,22 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'المبلغ *' : 'Amount *'}</Label>
+              <Label>{t(lang, 'المبلغ *', 'Amount *')}</Label>
               <Input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required />
             </div>
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'التاريخ *' : 'Date *'}</Label>
+              <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>{lang === 'ar' ? 'الوصف' : 'Description'}</Label>
-            <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={lang === 'ar' ? 'وصف السلفة' : 'Advance description'} />
+            <Label>{t(lang, 'الوصف', 'Description')}</Label>
+            <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف السلفة', 'Advance description')} />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
             <Button type="submit" disabled={createMutation.isPending || !employeeId || !amount || !date} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? (lang === 'ar' ? 'جاري الإنشاء...' : 'Creating...') : (lang === 'ar' ? 'إضافة' : 'Add')}
+              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إضافة', 'Add')}
             </Button>
           </DialogFooter>
         </form>
@@ -161,30 +166,30 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{lang === 'ar' ? 'تسوية السلفة' : 'Settle Advance'}</DialogTitle>
+          <DialogTitle>{t(lang, 'تسوية السلفة', 'Settle Advance')}</DialogTitle>
           <DialogDescription>
-            {advance.employee.name} — {lang === 'ar' ? 'المتبقي' : 'Remaining'}: {formatSAR(remaining, lang)}
+            {advance.employee.name} — {t(lang, 'المتبقي', 'Remaining')}: <MoneyDisplay value={remaining} lang={lang} bold size="sm" inline />
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'إجمالي السلفة' : 'Total Advance'}</Label>
-              <p className="text-sm font-semibold">{formatSAR(advance.amount, lang)}</p>
+              <Label>{t(lang, 'إجمالي السلفة', 'Total Advance')}</Label>
+              <MoneyDisplay value={advance.amount} lang={lang} bold size="md" />
             </div>
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'المسدد' : 'Settled'}</Label>
-              <p className="text-sm font-semibold text-emerald-700">{formatSAR(advance.settledAmount, lang)}</p>
+              <Label>{t(lang, 'المسدد', 'Settled')}</Label>
+              <MoneyDisplay value={advance.settledAmount} lang={lang} bold size="md" className="text-emerald-700" />
             </div>
           </div>
           <div className="space-y-2">
-            <Label>{lang === 'ar' ? 'مبلغ التسوية *' : 'Settlement Amount *'}</Label>
+            <Label>{t(lang, 'مبلغ التسوية *', 'Settlement Amount *')}</Label>
             <Input type="number" min="0.01" max={remaining} step="0.01" value={settleAmount} onChange={e => setSettleAmount(e.target.value)} dir="ltr" required />
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
             <Button type="submit" disabled={settleMutation.isPending || !settleAmount} className="bg-emerald-600 hover:bg-emerald-700">
-              {settleMutation.isPending ? (lang === 'ar' ? 'جاري التسوية...' : 'Settling...') : (lang === 'ar' ? 'تسوية' : 'Settle')}
+              {settleMutation.isPending ? t(lang, 'جاري التسوية...', 'Settling...') : t(lang, 'تسوية', 'Settle')}
             </Button>
           </DialogFooter>
         </form>
@@ -222,33 +227,30 @@ export function AdvancesModule() {
 
   const filtered = advances.filter(a => {
     const matchStatus = statusFilter === 'all' || a.status === statusFilter
-    const matchSearch = !search || a.employee.name.toLowerCase().includes(search.toLowerCase())
+    const matchSearch = !search || a.employee.name.toLowerCase().includes(search.toLowerCase()) || (a.description || '').toLowerCase().includes(search.toLowerCase())
     return matchStatus && matchSearch
   })
 
   // Summary
   const totalAdvances = advances.reduce((s, a) => s + a.amount, 0)
+  const totalSettled = advances.reduce((s, a) => s + a.settledAmount, 0)
   const pendingAmount = advances.filter(a => a.status === 'PENDING').reduce((s, a) => s + (a.amount - a.settledAmount), 0)
-  const partiallySettled = advances.filter(a => a.status === 'PARTIALLY_SETTLED').reduce((s, a) => s + (a.amount - a.settledAmount), 0)
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{lang === 'ar' ? 'العهد والسلف' : 'Advances'}</h1>
-          <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إدارة سلف الموظفين' : 'Manage employee advances'}</p>
-        </div>
+    <ModuleLayout
+      title={{ ar: 'العهد والسلف', en: 'Advances' }}
+      subtitle={{ ar: 'إدارة سلف الموظفين', en: 'Manage employee advances' }}
+      actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => refetch()} title={lang === 'ar' ? 'تحديث' : 'Refresh'}>
+          <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-            <Plus className="size-4" /> {lang === 'ar' ? 'سلفة جديدة' : 'New Advance'}
+            <Plus className="size-4" /> {t(lang, 'سلفة جديدة', 'New Advance')}
           </Button>
         </div>
-      </div>
-
+      }
+    >
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="bg-emerald-50 border-emerald-200">
@@ -257,8 +259,8 @@ export function AdvancesModule() {
               <HandCoins className="size-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-sm text-emerald-600">{lang === 'ar' ? 'إجمالي السلف' : 'Total Advances'}</p>
-              <p className="text-xl font-bold text-emerald-700">{formatSAR(totalAdvances, lang)}</p>
+              <p className="text-sm text-emerald-600">{t(lang, 'إجمالي السلف', 'Total Advances')}</p>
+              <MoneyDisplay value={totalAdvances} lang={lang} bold size="lg" className="text-emerald-700" />
             </div>
           </CardContent>
         </Card>
@@ -268,19 +270,19 @@ export function AdvancesModule() {
               <HandCoins className="size-5 text-orange-600" />
             </div>
             <div>
-              <p className="text-sm text-orange-600">{lang === 'ar' ? 'غير المسددة' : 'Pending'}</p>
-              <p className="text-xl font-bold text-orange-700">{formatSAR(pendingAmount, lang)}</p>
+              <p className="text-sm text-orange-600">{t(lang, 'غير المسددة', 'Pending')}</p>
+              <MoneyDisplay value={pendingAmount} lang={lang} bold size="lg" className="text-orange-700" />
             </div>
           </CardContent>
         </Card>
         <Card className="bg-blue-50 border-blue-200">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="size-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <HandCoins className="size-5 text-blue-600" />
+              <CheckCircle className="size-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm text-blue-600">{lang === 'ar' ? 'مسددة جزئياً' : 'Partially Settled'}</p>
-              <p className="text-xl font-bold text-blue-700">{formatSAR(partiallySettled, lang)}</p>
+              <p className="text-sm text-blue-600">{t(lang, 'المسدد', 'Settled')}</p>
+              <MoneyDisplay value={totalSettled} lang={lang} bold size="lg" className="text-blue-700" />
             </div>
           </CardContent>
         </Card>
@@ -292,12 +294,12 @@ export function AdvancesModule() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input placeholder={lang === 'ar' ? 'بحث باسم الموظف...' : 'Search by employee name...'} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+              <Input placeholder={t(lang, 'بحث باسم الموظف أو الوصف...', 'Search by employee or description...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={lang === 'ar' ? 'كل الحالات' : 'All Statuses'} /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={t(lang, 'كل الحالات', 'All Statuses')} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{lang === 'ar' ? 'كل الحالات' : 'All Statuses'}</SelectItem>
+                <SelectItem value="all">{t(lang, 'كل الحالات', 'All Statuses')}</SelectItem>
                 {Object.entries(statusConfig).map(([k, v]) => (
                   <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
                 ))}
@@ -311,18 +313,18 @@ export function AdvancesModule() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6"><TableSkeleton /></div>
+            <TableSkeleton />
           ) : isError ? (
             <div className="flex flex-col items-center gap-3 py-10">
-              <p className="text-rose-600">{lang === 'ar' ? 'حدث خطأ' : 'An error occurred'}</p>
-              <Button variant="outline" onClick={() => refetch()}>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</Button>
+              <p className="text-rose-600">{t(lang, 'حدث خطأ', 'An error occurred')}</p>
+              <Button variant="outline" onClick={() => refetch()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10">
               <HandCoins className="size-12 text-gray-300" />
-              <p className="text-muted-foreground">{lang === 'ar' ? 'لا توجد سلف' : 'No advances found'}</p>
+              <p className="text-muted-foreground">{t(lang, 'لا توجد سلف', 'No advances found')}</p>
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-                <Plus className="size-4 mr-1" /> {lang === 'ar' ? 'إضافة سلفة' : 'Add Advance'}
+                <Plus className="size-4 mr-1" /> {t(lang, 'إضافة سلفة', 'Add Advance')}
               </Button>
             </div>
           ) : (
@@ -330,30 +332,32 @@ export function AdvancesModule() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-right">{lang === 'ar' ? 'الموظف' : 'Employee'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'المبلغ' : 'Amount'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'المسدد' : 'Settled'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'المتبقي' : 'Remaining'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'التاريخ' : 'Date'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'الحالة' : 'Status'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'الإجراءات' : 'Actions'}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الموظف', 'Employee')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'المبلغ', 'Amount')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'المسدد', 'Settled')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'المتبقي', 'Remaining')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الحالة', 'Status')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الإجراءات', 'Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map(a => (
                     <TableRow key={a.id}>
                       <TableCell className="font-medium">{a.employee.name}</TableCell>
-                      <TableCell>{formatSAR(a.amount, lang)}</TableCell>
-                      <TableCell className="text-emerald-700">{formatSAR(a.settledAmount, lang)}</TableCell>
-                      <TableCell className="font-semibold text-rose-700">{formatSAR(a.amount - a.settledAmount, lang)}</TableCell>
+                      <TableCell><MoneyDisplay value={a.amount} lang={lang} size="sm" /></TableCell>
+                      <TableCell><MoneyDisplay value={a.settledAmount} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+                      <TableCell><MoneyDisplay value={a.amount - a.settledAmount} lang={lang} bold size="sm" className="text-rose-700" /></TableCell>
                       <TableCell>{formatDate(a.date, lang)}</TableCell>
-                      <TableCell><StatusBadge status={a.status} lang={lang} /></TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{a.description || '—'}</TableCell>
+                      <TableCell><AdvanceStatusBadge status={a.status} lang={lang} /></TableCell>
                       <TableCell>
                         {a.status !== 'SETTLED' && a.status !== 'CANCELLED' && (
                           <Button size="sm" variant="outline" className="gap-1 text-emerald-600 hover:text-emerald-700"
                             onClick={() => { setSelectedAdvance(a); setSettleDialogOpen(true) }}>
                             <CheckCircle className="size-3.5" />
-                            {lang === 'ar' ? 'تسوية' : 'Settle'}
+                            {t(lang, 'تسوية', 'Settle')}
                           </Button>
                         )}
                       </TableCell>
@@ -368,6 +372,6 @@ export function AdvancesModule() {
 
       <NewAdvanceDialog open={dialogOpen} onOpenChange={setDialogOpen} employees={employees} />
       <SettleAdvanceDialog open={settleDialogOpen} onOpenChange={setSettleDialogOpen} advance={selectedAdvance} />
-    </div>
+    </ModuleLayout>
   )
 }

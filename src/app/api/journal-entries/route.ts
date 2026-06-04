@@ -1,11 +1,11 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { createJournalEntry } from '@/lib/accounting/engine'
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
+    const sourceType = searchParams.get('sourceType')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
     const page = parseInt(searchParams.get('page') || '1')
@@ -15,6 +15,7 @@ export async function GET(request: Request) {
     // Build where clause
     const where: Record<string, unknown> = {}
     if (status) where.status = status
+    if (sourceType) where.sourceType = sourceType
     if (startDate || endDate) {
       const dateFilter: Record<string, Date> = {}
       if (startDate) dateFilter.gte = new Date(startDate)
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
       where: Object.keys(where).length > 0 ? where : undefined,
     })
 
-    // Fetch paginated entries
+    // Fetch paginated entries with lines including account details
     const entries = await db.journalEntry.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
       include: {
@@ -57,8 +58,16 @@ export async function GET(request: Request) {
       return { ...entry, totalDebit, totalCredit }
     })
 
+    // Get distinct source types for filtering
+    const sourceTypes = await db.journalEntry.findMany({
+      where: { sourceType: { not: null } },
+      select: { sourceType: true },
+      distinct: ['sourceType'],
+    })
+
     return NextResponse.json({
       entries: enriched,
+      sourceTypes: sourceTypes.map(st => st.sourceType).filter(Boolean),
       pagination: {
         page,
         pageSize,
@@ -75,133 +84,11 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
-  try {
-    const body = await request.json()
-
-    // Validate required fields
-    if (!body.date) {
-      return NextResponse.json(
-        { error: 'تاريخ القيد مطلوب' },
-        { status: 400 }
-      )
-    }
-
-    if (!body.lines || !Array.isArray(body.lines) || body.lines.length < 2) {
-      return NextResponse.json(
-        { error: 'القيد يجب أن يحتوي على سطرين على الأقل' },
-        { status: 400 }
-      )
-    }
-
-    // Validate each line has accountId
-    for (const line of body.lines as { accountId?: string; debit: number; credit: number }[]) {
-      if (!line.accountId) {
-        return NextResponse.json(
-          { error: 'كل سطر يجب أن يكون مرتبطاً بحساب' },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Validate balanced entry: total debits must equal total credits
-    const totalDebit = (body.lines as { debit: number; credit: number }[]).reduce(
-      (s, l) => s + (parseFloat(String(l.debit)) || 0),
-      0
-    )
-    const totalCredit = (body.lines as { debit: number; credit: number }[]).reduce(
-      (s, l) => s + (parseFloat(String(l.credit)) || 0),
-      0
-    )
-
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      return NextResponse.json(
-        {
-          error: 'القيد غير متوازن - مجموع المدين يجب أن يساوي مجموع الدائن',
-          totalDebit,
-          totalCredit,
-          difference: Math.abs(totalDebit - totalCredit),
-        },
-        { status: 400 }
-      )
-    }
-
-    // Validate that at least some amount exists
-    if (totalDebit === 0 && totalCredit === 0) {
-      return NextResponse.json(
-        { error: 'القيد لا يمكن أن يكون بصفر' },
-        { status: 400 }
-      )
-    }
-
-    // Validate all account IDs exist
-    const accountIds = (body.lines as { accountId: string }[]).map((l) => l.accountId)
-    const existingAccounts = await db.account.findMany({
-      where: { id: { in: accountIds } },
-      select: { id: true },
-    })
-    const existingIds = new Set(existingAccounts.map((a) => a.id))
-    const missingIds = accountIds.filter((id) => !existingIds.has(id))
-    if (missingIds.length > 0) {
-      return NextResponse.json(
-        { error: `حسابات غير موجودة: ${missingIds.join(', ')}` },
-        { status: 400 }
-      )
-    }
-
-    // Auto-generate entry number
-    const lastEntry = await db.journalEntry.findFirst({
-      orderBy: { entryNo: 'desc' },
-      select: { entryNo: true },
-    })
-
-    let nextNum = 1
-    if (lastEntry?.entryNo) {
-      const match = lastEntry.entryNo.match(/JE-(\d+)/)
-      if (match) nextNum = parseInt(match[1]) + 1
-    }
-    const entryNo = `JE-${String(nextNum).padStart(4, '0')}`
-
-    const entry = await db.journalEntry.create({
-      data: {
-        entryNo,
-        date: new Date(body.date),
-        description: body.description || null,
-        status: body.status || 'DRAFT',
-        lines: {
-          create: (body.lines as { accountId: string; debit: number; credit: number; costCenterId?: string; description?: string }[]).map(
-            (line) => ({
-              accountId: line.accountId,
-              debit: parseFloat(String(line.debit)) || 0,
-              credit: parseFloat(String(line.credit)) || 0,
-              costCenterId: line.costCenterId || null,
-              description: line.description || null,
-            })
-          ),
-        },
-      },
-      include: {
-        lines: {
-          include: {
-            account: { select: { id: true, code: true, name: true, nameAr: true } },
-            costCenter: { select: { id: true, code: true, name: true } },
-          },
-        },
-      },
-    })
-
-    const enriched = {
-      ...entry,
-      totalDebit: entry.lines.reduce((s, l) => s + l.debit, 0),
-      totalCredit: entry.lines.reduce((s, l) => s + l.credit, 0),
-    }
-
-    return NextResponse.json(enriched, { status: 201 })
-  } catch (error) {
-    console.error('Error creating journal entry:', error)
-    return NextResponse.json(
-      { error: 'فشل في إنشاء القيد المحاسبي' },
-      { status: 500 }
-    )
-  }
+// POST is disabled - journal entries are created automatically by business transactions
+// No manual journal entries allowed
+export async function POST() {
+  return NextResponse.json(
+    { error: 'لا يمكن إنشاء قيود يدوية - القيود المحاسبية تُنشأ تلقائياً من العمليات التجارية' },
+    { status: 403 }
+  )
 }

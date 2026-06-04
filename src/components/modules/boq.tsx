@@ -19,8 +19,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { useAppStore, formatSAR as storeFormatSAR, formatNumber, commonText } from '@/stores/app-store'
+import { ModuleLayout } from '@/components/shared/module-layout'
+import { MoneyDisplay } from '@/components/ui/money-display'
+import { useAppStore, formatNumber } from '@/stores/app-store'
 
 // ============ Types ============
 interface ProjectSummary { id: string; name: string; code: string }
@@ -31,11 +32,8 @@ interface BOQItemData {
   project: ProjectSummary
 }
 
-// formatSAR, formatNumber imported from store
-
-function formatSAR(value: number, lang: 'ar' | 'en' = 'ar'): string {
-  return storeFormatSAR(value, lang)
-}
+// ============ Bilingual Helpers ============
+const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
 
 // ============ Skeleton ============
 function TableSkeleton() {
@@ -64,6 +62,7 @@ function BOQFormDialog({
   open: boolean; onOpenChange: (open: boolean) => void
   projects: ProjectSummary[]; preselectedProjectId?: string
 }) {
+  const { lang } = useAppStore()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<BOQFormData>({
     projectId: '', code: '', description: '', unit: '',
@@ -100,60 +99,64 @@ function BOQFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>بند جديد في جدول الكميات</DialogTitle>
-          <DialogDescription>إضافة بند جديد لجدول الكميات</DialogDescription>
+          <DialogTitle>{t(lang, 'بند جديد في جدول الكميات', 'New BOQ Item')}</DialogTitle>
+          <DialogDescription>{t(lang, 'إضافة بند جديد لجدول الكميات', 'Add a new item to bill of quantities')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>المشروع *</Label>
+              <Label>{t(lang, 'المشروع *', 'Project *')}</Label>
               <Select value={form.projectId} onValueChange={v => setForm(f => ({ ...f, projectId: v }))}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="اختر المشروع" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المشروع', 'Select project')} /></SelectTrigger>
                 <SelectContent>
                   {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="code">كود البند *</Label>
-              <Input id="code" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="BOQ-001" required />
+              <Label>{t(lang, 'كود البند *', 'Code *')}</Label>
+              <Input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="BOQ-001" required />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="description">وصف البند *</Label>
-              <Input id="description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="وصف البند" required />
+              <Label>{t(lang, 'وصف البند *', 'Description *')}</Label>
+              <Input value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder={t(lang, 'وصف البند', 'Item description')} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="category">التصنيف</Label>
-              <Input id="category" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder="أعمال خرسانية" />
+              <Label>{t(lang, 'التصنيف', 'Category')}</Label>
+              <Input value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} placeholder={t(lang, 'أعمال خرسانية', 'Concrete works')} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="unit">الوحدة *</Label>
-              <Input id="unit" value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} placeholder="م² / م³ / طن" required />
+              <Label>{t(lang, 'الوحدة *', 'Unit *')}</Label>
+              <Input value={form.unit} onChange={e => setForm(f => ({ ...f, unit: e.target.value }))} placeholder={t(lang, 'م² / م³ / طن', 'm² / m³ / ton')} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="quantity">الكمية *</Label>
-              <Input id="quantity" type="number" step="0.01" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="0" required />
+              <Label>{t(lang, 'الكمية *', 'Quantity *')}</Label>
+              <Input type="number" step="0.01" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} placeholder="0" dir="ltr" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="unitPrice">سعر الوحدة *</Label>
-              <Input id="unitPrice" type="number" step="0.01" value={form.unitPrice} onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))} placeholder="0.00" required />
+              <Label>{t(lang, 'سعر الوحدة *', 'Unit Price *')}</Label>
+              <Input type="number" step="0.01" value={form.unitPrice} onChange={e => setForm(f => ({ ...f, unitPrice: e.target.value }))} placeholder="0.00" dir="ltr" required />
             </div>
           </div>
 
           {/* Total Preview */}
           {total > 0 && (
             <Card className="bg-emerald-50 border-emerald-200">
-              <CardContent className="p-3 text-center">
-                <p className="text-sm text-muted-foreground">الإجمالي = {formatNumber(qty)} × {formatSAR(price, 'ar')}</p>
-                <p className="text-lg font-bold text-emerald-700">{formatSAR(total, 'ar')}</p>
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-emerald-600">
+                    {formatNumber(qty)} × <MoneyDisplay value={price} lang={lang} size="xs" inline /> = {t(lang, 'الإجمالي', 'Total')}
+                  </span>
+                  <MoneyDisplay value={total} lang={lang} bold size="lg" className="text-emerald-700" />
+                </div>
               </CardContent>
             </Card>
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
             <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? 'جاري الحفظ...' : 'إنشاء'}
+              {createMutation.isPending ? t(lang, 'جاري الحفظ...', 'Saving...') : t(lang, 'إنشاء', 'Create')}
             </Button>
           </DialogFooter>
         </form>
@@ -175,7 +178,7 @@ export function BOQModule() {
     queryFn: async () => {
       const url = selectedProjectId === 'all' ? '/api/boq' : `/api/boq?projectId=${selectedProjectId}`
       const res = await fetch(url)
-      if (!res.ok) throw new Error('Failed to fetch')
+      if (!res.ok) throw new Error()
       return res.json()
     },
   })
@@ -201,43 +204,40 @@ export function BOQModule() {
   const grouped = useMemo(() => {
     const groups: Record<string, BOQItemData[]> = {}
     filtered.forEach(item => {
-      const cat = item.category || 'غير مصنف'
+      const cat = item.category || t(lang, 'غير مصنف', 'Uncategorized')
       if (!groups[cat]) groups[cat] = []
       groups[cat].push(item)
     })
     return groups
-  }, [filtered])
+  }, [filtered, lang])
 
   const grandTotal = filtered.reduce((s, i) => s + i.totalPrice, 0)
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{lang === 'ar' ? 'جدول الكميات' : 'Bill of Quantities'}</h1>
-          <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'BOQ - بنود الأعمال والكميات' : 'BOQ - Work items and quantities'}</p>
-        </div>
+    <ModuleLayout
+      title={{ ar: 'جدول الكميات', en: 'Bill of Quantities' }}
+      subtitle={{ ar: 'BOQ - بنود الأعمال والكميات', en: 'BOQ - Work items and quantities' }}
+      actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => refetch()} title="تحديث">
+          <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-            <Plus className="size-4" /> بند جديد
+            <Plus className="size-4" /> {t(lang, 'بند جديد', 'New Item')}
           </Button>
         </div>
-      </div>
-
+      }
+    >
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
               <SelectTrigger className="w-full sm:w-64">
-                <SelectValue placeholder="كل المشاريع" />
+                <SelectValue placeholder={t(lang, 'كل المشاريع', 'All Projects')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">كل المشاريع</SelectItem>
+                <SelectItem value="all">{t(lang, 'كل المشاريع', 'All Projects')}</SelectItem>
                 {projects.map(p => (
                   <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                 ))}
@@ -245,7 +245,7 @@ export function BOQModule() {
             </Select>
             <div className="relative flex-1">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input placeholder="بحث بالكود أو الوصف أو التصنيف..." value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+              <Input placeholder={t(lang, 'بحث بالكود أو الوصف أو التصنيف...', 'Search by code, description, or category...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
             </div>
           </div>
         </CardContent>
@@ -255,20 +255,20 @@ export function BOQModule() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="bg-emerald-50 border-emerald-200">
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">إجمالي البنود</p>
+            <p className="text-xs text-muted-foreground">{t(lang, 'إجمالي البنود', 'Total Items')}</p>
             <p className="text-lg font-bold text-emerald-700">{filtered.length}</p>
           </CardContent>
         </Card>
         <Card className="bg-teal-50 border-teal-200">
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">عدد التصنيفات</p>
+            <p className="text-xs text-muted-foreground">{t(lang, 'عدد التصنيفات', 'Categories')}</p>
             <p className="text-lg font-bold text-teal-700">{Object.keys(grouped).length}</p>
           </CardContent>
         </Card>
         <Card className="bg-amber-50 border-amber-200">
           <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">إجمالي القيمة</p>
-            <p className="text-lg font-bold text-amber-700">{formatSAR(grandTotal, lang)}</p>
+            <p className="text-xs text-muted-foreground">{t(lang, 'إجمالي القيمة', 'Total Value')}</p>
+            <MoneyDisplay value={grandTotal} lang={lang} bold size="lg" className="text-amber-700" />
           </CardContent>
         </Card>
       </div>
@@ -280,15 +280,15 @@ export function BOQModule() {
             <TableSkeleton />
           ) : isError ? (
             <div className="flex flex-col items-center gap-3 py-10">
-              <p className="text-rose-600">حدث خطأ أثناء تحميل البيانات</p>
-              <Button variant="outline" onClick={() => refetch()}>إعادة المحاولة</Button>
+              <p className="text-rose-600">{t(lang, 'حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+              <Button variant="outline" onClick={() => refetch()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10">
               <ClipboardList className="size-12 text-gray-300" />
-              <p className="text-muted-foreground">لا توجد بنود في جدول الكميات</p>
+              <p className="text-muted-foreground">{t(lang, 'لا توجد بنود في جدول الكميات', 'No BOQ items found')}</p>
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-                <Plus className="size-4 mr-1" /> إضافة بند
+                <Plus className="size-4 mr-1" /> {t(lang, 'إضافة بند', 'Add Item')}
               </Button>
             </div>
           ) : (
@@ -296,13 +296,13 @@ export function BOQModule() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-right">الكود</TableHead>
-                    <TableHead className="text-right">الوصف</TableHead>
-                    <TableHead className="text-right">الوحدة</TableHead>
-                    <TableHead className="text-right">الكمية</TableHead>
-                    <TableHead className="text-right">سعر الوحدة</TableHead>
-                    <TableHead className="text-right">الإجمالي</TableHead>
-                    {selectedProjectId === 'all' && <TableHead className="text-right">المشروع</TableHead>}
+                    <TableHead className="text-right">{t(lang, 'الكود', 'Code')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الوحدة', 'Unit')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الكمية', 'Quantity')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'سعر الوحدة', 'Unit Price')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+                    {selectedProjectId === 'all' && <TableHead className="text-right">{t(lang, 'المشروع', 'Project')}</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -315,7 +315,7 @@ export function BOQModule() {
                             <div className="flex items-center justify-between">
                               <span>{category}</span>
                               <Badge variant="outline" className="bg-emerald-100 text-emerald-700 border-emerald-200">
-                                {formatSAR(categoryTotal, lang)}
+                                <MoneyDisplay value={categoryTotal} lang={lang} size="xs" inline />
                               </Badge>
                             </div>
                           </TableCell>
@@ -326,8 +326,10 @@ export function BOQModule() {
                             <TableCell>{item.description}</TableCell>
                             <TableCell>{item.unit}</TableCell>
                             <TableCell>{formatNumber(item.quantity)}</TableCell>
-                            <TableCell>{formatSAR(item.unitPrice, lang)}</TableCell>
-                            <TableCell className="font-semibold">{formatSAR(item.totalPrice, lang)}</TableCell>
+                            <TableCell><MoneyDisplay value={item.unitPrice} lang={lang} size="sm" /></TableCell>
+                            <TableCell className="font-semibold">
+                              <MoneyDisplay value={item.totalPrice} lang={lang} bold size="sm" />
+                            </TableCell>
                             {selectedProjectId === 'all' && (
                               <TableCell className="text-sm text-muted-foreground">{item.project.name}</TableCell>
                             )}
@@ -338,8 +340,10 @@ export function BOQModule() {
                   })}
                   {/* Grand Total */}
                   <TableRow className="bg-gray-100 font-bold">
-                    <TableCell colSpan={selectedProjectId === 'all' ? 5 : 4} className="text-left">الإجمالي العام</TableCell>
-                    <TableCell>{formatSAR(grandTotal, lang)}</TableCell>
+                    <TableCell colSpan={selectedProjectId === 'all' ? 5 : 4} className="text-left">
+                      {t(lang, 'الإجمالي العام', 'Grand Total')}
+                    </TableCell>
+                    <TableCell><MoneyDisplay value={grandTotal} lang={lang} bold size="sm" /></TableCell>
                     {selectedProjectId === 'all' && <TableCell />}
                   </TableRow>
                 </TableBody>
@@ -355,6 +359,6 @@ export function BOQModule() {
         projects={projects}
         preselectedProjectId={selectedProjectId !== 'all' ? selectedProjectId : undefined}
       />
-    </div>
+    </ModuleLayout>
   )
 }

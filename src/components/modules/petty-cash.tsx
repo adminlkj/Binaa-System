@@ -19,7 +19,9 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
+import { ModuleLayout } from '@/components/shared/module-layout'
+import { MoneyDisplay } from '@/components/ui/money-display'
+import { useAppStore, formatDate } from '@/stores/app-store'
 
 // ============ Types ============
 interface Branch { id: string; code: string; name: string }
@@ -29,6 +31,9 @@ interface PettyCashEntry {
   date: string; category: string | null; reference: string | null
   branch: Branch
 }
+
+// ============ Bilingual Helpers ============
+const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
 
 // ============ Category Options ============
 const categoryOptions = [
@@ -51,7 +56,7 @@ const categoryColors: Record<string, string> = {
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 p-4">
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-4 p-3">
           <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
@@ -98,50 +103,50 @@ function NewPettyCashDialog({ open, onOpenChange, branches }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{lang === 'ar' ? 'سلفة نقدية جديدة' : 'New Petty Cash Entry'}</DialogTitle>
-          <DialogDescription>{lang === 'ar' ? 'إضافة مصروف من الصندوق النقدي' : 'Add a petty cash expense'}</DialogDescription>
+          <DialogTitle>{t(lang, 'سلفة نقدية جديدة', 'New Petty Cash Entry')}</DialogTitle>
+          <DialogDescription>{t(lang, 'إضافة مصروف من الصندوق النقدي', 'Add a petty cash expense')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'الفرع *' : 'Branch *'}</Label>
+              <Label>{t(lang, 'الفرع *', 'Branch *')}</Label>
               <Select value={branchId} onValueChange={setBranchId}>
-                <SelectTrigger><SelectValue placeholder={lang === 'ar' ? 'اختر الفرع' : 'Select branch'} /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t(lang, 'اختر الفرع', 'Select branch')} /></SelectTrigger>
                 <SelectContent>
                   {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'الفئة' : 'Category'}</Label>
+              <Label>{t(lang, 'الفئة', 'Category')}</Label>
               <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger><SelectValue placeholder={lang === 'ar' ? 'اختر الفئة' : 'Select category'} /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder={t(lang, 'اختر الفئة', 'Select category')} /></SelectTrigger>
                 <SelectContent>
                   {categoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c.label[lang]}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>{lang === 'ar' ? 'الوصف *' : 'Description *'}</Label>
-              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={lang === 'ar' ? 'وصف المصروف' : 'Expense description'} required />
+              <Label>{t(lang, 'الوصف *', 'Description *')}</Label>
+              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف المصروف', 'Expense description')} required />
             </div>
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'المبلغ *' : 'Amount *'}</Label>
+              <Label>{t(lang, 'المبلغ *', 'Amount *')}</Label>
               <Input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required />
             </div>
             <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'التاريخ *' : 'Date *'}</Label>
+              <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label>{lang === 'ar' ? 'المرجع' : 'Reference'}</Label>
-              <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={lang === 'ar' ? 'رقم المرجع' : 'Reference number'} />
+              <Label>{t(lang, 'المرجع', 'Reference')}</Label>
+              <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={t(lang, 'رقم المرجع', 'Reference number')} />
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
             <Button type="submit" disabled={createMutation.isPending || !branchId || !description || !amount || !date} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? (lang === 'ar' ? 'جاري الإنشاء...' : 'Creating...') : (lang === 'ar' ? 'إضافة' : 'Add')}
+              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إضافة', 'Add')}
             </Button>
           </DialogFooter>
         </form>
@@ -187,23 +192,20 @@ export function PettyCashModule() {
   const totalBalance = entries.reduce((s, e) => s + e.amount, 0)
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{lang === 'ar' ? 'الصندوق النقدي' : 'Petty Cash'}</h1>
-          <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إدارة المصروفات النثرية' : 'Manage petty cash expenses'}</p>
-        </div>
+    <ModuleLayout
+      title={{ ar: 'الصندوق النقدي', en: 'Petty Cash' }}
+      subtitle={{ ar: 'إدارة المصروفات النثرية', en: 'Manage petty cash expenses' }}
+      actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => refetch()} title={lang === 'ar' ? 'تحديث' : 'Refresh'}>
+          <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-            <Plus className="size-4" /> {lang === 'ar' ? 'سلفة نقدية جديدة' : 'New Entry'}
+            <Plus className="size-4" /> {t(lang, 'سلفة نقدية جديدة', 'New Entry')}
           </Button>
         </div>
-      </div>
-
+      }
+    >
       {/* Summary Card */}
       <Card className="bg-emerald-50 border-emerald-200">
         <CardContent className="p-4 flex items-center gap-3">
@@ -211,8 +213,8 @@ export function PettyCashModule() {
             <Wallet className="size-6 text-emerald-600" />
           </div>
           <div>
-            <p className="text-sm text-emerald-600">{lang === 'ar' ? 'رصيد الصندوق' : 'Cash Balance'}</p>
-            <p className="text-2xl font-bold text-emerald-700">{formatSAR(totalBalance, lang)}</p>
+            <p className="text-sm text-emerald-600">{t(lang, 'رصيد الصندوق', 'Cash Balance')}</p>
+            <MoneyDisplay value={totalBalance} lang={lang} bold size="xl" className="text-emerald-700" />
           </div>
         </CardContent>
       </Card>
@@ -223,12 +225,12 @@ export function PettyCashModule() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input placeholder={lang === 'ar' ? 'بحث بالوصف أو المرجع...' : 'Search by description or reference...'} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+              <Input placeholder={t(lang, 'بحث بالوصف أو المرجع...', 'Search by description or reference...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={lang === 'ar' ? 'كل الفئات' : 'All Categories'} /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={t(lang, 'كل الفئات', 'All Categories')} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{lang === 'ar' ? 'كل الفئات' : 'All Categories'}</SelectItem>
+                <SelectItem value="all">{t(lang, 'كل الفئات', 'All Categories')}</SelectItem>
                 {categoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c.label[lang]}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -240,18 +242,18 @@ export function PettyCashModule() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6"><TableSkeleton /></div>
+            <TableSkeleton />
           ) : isError ? (
             <div className="flex flex-col items-center gap-3 py-10">
-              <p className="text-rose-600">{lang === 'ar' ? 'حدث خطأ' : 'An error occurred'}</p>
-              <Button variant="outline" onClick={() => refetch()}>{lang === 'ar' ? 'إعادة المحاولة' : 'Retry'}</Button>
+              <p className="text-rose-600">{t(lang, 'حدث خطأ', 'An error occurred')}</p>
+              <Button variant="outline" onClick={() => refetch()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10">
               <Wallet className="size-12 text-gray-300" />
-              <p className="text-muted-foreground">{lang === 'ar' ? 'لا توجد سجلات' : 'No entries found'}</p>
+              <p className="text-muted-foreground">{t(lang, 'لا توجد سجلات', 'No entries found')}</p>
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-                <Plus className="size-4 mr-1" /> {lang === 'ar' ? 'إضافة سلفة' : 'Add Entry'}
+                <Plus className="size-4 mr-1" /> {t(lang, 'إضافة سلفة', 'Add Entry')}
               </Button>
             </div>
           ) : (
@@ -259,19 +261,21 @@ export function PettyCashModule() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-right">{lang === 'ar' ? 'الوصف' : 'Description'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'المبلغ' : 'Amount'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'التاريخ' : 'Date'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'الفئة' : 'Category'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'المرجع' : 'Reference'}</TableHead>
-                    <TableHead className="text-right">{lang === 'ar' ? 'الفرع' : 'Branch'}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'المبلغ', 'Amount')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الفئة', 'Category')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الفرع', 'Branch')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map(e => (
                     <TableRow key={e.id}>
                       <TableCell className="font-medium">{e.description}</TableCell>
-                      <TableCell className="font-semibold text-emerald-700">{formatSAR(e.amount, lang)}</TableCell>
+                      <TableCell className="font-semibold text-emerald-700">
+                        <MoneyDisplay value={e.amount} lang={lang} bold size="sm" />
+                      </TableCell>
                       <TableCell>{formatDate(e.date, lang)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={categoryColors[e.category || 'أخرى'] || 'bg-gray-100 text-gray-700'}>
@@ -290,6 +294,6 @@ export function PettyCashModule() {
       </Card>
 
       <NewPettyCashDialog open={dialogOpen} onOpenChange={setDialogOpen} branches={branches} />
-    </div>
+    </ModuleLayout>
   )
 }

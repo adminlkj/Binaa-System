@@ -4,11 +4,47 @@ import { initializeChartOfAccounts } from '@/lib/accounting/engine'
 export async function POST() {
   try {
     const result = await initializeChartOfAccounts()
-    return NextResponse.json(result)
+    return NextResponse.json({
+      success: true,
+      message: result.created > 0
+        ? `تم إنشاء ${result.created} حساب بنجاح`
+        : 'شجرة الحسابات موجودة بالفعل',
+      ...result,
+    })
   } catch (error) {
     console.error('Error initializing chart of accounts:', error)
     return NextResponse.json(
-      { error: 'فشل في تهيئة شجرة الحسابات' },
+      { success: false, error: 'فشل في تهيئة شجرة الحسابات' },
+      { status: 500 }
+    )
+  }
+}
+
+// GET: Return current chart of accounts status
+export async function GET() {
+  try {
+    const { initializeChartOfAccounts: _init } = await import('@/lib/accounting/engine')
+    const { db } = await import('@/lib/db')
+    
+    const accountCount = await db.account.count()
+    const accounts = await db.account.findMany({
+      where: { isActive: true },
+      orderBy: { code: 'asc' },
+      include: {
+        parent: { select: { id: true, code: true, name: true } },
+        _count: { select: { journalLines: true } },
+      },
+    })
+
+    return NextResponse.json({
+      initialized: accountCount > 0,
+      totalAccounts: accountCount,
+      accounts,
+    })
+  } catch (error) {
+    console.error('Error fetching chart of accounts:', error)
+    return NextResponse.json(
+      { error: 'فشل في تحميل شجرة الحسابات' },
       { status: 500 }
     )
   }

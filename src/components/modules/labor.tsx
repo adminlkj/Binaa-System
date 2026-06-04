@@ -18,7 +18,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, commonText } from '@/stores/app-store'
+import { Separator } from '@/components/ui/separator'
+import { ModuleLayout } from '@/components/shared/module-layout'
+import { MoneyDisplay } from '@/components/ui/money-display'
+import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 
 // ============ Types ============
 interface ProjectOption { id: string; code: string; name: string }
@@ -29,19 +32,12 @@ interface LaborCost {
   project: { id: string; code: string; name: string }
 }
 
-// formatSAR, formatDate, formatNumber imported from store
-
-function formatSAR(value: number, lang: 'ar' | 'en' = 'ar'): string {
-  return storeFormatSAR(value, lang)
-}
-
-function formatDate(dateStr: string, lang: 'ar' | 'en' = 'ar'): string {
-  return storeFormatDate(dateStr, lang)
-}
+// ============ Bilingual Helpers ============
+const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 p-4">
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="flex gap-4 p-3">
           <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
@@ -61,6 +57,7 @@ function LaborCostFormDialog({
   open: boolean; onOpenChange: (open: boolean) => void
   projects: ProjectOption[]
 }) {
+  const { lang } = useAppStore()
   const queryClient = useQueryClient()
 
   const [projectId, setProjectId] = useState('')
@@ -97,62 +94,69 @@ function LaborCostFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>تكلفة عمالة جديدة</DialogTitle>
-          <DialogDescription>إضافة تكلفة عمالة للمشروع</DialogDescription>
+          <DialogTitle>{t(lang, 'تكلفة عمالة جديدة', 'New Labor Cost')}</DialogTitle>
+          <DialogDescription>{t(lang, 'إضافة تكلفة عمالة للمشروع', 'Add labor cost for project')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2 sm:col-span-2">
-              <Label>المشروع *</Label>
+              <Label>{t(lang, 'المشروع *', 'Project *')}</Label>
               <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder="اختر المشروع" /></SelectTrigger>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المشروع', 'Select project')} /></SelectTrigger>
                 <SelectContent>
                   {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="lc-desc">الوصف *</Label>
-              <Input id="lc-desc" value={description} onChange={e => setDescription(e.target.value)} placeholder="وصف العمل" required />
+              <Label>{t(lang, 'الوصف *', 'Description *')}</Label>
+              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف العمل', 'Work description')} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lc-workers">عدد العمال *</Label>
-              <Input id="lc-workers" type="number" min="1" value={workers} onChange={e => setWorkers(e.target.value)} dir="ltr" required />
+              <Label>{t(lang, 'عدد العمال *', 'Workers *')}</Label>
+              <Input type="number" min="1" value={workers} onChange={e => setWorkers(e.target.value)} dir="ltr" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lc-days">عدد الأيام *</Label>
-              <Input id="lc-days" type="number" min="0.5" step="0.5" value={days} onChange={e => setDays(e.target.value)} dir="ltr" required />
+              <Label>{t(lang, 'عدد الأيام *', 'Days *')}</Label>
+              <Input type="number" min="0.5" step="0.5" value={days} onChange={e => setDays(e.target.value)} dir="ltr" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lc-rate">الأجر اليومي *</Label>
-              <Input id="lc-rate" type="number" min="0" step="0.01" value={dailyRate} onChange={e => setDailyRate(e.target.value)} dir="ltr" required />
+              <Label>{t(lang, 'الأجر اليومي *', 'Daily Rate *')}</Label>
+              <Input type="number" min="0" step="0.01" value={dailyRate} onChange={e => setDailyRate(e.target.value)} dir="ltr" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="lc-date">التاريخ *</Label>
-              <Input id="lc-date" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+              <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
+              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
           </div>
 
           {/* Auto-calc Preview */}
           {totalAmount > 0 && (
             <Card className="bg-emerald-50 border-emerald-200">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center gap-2">
                   <Calculator className="size-4 text-emerald-600" />
-                  <span className="text-sm font-medium text-emerald-700">حساب تلقائي</span>
+                  <span className="text-sm font-medium text-emerald-700">{t(lang, 'حساب تلقائي', 'Auto Calculation')}</span>
                 </div>
-                <p className="text-xs text-emerald-600 mb-1">العدد × الأيام × الأجر اليومي = الإجمالي</p>
-                <p className="text-lg font-bold text-emerald-700">{formatSAR(totalAmount, 'ar')}</p>
+                <p className="text-xs text-emerald-600">
+                  {t(lang, 'العدد × الأيام × الأجر اليومي = الإجمالي', 'Workers × Days × Daily Rate = Total')}
+                </p>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-emerald-600">
+                    {formatNumber(parseFloat(workers) || 0)} × {formatNumber(parseFloat(days) || 0)} × <MoneyDisplay value={parseFloat(dailyRate) || 0} lang={lang} size="xs" inline />
+                  </span>
+                  <MoneyDisplay value={totalAmount} lang={lang} bold size="lg" className="text-emerald-700" />
+                </div>
               </CardContent>
             </Card>
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
             <Button type="submit" disabled={createMutation.isPending || !projectId || !description || !workers || !days || !dailyRate || !date} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? 'جاري الإنشاء...' : 'إضافة تكلفة العمالة'}
+              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إضافة تكلفة العمالة', 'Add Labor Cost')}
             </Button>
           </DialogFooter>
         </form>
@@ -172,7 +176,7 @@ export function LaborModule() {
     queryKey: ['labor-costs'],
     queryFn: async () => {
       const res = await fetch('/api/labor-costs')
-      if (!res.ok) throw new Error('Failed to fetch')
+      if (!res.ok) throw new Error()
       return res.json()
     },
   })
@@ -200,23 +204,20 @@ export function LaborModule() {
   const avgDailyRate = laborCosts.length > 0 ? laborCosts.reduce((s, l) => s + l.dailyRate, 0) / laborCosts.length : 0
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{lang === 'ar' ? 'تكاليف العمالة' : 'Labor Costs'}</h1>
-          <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إدارة تكاليف العمالة للمشاريع' : 'Manage project labor costs'}</p>
-        </div>
+    <ModuleLayout
+      title={{ ar: 'تكاليف العمالة', en: 'Labor Costs' }}
+      subtitle={{ ar: 'إدارة تكاليف العمالة للمشاريع', en: 'Manage project labor costs' }}
+      actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => refetch()} title="تحديث">
+          <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-            <Plus className="size-4" /> تكلفة عمالة جديدة
+            <Plus className="size-4" /> {t(lang, 'تكلفة عمالة جديدة', 'New Labor Cost')}
           </Button>
         </div>
-      </div>
-
+      }
+    >
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="bg-emerald-50 border-emerald-200">
@@ -225,8 +226,8 @@ export function LaborModule() {
               <HardHat className="size-5 text-emerald-600" />
             </div>
             <div>
-              <p className="text-sm text-emerald-600">إجمالي تكاليف العمالة</p>
-              <p className="text-xl font-bold text-emerald-700">{formatSAR(totalLabor, lang)}</p>
+              <p className="text-sm text-emerald-600">{t(lang, 'إجمالي تكاليف العمالة', 'Total Labor Costs')}</p>
+              <MoneyDisplay value={totalLabor} lang={lang} bold size="lg" className="text-emerald-700" />
             </div>
           </CardContent>
         </Card>
@@ -236,7 +237,7 @@ export function LaborModule() {
               <Users className="size-5 text-teal-600" />
             </div>
             <div>
-              <p className="text-sm text-teal-600">عدد العمال</p>
+              <p className="text-sm text-teal-600">{t(lang, 'عدد العمال', 'Total Workers')}</p>
               <p className="text-xl font-bold text-teal-700">{formatNumber(totalWorkers)}</p>
             </div>
           </CardContent>
@@ -247,8 +248,8 @@ export function LaborModule() {
               <Calculator className="size-5 text-amber-600" />
             </div>
             <div>
-              <p className="text-sm text-amber-600">متوسط الأجر اليومي</p>
-              <p className="text-xl font-bold text-amber-700">{formatSAR(avgDailyRate, lang)}</p>
+              <p className="text-sm text-amber-600">{t(lang, 'متوسط الأجر اليومي', 'Avg Daily Rate')}</p>
+              <MoneyDisplay value={avgDailyRate} lang={lang} bold size="lg" className="text-amber-700" />
             </div>
           </CardContent>
         </Card>
@@ -260,12 +261,12 @@ export function LaborModule() {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input placeholder="بحث بالوصف أو المشروع..." value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+              <Input placeholder={t(lang, 'بحث بالوصف أو المشروع...', 'Search by description or project...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
             </div>
             <Select value={projectFilter} onValueChange={setProjectFilter}>
-              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder="كل المشاريع" /></SelectTrigger>
+              <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={t(lang, 'كل المشاريع', 'All Projects')} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">كل المشاريع</SelectItem>
+                <SelectItem value="all">{t(lang, 'كل المشاريع', 'All Projects')}</SelectItem>
                 {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -277,18 +278,18 @@ export function LaborModule() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="p-6"><TableSkeleton /></div>
+            <TableSkeleton />
           ) : isError ? (
             <div className="flex flex-col items-center gap-3 py-10">
-              <p className="text-rose-600">حدث خطأ أثناء تحميل البيانات</p>
-              <Button variant="outline" onClick={() => refetch()}>إعادة المحاولة</Button>
+              <p className="text-rose-600">{t(lang, 'حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+              <Button variant="outline" onClick={() => refetch()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-10">
               <HardHat className="size-12 text-gray-300" />
-              <p className="text-muted-foreground">لا توجد تكاليف عمالة</p>
+              <p className="text-muted-foreground">{t(lang, 'لا توجد تكاليف عمالة', 'No labor costs found')}</p>
               <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
-                <Plus className="size-4 mr-1" /> إضافة تكلفة عمالة
+                <Plus className="size-4 mr-1" /> {t(lang, 'إضافة تكلفة عمالة', 'Add Labor Cost')}
               </Button>
             </div>
           ) : (
@@ -296,13 +297,13 @@ export function LaborModule() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-right">المشروع</TableHead>
-                    <TableHead className="text-right">الوصف</TableHead>
-                    <TableHead className="text-right">عدد العمال</TableHead>
-                    <TableHead className="text-right">الأيام</TableHead>
-                    <TableHead className="text-right">الأجر اليومي</TableHead>
-                    <TableHead className="text-right">الإجمالي</TableHead>
-                    <TableHead className="text-right">التاريخ</TableHead>
+                    <TableHead className="text-right">{t(lang, 'المشروع', 'Project')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'عدد العمال', 'Workers')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الأيام', 'Days')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الأجر اليومي', 'Daily Rate')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -312,8 +313,10 @@ export function LaborModule() {
                       <TableCell>{lc.description}</TableCell>
                       <TableCell>{formatNumber(lc.workers)}</TableCell>
                       <TableCell>{formatNumber(lc.days)}</TableCell>
-                      <TableCell>{formatSAR(lc.dailyRate, lang)}</TableCell>
-                      <TableCell className="font-semibold text-emerald-700">{formatSAR(lc.totalAmount, lang)}</TableCell>
+                      <TableCell><MoneyDisplay value={lc.dailyRate} lang={lang} size="sm" /></TableCell>
+                      <TableCell className="font-semibold">
+                        <MoneyDisplay value={lc.totalAmount} lang={lang} bold size="sm" className="text-emerald-700" />
+                      </TableCell>
                       <TableCell>{formatDate(lc.date, lang)}</TableCell>
                     </TableRow>
                   ))}
@@ -326,6 +329,6 @@ export function LaborModule() {
 
       {/* Form Dialog */}
       <LaborCostFormDialog open={dialogOpen} onOpenChange={setDialogOpen} projects={projects} />
-    </div>
+    </ModuleLayout>
   )
 }

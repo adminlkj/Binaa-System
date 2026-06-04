@@ -1,58 +1,58 @@
+# نظام بِنَاء ERP - Work Log
+
 ---
 Task ID: 1
-Agent: main
-Task: Fix image uploads and build accounting engine
+Agent: Main Orchestrator
+Task: Restructure and rebuild the Binaa ERP system
 
 Work Log:
-- Diagnosed upload failure: /api/upload route was MISSING from the codebase
-- Created /api/upload/route.ts with full image support (SVG, PNG, JPG, JPEG, GIF, WebP, BMP, ICO)
-- Max file size: 10MB, unique filename generation, proper MIME validation
-- DELETE endpoint for removing uploaded files
-- Tested all image types: PNG ✅, SVG ✅, JPG ✅
-
-- Built comprehensive accounting engine at /src/lib/accounting/engine.ts
-- 55+ standard chart of accounts based on Saudi SOCPA standards
-- Auto-entry functions for ALL business transactions:
-  * Sales Invoice → Dr: AR / Cr: Revenue + VAT Payable
-  * Purchase Invoice → Dr: Expense + VAT Receivable / Cr: AP
-  * Progress Claim → Dr: AR / Cr: Revenue + VAT Payable
-  * Expense → Dr: Expense + VAT Receivable / Cr: Cash
-  * Client Payment → Dr: Cash / Cr: AR
-  * Supplier Payment → Dr: AP / Cr: Cash
-  * Employee Advance → Dr: Advances / Cr: Cash
-  * Advance Settlement → Dr: Salaries / Cr: Advances
-  * Subcontractor Invoice → Dr: Sub Costs + VAT Rec / Cr: Sub Payable
-  * Equipment Cost → Dr: Equipment Cost / Cr: Cash/AP
-  * Rental Invoice → Dr: AR / Cr: Rental Revenue + VAT Payable
-  * Petty Cash → Dr: Expense / Cr: Petty Cash
-- Trial balance, general ledger, account balance helpers
-- Double-entry validation (debits must equal credits)
-
-- Built 6 accounting API routes:
-  * /api/accounts/initialize (POST) - Initialize chart of accounts
-  * /api/accounts (GET/POST) - List/create accounts with hierarchy
-  * /api/journal-entries (GET/POST) - Journal entries with pagination
-  * /api/trial-balance (GET) - Trial balance report
-  * /api/general-ledger (GET) - General ledger per account
-  * /api/financial-summary (GET) - Financial summary with ratios
-
-- Connected 7 business API routes to accounting engine:
-  * sales-invoices, purchase-invoices, progress-claims, expenses,
-    petty-cash, advances, subcontractor-invoices
-
-- Built Finance section with full functionality:
-  * Treasury - Cash dashboard with balances
-  * Journal Entries - Expandable table with filters
-  * Chart of Accounts - Hierarchical tree with initialize button
-  * General Ledger - Running balance per account
-  * Receivables - AR overview with aging
-  * Payables - AP overview with suppliers
-  * VAT - Existing module preserved
+- Analyzed current project state (Prisma schema, modules, sidebar, store, API routes)
+- Identified key issues: old 10-section sidebar, missing accounting integration, placeholder modules
+- Updated Prisma schema with:
+  - Added journalEntryId fields on all source documents (invoices, claims, expenses, etc.)
+  - Added ClientPayment, SupplierPayment models
+  - Added VATReturn with snapshot fields (salesInvoiceIds, purchaseInvoiceIds, expenseIds)
+  - Added TimesheetStatus enum, DeliveryOrderStatus, VATReturnStatus
+  - Added EquipmentRental with contractId unique link
+  - Removed Currency model (unified through CompanySetting.currencySymbolImage)
+  - Added sourceType and sourceId on JournalEntry for tracing
+  - Added isReversal and reversedEntryId for modification tracking
+- Restructured sidebar to 5 groups:
+  - الرئيسية (Dashboard)
+  - المبيعات والمشتريات (Sales, Purchases, Extracts, Clients, Suppliers, Subcontractors)
+  - المشاريع والتكاليف (Projects, Contracts, Timesheets, BOQ, Expenses, Labor, Equipment, Advances, Petty Cash)
+  - المخزون والمحاسبة (Inventory, Accounting, VAT)
+  - التقارير والإعدادات (Reports, Settings)
+- Rewrote app-store.ts with new NavItem types and navigation
+- Rewrote sidebar.tsx with collapsible group headers and item icons
+- Rewrote header.tsx with group-based breadcrumbs
+- Rewrote page.tsx as a module router with 21 module imports
+- Created shared module-layout.tsx with ModuleLayout, EmptyState, StatusBadge
+- Built 21 functional module components (delegated to subagents):
+  - Core: Dashboard, Accounting, VAT, Reports, Settings
+  - Sales: Sales, Purchases, Extracts, Clients, Suppliers, Subcontractors
+  - Projects: Projects, Contracts, Timesheets, BOQ, Expenses, Labor, Equipment, Advances, Petty Cash
+  - Inventory: Inventory module with items and warehouses
+- Built unified print service (print-service.ts) with:
+  - A4 portrait document templates
+  - Company header/footer/stamp integration
+  - ZATCA-compliant formatting
+  - PrintButton component for all modules
+- Updated accounting API routes with auto-entry integration:
+  - Sales invoices → autoEntrySalesInvoice/autoEntryRentalInvoice
+  - Purchase invoices → autoEntryPurchaseInvoice
+  - Progress claims → autoEntryProgressClaim
+  - Expenses → autoEntryExpense
+  - Reversal logic for modifications (never modify original entries)
+  - VAT return auto-generation from invoices/expenses
+  - Timesheet INVOICED lock
+- Updated seed route with accounting entries for all seeded data
 
 Stage Summary:
-- Upload API now supports all image types (SVG, PNG, JPG, GIF, WebP, BMP, ICO)
-- Accounting engine fully operational with double-entry bookkeeping
-- 55+ SOCPA-compliant chart of accounts
-- Auto journal entries for all business transactions
-- Finance section has 6+ functional screens (not placeholders)
-- Lint passes, no errors
+- Complete restructuring from 10-section to 5-group navigation
+- All 21 modules have functional CRUD with proper forms
+- Accounting engine integrated into all business transaction APIs
+- Unified print service created
+- VAT return auto-calculation implemented
+- Lint passes with zero errors
+- Database schema fully updated and pushed

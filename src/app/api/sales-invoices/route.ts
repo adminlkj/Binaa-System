@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntrySalesInvoice, initializeChartOfAccounts } from '@/lib/accounting/engine'
+import { autoEntrySalesInvoice, autoEntryRentalInvoice, initializeChartOfAccounts, createJournalEntry } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     const vatAmount = includeVat ? (netAmount + deliveryTotal) * vatRate : 0
     const totalAmount = netAmount + deliveryTotal + vatAmount
 
-    // Auto-generate invoice number: TYPE-YEAR-SEQ format (e.g. SRV-2026-0001)
+    // Auto-generate invoice number: TYPE-YEAR-SEQ format
     const typePrefixMap: Record<string, string> = {
       TAX_INVOICE: 'SRV',
       PROGRESS_CLAIM: 'PCL',
@@ -136,27 +136,185 @@ export async function POST(request: Request) {
       },
     })
 
-    // Auto-create accounting journal entry
+    // Auto-create accounting journal entry and store journalEntryId
     try {
       await initializeChartOfAccounts()
-      await autoEntrySalesInvoice({
-        invoiceNo: invoice.invoiceNo,
-        clientId: invoice.clientId,
-        subtotal: invoice.subtotal,
-        vatRate: invoice.vatRate,
-        vatAmount: invoice.vatAmount,
-        totalAmount: invoice.totalAmount,
-        invoiceType: invoice.invoiceType,
-        date: invoice.date,
-        projectId: invoice.projectId || undefined,
+      
+      let journalEntry
+      if (invoiceType === 'RENTAL') {
+        journalEntry = await autoEntryRentalInvoice({
+          invoiceNo: invoice.invoiceNo,
+          subtotal: invoice.subtotal,
+          vatAmount: invoice.vatAmount,
+          totalAmount: invoice.totalAmount,
+          date: invoice.date,
+          costCenterId: invoice.projectId || undefined,
+        })
+      } else {
+        journalEntry = await autoEntrySalesInvoice({
+          invoiceNo: invoice.invoiceNo,
+          clientId: invoice.clientId,
+          subtotal: invoice.subtotal,
+          vatRate: invoice.vatRate,
+          vatAmount: invoice.vatAmount,
+          totalAmount: invoice.totalAmount,
+          invoiceType: invoice.invoiceType,
+          date: invoice.date,
+          projectId: invoice.projectId || undefined,
+        })
+      }
+
+      // Store the journalEntryId on the invoice
+      await db.salesInvoice.update({
+        where: { id: invoice.id },
+        data: { journalEntryId: journalEntry.id },
       })
     } catch (accountingError) {
       console.error('Accounting entry failed for sales invoice:', accountingError)
+      // Don't fail the invoice creation, just log the error
     }
 
-    return NextResponse.json(invoice, { status: 201 })
+    // Re-fetch to include journalEntryId
+    const updatedInvoice = await db.salesInvoice.findUnique({
+      where: { id: invoice.id },
+      include: {
+        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+        project: { select: { id: true, name: true, nameAr: true, code: true } },
+        contract: { select: { id: true, contractNo: true } },
+        items: true,
+      },
+    })
+
+    return NextResponse.json(updatedInvoice, { status: 201 })
   } catch (error) {
     console.error('Error creating sales invoice:', error)
     return NextResponse.json({ error: 'فشل في إنشاء فاتورة المبيعات' }, { status: 500 })
+  }
+}
+
+// PUT: Update a sales invoice (with reversal for approved/posted invoices)
+export async function PUT(request: Request) {
+  try {
+    const body = await request.json()
+    const { id, ...updateData } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'معرف الفاتورة مطلوب' }, { status: 400 })
+    }
+
+    const existing = await db.salesInvoice.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 })
+    }
+
+    // Cannot modify CANCELLED invoices
+    if (existing.status === 'CANCELLED') {
+      return NextResponse.json({ error: 'لا يمكن تعديل فاتورة ملغاة' }, { status: 400 })
+    }
+
+    // If the invoice has been approved/posted (has a journal entry), create a reversal + new entry
+    if (existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
+      // Create reversal entry for the original
+      const originalEntry = await db.journalEntry.findUnique({
+        where: { id: existing.journalEntryId },
+        include: { lines: true },
+      })
+
+      if (originalEntry) {
+        // Create reversal entry (swap debit/credit)
+        const reversalLines = originalEntry.lines.map(line => ({
+          accountCode: '', // Will be resolved from accountId
+          debit: line.credit,
+          credit: line.debit,
+          costCenterId: line.costCenterId || undefined,
+          description: `Reversal: ${line.description || ''}`,
+        }))
+
+        // Get account codes for reversal lines
+        const accountIds = originalEntry.lines.map(l => l.accountId)
+        const accounts = await db.account.findMany({ where: { id: { in: accountIds } } })
+        const accountMap = new Map(accounts.map(a => [a.id, a.code]))
+
+        const resolvedReversalLines = originalEntry.lines.map(line => ({
+          accountCode: accountMap.get(line.accountId) || '',
+          debit: line.credit,
+          credit: line.debit,
+          costCenterId: line.costCenterId || undefined,
+          description: `Reversal: ${line.description || ''}`,
+        }))
+
+        await createJournalEntry({
+          entryNo: `JE-REV-SI-${Date.now()}`,
+          date: new Date(),
+          description: `Reversal for Sales Invoice ${existing.invoiceNo}`,
+          descriptionAr: `قيد عكسي لفاتورة مبيعات ${existing.invoiceNo}`,
+          lines: resolvedReversalLines,
+          sourceType: 'SALES_INVOICE_REVERSAL',
+          sourceId: existing.invoiceNo,
+        })
+
+        // Cancel the original entry
+        await db.journalEntry.update({
+          where: { id: existing.journalEntryId },
+          data: { status: 'CANCELLED' },
+        })
+      }
+
+      // Create new entry with updated values
+      const newSubtotal = updateData.subtotal ?? existing.subtotal
+      const newVatAmount = updateData.vatAmount ?? existing.vatAmount
+      const newTotalAmount = updateData.totalAmount ?? existing.totalAmount
+      const newInvoiceType = updateData.invoiceType ?? existing.invoiceType
+      const newDate = updateData.date ? new Date(updateData.date) : existing.date
+
+      await initializeChartOfAccounts()
+      
+      let newJournalEntry
+      if (newInvoiceType === 'RENTAL') {
+        newJournalEntry = await autoEntryRentalInvoice({
+          invoiceNo: existing.invoiceNo,
+          subtotal: newSubtotal,
+          vatAmount: newVatAmount,
+          totalAmount: newTotalAmount,
+          date: newDate,
+          costCenterId: existing.projectId || undefined,
+        })
+      } else {
+        newJournalEntry = await autoEntrySalesInvoice({
+          invoiceNo: existing.invoiceNo,
+          clientId: existing.clientId,
+          subtotal: newSubtotal,
+          vatRate: existing.vatRate,
+          vatAmount: newVatAmount,
+          totalAmount: newTotalAmount,
+          invoiceType: newInvoiceType,
+          date: newDate,
+          projectId: existing.projectId || undefined,
+        })
+      }
+
+      updateData.journalEntryId = newJournalEntry.id
+    }
+
+    // Update the invoice
+    const updated = await db.salesInvoice.update({
+      where: { id },
+      data: {
+        ...updateData,
+        ...(updateData.date && { date: new Date(updateData.date) }),
+        ...(updateData.dueDate && { dueDate: new Date(updateData.dueDate) }),
+      },
+      include: {
+        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+        project: { select: { id: true, name: true, nameAr: true, code: true } },
+        contract: { select: { id: true, contractNo: true } },
+        items: true,
+      },
+    })
+
+    return NextResponse.json(updated)
+  } catch (error) {
+    console.error('Error updating sales invoice:', error)
+    return NextResponse.json({ error: 'فشل في تحديث فاتورة المبيعات' }, { status: 500 })
   }
 }

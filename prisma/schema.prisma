@@ -1,5 +1,6 @@
 // نظام بِنَاء ERP - Complete Schema
 // Binaa Construction ERP
+// Updated: Restructured with proper accounting integration
 
 generator client {
   provider = "prisma-client-js"
@@ -102,6 +103,26 @@ enum ExpenseCategory {
   MANAGEMENT_CARS
 }
 
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  INVOICED
+}
+
+enum DeliveryOrderStatus {
+  PENDING
+  DELIVERED
+  RETURNED
+  CANCELLED
+}
+
+enum VATReturnStatus {
+  DRAFT
+  FILED
+  PAID
+}
+
 // ============ COMPANY SETTINGS ============
 
 model CompanySetting {
@@ -109,6 +130,7 @@ model CompanySetting {
   nameAr          String
   nameEn          String
   logo            String?
+  logoUrl         String?   // URL for the logo image
   commercialReg   String?
   taxNumber       String?
   address         String?
@@ -118,19 +140,19 @@ model CompanySetting {
   bankName        String?
   bankIban        String?
   bankAccountName String?
-  stamp           String?   // digital stamp image
+  stamp           String?   // digital stamp image path
   defaultVatRate  Float     @default(0.15)
   currency        String    @default("SAR")
-  currencySymbol  String    @default("\uFDFC") // Saudi Riyal Unicode symbol (U+FDFC)
-  currencySymbolEn String   @default("SAR") // English currency text
-  currencySymbolAr String   @default("ر.س") // Arabic currency abbreviation
-  logoUrl         String?   // Alternative name for logo field URL
+  currencySymbol    String?   // Currency symbol text (e.g. ﷼)
+  currencySymbolEn  String?   // English currency text (e.g. SAR)
+  currencySymbolAr  String?   // Arabic currency symbol (e.g. ﷼)
   invoiceTerms    String?
-  useThousandSeparatorsSystem  Boolean  @default(true)  // Use thousand separators in system screens
-  useThousandSeparatorsOfficial Boolean @default(false)  // Use thousand separators in official docs (ZATCA: false)
-  currencySymbolImage String?  // Path to uploaded currency symbol image file (SVG/PNG/JPG)
-  headerImage         String?  // Path to invoice header image file (SVG/PNG/JPG)
-  footerImage         String?  // Path to invoice footer image file (SVG/PNG/JPG)
+  // Unified currency - SINGLE SOURCE
+  currencySymbolImage String?  // Path to uploaded currency symbol image (SVG/PNG/JPG) - PRIMARY
+  headerImage         String?  // Path to invoice header image (SVG/PNG/JPG)
+  footerImage         String?  // Path to invoice footer image (SVG/PNG/JPG)
+  useThousandSeparatorsSystem  Boolean  @default(true)
+  useThousandSeparatorsOfficial Boolean @default(false) // ZATCA: false
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
@@ -161,15 +183,6 @@ model Warehouse {
 
   branch         Branch       @relation(fields: [branchId], references: [id])
   inventoryItems InventoryItem[]
-}
-
-model Currency {
-  id       String  @id @default(cuid())
-  code     String  @unique
-  name     String
-  symbol   String
-  rate     Float   @default(1.0)
-  isActive Boolean @default(true)
 }
 
 model CostCenter {
@@ -222,6 +235,8 @@ model Client {
 
   projects      Project[]
   salesInvoices SalesInvoice[]
+  rentalContracts EquipmentRental[]
+  deliveryOrders EquipmentDeliveryOrder[]
 }
 
 model Supplier {
@@ -292,7 +307,7 @@ model Project {
   clientId      String
   startDate     DateTime
   endDate       DateTime?
-  contractValue Float         @default(0)  // قيمة العقد الإجمالية
+  contractValue Float         @default(0)
   status        ProjectStatus @default(PLANNING)
   description   String?
   createdAt     DateTime      @default(now())
@@ -311,29 +326,41 @@ model Project {
   equipmentCosts EquipmentCost[]
   equipmentUsages EquipmentUsage[]
   subcontractorInvoices SubcontractorInvoice[]
-  timesheets            Timesheet[]
+  timesheets     Timesheet[]
 }
 
 model Contract {
-  id          String         @id @default(cuid())
-  projectId   String
-  contractNo  String         @unique
-  date        DateTime
-  value       Float
-  vatRate     Float          @default(0.15)
-  vatAmount   Float
-  totalValue  Float
-  startDate   DateTime
-  endDate     DateTime?
-  status      ContractStatus @default(DRAFT)
-  description String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id              String         @id @default(cuid())
+  projectId       String
+  contractNo      String         @unique
+  date            DateTime
+  value           Float
+  vatRate         Float          @default(0.15)
+  vatAmount       Float          @default(0)
+  totalValue      Float          @default(0)
+  startDate       DateTime
+  endDate         DateTime?
+  status          ContractStatus @default(DRAFT)
+  description     String?
+  // Rental-specific fields
+  contractType    String?        // RENTAL, PROJECT, SERVICE
+  clientId        String?
+  equipmentId     String?
+  hourlyRate      Float?
+  deliveryFees    Float          @default(0)
+  deliveryFeesTaxable Boolean    @default(true)
+  paymentTerms    String?
+  salesOrderNo    String?        // رقم طلب البيع
+  // Accounting link
+  journalEntryId  String?        // Link to auto-generated journal entry
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   project        Project        @relation(fields: [projectId], references: [id])
   progressClaims ProgressClaim[]
   salesInvoices  SalesInvoice[]
   timesheets     Timesheet[]
+  rental         EquipmentRental?
 }
 
 // ============ BOQ (Bill of Quantities) ============
@@ -362,14 +389,16 @@ model ProgressClaim {
   contractId    String
   claimNo       String
   date          DateTime
-  percentage    Float
-  amount        Float
+  percentage    Float       // نسبة الإنجاز
+  amount        Float       // قيمة العقد × نسبة الإنجاز
   vatRate       Float       @default(0.15)
-  vatAmount     Float
-  totalAmount   Float
+  vatAmount     Float       @default(0)
+  totalAmount   Float       @default(0)
   status        ClaimStatus @default(DRAFT)
   approvedDate  DateTime?
   notes         String?
+  // Accounting link
+  journalEntryId String?    // Link to auto-generated journal entry
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
@@ -396,20 +425,31 @@ model SalesInvoice {
   totalAmount   Float
   paidAmount    Float         @default(0)
   status        InvoiceStatus @default(DRAFT)
-  invoiceType   String        @default("TAX_INVOICE") // TAX_INVOICE, PROGRESS_CLAIM, RENTAL
+  invoiceType   String        @default("SERVICE") // SERVICE, PROGRESS_CLAIM, RENTAL
   notes         String?
   paymentTerms  String?
+  referenceNo   String?       // رقم المرجع
+  // Rental-specific
+  timesheetId   String?       @unique // Link to timesheet (for rental invoices)
+  deliveryMonth String?       // الشهر من Timesheet
+  includeDelivery Boolean     @default(false)
+  deliveryAmount Float        @default(0)
+  deliveryFeesTaxable Boolean @default(true)
+  includeVat    Boolean       @default(true)
+  // References pulled from contract/timesheet
+  contractNo    String?
+  contractType  String?
+  contractPeriodStart DateTime?
+  contractPeriodEnd   DateTime?
+  salesOrderNo  String?
+  equipmentName String?
+  operatingHours Float?
+  hourlyRate    Float?
+  // Amount in words (cached for print)
   amountInWordsAr String?
   amountInWordsEn String?
-  referenceNo      String?   // Reference number (format: REF-2026-1589)
-  contractNo       String?   // Contract number display field
-  contractType     String?   // Contract type (e.g., "Lump Sum", "Unit Rate")
-  contractPeriodStart DateTime? // Contract work period start
-  contractPeriodEnd   DateTime? // Contract work period end
-  deliveryMonth    String?   // Delivery month from timesheet (e.g., "مايو-2026")
-  includeDelivery  Boolean   @default(false) // Whether delivery charges apply
-  deliveryAmount   Float     @default(0) // Delivery charges amount
-  includeVat       Boolean   @default(true) // Whether VAT is included (can be toggled per invoice)
+  // Accounting link
+  journalEntryId String?      // Link to auto-generated journal entry
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
@@ -417,6 +457,7 @@ model SalesInvoice {
   contract  Contract? @relation(fields: [contractId], references: [id])
   client    Client    @relation(fields: [clientId], references: [id])
   items     SalesInvoiceItem[]
+  timesheet Timesheet? @relation(fields: [timesheetId], references: [id])
 }
 
 model SalesInvoiceItem {
@@ -500,6 +541,7 @@ model PurchaseInvoice {
   id               String        @id @default(cuid())
   invoiceNo        String        @unique
   purchaseOrderId  String?
+  projectId        String?       // Link to project for cost tracking
   supplierId       String
   date             DateTime
   dueDate          DateTime
@@ -510,7 +552,10 @@ model PurchaseInvoice {
   paidAmount       Float         @default(0)
   status           InvoiceStatus @default(DRAFT)
   notes            String?
-  referenceNo      String?   // Reference number
+  referenceNo      String?
+  expenseCategory  String?       // For accounting mapping
+  // Accounting link
+  journalEntryId   String?       // Link to auto-generated journal entry
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -545,6 +590,8 @@ model SubcontractorInvoice {
   paidAmount      Float         @default(0)
   status          InvoiceStatus @default(DRAFT)
   description     String?
+  // Accounting link
+  journalEntryId  String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -555,16 +602,20 @@ model SubcontractorInvoice {
 // ============ EXPENSES ============
 
 model Expense {
-  id          String         @id @default(cuid())
-  projectId   String?
-  category    ExpenseCategory
-  description String
-  amount      Float
-  vatAmount   Float?
-  date        DateTime
-  reference   String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  id               String          @id @default(cuid())
+  projectId        String?         // null = administrative expense
+  category         ExpenseCategory
+  description      String
+  amount           Float
+  vatAmount        Float?
+  totalAmount      Float           @default(0)
+  date             DateTime
+  reference        String?
+  payFrom          String          @default("TREASURY") // TREASURY, BANK, PETTY_CASH
+  // Accounting link
+  journalEntryId   String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   project Project? @relation(fields: [projectId], references: [id])
 }
@@ -586,7 +637,7 @@ model LaborCost {
   project Project @relation(fields: [projectId], references: [id])
 }
 
-// ============ EQUIPMENT (Enhanced for Rental) ============
+// ============ EQUIPMENT ============
 
 model Equipment {
   id             String          @id @default(cuid())
@@ -597,18 +648,13 @@ model Equipment {
   model          String?
   serialNumber   String?
   status         EquipmentStatus @default(AVAILABLE)
-  // Rental fields
   supplierId     String?
-  clientId       String?
   purchasePrice  Float           @default(0)
-  sellingPrice   Float           @default(0)  // Rental/selling price
   hourlyRate     Float           @default(0)
   dailyRate      Float           @default(0)
   monthlyRate    Float           @default(0)
-  // Purchase info
   purchaseDate   DateTime?
   warrantyExpiry DateTime?
-  // Status
   isActive       Boolean         @default(true)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
@@ -620,6 +666,7 @@ model Equipment {
   rentals        EquipmentRental[]
   expenses       EquipmentExpense[]
   deliveryOrders EquipmentDeliveryOrder[]
+  timesheets     Timesheet[]
 }
 
 model EquipmentUsage {
@@ -672,47 +719,55 @@ model EquipmentCost {
   project Project @relation(fields: [projectId], references: [id])
 }
 
-// Rental contracts for equipment
-model EquipmentRental {
-  id           String        @id @default(cuid())
-  equipmentId  String
-  clientId     String
-  projectId    String?
-  startDate    DateTime
-  endDate      DateTime?
-  rateType     String        @default("DAILY") // HOURLY, DAILY, MONTHLY
-  rate         Float
-  totalAmount  Float
-  status       String        @default("ACTIVE") // ACTIVE, RETURNED, OVERDUE
-  notes        String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+// ============ EQUIPMENT RENTAL ============
 
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
+model EquipmentRental {
+  id              String         @id @default(cuid())
+  contractId      String         @unique // One-to-one with Contract
+  equipmentId     String
+  clientId        String
+  projectId       String?
+  startDate       DateTime
+  endDate         DateTime?
+  rateType        String         @default("HOURLY") // HOURLY, DAILY, MONTHLY
+  rate            Float          // سعر الساعة من العقد
+  deliveryFees    Float          @default(0)
+  deliveryFeesTaxable Boolean    @default(true)
+  totalAmount     Float          @default(0)
+  status          String         @default("ACTIVE") // ACTIVE, RETURNED, OVERDUE
+  paymentTerms    String?
+  salesOrderNo    String?        // رقم طلب البيع
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  contract       Contract       @relation(fields: [contractId], references: [id])
+  equipment      Equipment      @relation(fields: [equipmentId], references: [id])
+  client         Client         @relation(fields: [clientId], references: [id])
   deliveryOrders EquipmentDeliveryOrder[]
+  timesheets     Timesheet[]
 }
 
-// Equipment delivery orders
 model EquipmentDeliveryOrder {
   id            String   @id @default(cuid())
   orderNo       String   @unique
   rentalId      String?  // Link to rental contract
   equipmentId   String
-  clientId      String
+  clientId      String?
   projectId     String?
-  site          String?  // Delivery site / location
+  site          String?  // موقع المشروع
   deliveryDate  DateTime
-  returnDate    DateTime? // Expected return date
-  status        String   @default("PENDING") // PENDING, DELIVERED, RETURNED, CANCELLED
+  returnDate    DateTime?
+  status        DeliveryOrderStatus @default(PENDING)
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  equipment Equipment        @relation(fields: [equipmentId], references: [id])
   rental    EquipmentRental? @relation(fields: [rentalId], references: [id])
+  client    Client?          @relation(fields: [clientId], references: [id])
 }
 
-// Equipment-specific expenses (delivery, insurance, permits, etc.)
 model EquipmentExpense {
   id          String         @id @default(cuid())
   equipmentId String
@@ -726,18 +781,44 @@ model EquipmentExpense {
   equipment Equipment @relation(fields: [equipmentId], references: [id])
 }
 
+// ============ TIMESHEETS ============
+
+model Timesheet {
+  id            String          @id @default(cuid())
+  rentalId      String          // Link to rental contract
+  contractId    String
+  projectId     String
+  equipmentId   String
+  month         Int             // 1-12
+  year          Int             // e.g. 2026
+  operatingHours Float          @default(0) // ساعات التشغيل
+  status        TimesheetStatus @default(DRAFT)
+  approvedDate  DateTime?
+  notes         String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  contract  Contract       @relation(fields: [contractId], references: [id])
+  project   Project        @relation(fields: [projectId], references: [id])
+  equipment Equipment      @relation(fields: [equipmentId], references: [id])
+  rental    EquipmentRental @relation(fields: [rentalId], references: [id])
+  invoice   SalesInvoice?
+}
+
 // ============ PETTY CASH & ADVANCES ============
 
 model PettyCash {
-  id          String   @id @default(cuid())
-  branchId    String
-  description String
-  amount      Float
-  date        DateTime
-  category    String?
-  reference   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  branchId      String
+  description   String
+  amount        Float
+  date          DateTime
+  category      String?
+  reference     String?
+  // Accounting link
+  journalEntryId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   branch Branch @relation(fields: [branchId], references: [id])
 }
@@ -750,30 +831,32 @@ model EmployeeAdvance {
   settledAmount Float         @default(0)
   status        AdvanceStatus @default(PENDING)
   description   String?
+  // Accounting link
+  journalEntryId String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   employee Employee @relation(fields: [employeeId], references: [id])
 }
 
-// ============ INVENTORY (Enhanced) ============
+// ============ INVENTORY ============
 
 model InventoryItem {
-  id           String            @id @default(cuid())
-  code         String            @unique
-  name         String
-  nameAr       String?
-  itemType     InventoryItemType @default(PRODUCT)
-  unit         String
-  purchasePrice Float           @default(0)  // سعر الشراء
-  sellingPrice  Float           @default(0)  // سعر البيع
-  quantity     Float            @default(0)
-  minQuantity  Float            @default(0)
-  warehouseId  String
-  category     String?
-  isActive     Boolean           @default(true)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id            String            @id @default(cuid())
+  code          String            @unique
+  name          String
+  nameAr        String?
+  itemType      InventoryItemType @default(PRODUCT)
+  unit          String
+  purchasePrice Float             @default(0)
+  sellingPrice  Float             @default(0)
+  quantity      Float             @default(0)
+  minQuantity   Float             @default(0)
+  warehouseId   String
+  category      String?
+  isActive      Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
 }
@@ -799,7 +882,11 @@ model JournalEntry {
   entryNo     String             @unique
   date        DateTime
   description String?
-  status      JournalEntryStatus @default(DRAFT)
+  status      JournalEntryStatus @default(POSTED) // Auto-entries are always POSTED
+  sourceType  String?            // SALES_INVOICE, PURCHASE_INVOICE, PROGRESS_CLAIM, EXPENSE, etc.
+  sourceId    String?            // ID of the source document
+  isReversal  Boolean            @default(false) // Whether this is a reversal entry
+  reversedEntryId String?        // ID of the entry this reverses
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
 
@@ -820,50 +907,66 @@ model JournalLine {
   costCenter   CostCenter?  @relation(fields: [costCenterId], references: [id])
 }
 
-// ============ VAT ============
+// ============ VAT / TAX DECLARATION ============
 
 model VATReturn {
-  id              String    @id @default(cuid())
-  period          String    @unique
-  year            Int       @default(0)
-  quarter         Int       @default(0)
-  totalSales      Float     @default(0)
-  outputVat       Float     @default(0)
-  totalPurchases  Float     @default(0)
-  inputVat        Float     @default(0)
-  netVat          Float     @default(0)
-  status          String    @default("DRAFT")
+  id              String         @id @default(cuid())
+  year            Int
+  quarter         Int            // 1-4
+  period          String         @unique // "2026-Q1"
+  // Output VAT (ضريبة المخرجات)
+  totalSales      Float          @default(0)
+  outputVat       Float          @default(0)
+  // Input VAT (ضريبة المدخلات)
+  totalPurchases  Float          @default(0)
+  inputVat        Float          @default(0)
+  // Net
+  netVat          Float          @default(0) // outputVat - inputVat
+  // Snapshot details - fixed after creation
+  salesInvoiceIds String?        // JSON array of sales invoice IDs included
+  purchaseInvoiceIds String?     // JSON array of purchase invoice IDs included
+  expenseIds      String?        // JSON array of expense IDs included
+  // Status
+  status          VATReturnStatus @default(DRAFT)
   filedDate       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  paymentDate     DateTime?
+  paymentReference String?
+  // Accounting link
+  journalEntryId  String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 }
 
-// ============ TIMESHEETS ============
+// ============ CLIENT PAYMENTS ============
 
-model Timesheet {
-  id          String   @id @default(cuid())
-  contractId  String
-  projectId   String
-  month       Int      // 1-12
-  year        Int      // e.g. 2026
-  status      String   @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, INVOICED
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  contract Contract @relation(fields: [contractId], references: [id])
-  project  Project  @relation(fields: [projectId], references: [id])
-  entries  TimesheetEntry[]
+model ClientPayment {
+  id            String   @id @default(cuid())
+  clientId      String
+  invoiceId     String?  // Link to specific invoice
+  amount        Float
+  date          DateTime
+  receivedIn    String   @default("TREASURY") // TREASURY, BANK
+  reference     String?
+  notes         String?
+  // Accounting link
+  journalEntryId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
-model TimesheetEntry {
-  id          String   @id @default(cuid())
-  timesheetId String
-  description String
-  hours       Float
-  rate        Float
-  totalAmount Float
-  createdAt   DateTime @default(now())
+// ============ SUPPLIER PAYMENTS ============
 
-  timesheet Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
+model SupplierPayment {
+  id            String   @id @default(cuid())
+  supplierId    String
+  invoiceId     String?  // Link to specific invoice
+  amount        Float
+  date          DateTime
+  paidFrom      String   @default("TREASURY") // TREASURY, BANK
+  reference     String?
+  notes         String?
+  // Accounting link
+  journalEntryId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

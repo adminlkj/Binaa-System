@@ -1,81 +1,74 @@
 'use client'
 
+import React from 'react'
 import { Menu, Bell, Search } from 'lucide-react'
+import { useAppStore, navItemLabels, navGroups, type NavItem } from '@/stores/app-store'
 import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb'
-import { useAppStore, sectionLabels, subModuleLabels, commonText } from '@/stores/app-store'
+import { Badge } from '@/components/ui/badge'
+
+// Find which group a nav item belongs to
+function findGroupForItem(item: NavItem): { group: string; item: string } | null {
+  for (const group of navGroups) {
+    if (group.items.includes(item)) {
+      return { group: group.key, item }
+    }
+  }
+  return null
+}
 
 export function Header() {
-  const { activeSection, activeSubModule, toggleSidebar, lang } = useAppStore()
-  const sectionLabel = sectionLabels[activeSection]?.[lang] || 'Dashboard'
-  const subLabel = subModuleLabels[activeSubModule]?.[lang] || ''
+  const { activeItem, lang, toggleSidebar, setSidebarOpen } = useAppStore()
+
+  const currentLabel = navItemLabels[activeItem]
+  const groupInfo = findGroupForItem(activeItem)
+  const currentGroup = groupInfo
+    ? navGroups.find(g => g.key === groupInfo.group)
+    : null
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-gray-200 bg-white/95 px-4 backdrop-blur-sm supports-[backdrop-filter]:bg-white/80 lg:px-6 shrink-0">
-      {/* Mobile Menu Toggle */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="lg:hidden"
-        onClick={toggleSidebar}
-        aria-label="Toggle menu"
-      >
-        <Menu className="size-5" />
-      </Button>
+    <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex h-14 items-center gap-4 px-4">
+        {/* Mobile menu button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden"
+          onClick={() => setSidebarOpen(true)}
+        >
+          <Menu className="size-5" />
+        </Button>
 
-      {/* Breadcrumb */}
-      <Breadcrumb className="flex-1">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbPage className="text-xs text-gray-400">
-              {commonText.home[lang]}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage className="font-medium text-gray-800">
-              {sectionLabel}
-            </BreadcrumbPage>
-          </BreadcrumbItem>
-          {subLabel && subLabel !== sectionLabel && (
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm" dir="rtl">
+          {currentGroup && (
             <>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage className="text-sm text-gray-600">
-                  {subLabel}
-                </BreadcrumbPage>
-              </BreadcrumbItem>
+              <span className="text-muted-foreground">
+                {currentGroup.label[lang]}
+              </span>
+              <span className="text-muted-foreground">/</span>
             </>
           )}
-        </BreadcrumbList>
-      </Breadcrumb>
+          <span className="font-medium">
+            {currentLabel[lang]}
+          </span>
+        </div>
 
-      {/* Search */}
-      <Button variant="ghost" size="icon" className="text-gray-500" aria-label="Search">
-        <Search className="size-5" />
-      </Button>
+        {/* Spacer */}
+        <div className="flex-1" />
 
-      {/* Notifications */}
-      <Button variant="ghost" size="icon" className="relative text-gray-500" aria-label="Notifications">
-        <Bell className="size-5" />
-        <span className="absolute -top-0.5 -left-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-          3
-        </span>
-      </Button>
-
-      {/* User Avatar */}
-      <Avatar className="size-9 cursor-pointer ring-2 ring-emerald-100 transition hover:ring-emerald-300">
-        <AvatarFallback className="bg-emerald-100 text-emerald-700 text-sm font-bold">
-          {lang === 'ar' ? 'م' : 'A'}
-        </AvatarFallback>
-      </Avatar>
+        {/* Right side */}
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="size-9">
+            <Search className="size-4" />
+          </Button>
+          <Button variant="ghost" size="icon" className="relative size-9">
+            <Bell className="size-4" />
+            <Badge className="absolute -top-1 -right-1 size-4 p-0 flex items-center justify-center text-[9px] bg-emerald-600">
+              3
+            </Badge>
+          </Button>
+        </div>
+      </div>
     </header>
   )
 }
