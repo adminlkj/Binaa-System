@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { autoEntryProgressClaim, initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -57,6 +58,23 @@ export async function POST(request: Request) {
         contract: { select: { id: true, contractNo: true, totalValue: true } },
       },
     })
+
+    // Auto-create accounting journal entry
+    try {
+      await initializeChartOfAccounts()
+      await autoEntryProgressClaim({
+        claimNo: claim.claimNo,
+        projectId: claim.projectId,
+        contractId: claim.contractId,
+        amount: claim.amount,
+        vatRate: claim.vatRate,
+        vatAmount: claim.vatAmount,
+        totalAmount: claim.totalAmount,
+        date: claim.date,
+      })
+    } catch (accountingError) {
+      console.error('Accounting entry failed for progress claim:', accountingError)
+    }
 
     return NextResponse.json(claim, { status: 201 })
   } catch (error) {

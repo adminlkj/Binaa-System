@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { autoEntryExpense, initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -42,6 +43,22 @@ export async function POST(request: Request) {
         project: { select: { id: true, code: true, name: true } },
       },
     })
+
+    // Auto-create accounting journal entry
+    try {
+      await initializeChartOfAccounts()
+      await autoEntryExpense({
+        description: expense.description,
+        amount: expense.amount,
+        vatAmount: expense.vatAmount,
+        category: expense.category,
+        date: expense.date,
+        payFrom: body.payFrom || 'TREASURY',
+        costCenterId: expense.projectId || undefined,
+      })
+    } catch (accountingError) {
+      console.error('Accounting entry failed for expense:', accountingError)
+    }
 
     return NextResponse.json(expense, { status: 201 })
   } catch (error) {

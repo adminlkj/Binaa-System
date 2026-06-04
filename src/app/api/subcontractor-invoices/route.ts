@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { autoEntrySubcontractorInvoice, initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -70,6 +71,23 @@ export async function POST(request: Request) {
         project: { select: { id: true, name: true, code: true } },
       },
     })
+
+    // Auto-create accounting journal entry
+    try {
+      await initializeChartOfAccounts()
+      await autoEntrySubcontractorInvoice({
+        invoiceNo: invoice.invoiceNo,
+        subcontractorName: invoice.subcontractor.name,
+        amount: invoice.amount,
+        vatRate: invoice.vatRate,
+        vatAmount: invoice.vatAmount,
+        totalAmount: invoice.totalAmount,
+        date: invoice.date,
+        costCenterId: invoice.projectId || undefined,
+      })
+    } catch (accountingError) {
+      console.error('Accounting entry failed for subcontractor invoice:', accountingError)
+    }
 
     return NextResponse.json(invoice, { status: 201 })
   } catch (error) {

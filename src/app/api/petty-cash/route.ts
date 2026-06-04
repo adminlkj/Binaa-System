@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { autoEntryPettyCash, initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -37,6 +38,19 @@ export async function POST(request: Request) {
         branch: { select: { id: true, code: true, name: true } },
       },
     })
+
+    // Auto-create accounting journal entry
+    try {
+      await initializeChartOfAccounts()
+      await autoEntryPettyCash({
+        description: pettyCash.description,
+        amount: pettyCash.amount,
+        category: pettyCash.category || 'OTHER',
+        date: pettyCash.date,
+      })
+    } catch (accountingError) {
+      console.error('Accounting entry failed for petty cash:', accountingError)
+    }
 
     return NextResponse.json(pettyCash, { status: 201 })
   } catch (error) {

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { autoEntrySalesInvoice, initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -134,6 +135,24 @@ export async function POST(request: Request) {
         items: true,
       },
     })
+
+    // Auto-create accounting journal entry
+    try {
+      await initializeChartOfAccounts()
+      await autoEntrySalesInvoice({
+        invoiceNo: invoice.invoiceNo,
+        clientId: invoice.clientId,
+        subtotal: invoice.subtotal,
+        vatRate: invoice.vatRate,
+        vatAmount: invoice.vatAmount,
+        totalAmount: invoice.totalAmount,
+        invoiceType: invoice.invoiceType,
+        date: invoice.date,
+        projectId: invoice.projectId || undefined,
+      })
+    } catch (accountingError) {
+      console.error('Accounting entry failed for sales invoice:', accountingError)
+    }
 
     return NextResponse.json(invoice, { status: 201 })
   } catch (error) {
