@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 // ============ NAVIGATION TYPES ============
-// 5 main sidebar groups with sub-items
+// 7 main sidebar groups with sub-items
 
 export type NavItem =
   // الرئيسية
@@ -10,13 +10,18 @@ export type NavItem =
   | 'sales' | 'purchases' | 'extracts' | 'clients' | 'suppliers' | 'subcontractors'
   // المشاريع والتكاليف
   | 'projects' | 'contracts' | 'timesheets' | 'boq' | 'expenses' | 'labor-costs'
-  | 'equipment' | 'advances' | 'petty-cash'
+  | 'advances' | 'petty-cash'
+  // الموارد
+  | 'employees' | 'employee-contracts' | 'attendance' | 'salaries' | 'work-teams'
+  | 'equipment' | 'equipment-operations' | 'equipment-maintenance' | 'fuel' | 'resource-distribution'
+  // سلسلة التوريد
+  | 'purchase-requests' | 'purchase-orders' | 'goods-receipt' | 'supplier-invoices' | 'supplier-payments'
   // المخزون والمحاسبة
   | 'inventory' | 'accounting' | 'vat'
   // التقارير والإعدادات
   | 'reports' | 'settings'
 
-export type NavGroup = 'home' | 'sales-purchases' | 'projects-costs' | 'inventory-accounting' | 'reports-settings'
+export type NavGroup = 'home' | 'sales-purchases' | 'projects-costs' | 'resources' | 'supply-chain' | 'inventory-accounting' | 'reports-settings'
 
 export type Lang = 'ar' | 'en'
 
@@ -40,7 +45,17 @@ export const navGroups: NavGroupConfig[] = [
   {
     key: 'projects-costs',
     label: { ar: 'المشاريع والتكاليف', en: 'Projects & Costs' },
-    items: ['projects', 'contracts', 'timesheets', 'boq', 'expenses', 'labor-costs', 'equipment', 'advances', 'petty-cash'],
+    items: ['projects', 'contracts', 'timesheets', 'boq', 'expenses', 'labor-costs', 'advances', 'petty-cash'],
+  },
+  {
+    key: 'resources',
+    label: { ar: 'الموارد', en: 'Resources' },
+    items: ['equipment', 'equipment-operations', 'resource-distribution', 'employees', 'salaries', 'attendance', 'equipment-maintenance', 'fuel', 'work-teams', 'employee-contracts'],
+  },
+  {
+    key: 'supply-chain',
+    label: { ar: 'سلسلة التوريد', en: 'Supply Chain' },
+    items: ['purchase-requests', 'purchase-orders', 'goods-receipt', 'supplier-invoices', 'supplier-payments'],
   },
   {
     key: 'inventory-accounting',
@@ -71,9 +86,25 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'boq': { ar: 'جدول الكميات BOQ', en: 'Bill of Quantities' },
   'expenses': { ar: 'المصروفات', en: 'Expenses' },
   'labor-costs': { ar: 'تكاليف العمالة', en: 'Labor Costs' },
-  'equipment': { ar: 'المعدات', en: 'Equipment' },
   'advances': { ar: 'العهد والسلف', en: 'Advances' },
   'petty-cash': { ar: 'الصندوق النقدي', en: 'Petty Cash' },
+  // الموارد
+  'employees': { ar: 'الموظفون', en: 'Employees' },
+  'employee-contracts': { ar: 'عقود الموظفين', en: 'Employee Contracts' },
+  'attendance': { ar: 'الحضور والانصراف', en: 'Attendance' },
+  'salaries': { ar: 'الرواتب', en: 'Salaries' },
+  'work-teams': { ar: 'فرق العمل', en: 'Work Teams' },
+  'equipment': { ar: 'المعدات', en: 'Equipment' },
+  'equipment-operations': { ar: 'التشغيل', en: 'Operations' },
+  'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
+  'fuel': { ar: 'الوقود', en: 'Fuel' },
+  'resource-distribution': { ar: 'توزيع الموارد', en: 'Resource Distribution' },
+  // سلسلة التوريد
+  'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
+  'purchase-orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },
+  'goods-receipt': { ar: 'الاستلام', en: 'Goods Receipt' },
+  'supplier-invoices': { ar: 'فواتير الموردين', en: 'Supplier Invoices' },
+  'supplier-payments': { ar: 'سداد الموردين', en: 'Supplier Payments' },
   // المخزون والمحاسبة
   'inventory': { ar: 'المخزون', en: 'Inventory' },
   'accounting': { ar: 'المحاسبة', en: 'Accounting' },

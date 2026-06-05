@@ -24,6 +24,23 @@ import { AccountingModule } from '@/components/modules/accounting'
 import { VATModule } from '@/components/modules/vat'
 import { ReportsModule } from '@/components/modules/reports'
 import { SettingsModule } from '@/components/modules/settings'
+// Resources modules
+import { EmployeesModule } from '@/components/modules/employees'
+import { EmployeeContractsModule } from '@/components/modules/employee-contracts'
+import { AttendanceModule } from '@/components/modules/attendance'
+import { SalariesModule } from '@/components/modules/salaries'
+import { WorkTeamsModule } from '@/components/modules/work-teams'
+import { EquipmentOperationsModule } from '@/components/modules/equipment-operations'
+import { EquipmentMaintenanceModule } from '@/components/modules/equipment-maintenance'
+import { FuelModule } from '@/components/modules/fuel'
+import { ResourceDistributionModule } from '@/components/modules/resource-distribution'
+// Supply Chain modules
+import { PurchaseRequestsModule } from '@/components/modules/purchase-requests'
+import { PurchaseOrdersModule } from '@/components/modules/purchase-orders'
+import { GoodsReceiptModule } from '@/components/modules/goods-receipt'
+import { SupplierInvoicesModule } from '@/components/modules/supplier-invoices'
+import { SupplierPaymentsModule } from '@/components/modules/supplier-payments'
+import { PlaceholderModule } from '@/components/modules/placeholder'
 
 const moduleMap: Record<NavItem, React.ComponentType> = {
   'dashboard': DashboardModule,
@@ -47,11 +64,27 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   'vat': VATModule,
   'reports': ReportsModule,
   'settings': SettingsModule,
+  // Resources
+  'employees': EmployeesModule,
+  'employee-contracts': EmployeeContractsModule,
+  'attendance': AttendanceModule,
+  'salaries': SalariesModule,
+  'work-teams': WorkTeamsModule,
+  'equipment-operations': EquipmentOperationsModule,
+  'equipment-maintenance': EquipmentMaintenanceModule,
+  'fuel': FuelModule,
+  'resource-distribution': ResourceDistributionModule,
+  // Supply Chain
+  'purchase-requests': PurchaseRequestsModule,
+  'purchase-orders': PurchaseOrdersModule,
+  'goods-receipt': GoodsReceiptModule,
+  'supplier-invoices': SupplierInvoicesModule,
+  'supplier-payments': SupplierPaymentsModule,
 }
 
 function ModuleRouter() {
   const { activeItem } = useAppStore()
-  const Module = moduleMap[activeItem] || DashboardModule
+  const Module = moduleMap[activeItem] || PlaceholderModule
   return <Module />
 }
 

@@ -7,18 +7,24 @@ export async function GET(request: Request) {
     const supplierId = searchParams.get('supplierId')
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
+    const purchaseRequestId = searchParams.get('purchaseRequestId')
 
     const where: Record<string, unknown> = {}
     if (supplierId) where.supplierId = supplierId
     if (projectId) where.projectId = projectId
     if (status) where.status = status
+    if (purchaseRequestId) where.purchaseRequestId = purchaseRequestId
 
     const orders = await db.purchaseOrder.findMany({
       where,
       include: {
         supplier: { select: { id: true, name: true, code: true } },
         project: { select: { id: true, name: true, code: true } },
+        purchaseRequest: { select: { id: true, requestNo: true, status: true } },
         items: true,
+        goodsReceipts: {
+          select: { id: true, receiptNo: true, status: true, date: true },
+        },
         _count: { select: { invoices: true } },
       },
       orderBy: { date: 'desc' },
@@ -33,10 +39,26 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { supplierId, projectId, date, deliveryDate, notes, items, vatRate = 0.15 } = body
+    const { supplierId, projectId, purchaseRequestId, date, deliveryDate, notes, items, vatRate = 0.15 } = body
 
     if (!supplierId || !date || !items?.length) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
+    }
+
+    // Validate: if purchaseRequestId provided, it must be APPROVED
+    if (purchaseRequestId) {
+      const pr = await db.purchaseRequest.findUnique({
+        where: { id: purchaseRequestId },
+      })
+      if (!pr) {
+        return NextResponse.json({ error: 'طلب الشراء غير موجود' }, { status: 404 })
+      }
+      if (pr.status !== 'APPROVED') {
+        return NextResponse.json(
+          { error: 'لا يمكن إنشاء أمر شراء من طلب غير معتمد - يجب اعتماد طلب الشراء أولاً' },
+          { status: 400 }
+        )
+      }
     }
 
     // Calculate totals from items
@@ -46,7 +68,7 @@ export async function POST(request: Request) {
     const vatAmount = subtotal * vatRate
     const totalAmount = subtotal + vatAmount
 
-    // Auto-generate order number
+    // Auto-generate order number PO-XXX
     const lastOrder = await db.purchaseOrder.findFirst({
       orderBy: { orderNo: 'desc' },
       select: { orderNo: true },
@@ -64,6 +86,7 @@ export async function POST(request: Request) {
         orderNo,
         supplierId,
         projectId: projectId || null,
+        purchaseRequestId: purchaseRequestId || null,
         date: new Date(date),
         deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
         subtotal,
@@ -86,6 +109,7 @@ export async function POST(request: Request) {
       include: {
         supplier: { select: { id: true, name: true, code: true } },
         project: { select: { id: true, name: true, code: true } },
+        purchaseRequest: { select: { id: true, requestNo: true, status: true } },
         items: true,
       },
     })
