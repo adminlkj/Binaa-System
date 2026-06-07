@@ -6,6 +6,7 @@ import {
   CreditCard, Plus, Search, Trash2, RefreshCw, ArrowRight, BookOpen,
   Printer, Download, AlertCircle, Link2, DollarSign, Calendar,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -98,7 +99,7 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
     if (!form.supplierId) return []
     return allInvoices.filter(inv =>
       inv.supplierId === form.supplierId &&
-      (inv.status === 'SENT' || inv.status === 'PARTIALLY_PAID' || inv.status === 'DRAFT')
+      (inv.status === 'SENT' || inv.status === 'PARTIALLY_PAID')
     )
   }, [form.supplierId, allInvoices])
 
@@ -107,7 +108,8 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => fetch('/api/supplier-payments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-payments'] }); onOpenChange(false) },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-payments'] }); queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم تسجيل الدفعة بنجاح', 'Payment recorded successfully', lang)); onOpenChange(false) },
+    onError: () => toast.error(t('فشل في تسجيل الدفعة', 'Failed to record payment', lang)),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -155,7 +157,7 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
                   <SelectItem value="">{t('بدون فاتورة', 'No invoice', lang)}</SelectItem>
                   {availableInvoices.map(inv => (
                     <SelectItem key={inv.id} value={inv.id}>
-                      {inv.invoiceNo} - {t('متبقي', 'Remaining', lang)}: {inv.totalAmount - inv.paidAmount} {t('من', 'of', lang)} {inv.totalAmount}
+                      {inv.invoiceNo} - {t('متبقي', 'Remaining', lang)}: <MoneyDisplay value={inv.totalAmount - inv.paidAmount} mode="system" lang={lang} size="sm" />
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -266,7 +268,8 @@ export function SupplierPaymentsModule() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/supplier-payments/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['supplier-payments'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-payments'] }); queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم حذف الدفعة', 'Payment deleted', lang)) },
+    onError: () => toast.error(t('فشل في حذف الدفعة', 'Failed to delete payment', lang)),
   })
 
   const filtered = payments.filter(p => {
@@ -275,7 +278,6 @@ export function SupplierPaymentsModule() {
     return p.supplier.name.toLowerCase().includes(s) || (p.reference?.toLowerCase().includes(s))
   })
 
-  // Summary calculations
   const today = new Date().toISOString().split('T')[0]
   const currentMonth = new Date().getMonth()
   const currentYear = new Date().getFullYear()
@@ -382,7 +384,7 @@ export function SupplierPaymentsModule() {
                       <TableCell className="font-medium">{p.supplier.name}</TableCell>
                       <TableCell>
                         {p.invoiceId ? (
-                          <Badge className="bg-blue-50 text-blue-700 border-0 text-xs">{t('فاتورة', 'Inv', lang)}</Badge>
+                          <Badge className="bg-blue-50 text-blue-700 border-0 text-xs gap-1"><Link2 className="size-3" />{t('فاتورة', 'Inv', lang)}</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
                         )}

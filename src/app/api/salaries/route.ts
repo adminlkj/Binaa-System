@@ -45,28 +45,76 @@ export async function POST(request: Request) {
     const netSalary = basicSalary + housingAllowance + transportAllowance + otherAllowances + overtimeAmount - deductions
 
     let journalEntryId: string | null = null
+    let projectCostCreated = false
 
-    // If status is APPROVED, create accounting entry
+    // If status is APPROVED, create accounting entry and project cost entry
     if (body.status === 'APPROVED') {
-      try {
-        const employee = await db.employee.findUnique({
-          where: { id: body.employeeId },
-          select: { name: true },
-        })
+      const employee = await db.employee.findUnique({
+        where: { id: body.employeeId },
+        select: { id: true, name: true },
+      })
 
+      const salaryDate = new Date(body.year, body.month - 1, 1)
+
+      // Check if employee is allocated to a project
+      const allocation = await db.resourceAllocation.findFirst({
+        where: {
+          resourceType: 'EMPLOYEE',
+          resourceId: body.employeeId,
+          startDate: { lte: salaryDate },
+          OR: [{ endDate: null }, { endDate: { gte: salaryDate } }],
+        },
+      })
+
+      // Determine cost center
+      let costCenterId: string | undefined
+      if (allocation) {
+        // Look up cost center for the project
+        const project = await db.project.findUnique({
+          where: { id: allocation.projectId },
+          select: { id: true, code: true, name: true },
+        })
+        if (project) {
+          const costCenter = await db.costCenter.findFirst({
+            where: { code: project.code },
+          })
+          if (costCenter) costCenterId = costCenter.id
+        }
+      }
+
+      // Create accounting entry
+      try {
         const entry = await autoEntryExpense({
           description: `راتب ${employee?.name || ''} - ${body.month}/${body.year}`,
           amount: netSalary,
           vatAmount: null,
           category: 'SALARIES',
-          date: new Date(body.year, body.month - 1, 1),
+          date: salaryDate,
           payFrom: 'TREASURY',
+          costCenterId,
         })
-
         journalEntryId = entry.id
       } catch (entryError) {
         console.error('Error creating salary accounting entry:', entryError)
         // Continue without journal entry - don't block salary creation
+      }
+
+      // Create project cost entry if employee is allocated
+      if (allocation) {
+        try {
+          await db.equipmentCost.create({
+            data: {
+              projectId: allocation.projectId,
+              description: `راتب ${employee?.name || ''} - ${body.month}/${body.year}`,
+              amount: netSalary,
+              date: salaryDate,
+            },
+          })
+          projectCostCreated = true
+        } catch (costError) {
+          console.error('Error creating project cost entry:', costError)
+          // Don't block salary creation
+        }
       }
     }
 
@@ -90,7 +138,7 @@ export async function POST(request: Request) {
       },
     })
 
-    return NextResponse.json(salary, { status: 201 })
+    return NextResponse.json({ ...salary, projectCostCreated }, { status: 201 })
   } catch (error) {
     console.error('Error creating salary:', error)
     return NextResponse.json({ error: 'فشل في إنشاء سجل الراتب' }, { status: 500 })

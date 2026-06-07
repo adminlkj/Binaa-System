@@ -3,13 +3,15 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Clock, Plus, Search, Pencil, Trash2, RefreshCw,
-  Printer, Download,
+  Clock, Plus, Search, Trash2, RefreshCw,
+  Printer, Download, Users, CalendarDays,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -58,7 +60,7 @@ function AttendanceFormDialog({ open, onOpenChange, employees }: {
   const [form, setForm] = useState<AttendanceFormData>(defaultForm)
   const { lang } = useAppStore()
 
-  // Calculate work hours from checkIn/checkOut
+  // Calculate work hours and auto-overtime from checkIn/checkOut
   const calculatedWorkHours = React.useMemo(() => {
     if (!form.checkIn || !form.checkOut) return null
     const [inH, inM] = form.checkIn.split(':').map(Number)
@@ -71,20 +73,30 @@ function AttendanceFormDialog({ open, onOpenChange, employees }: {
     return Math.round((diff / 60) * 100) / 100
   }, [form.checkIn, form.checkOut])
 
+  // Auto-calculate overtime (hours beyond 8)
+  const autoOvertime = React.useMemo(() => {
+    if (calculatedWorkHours === null) return 0
+    return Math.max(0, Math.round((calculatedWorkHours - 8) * 100) / 100)
+  }, [calculatedWorkHours])
+
   React.useEffect(() => {
     if (open) setForm(defaultForm)
   }, [open])
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => fetch('/api/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['attendance'] }); onOpenChange(false) },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+      onOpenChange(false)
+      toast.success(t('تم تسجيل الحضور', 'Attendance recorded', lang))
+    },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     createMutation.mutate({
       ...form,
-      overtimeHours: parseFloat(form.overtimeHours) || 0,
+      overtimeHours: form.overtimeHours ? parseFloat(form.overtimeHours) : autoOvertime,
       checkIn: form.checkIn || null,
       checkOut: form.checkOut || null,
     })
@@ -111,13 +123,27 @@ function AttendanceFormDialog({ open, onOpenChange, employees }: {
             <div className="space-y-2"><Label>{t('التاريخ *', 'Date *', lang)}</Label><Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></div>
             <div className="space-y-2"><Label>{t('وقت الحضور', 'Check In', lang)}</Label><Input type="time" value={form.checkIn} onChange={e => setForm(f => ({ ...f, checkIn: e.target.value }))} /></div>
             <div className="space-y-2"><Label>{t('وقت الانصراف', 'Check Out', lang)}</Label><Input type="time" value={form.checkOut} onChange={e => setForm(f => ({ ...f, checkOut: e.target.value }))} /></div>
-            <div className="space-y-2"><Label>{t('ساعات إضافية', 'Overtime Hours', lang)}</Label><Input type="number" min="0" step="0.5" value={form.overtimeHours} onChange={e => setForm(f => ({ ...f, overtimeHours: e.target.value }))} dir="ltr" /></div>
+            <div className="space-y-2">
+              <Label>{t('ساعات إضافية', 'Overtime Hours', lang)}</Label>
+              <Input
+                type="number" min="0" step="0.5"
+                value={form.overtimeHours || (autoOvertime > 0 ? String(autoOvertime) : '0')}
+                onChange={e => setForm(f => ({ ...f, overtimeHours: e.target.value }))}
+                dir="ltr"
+              />
+              {autoOvertime > 0 && <p className="text-xs text-amber-600">{t('محسوب تلقائياً', 'Auto-calculated', lang)}: {autoOvertime} {t('ساعة', 'hrs', lang)}</p>}
+            </div>
           </div>
 
           {calculatedWorkHours !== null && (
             <Card className="bg-emerald-50 border-emerald-200">
               <CardContent className="p-3">
-                <p className="text-sm text-emerald-600">{t('ساعات العمل المحسوبة', 'Calculated Work Hours', lang)}: <span className="font-bold text-emerald-700">{calculatedWorkHours} {t('ساعة', 'hrs', lang)}</span></p>
+                <div className="flex justify-between text-sm">
+                  <p className="text-emerald-600">{t('ساعات العمل المحسوبة', 'Calculated Work Hours', lang)}: <span className="font-bold text-emerald-700">{calculatedWorkHours} {t('ساعة', 'hrs', lang)}</span></p>
+                  {autoOvertime > 0 && (
+                    <p className="text-amber-600">{t('إضافي', 'Overtime', lang)}: <span className="font-bold text-amber-700">{autoOvertime} {t('ساعة', 'hrs', lang)}</span></p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           )}
@@ -132,16 +158,175 @@ function AttendanceFormDialog({ open, onOpenChange, employees }: {
   )
 }
 
+// ============ Bulk Attendance Dialog ============
+function BulkAttendanceDialog({ open, onOpenChange, employees }: {
+  open: boolean; onOpenChange: (open: boolean) => void; employees: Employee[]
+}) {
+  const queryClient = useQueryClient()
+  const { lang } = useAppStore()
+  const [date, setDate] = useState('')
+  const [checkIn, setCheckIn] = useState('08:00')
+  const [checkOut, setCheckOut] = useState('17:00')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
+
+  React.useEffect(() => {
+    if (open) {
+      setDate('')
+      setCheckIn('08:00')
+      setCheckOut('17:00')
+      setSelectedIds([])
+    }
+  }, [open])
+
+  const toggleEmployee = (id: string) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
+  }
+
+  const selectAll = () => {
+    setSelectedIds(employees.map(e => e.id))
+  }
+
+  const selectNone = () => {
+    setSelectedIds([])
+  }
+
+  // Calculate work hours from check-in/check-out
+  const calculatedHours = React.useMemo(() => {
+    if (!checkIn || !checkOut) return 0
+    const [inH, inM] = checkIn.split(':').map(Number)
+    const [outH, outM] = checkOut.split(':').map(Number)
+    if (isNaN(inH) || isNaN(outH)) return 0
+    const diff = (outH * 60 + (outM || 0)) - (inH * 60 + (inM || 0))
+    return diff > 0 ? Math.round((diff / 60) * 100) / 100 : 0
+  }, [checkIn, checkOut])
+
+  const autoOvertime = Math.max(0, calculatedHours - 8)
+
+  const bulkMutation = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        selectedIds.map(employeeId =>
+          fetch('/api/attendance', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              employeeId,
+              date,
+              checkIn,
+              checkOut,
+              overtimeHours: autoOvertime,
+            }),
+          }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+        )
+      )
+      return results
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+      onOpenChange(false)
+      toast.success(t('تم تسجيل الحضور الجماعي', 'Bulk attendance recorded', lang))
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!date || selectedIds.length === 0) return
+    bulkMutation.mutate()
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t('تسجيل حضور جماعي', 'Bulk Attendance', lang)}</DialogTitle>
+          <DialogDescription>{t('تسجيل حضور لعدة موظفين في نفس اليوم', 'Record attendance for multiple employees on the same day', lang)}</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2"><Label>{t('التاريخ *', 'Date *', lang)}</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+            <div className="space-y-2"><Label>{t('وقت الحضور', 'Check In', lang)}</Label><Input type="time" value={checkIn} onChange={e => setCheckIn(e.target.value)} /></div>
+            <div className="space-y-2"><Label>{t('وقت الانصراف', 'Check Out', lang)}</Label><Input type="time" value={checkOut} onChange={e => setCheckOut(e.target.value)} /></div>
+          </div>
+
+          {calculatedHours > 0 && (
+            <Card className="bg-emerald-50 border-emerald-200">
+              <CardContent className="p-3 flex justify-between text-sm">
+                <p className="text-emerald-600">{t('ساعات العمل', 'Work Hours', lang)}: <span className="font-bold">{calculatedHours}</span></p>
+                {autoOvertime > 0 && <p className="text-amber-600">{t('إضافي', 'Overtime', lang)}: <span className="font-bold">{autoOvertime}</span></p>}
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h4 className="font-semibold text-sm text-emerald-700">
+                {t('اختر الموظفين', 'Select Employees', lang)} ({selectedIds.length}/{employees.length})
+              </h4>
+              <div className="flex gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={selectAll}>{t('تحديد الكل', 'Select All', lang)}</Button>
+                <Button type="button" variant="ghost" size="sm" onClick={selectNone}>{t('إلغاء التحديد', 'Deselect All', lang)}</Button>
+              </div>
+            </div>
+            <div className="max-h-48 overflow-y-auto border rounded-lg p-2 space-y-1">
+              {employees.map(emp => (
+                <label key={emp.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                  <Checkbox
+                    checked={selectedIds.includes(emp.id)}
+                    onCheckedChange={() => toggleEmployee(emp.id)}
+                  />
+                  <span className="text-sm">{emp.name} <span className="text-muted-foreground">({emp.code})</span></span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+            <Button type="submit" disabled={bulkMutation.isPending || !date || selectedIds.length === 0} className="bg-emerald-600 hover:bg-emerald-700">
+              {bulkMutation.isPending ? t('جاري التسجيل...', 'Recording...', lang) : t('تسجيل حضور', 'Record Attendance', lang)}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ============ Main Attendance Module ============
 export function AttendanceModule() {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
+  const [filterMonth, setFilterMonth] = useState('')
+  const [filterYear, setFilterYear] = useState('')
+
+  const monthNames = [
+    { ar: 'يناير', en: 'January' }, { ar: 'فبراير', en: 'February' }, { ar: 'مارس', en: 'March' },
+    { ar: 'أبريل', en: 'April' }, { ar: 'مايو', en: 'May' }, { ar: 'يونيو', en: 'June' },
+    { ar: 'يوليو', en: 'July' }, { ar: 'أغسطس', en: 'August' }, { ar: 'سبتمبر', en: 'September' },
+    { ar: 'أكتوبر', en: 'October' }, { ar: 'نوفمبر', en: 'November' }, { ar: 'ديسمبر', en: 'December' },
+  ]
+
+  const queryParams = new URLSearchParams()
+  if (filterMonth && filterYear) {
+    const m = parseInt(filterMonth)
+    const y = parseInt(filterYear)
+    queryParams.set('dateFrom', `${y}-${String(m).padStart(2, '0')}-01`)
+    const nextMonth = m === 12 ? 1 : m + 1
+    const nextYear = m === 12 ? y + 1 : y
+    queryParams.set('dateTo', `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`)
+  }
 
   const { data: records = [], isLoading, isError, refetch } = useQuery<AttendanceRecord[]>({
-    queryKey: ['attendance'],
-    queryFn: async () => { const res = await fetch('/api/attendance'); if (!res.ok) throw new Error(); return res.json() },
+    queryKey: ['attendance', filterMonth, filterYear],
+    queryFn: async () => {
+      const qs = queryParams.toString()
+      const res = await fetch(`/api/attendance${qs ? `?${qs}` : ''}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
   })
 
   const { data: employees = [] } = useQuery<Employee[]>({
@@ -159,6 +344,20 @@ export function AttendanceModule() {
     const s = search.toLowerCase()
     return r.employee.name.toLowerCase().includes(s) || r.employee.code.toLowerCase().includes(s)
   })
+
+  // Monthly summary by employee
+  const employeeSummary = React.useMemo(() => {
+    const summary: Record<string, { employee: Employee; totalWorkHours: number; totalOvertime: number; days: number }> = {}
+    filtered.forEach(r => {
+      if (!summary[r.employeeId]) {
+        summary[r.employeeId] = { employee: r.employee, totalWorkHours: 0, totalOvertime: 0, days: 0 }
+      }
+      summary[r.employeeId].totalWorkHours += r.workHours
+      summary[r.employeeId].totalOvertime += r.overtimeHours
+      summary[r.employeeId].days += 1
+    })
+    return Object.values(summary)
+  }, [filtered])
 
   const handleExport = () => {
     const columns: CSVColumn[] = [
@@ -185,13 +384,68 @@ export function AttendanceModule() {
           <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+          <Button variant="outline" className="gap-2" onClick={() => setBulkDialogOpen(true)}>
+            <Users className="size-4" />{t('تسجيل جماعي', 'Bulk Entry', lang)}
+          </Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('تسجيل حضور', 'Record Attendance', lang)}</Button>
         </div>
       }
     >
-      {/* Search */}
+      {/* Monthly Summary by Employee */}
+      {employeeSummary.length > 0 && (
+        <Card>
+          <Card className="border-0 shadow-none">
+            <CardContent className="p-0">
+              <div className="p-4">
+                <h3 className="text-sm font-semibold text-emerald-700 mb-3 flex items-center gap-2">
+                  <CalendarDays className="size-4" />
+                  {t('ملخص الشهر حسب الموظف', 'Monthly Summary by Employee', lang)}
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead className="text-right">{t('الموظف', 'Employee', lang)}</TableHead>
+                    <TableHead className="text-right">{t('أيام الحضور', 'Days', lang)}</TableHead>
+                    <TableHead className="text-right">{t('ساعات العمل', 'Work Hours', lang)}</TableHead>
+                    <TableHead className="text-right">{t('ساعات إضافية', 'Overtime', lang)}</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {employeeSummary.map(s => (
+                      <TableRow key={s.employee.id}>
+                        <TableCell className="font-medium">{s.employee.name}</TableCell>
+                        <TableCell><Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">{s.days}</Badge></TableCell>
+                        <TableCell><Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{s.totalWorkHours.toFixed(1)} {t('ساعة', 'hrs', lang)}</Badge></TableCell>
+                        <TableCell><Badge variant="outline" className={s.totalOvertime > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-50'}>{s.totalOvertime > 0 ? `${s.totalOvertime.toFixed(1)} ${t('ساعة', 'hrs', lang)}` : '—'}</Badge></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </Card>
+      )}
+
+      {/* Search & Filter */}
       <Card><CardContent className="p-4">
-        <div className="relative"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+          <Select value={filterMonth} onValueChange={setFilterMonth}>
+            <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder={t('كل الأشهر', 'All Months', lang)} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{t('كل الأشهر', 'All Months', lang)}</SelectItem>
+              {monthNames.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m[lang]}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={filterYear} onValueChange={setFilterYear}>
+            <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder={t('السنة', 'Year', lang)} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{t('كل السنوات', 'All Years', lang)}</SelectItem>
+              {[2024, 2025, 2026].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </CardContent></Card>
 
       {/* Table */}
@@ -244,6 +498,7 @@ export function AttendanceModule() {
       </CardContent></Card>
 
       <AttendanceFormDialog open={dialogOpen} onOpenChange={setDialogOpen} employees={employees} />
+      <BulkAttendanceDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} employees={employees} />
     </ModuleLayout>
   )
 }

@@ -4,11 +4,12 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Fuel as FuelIcon, Plus, Search, Trash2, RefreshCw,
-  Printer, Download,
+  Printer, Download, BookOpen, MapPin,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -21,7 +22,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
-import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
+import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
@@ -31,6 +32,7 @@ interface Project { id: string; code: string; name: string }
 interface FuelLog {
   id: string; equipmentId: string; projectId: string | null
   date: string; liters: number; costPerLiter: number; totalCost: number
+  journalEntryId: string | null
   equipment: Equipment; project: Project | null
 }
 
@@ -138,10 +140,16 @@ export function FuelModule() {
   const { lang } = useAppStore()
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [filterProject, setFilterProject] = useState('')
 
   const { data: fuelLogs = [], isLoading, isError, refetch } = useQuery<FuelLog[]>({
-    queryKey: ['equipment-fuel'],
-    queryFn: async () => { const res = await fetch('/api/equipment/fuel'); if (!res.ok) throw new Error(); return res.json() },
+    queryKey: ['equipment-fuel', filterProject],
+    queryFn: async () => {
+      const url = filterProject ? `/api/equipment/fuel?projectId=${filterProject}` : '/api/equipment/fuel'
+      const res = await fetch(url)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
   })
 
   const { data: equipment = [] } = useQuery<Equipment[]>({
@@ -168,6 +176,19 @@ export function FuelModule() {
   const totalLiters = filtered.reduce((sum, f) => sum + f.liters, 0)
   const totalCost = filtered.reduce((sum, f) => sum + f.totalCost, 0)
 
+  // Fuel cost per project
+  const projectFuelCosts = (() => {
+    const map: Record<string, { name: string; liters: number; cost: number }> = {}
+    filtered.forEach(f => {
+      const key = f.projectId || 'unassigned'
+      const name = f.project?.name || t('غير مخصص', 'Unassigned', lang)
+      if (!map[key]) map[key] = { name, liters: 0, cost: 0 }
+      map[key].liters += f.liters
+      map[key].cost += f.totalCost
+    })
+    return Object.values(map)
+  })()
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'equipmentName', label: t('المعدة', 'Equipment', lang) },
@@ -176,10 +197,12 @@ export function FuelModule() {
       { key: 'liters', label: t('اللترات', 'Liters', lang) },
       { key: 'costPerLiter', label: t('سعر اللتر', 'Cost/L', lang) },
       { key: 'totalCost', label: t('الإجمالي', 'Total Cost', lang) },
+      { key: 'accountingEntry', label: t('قيد محاسبي', 'Accounting', lang) },
     ]
     exportToCSV(filtered.map(f => ({
       equipmentName: f.equipment.name, projectName: f.project?.name || '',
       date: f.date, liters: f.liters, costPerLiter: f.costPerLiter, totalCost: f.totalCost,
+      accountingEntry: f.journalEntryId ? t('نعم', 'Yes', lang) : t('لا', 'No', lang),
     })), `fuel-logs-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
@@ -197,26 +220,64 @@ export function FuelModule() {
       }
     >
       {/* Summary */}
-      {filtered.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Card className="bg-amber-50 border-amber-200">
-            <CardContent className="p-3 text-center">
-              <p className="text-xs text-amber-600">{t('إجمالي اللترات', 'Total Liters', lang)}</p>
-              <p className="text-lg font-bold text-amber-700">{totalLiters.toLocaleString('en-US', { maximumFractionDigits: 1 })} {t('لتر', 'L', lang)}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-emerald-50 border-emerald-200">
-            <CardContent className="p-3 text-center">
-              <p className="text-xs text-emerald-600">{t('إجمالي التكلفة', 'Total Cost', lang)}</p>
-              <MoneyDisplay value={totalCost} lang={lang} size="lg" bold />
-            </CardContent>
-          </Card>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-amber-600">{t('إجمالي اللترات', 'Total Liters', lang)}</p>
+            <p className="text-lg font-bold text-amber-700">{totalLiters.toLocaleString('en-US', { maximumFractionDigits: 1 })} {t('لتر', 'L', lang)}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-emerald-50 border-emerald-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-emerald-600">{t('إجمالي التكلفة', 'Total Cost', lang)}</p>
+            <MoneyDisplay value={totalCost} lang={lang} size="lg" bold />
+          </CardContent>
+        </Card>
+        <Card className="bg-teal-50 border-teal-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-teal-600">{t('عدد السجلات', 'Records', lang)}</p>
+            <p className="text-lg font-bold text-teal-700">{filtered.length}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Fuel Cost by Project */}
+      {projectFuelCosts.length > 0 && (
+        <Card>
+          <CardContent className="p-0">
+            <div className="p-4"><h3 className="text-sm font-semibold text-emerald-700">{t('تكاليف الوقود حسب المشروع', 'Fuel Cost by Project', lang)}</h3></div>
+            <Table>
+              <TableHeader><TableRow>
+                <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+                <TableHead className="text-right">{t('اللترات', 'Liters', lang)}</TableHead>
+                <TableHead className="text-right">{t('التكلفة', 'Cost', lang)}</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {projectFuelCosts.map(p => (
+                  <TableRow key={p.name}>
+                    <TableCell className="font-medium">{p.name}</TableCell>
+                    <TableCell>{p.liters.toLocaleString('en-US', { maximumFractionDigits: 1 })} {t('لتر', 'L', lang)}</TableCell>
+                    <TableCell><MoneyDisplay value={p.cost} lang={lang} size="sm" bold /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Search */}
+      {/* Search & Filter */}
       <Card><CardContent className="p-4">
-        <div className="relative"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث بالمعدة أو المشروع...', 'Search by equipment or project...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث بالمعدة أو المشروع...', 'Search by equipment or project...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+          <Select value={filterProject} onValueChange={setFilterProject}>
+            <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder={t('كل المشاريع', 'All Projects', lang)} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{t('كل المشاريع', 'All Projects', lang)}</SelectItem>
+              {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </CardContent></Card>
 
       {/* Table */}
@@ -236,17 +297,31 @@ export function FuelModule() {
                 <TableHead className="text-right">{t('اللترات', 'Liters', lang)}</TableHead>
                 <TableHead className="text-right">{t('سعر اللتر', 'Cost/L', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+                <TableHead className="text-right">{t('قيد محاسبي', 'Accounting', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {filtered.map(f => (
                   <TableRow key={f.id}>
                     <TableCell className="font-medium">{f.equipment.name}</TableCell>
-                    <TableCell>{f.project?.name || '—'}</TableCell>
+                    <TableCell>
+                      {f.project ? (
+                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
+                          <MapPin className="size-3" />{f.project.name}
+                        </Badge>
+                      ) : '—'}
+                    </TableCell>
                     <TableCell>{formatDate(f.date, lang)}</TableCell>
                     <TableCell dir="ltr" className="text-right">{f.liters.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
                     <TableCell><MoneyDisplay value={f.costPerLiter} lang={lang} size="sm" /></TableCell>
                     <TableCell><MoneyDisplay value={f.totalCost} lang={lang} size="sm" bold /></TableCell>
+                    <TableCell>
+                      {f.journalEntryId ? (
+                        <Badge className="bg-purple-100 text-purple-700 border-0 gap-1"><BookOpen className="size-3" />{t('مسجل', 'Posted', lang)}</Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-gray-50 text-gray-500">—</Badge>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من حذف السجل؟', 'Are you sure you want to delete this record?', lang))) deleteMutation.mutate(f.id) }}><Trash2 className="size-4" /></Button>

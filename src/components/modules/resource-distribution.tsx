@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   LayoutGrid, Plus, Search, Trash2, RefreshCw,
   Printer, Download, Users, Truck, Users2,
+  ChevronLeft, TrendingUp, TrendingDown, BarChart3,
 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -20,21 +21,42 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
-interface Employee { id: string; code: string; name: string; nameAr: string | null }
+interface Employee { id: string; code: string; name: string; nameAr: string | null; basicSalary: number }
 interface Equipment { id: string; code: string; name: string; nameAr: string | null }
-interface WorkTeam { id: string; code: string; name: string; nameAr: string | null }
-interface Project { id: string; code: string; name: string }
+interface WorkTeam { id: string; code: string; name: string; nameAr: string | null; members: { employeeId: string; employee: Employee }[] }
+interface Project { id: string; code: string; name: string; nameAr?: string | null; contractValue: number }
 
 interface ResourceDistribution {
   id: string; projectId: string; resourceType: string; resourceId: string
   startDate: string; endDate: string | null
   project: Project
-  resourceDetails?: { name: string; code: string }
+  resource?: Record<string, unknown>
+}
+
+interface ProjectCostData {
+  project: { id: string; code: string; name: string; nameAr: string | null; contractValue: number }
+  costs: {
+    materials: { total: number }
+    equipmentCosts: { total: number }
+    equipmentOperations: { total: number }
+    fuel: { total: number }
+    maintenance: { total: number }
+    subcontractors: { total: number }
+    labor: { total: number }
+    salaries: { total: number }
+    expenses: { total: number }
+  }
+  totalCost: number
+  contractValue: number
+  profitLoss: number
+  profitMargin: number
+  budgetUtilization: number
 }
 
 interface DistributionFormData {
@@ -72,6 +94,179 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
   ))}</div>)
 }
 
+// ============ Cost Bar ============
+function CostBar({ label, value, maxValue, color, lang }: { label: string; value: number; maxValue: number; color: string; lang: 'ar' | 'en' }) {
+  const pct = maxValue > 0 ? Math.min((value / maxValue) * 100, 100) : 0
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs">
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium"><MoneyDisplay value={value} lang={lang} size="sm" inline /></span>
+      </div>
+      <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
+// ============ Project Cost Sheet View ============
+function ProjectCostSheet({ project, onBack }: { project: Project; onBack: () => void }) {
+  const { lang } = useAppStore()
+
+  const { data: costData, isLoading, isError } = useQuery<ProjectCostData>({
+    queryKey: ['project-costs', project.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/resource-distribution/project-costs/${project.id}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  if (isLoading) return <div className="p-6"><TableSkeleton rows={8} /></div>
+  if (isError || !costData) return (
+    <div className="flex flex-col items-center gap-3 py-10">
+      <p className="text-rose-600">{t('فشل في تحميل التكاليف', 'Failed to load costs', lang)}</p>
+      <Button variant="outline" onClick={onBack}>{t('رجوع', 'Back', lang)}</Button>
+    </div>
+  )
+
+  const c = costData.costs
+  const maxCost = Math.max(c.materials.total, c.equipmentCosts.total, c.equipmentOperations.total, c.fuel.total, c.maintenance.total, c.subcontractors.total, c.labor.total, c.salaries.total, c.expenses.total, 1)
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={onBack}><ChevronLeft className={`size-5 ${lang === 'ar' ? 'rotate-180' : ''}`} /></Button>
+        <div>
+          <h2 className="text-lg font-bold">{project.name}</h2>
+          <p className="text-sm text-muted-foreground">{t('كشف تكاليف المشروع', 'Project Cost Sheet', lang)}</p>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card className="bg-emerald-50 border-emerald-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-emerald-600">{t('قيمة العقد', 'Contract Value', lang)}</p>
+            <MoneyDisplay value={costData.contractValue} lang={lang} size="lg" bold />
+          </CardContent>
+        </Card>
+        <Card className="bg-rose-50 border-rose-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-rose-600">{t('إجمالي التكاليف', 'Total Cost', lang)}</p>
+            <MoneyDisplay value={costData.totalCost} lang={lang} size="lg" bold />
+          </CardContent>
+        </Card>
+        <Card className={`${costData.profitLoss >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+          <CardContent className="p-3 text-center">
+            <p className={`text-xs ${costData.profitLoss >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{t('الربح/الخسارة', 'Profit/Loss', lang)}</p>
+            <div className="flex items-center justify-center gap-1">
+              {costData.profitLoss >= 0 ? <TrendingUp className="size-4 text-emerald-600" /> : <TrendingDown className="size-4 text-red-600" />}
+              <MoneyDisplay value={Math.abs(costData.profitLoss)} lang={lang} size="lg" bold />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-amber-600">{t('نسبة الاستنفاذ', 'Budget Utilization', lang)}</p>
+            <p className="text-xl font-bold text-amber-700">{costData.budgetUtilization}%</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Budget utilization bar */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex justify-between text-sm mb-2">
+            <span className="text-muted-foreground">{t('نسبة التكاليف من العقد', 'Cost vs Contract', lang)}</span>
+            <span className="font-medium">{costData.budgetUtilization}%</span>
+          </div>
+          <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${costData.budgetUtilization > 100 ? 'bg-red-500' : costData.budgetUtilization > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+              style={{ width: `${Math.min(costData.budgetUtilization, 100)}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs mt-1 text-muted-foreground">
+            <span><MoneyDisplay value={costData.totalCost} lang={lang} size="sm" inline /></span>
+            <span><MoneyDisplay value={costData.contractValue} lang={lang} size="sm" inline /></span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cost Breakdown */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <BarChart3 className="size-4 text-emerald-600" />
+            {t('تفصيل التكاليف', 'Cost Breakdown', lang)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <CostBar label={t('مواد', 'Materials', lang)} value={c.materials.total} maxValue={maxCost} color="bg-blue-500" lang={lang} />
+          <CostBar label={t('تكاليف معدات', 'Equipment Costs', lang)} value={c.equipmentCosts.total} maxValue={maxCost} color="bg-orange-500" lang={lang} />
+          <CostBar label={t('تشغيل معدات', 'Equipment Operations', lang)} value={c.equipmentOperations.total} maxValue={maxCost} color="bg-amber-500" lang={lang} />
+          <CostBar label={t('وقود', 'Fuel', lang)} value={c.fuel.total} maxValue={maxCost} color="bg-yellow-500" lang={lang} />
+          <CostBar label={t('صيانة', 'Maintenance', lang)} value={c.maintenance.total} maxValue={maxCost} color="bg-teal-500" lang={lang} />
+          <CostBar label={t('مقاولي الباطن', 'Subcontractors', lang)} value={c.subcontractors.total} maxValue={maxCost} color="bg-violet-500" lang={lang} />
+          <CostBar label={t('عمالة', 'Labor', lang)} value={c.labor.total} maxValue={maxCost} color="bg-cyan-500" lang={lang} />
+          <CostBar label={t('رواتب', 'Salaries', lang)} value={c.salaries.total} maxValue={maxCost} color="bg-emerald-500" lang={lang} />
+          <CostBar label={t('مصروفات أخرى', 'Other Expenses', lang)} value={c.expenses.total} maxValue={maxCost} color="bg-gray-500" lang={lang} />
+        </CardContent>
+      </Card>
+
+      {/* Cost Detail Table */}
+      <Card>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader><TableRow>
+              <TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead>
+              <TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead>
+              <TableHead className="text-right">{t('النسبة', '% of Total', lang)}</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {[
+                { label: t('مواد', 'Materials', lang), value: c.materials.total },
+                { label: t('تكاليف معدات', 'Equipment Costs', lang), value: c.equipmentCosts.total },
+                { label: t('تشغيل معدات', 'Equipment Operations', lang), value: c.equipmentOperations.total },
+                { label: t('وقود', 'Fuel', lang), value: c.fuel.total },
+                { label: t('صيانة', 'Maintenance', lang), value: c.maintenance.total },
+                { label: t('مقاولي الباطن', 'Subcontractors', lang), value: c.subcontractors.total },
+                { label: t('عمالة', 'Labor', lang), value: c.labor.total },
+                { label: t('رواتب', 'Salaries', lang), value: c.salaries.total },
+                { label: t('مصروفات أخرى', 'Other Expenses', lang), value: c.expenses.total },
+              ].map((row, i) => (
+                <TableRow key={i}>
+                  <TableCell className="font-medium">{row.label}</TableCell>
+                  <TableCell><MoneyDisplay value={row.value} lang={lang} size="sm" /></TableCell>
+                  <TableCell>{costData.totalCost > 0 ? ((row.value / costData.totalCost) * 100).toFixed(1) : '0'}%</TableCell>
+                </TableRow>
+              ))}
+              <TableRow className="bg-emerald-50 font-bold">
+                <TableCell>{t('الإجمالي', 'Total', lang)}</TableCell>
+                <TableCell><MoneyDisplay value={costData.totalCost} lang={lang} size="sm" bold /></TableCell>
+                <TableCell>100%</TableCell>
+              </TableRow>
+              <TableRow className="bg-blue-50">
+                <TableCell>{t('قيمة العقد', 'Contract Value', lang)}</TableCell>
+                <TableCell><MoneyDisplay value={costData.contractValue} lang={lang} size="sm" bold /></TableCell>
+                <TableCell />
+              </TableRow>
+              <TableRow className={`${costData.profitLoss >= 0 ? 'bg-emerald-50' : 'bg-red-50'} font-bold`}>
+                <TableCell>{t('الربح/الخسارة', 'Profit/Loss', lang)}</TableCell>
+                <TableCell><MoneyDisplay value={costData.profitLoss} lang={lang} size="sm" bold /></TableCell>
+                <TableCell>{costData.profitMargin}%</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 // ============ Distribution Form Dialog ============
 function DistributionFormDialog({ open, onOpenChange, projects, employees, equipment, teams }: {
   open: boolean; onOpenChange: (open: boolean) => void
@@ -81,7 +276,6 @@ function DistributionFormDialog({ open, onOpenChange, projects, employees, equip
   const [form, setForm] = useState<DistributionFormData>(defaultForm)
   const { lang } = useAppStore()
 
-  // Get resources based on selected type
   const resourceOptions = React.useMemo(() => {
     switch (form.resourceType) {
       case 'EMPLOYEE': return employees.map(e => ({ id: e.id, name: e.name, code: e.code }))
@@ -95,7 +289,6 @@ function DistributionFormDialog({ open, onOpenChange, projects, employees, equip
     if (open) setForm(defaultForm)
   }, [open])
 
-  // Reset resource when type changes
   React.useEffect(() => {
     setForm(f => ({ ...f, resourceId: '' }))
   }, [form.resourceType])
@@ -176,6 +369,7 @@ export function ResourceDistributionModule() {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [filterProject, setFilterProject] = useState('')
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null)
 
   const { data: distributions = [], isLoading, isError, refetch } = useQuery<ResourceDistribution[]>({
     queryKey: ['resource-distribution'],
@@ -212,7 +406,7 @@ export function ResourceDistributionModule() {
     if (filterProject && d.projectId !== filterProject) return false
     if (!search) return true
     const s = search.toLowerCase()
-    return d.project.name.toLowerCase().includes(s) || (d.resourceDetails?.name.toLowerCase().includes(s))
+    return d.project.name.toLowerCase().includes(s) || ((d.resource as Record<string, unknown>)?.name as string)?.toLowerCase().includes(s)
   })
 
   // Summary counts
@@ -243,9 +437,21 @@ export function ResourceDistributionModule() {
     exportToCSV(filtered.map(d => ({
       projectName: d.project.name,
       resourceType: resourceTypeConfig[d.resourceType]?.label[lang] || d.resourceType,
-      resourceName: d.resourceDetails?.name || '',
+      resourceName: (d.resource as Record<string, unknown>)?.name as string || '',
       startDate: d.startDate, endDate: d.endDate || '',
     })), `resource-distribution-${new Date().toISOString().slice(0, 10)}`, columns)
+  }
+
+  // If a project is selected, show the cost sheet
+  if (selectedProject) {
+    return (
+      <ModuleLayout
+        title={{ ar: 'كشف تكاليف المشروع', en: 'Project Cost Sheet' }}
+        subtitle={{ ar: selectedProject.name, en: selectedProject.name }}
+      >
+        <ProjectCostSheet project={selectedProject} onBack={() => setSelectedProject(null)} />
+      </ModuleLayout>
+    )
   }
 
   return (
@@ -306,19 +512,30 @@ export function ResourceDistributionModule() {
         </div>
       </CardContent></Card>
 
-      {/* Visual Grid by Project */}
+      {/* Visual Grid by Project with Cost Sheet Button */}
       {projectGroups.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {projectGroups.map(group => (
             <Card key={group.project.id} className="border-l-4 border-l-emerald-500">
               <CardContent className="p-4">
-                <h3 className="font-semibold text-sm mb-3">{group.project.name}</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-sm">{group.project.name}</h3>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                    onClick={() => setSelectedProject(group.project)}
+                  >
+                    <BarChart3 className="size-3" />
+                    {t('كشف التكاليف', 'Cost Sheet', lang)}
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {group.items.map(item => (
                     <div key={item.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gray-50">
                       <div className="flex items-center gap-2">
                         <ResourceTypeBadge type={item.resourceType} lang={lang} />
-                        <span className="text-sm font-medium">{item.resourceDetails?.name || '—'}</span>
+                        <span className="text-sm font-medium">{(item.resource as Record<string, unknown>)?.name as string || '—'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">{formatDate(item.startDate, lang)}</span>
@@ -327,6 +544,11 @@ export function ResourceDistributionModule() {
                     </div>
                   ))}
                 </div>
+                {group.project.contractValue > 0 && (
+                  <div className="mt-3 pt-2 border-t text-xs text-muted-foreground">
+                    {t('قيمة العقد', 'Contract Value', lang)}: <MoneyDisplay value={group.project.contractValue} lang={lang} size="sm" inline />
+                  </div>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -356,11 +578,12 @@ export function ResourceDistributionModule() {
                   <TableRow key={d.id}>
                     <TableCell className="font-medium">{d.project.name}</TableCell>
                     <TableCell><ResourceTypeBadge type={d.resourceType} lang={lang} /></TableCell>
-                    <TableCell>{d.resourceDetails?.name || '—'}</TableCell>
+                    <TableCell>{(d.resource as Record<string, unknown>)?.name as string || '—'}</TableCell>
                     <TableCell>{formatDate(d.startDate, lang)}</TableCell>
                     <TableCell>{d.endDate ? formatDate(d.endDate, lang) : '—'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" className="size-8 text-emerald-600 hover:text-emerald-700" onClick={() => setSelectedProject(d.project)} title={t('كشف التكاليف', 'Cost Sheet', lang)}><BarChart3 className="size-4" /></Button>
                         <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من إلغاء التوزيع؟', 'Are you sure you want to remove this allocation?', lang))) deleteMutation.mutate(d.id) }}><Trash2 className="size-4" /></Button>
                       </div>
                     </TableCell>

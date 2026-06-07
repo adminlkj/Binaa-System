@@ -33,6 +33,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
+    const hours = parseFloat(body.hours || '0')
 
     const operation = await db.equipmentOperation.create({
       data: {
@@ -40,11 +41,11 @@ export async function POST(request: Request) {
         operatorId: body.operatorId || null,
         projectId: body.projectId || null,
         date: new Date(body.date),
-        hours: body.hours ? parseFloat(body.hours) : 0,
+        hours,
         notes: body.notes || null,
       },
       include: {
-        equipment: { select: { id: true, code: true, name: true, nameAr: true } },
+        equipment: { select: { id: true, code: true, name: true, nameAr: true, hourlyRate: true } },
         operator: { select: { id: true, code: true, name: true, nameAr: true } },
         project: { select: { id: true, code: true, name: true, nameAr: true } },
       },
@@ -63,9 +64,24 @@ export async function POST(request: Request) {
       })
     }
 
-    // Create accounting entry for equipment operation cost
+    // Create EquipmentCost entry for project when projectId is provided
+    if (body.projectId && equipment?.hourlyRate) {
+      const costAmount = hours * equipment.hourlyRate
+      if (costAmount > 0) {
+        await db.equipmentCost.create({
+          data: {
+            projectId: body.projectId,
+            description: `تشغيل ${equipment.name} - ${hours} ساعة`,
+            amount: costAmount,
+            date: new Date(body.date),
+          },
+        })
+      }
+    }
+
+    // Create accounting entry for equipment operation cost with costCenterId
     if (equipment && equipment.hourlyRate > 0) {
-      const costAmount = parseFloat(body.hours || '0') * equipment.hourlyRate
+      const costAmount = hours * equipment.hourlyRate
       if (costAmount > 0) {
         try {
           await autoEntryEquipmentCost({
@@ -74,6 +90,7 @@ export async function POST(request: Request) {
             amount: costAmount,
             date: new Date(body.date),
             payFrom: 'CASH',
+            costCenterId: body.projectId || undefined, // Add costCenterId
           })
         } catch (entryError) {
           console.error('Error creating equipment operation accounting entry:', entryError)

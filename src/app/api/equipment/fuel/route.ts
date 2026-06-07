@@ -49,7 +49,24 @@ export async function POST(request: Request) {
       },
     })
 
-    // Auto accounting entry for fuel cost
+    // Create EquipmentCost entry for the project if projectId is provided
+    if (body.projectId && totalCost > 0) {
+      const equipment = await db.equipment.findUnique({
+        where: { id: body.equipmentId },
+        select: { name: true },
+      })
+
+      await db.equipmentCost.create({
+        data: {
+          projectId: body.projectId,
+          description: `وقود ${equipment?.name || 'معدات'} - ${liters} لتر`,
+          amount: totalCost,
+          date: new Date(body.date),
+        },
+      })
+    }
+
+    // Auto accounting entry for fuel cost with costCenterId
     if (totalCost > 0) {
       try {
         const equipment = await db.equipment.findUnique({
@@ -63,6 +80,7 @@ export async function POST(request: Request) {
           amount: totalCost,
           date: new Date(body.date),
           payFrom: 'CASH',
+          costCenterId: body.projectId || undefined, // Add costCenterId
         })
 
         // Link journal entry to fuel log

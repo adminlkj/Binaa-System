@@ -4,11 +4,13 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, Pencil, Trash2, RefreshCw,
-  Printer, Download,
+  Printer, Download, Calculator, CheckCircle, Clock,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -47,6 +49,25 @@ const defaultForm: ContractFormData = {
 
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
 
+function getContractStatus(startDate: string, endDate: string | null): { label: { ar: string; en: string }; color: string; bg: string } {
+  const now = new Date()
+  const start = new Date(startDate)
+  const end = endDate ? new Date(endDate) : null
+
+  if (end && end < now) {
+    return { label: { ar: 'منتهي', en: 'Expired' }, color: 'text-gray-700', bg: 'bg-gray-100' }
+  }
+  if (start > now) {
+    return { label: { ar: 'قادم', en: 'Upcoming' }, color: 'text-blue-700', bg: 'bg-blue-100' }
+  }
+  return { label: { ar: 'نشط', en: 'Active' }, color: 'text-emerald-700', bg: 'bg-emerald-100' }
+}
+
+function ContractStatusBadge({ startDate, endDate, lang }: { startDate: string; endDate: string | null; lang: 'ar' | 'en' }) {
+  const status = getContractStatus(startDate, endDate)
+  return <Badge className={`${status.bg} ${status.color} border-0`}>{status.label[lang]}</Badge>
+}
+
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (<div className="space-y-2">{Array.from({ length: rows }).map((_, i) => (
     <div key={i} className="flex gap-4 p-3"><div className="h-5 w-20 animate-pulse rounded bg-gray-200" /><div className="h-5 w-40 animate-pulse rounded bg-gray-200" /><div className="h-5 w-28 animate-pulse rounded bg-gray-200" /></div>
@@ -82,7 +103,12 @@ function ContractFormDialog({ open, onOpenChange, editingContract, employees }: 
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => fetch('/api/employee-contracts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['employee-contracts'] }); queryClient.invalidateQueries({ queryKey: ['employees'] }); onOpenChange(false) },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-contracts'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      onOpenChange(false)
+      toast.success(t('تم حفظ العقد', 'Contract saved', lang))
+    },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -134,7 +160,10 @@ function ContractFormDialog({ open, onOpenChange, editingContract, employees }: 
           {totalCompensation > 0 && (
             <Card className="bg-emerald-50 border-emerald-200">
               <CardContent className="p-3">
-                <p className="text-sm text-emerald-600">{t('إجمالي التعويضات', 'Total Compensation', lang)}: <span className="font-bold text-emerald-700"><MoneyDisplay value={totalCompensation} lang={lang} size="sm" inline /></span></p>
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-emerald-600">{t('إجمالي التعويضات', 'Total Compensation', lang)}: <span className="font-bold text-emerald-700"><MoneyDisplay value={totalCompensation} lang={lang} size="sm" inline /></span></p>
+                  <p className="text-xs text-emerald-500">{t('شهرياً', 'Monthly', lang)}</p>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -156,10 +185,17 @@ export function EmployeeContractsModule() {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingContract, setEditingContract] = useState<EmployeeContract | null>(null)
+  const [filterEmployee, setFilterEmployee] = useState('')
+  const [showExpired, setShowExpired] = useState(true)
 
   const { data: contracts = [], isLoading, isError, refetch } = useQuery<EmployeeContract[]>({
-    queryKey: ['employee-contracts'],
-    queryFn: async () => { const res = await fetch('/api/employee-contracts'); if (!res.ok) throw new Error(); return res.json() },
+    queryKey: ['employee-contracts', filterEmployee],
+    queryFn: async () => {
+      const url = filterEmployee ? `/api/employee-contracts?employeeId=${filterEmployee}` : '/api/employee-contracts'
+      const res = await fetch(url)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
   })
 
   const { data: employees = [] } = useQuery<Employee[]>({
@@ -169,14 +205,23 @@ export function EmployeeContractsModule() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/employee-contracts/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employee-contracts'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-contracts'] })
+      toast.success(t('تم حذف العقد', 'Contract deleted', lang))
+    },
   })
 
   const filtered = contracts.filter(c => {
+    if (!showExpired && c.endDate && new Date(c.endDate) < new Date()) return false
     if (!search) return true
     const s = search.toLowerCase()
     return c.employee.name.toLowerCase().includes(s) || c.employee.code.toLowerCase().includes(s)
   })
+
+  // Summary
+  const activeCount = contracts.filter(c => getContractStatus(c.startDate, c.endDate).label.en === 'Active').length
+  const expiredCount = contracts.filter(c => getContractStatus(c.startDate, c.endDate).label.en === 'Expired').length
+  const totalCompAll = contracts.reduce((sum, c) => sum + c.totalCompensation, 0)
 
   const handleExport = () => {
     const columns: CSVColumn[] = [
@@ -188,12 +233,14 @@ export function EmployeeContractsModule() {
       { key: 'transportAllowance', label: t('بدل النقل', 'Transport', lang) },
       { key: 'otherAllowances', label: t('بدلات أخرى', 'Other', lang) },
       { key: 'totalCompensation', label: t('الإجمالي', 'Total', lang) },
+      { key: 'status', label: t('الحالة', 'Status', lang) },
     ]
     exportToCSV(filtered.map(c => ({
       employeeName: c.employee.name, startDate: c.startDate, endDate: c.endDate || '',
       basicSalary: c.basicSalary, housingAllowance: c.housingAllowance,
       transportAllowance: c.transportAllowance, otherAllowances: c.otherAllowances,
       totalCompensation: c.totalCompensation,
+      status: getContractStatus(c.startDate, c.endDate).label.en,
     })), `employee-contracts-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
@@ -210,9 +257,54 @@ export function EmployeeContractsModule() {
         </div>
       }
     >
-      {/* Search */}
+      {/* Summary */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="bg-emerald-50 border-emerald-200">
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-100"><CheckCircle className="size-5 text-emerald-700" /></div>
+            <div>
+              <p className="text-xs text-emerald-600">{t('عقود نشطة', 'Active Contracts', lang)}</p>
+              <p className="text-xl font-bold text-emerald-700">{activeCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-gray-50 border-gray-200">
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-gray-100"><Clock className="size-5 text-gray-700" /></div>
+            <div>
+              <p className="text-xs text-gray-600">{t('عقود منتهية', 'Expired Contracts', lang)}</p>
+              <p className="text-xl font-bold text-gray-700">{expiredCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-teal-50 border-teal-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-teal-600">{t('إجمالي التعويضات الشهرية', 'Total Monthly Compensation', lang)}</p>
+            <MoneyDisplay value={totalCompAll} lang={lang} size="lg" bold />
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search & Filter */}
       <Card><CardContent className="p-4">
-        <div className="relative"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+          <Select value={filterEmployee} onValueChange={setFilterEmployee}>
+            <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder={t('كل الموظفين', 'All Employees', lang)} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">{t('كل الموظفين', 'All Employees', lang)}</SelectItem>
+              {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button
+            variant={showExpired ? 'outline' : 'default'}
+            size="sm"
+            onClick={() => setShowExpired(!showExpired)}
+            className={showExpired ? '' : 'bg-emerald-600 hover:bg-emerald-700'}
+          >
+            {showExpired ? t('إخفاء المنتهية', 'Hide Expired', lang) : t('إظهار الكل', 'Show All', lang)}
+          </Button>
+        </div>
       </CardContent></Card>
 
       {/* Table */}
@@ -234,11 +326,12 @@ export function EmployeeContractsModule() {
                 <TableHead className="text-right">{t('بدل النقل', 'Transport', lang)}</TableHead>
                 <TableHead className="text-right">{t('بدلات أخرى', 'Other', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+                <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {filtered.map(c => (
-                  <TableRow key={c.id}>
+                  <TableRow key={c.id} className={getContractStatus(c.startDate, c.endDate).label.en === 'Expired' ? 'opacity-60' : ''}>
                     <TableCell className="font-medium">{c.employee.name}</TableCell>
                     <TableCell>{formatDate(c.startDate, lang)}</TableCell>
                     <TableCell>{c.endDate ? formatDate(c.endDate, lang) : '—'}</TableCell>
@@ -247,6 +340,7 @@ export function EmployeeContractsModule() {
                     <TableCell><MoneyDisplay value={c.transportAllowance} lang={lang} size="sm" /></TableCell>
                     <TableCell><MoneyDisplay value={c.otherAllowances} lang={lang} size="sm" /></TableCell>
                     <TableCell><MoneyDisplay value={c.totalCompensation} lang={lang} size="sm" bold /></TableCell>
+                    <TableCell><ContractStatusBadge startDate={c.startDate} endDate={c.endDate} lang={lang} /></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditingContract(c); setDialogOpen(true) }}><Pencil className="size-4" /></Button>

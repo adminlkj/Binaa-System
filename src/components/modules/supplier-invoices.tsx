@@ -4,8 +4,9 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
-  Printer, Download, AlertCircle, CheckCircle, BookOpen, Link2, X,
+  Printer, Download, AlertCircle, CheckCircle, BookOpen, Link2, X, Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,7 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
-import { useAppStore, formatSAR, formatDate, formatNumber } from '@/stores/app-store'
+import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
@@ -86,21 +87,18 @@ function InvoiceCreateView({ onBack }: { onBack: () => void }) {
   const [attachmentPath, setAttachmentPath] = useState('')
   const [notes, setNotes] = useState('')
 
-  // Fetch goods receipts that don't already have an invoice
   const { data: goodsReceipts = [] } = useQuery<GROption[]>({
     queryKey: ['goods-receipts-for-invoice'],
     queryFn: async () => {
       const res = await fetch('/api/goods-receipt')
       if (!res.ok) return []
       const all: GROption[] = await res.json()
-      // Filter to receipts without invoices (we check in the frontend)
       return all.filter(gr => gr.status !== 'CANCELLED')
     },
   })
 
   const selectedGR = goodsReceiptId ? goodsReceipts.find(gr => gr.id === goodsReceiptId) : null
 
-  // Calculate totals from GR items
   const subtotal = useMemo(() => {
     if (!selectedGR) return 0
     return selectedGR.items.reduce((s, i) => s + i.totalPrice, 0)
@@ -116,7 +114,8 @@ function InvoiceCreateView({ onBack }: { onBack: () => void }) {
         if (!r.ok) return r.json().then(err => { throw new Error(err.error || 'Failed') })
         return r.json()
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); onBack() },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }); toast.success(t('تم إنشاء الفاتورة بنجاح', 'Invoice created successfully', lang)); onBack() },
+    onError: (err) => toast.error(err.message || t('فشل في إنشاء الفاتورة', 'Failed to create invoice', lang)),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -143,7 +142,6 @@ function InvoiceCreateView({ onBack }: { onBack: () => void }) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* IMPORTANT: GR Selection First */}
         <Card className="border-emerald-200 bg-emerald-50/50">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
@@ -240,7 +238,6 @@ function InvoiceCreateView({ onBack }: { onBack: () => void }) {
           </CardContent>
         </Card>
 
-        {/* Financial Summary (auto-calculated from GR) */}
         {selectedGR && (
           <Card className="bg-gray-50 border-dashed">
             <CardContent className="p-4 space-y-2">
@@ -295,7 +292,14 @@ function InvoiceDetailView({ id, onBack }: { id: string; onBack: () => void }) {
 
   const approveMutation = useMutation({
     mutationFn: () => fetch(`/api/supplier-invoices/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'SENT' }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['supplier-invoices', id] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices', id] }); queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم اعتماد الفاتورة وإنشاء القيد المحاسبي', 'Invoice approved and accounting entry created', lang)) },
+    onError: () => toast.error(t('فشل في اعتماد الفاتورة', 'Failed to approve invoice', lang)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => fetch(`/api/supplier-invoices/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم الحذف', 'Deleted', lang)); onBack() },
+    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
   if (isLoading) return <div className="p-6"><TableSkeleton /></div>
@@ -314,7 +318,7 @@ function InvoiceDetailView({ id, onBack }: { id: string; onBack: () => void }) {
       <div className="flex items-center gap-3">
         <Button variant="outline" size="icon" onClick={onBack}><ArrowRight className="size-4" /></Button>
         <div className="flex-1">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-xl font-bold">{t('فاتورة مورد', 'Supplier Invoice', lang)} {invoice.invoiceNo}</h2>
             <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
             {invoice.journalEntryId && (
@@ -328,7 +332,21 @@ function InvoiceDetailView({ id, onBack }: { id: string; onBack: () => void }) {
             <CheckCircle className="size-4" /> {t('اعتماد وإنشاء قيد', 'Approve & Post', lang)}
           </Button>
         )}
+        {invoice.status === 'DRAFT' && (
+          <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => { if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate() }}><Trash2 className="size-4" /></Button>
+        )}
       </div>
+
+      {/* Accounting entry reference */}
+      {invoice.journalEntryId && (
+        <Card className="bg-purple-50 border-purple-200">
+          <CardContent className="p-3 flex items-center gap-2">
+            <BookOpen className="size-4 text-purple-600" />
+            <span className="text-sm text-purple-700">{t('تم إنشاء قيد محاسبي تلقائي', 'Auto accounting entry created', lang)}</span>
+            <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">{invoice.journalEntryId.slice(0, 8)}...</Badge>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Card><CardContent className="p-3">
@@ -337,11 +355,17 @@ function InvoiceDetailView({ id, onBack }: { id: string; onBack: () => void }) {
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-xs text-muted-foreground">{t('أمر الشراء', 'PO', lang)}</p>
-          <p className="text-sm font-medium">{invoice.purchaseOrder?.orderNo || '—'}</p>
+          <div className="flex items-center gap-1">
+            <Link2 className="size-3 text-blue-500" />
+            <p className="text-sm font-medium">{invoice.purchaseOrder?.orderNo || '—'}</p>
+          </div>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-xs text-muted-foreground">{t('إيصال الاستلام', 'GR', lang)}</p>
-          <p className="text-sm font-medium">{invoice.goodsReceipt?.receiptNo || '—'}</p>
+          <div className="flex items-center gap-1">
+            <Link2 className="size-3 text-teal-500" />
+            <p className="text-sm font-medium">{invoice.goodsReceipt?.receiptNo || '—'}</p>
+          </div>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-xs text-muted-foreground">{t('رقم فاتورة المورد', 'Supplier Inv No', lang)}</p>
@@ -423,6 +447,7 @@ function InvoiceDetailView({ id, onBack }: { id: string; onBack: () => void }) {
 // ============ Main Module ============
 export function SupplierInvoicesModule() {
   const { lang } = useAppStore()
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
@@ -438,7 +463,8 @@ export function SupplierInvoicesModule() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/supplier-invoices/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { /* refetch is handled by invalidation */ },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم الحذف', 'Deleted', lang)) },
+    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
   const totalAmount = invoices.reduce((s, i) => s + i.totalAmount, 0)
@@ -571,8 +597,6 @@ export function SupplierInvoicesModule() {
                 <TableHead className="text-right">{t('أمر الشراء', 'PO', lang)}</TableHead>
                 <TableHead className="text-right">{t('إيصال الاستلام', 'GR', lang)}</TableHead>
                 <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                <TableHead className="text-right">{t('المجموع الفرعي', 'Subtotal', lang)}</TableHead>
-                <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
@@ -584,11 +608,9 @@ export function SupplierInvoicesModule() {
                     <TableRow key={i.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', id: i.id })}>
                       <TableCell className="font-mono font-medium">{i.invoiceNo}</TableCell>
                       <TableCell>{i.supplier.name}</TableCell>
-                      <TableCell><Badge className="bg-blue-50 text-blue-700 border-0 text-xs">{i.purchaseOrder?.orderNo || '—'}</Badge></TableCell>
-                      <TableCell><Badge className="bg-teal-50 text-teal-700 border-0 text-xs">{i.goodsReceipt?.receiptNo || '—'}</Badge></TableCell>
+                      <TableCell><Badge className="bg-blue-50 text-blue-700 border-0 text-xs gap-1"><Link2 className="size-3" />{i.purchaseOrder?.orderNo || '—'}</Badge></TableCell>
+                      <TableCell><Badge className="bg-teal-50 text-teal-700 border-0 text-xs gap-1"><Link2 className="size-3" />{i.goodsReceipt?.receiptNo || '—'}</Badge></TableCell>
                       <TableCell>{formatDate(i.date, lang)}</TableCell>
-                      <TableCell><MoneyDisplay value={i.subtotal} mode="system" lang={lang} size="sm" /></TableCell>
-                      <TableCell><MoneyDisplay value={i.vatAmount} mode="system" lang={lang} size="sm" /></TableCell>
                       <TableCell className="font-semibold"><MoneyDisplay value={i.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -597,9 +619,14 @@ export function SupplierInvoicesModule() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: i.id }) }} title={t('عرض', 'View', lang)}>
-                          <Eye className="size-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: i.id }) }} title={t('عرض', 'View', lang)}>
+                            <Eye className="size-4" />
+                          </Button>
+                          {i.status === 'DRAFT' && (
+                            <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={e => { e.stopPropagation(); if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate(i.id) }}><Trash2 className="size-4" /></Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )

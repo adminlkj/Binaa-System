@@ -4,8 +4,9 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ShoppingCart, Plus, Search, RefreshCw, Eye, ArrowRight, X,
-  Printer, Download, CheckCircle, Clock, AlertCircle, Link2,
+  Printer, Download, CheckCircle, Clock, AlertCircle, Link2, Package, Trash2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,7 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
-import { useAppStore, formatSAR, formatDate, formatNumber } from '@/stores/app-store'
+import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
@@ -59,6 +60,7 @@ interface PurchaseOrder {
   purchaseRequest: { id: string; requestNo: string; status: string } | null
   items: POLineItem[]
   goodsReceipts: { id: string; receiptNo: string; status: string; date: string }[]
+  invoices: { id: string; invoiceNo: string; status: string; totalAmount: number; paidAmount: number }[]
   _count: { invoices: number }
 }
 
@@ -107,7 +109,6 @@ function POCreateView({ onBack }: { onBack: () => void }) {
   const [notes, setNotes] = useState('')
   const [lineItems, setLineItems] = useState<LineItemForm[]>([{ ...defaultLineItem }])
 
-  // Fetch suppliers
   const { data: suppliers = [] } = useQuery<SupplierOption[]>({
     queryKey: ['suppliers-simple'],
     queryFn: async () => {
@@ -118,7 +119,6 @@ function POCreateView({ onBack }: { onBack: () => void }) {
     },
   })
 
-  // Fetch projects
   const { data: projects = [] } = useQuery<ProjectOption[]>({
     queryKey: ['projects-list'],
     queryFn: async () => {
@@ -128,7 +128,6 @@ function POCreateView({ onBack }: { onBack: () => void }) {
     },
   })
 
-  // Fetch approved purchase requests
   const { data: purchaseRequests = [] } = useQuery<PurchaseRequestOption[]>({
     queryKey: ['purchase-requests-approved'],
     queryFn: async () => {
@@ -138,7 +137,6 @@ function POCreateView({ onBack }: { onBack: () => void }) {
     },
   })
 
-  // When PR is selected, auto-load items and project
   React.useEffect(() => {
     if (purchaseRequestId) {
       const pr = purchaseRequests.find(p => p.id === purchaseRequestId)
@@ -147,7 +145,7 @@ function POCreateView({ onBack }: { onBack: () => void }) {
           description: i.description,
           quantity: i.quantity,
           unit: i.unit || '',
-          unitPrice: 0, // User needs to fill this
+          unitPrice: 0,
         })))
         if (pr.projectId) setProjectId(pr.projectId)
       }
@@ -168,7 +166,8 @@ function POCreateView({ onBack }: { onBack: () => void }) {
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); onBack() },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم إنشاء أمر الشراء بنجاح', 'Purchase order created successfully', lang)); onBack() },
+    onError: () => toast.error(t('فشل في إنشاء أمر الشراء', 'Failed to create purchase order', lang)),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -197,7 +196,6 @@ function POCreateView({ onBack }: { onBack: () => void }) {
           <CardHeader><CardTitle className="text-lg">{t('معلومات أساسية', 'Basic Information', lang)}</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Purchase Request Selection */}
               <div className="space-y-2">
                 <Label className="flex items-center gap-1">
                   <Link2 className="size-3" />
@@ -245,7 +243,6 @@ function POCreateView({ onBack }: { onBack: () => void }) {
           </CardContent>
         </Card>
 
-        {/* Line Items */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -290,7 +287,6 @@ function POCreateView({ onBack }: { onBack: () => void }) {
           </CardContent>
         </Card>
 
-        {/* Summary */}
         <Card className="bg-gray-50 border-dashed">
           <CardContent className="p-4 space-y-2">
             <div className="flex justify-between text-sm">
@@ -328,16 +324,29 @@ function POCreateView({ onBack }: { onBack: () => void }) {
 // ============ Detail View ============
 function PODetailView({ id, onBack }: { id: string; onBack: () => void }) {
   const { lang } = useAppStore()
+  const queryClient = useQueryClient()
 
   const { data: order, isLoading, isError } = useQuery<PurchaseOrder>({
     queryKey: ['purchase-orders', id],
     queryFn: async () => {
-      const res = await fetch('/api/purchase-orders')
+      const res = await fetch(`/api/purchase-orders/${id}`)
       if (!res.ok) throw new Error()
-      const all: PurchaseOrder[] = await res.json()
-      return all.find(o => o.id === id)!
+      return res.json()
     },
     enabled: !!id,
+  })
+
+  // Approve mutation: DRAFT → PENDING_APPROVAL → APPROVED
+  const approveMutation = useMutation({
+    mutationFn: (targetStatus: string) => fetch(`/api/purchase-orders/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: targetStatus }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders', id] }); queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الاعتماد بنجاح', 'Approved successfully', lang)) },
+    onError: () => toast.error(t('فشل في الاعتماد', 'Failed to approve', lang)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => fetch(`/api/purchase-orders/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الحذف', 'Deleted', lang)); onBack() },
+    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
   if (isLoading) return <div className="p-6"><TableSkeleton /></div>
@@ -362,6 +371,20 @@ function PODetailView({ id, onBack }: { id: string; onBack: () => void }) {
           </div>
           <p className="text-sm text-muted-foreground">{order.supplier.name}</p>
         </div>
+        {/* Approval buttons */}
+        {order.status === 'DRAFT' && (
+          <Button className="gap-2 bg-orange-600 hover:bg-orange-700" onClick={() => approveMutation.mutate('PENDING_APPROVAL')} disabled={approveMutation.isPending}>
+            <Clock className="size-4" /> {t('إرسال للاعتماد', 'Submit for Approval', lang)}
+          </Button>
+        )}
+        {order.status === 'PENDING_APPROVAL' && (
+          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => approveMutation.mutate('APPROVED')} disabled={approveMutation.isPending}>
+            <CheckCircle className="size-4" /> {t('اعتماد', 'Approve', lang)}
+          </Button>
+        )}
+        {order.status === 'DRAFT' && (
+          <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => { if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate() }}><Trash2 className="size-4" /></Button>
+        )}
         <Button variant="outline" className="gap-2" onClick={() => window.print()}>
           <Printer className="size-4" /> {t('طباعة', 'Print', lang)}
         </Button>
@@ -463,17 +486,66 @@ function PODetailView({ id, onBack }: { id: string; onBack: () => void }) {
       {/* Linked Goods Receipts */}
       {order.goodsReceipts && order.goodsReceipts.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-lg">{t('إيصالات الاستلام', 'Goods Receipts', lang)}</CardTitle></CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg">{t('إيصالات الاستلام', 'Goods Receipts', lang)}</CardTitle>
+              <Badge className="bg-teal-100 text-teal-700 border-0">{order.goodsReceipts.length}</Badge>
+            </div>
+          </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
               {order.goodsReceipts.map(gr => {
                 const grStatusColor = gr.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : gr.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
                 return (
-                  <Badge key={gr.id} className={`${grStatusColor} border-0`}>
+                  <Badge key={gr.id} className={`${grStatusColor} border-0 gap-1`}>
+                    <Package className="size-3" />
                     {gr.receiptNo} - {gr.status}
                   </Badge>
                 )
               })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Linked Supplier Invoices */}
+      {order.invoices && order.invoices.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg">{t('فواتير الموردين', 'Supplier Invoices', lang)}</CardTitle>
+              <Badge className="bg-purple-100 text-purple-700 border-0">{order.invoices.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {order.invoices.map(inv => {
+                const invStatusColor = inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : inv.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+                return (
+                  <Badge key={inv.id} className={`${invStatusColor} border-0 gap-1`}>
+                    {inv.invoiceNo} - {inv.status}
+                  </Badge>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Workflow indicator for APPROVED POs */}
+      {(order.status === 'APPROVED' || order.status === 'PARTIALLY_RECEIVED') && (
+        <Card className="bg-emerald-50 border-emerald-200 border-dashed">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-center gap-2 text-sm flex-wrap">
+              <Badge className="bg-emerald-100 text-emerald-700 border-0">✓ {t('معتمد', 'Approved', lang)}</Badge>
+              <span className="text-gray-400">→</span>
+              <Badge className={order.goodsReceipts?.length > 0 ? 'bg-teal-100 text-teal-700 border-0' : 'bg-gray-100 text-gray-500 border-0'}>
+                {order.goodsReceipts?.length > 0 ? `✓ ${t('استلام', 'Received', lang)}` : t('استلام بضائع', 'Receive Goods', lang)}
+              </Badge>
+              <span className="text-gray-400">→</span>
+              <Badge className={order.invoices?.length > 0 ? 'bg-blue-100 text-blue-700 border-0' : 'bg-gray-100 text-gray-500 border-0'}>
+                {order.invoices?.length > 0 ? `✓ ${t('فاتورة', 'Invoice', lang)}` : t('فاتورة مورد', 'Supplier Invoice', lang)}
+              </Badge>
             </div>
           </CardContent>
         </Card>
@@ -492,6 +564,7 @@ function PODetailView({ id, onBack }: { id: string; onBack: () => void }) {
 // ============ Main Module ============
 export function PurchaseOrdersModule() {
   const { lang } = useAppStore()
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
@@ -503,6 +576,18 @@ export function PurchaseOrdersModule() {
       if (!res.ok) throw new Error('Failed to fetch')
       return res.json()
     },
+  })
+
+  const approveMutation = useMutation({
+    mutationFn: ({ id, targetStatus }: { id: string; targetStatus: string }) => fetch(`/api/purchase-orders/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: targetStatus }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الاعتماد', 'Approved', lang)) },
+    onError: () => toast.error(t('فشل في الاعتماد', 'Failed to approve', lang)),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => fetch(`/api/purchase-orders/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الحذف', 'Deleted', lang)) },
+    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
   const filtered = purchaseOrders.filter(po => {
@@ -621,7 +706,6 @@ export function PurchaseOrdersModule() {
                 <TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead>
                 <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
                 <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                <TableHead className="text-right">{t('تاريخ التسليم', 'Delivery', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
                 <TableHead className="text-right">{t('الاستلام', 'Receipt', lang)}</TableHead>
@@ -631,13 +715,18 @@ export function PurchaseOrdersModule() {
                 {filtered.map(po => {
                   const statusCfg = poStatusConfig[po.status] || poStatusConfig.DRAFT
                   const hasGR = po.goodsReceipts && po.goodsReceipts.length > 0
+                  const hasPR = !!po.purchaseRequest
                   return (
                     <TableRow key={po.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', id: po.id })}>
-                      <TableCell className="font-mono font-medium">{po.orderNo}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <span className="font-mono font-medium">{po.orderNo}</span>
+                          {hasPR && <Link2 className="size-3 text-blue-500" title={t('مرتبط بطلب شراء', 'Linked to PR', lang)} />}
+                        </div>
+                      </TableCell>
                       <TableCell>{po.supplier.name}</TableCell>
                       <TableCell>{po.project?.name || '—'}</TableCell>
                       <TableCell>{formatDate(po.date, lang)}</TableCell>
-                      <TableCell>{po.deliveryDate ? formatDate(po.deliveryDate, lang) : '—'}</TableCell>
                       <TableCell className="font-semibold"><MoneyDisplay value={po.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
                       <TableCell><Badge className={`${statusCfg.bg} ${statusCfg.color} border-0`}>{statusCfg.label[lang]}</Badge></TableCell>
                       <TableCell>
@@ -648,9 +737,20 @@ export function PurchaseOrdersModule() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: po.id }) }} title={t('عرض', 'View', lang)}>
-                          <Eye className="size-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          {po.status === 'DRAFT' && (
+                            <Button variant="ghost" size="icon" className="size-8 text-orange-600" onClick={e => { e.stopPropagation(); approveMutation.mutate({ id: po.id, targetStatus: 'PENDING_APPROVAL' }) }} title={t('إرسال للاعتماد', 'Submit for Approval', lang)}><Clock className="size-4" /></Button>
+                          )}
+                          {po.status === 'PENDING_APPROVAL' && (
+                            <Button variant="ghost" size="icon" className="size-8 text-emerald-600" onClick={e => { e.stopPropagation(); approveMutation.mutate({ id: po.id, targetStatus: 'APPROVED' }) }} title={t('اعتماد', 'Approve', lang)}><CheckCircle className="size-4" /></Button>
+                          )}
+                          <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: po.id }) }} title={t('عرض', 'View', lang)}>
+                            <Eye className="size-4" />
+                          </Button>
+                          {po.status === 'DRAFT' && (
+                            <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={e => { e.stopPropagation(); if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate(po.id) }}><Trash2 className="size-4" /></Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )

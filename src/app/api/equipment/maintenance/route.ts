@@ -54,6 +54,42 @@ export async function POST(request: Request) {
       data: { status: 'MAINTENANCE' },
     })
 
+    // Check if equipment has an active ResourceAllocation to a project
+    let costCenterId: string | undefined
+    if (cost > 0) {
+      const activeAllocation = await db.resourceAllocation.findFirst({
+        where: {
+          resourceType: 'EQUIPMENT',
+          resourceId: body.equipmentId,
+          startDate: { lte: new Date() },
+          OR: [
+            { endDate: null },
+            { endDate: { gte: new Date() } },
+          ],
+        },
+        select: { projectId: true },
+      })
+
+      if (activeAllocation) {
+        costCenterId = activeAllocation.projectId
+
+        // Create EquipmentCost entry for the project
+        const equipment = await db.equipment.findUnique({
+          where: { id: body.equipmentId },
+          select: { name: true },
+        })
+
+        await db.equipmentCost.create({
+          data: {
+            projectId: activeAllocation.projectId,
+            description: `صيانة ${equipment?.name || 'معدات'} - ${body.description}`,
+            amount: cost,
+            date: new Date(body.date),
+          },
+        })
+      }
+    }
+
     // Auto accounting entry: if cost > 0
     if (cost > 0) {
       try {
@@ -71,6 +107,7 @@ export async function POST(request: Request) {
           amount: cost,
           date: new Date(body.date),
           payFrom: payFrom as 'CASH' | 'AP',
+          costCenterId, // Add costCenterId from active allocation
         })
 
         // Link journal entry to maintenance record

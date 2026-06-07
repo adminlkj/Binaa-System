@@ -5,9 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Percent, RefreshCw, FileText, CheckCircle2, CalendarDays,
   Printer, Download, Eye, PlusCircle, Clock,
-  Send, Receipt, ShoppingBag, FileCheck, AlertTriangle,
+  Send, Receipt, ShoppingBag, FileCheck, AlertTriangle, Wallet,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -19,9 +19,14 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { toast } from 'sonner'
 
 // ============ Types ============
 interface VATDeclaration {
@@ -34,12 +39,16 @@ interface VATDeclaration {
 }
 
 interface SalesInvoiceBreakdown { id: string; invoiceNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
+interface ProgressClaimBreakdown { id: string; claimNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
 interface PurchaseInvoiceBreakdown { id: string; invoiceNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
+interface SubcontractorInvoiceBreakdown { id: string; invoiceNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
 interface ExpenseBreakdown { id: string; description: string; date: string; amount: number; vatAmount: number | null; category: string }
 
 interface DeclarationBreakdown {
   salesInvoices: SalesInvoiceBreakdown[]
+  progressClaims: ProgressClaimBreakdown[]
   purchaseInvoices: PurchaseInvoiceBreakdown[]
+  subcontractorInvoices: SubcontractorInvoiceBreakdown[]
   expenses: ExpenseBreakdown[]
 }
 
@@ -89,7 +98,7 @@ function VATSummaryTab({ vatReturns }: { vatReturns: VATDeclaration[] }) {
               </div>
               <div>
                 <p className="text-sm font-medium text-emerald-700">{t('ضريبة المخرجات', 'Output VAT', lang)}</p>
-                <p className="text-xs text-muted-foreground">{t('من فواتير المبيعات والتأجير', 'From sales & rental invoices', lang)}</p>
+                <p className="text-xs text-muted-foreground">{t('من فواتير المبيعات والمستخلصات', 'From sales invoices & claims', lang)}</p>
               </div>
             </div>
             <div className="space-y-1">
@@ -161,14 +170,14 @@ function VATSummaryTab({ vatReturns }: { vatReturns: VATDeclaration[] }) {
 }
 
 // ============ Tax Declaration Tab ============
-function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, onCreate, onView, isCreating }: {
+function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, onView, isCreating }: {
   vatReturns: VATDeclaration[]; isLoading: boolean
   selectedYear: number; onSelectYear: (y: number) => void
-  onCreate: (year: number, quarter: number) => void
   onView: (declaration: VATDeclaration) => void
   isCreating: boolean
 }) {
   const { lang } = useAppStore()
+  const queryClient = useQueryClient()
   const [creatingQuarter, setCreatingQuarter] = useState<number | null>(null)
   const currentYear = new Date().getFullYear()
   const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
@@ -179,9 +188,20 @@ function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, 
     return map
   }, [vatReturns])
 
+  const createMutation = useMutation({
+    mutationFn: (data: { year: number; quarter: number }) =>
+      fetch('/api/vat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+        .then(async r => { if (!r.ok) { const err = await r.json(); throw new Error(err.error || 'Failed') } return r.json() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['vat-returns', selectedYear] })
+      toast.success(t('تم إنشاء الإقرار الضريبي', 'VAT return created', lang))
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   const handleCreate = (year: number, quarter: number) => {
     setCreatingQuarter(quarter)
-    onCreate(year, quarter)
+    createMutation.mutate({ year, quarter })
   }
 
   return (
@@ -216,7 +236,7 @@ function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, 
             const hasDeclaration = !!declaration
 
             return (
-              <Card key={quarter} className={`transition-all hover:shadow-md ${hasDeclaration ? (declaration.status === 'PAID' ? 'border-emerald-300 bg-emerald-50/30' : declaration.status === 'FILED' ? 'border-emerald-300 bg-emerald-50/30' : 'border-amber-300 bg-amber-50/30') : 'border-gray-200'}`}>
+              <Card key={quarter} className={`transition-all hover:shadow-md ${hasDeclaration ? (declaration.status === 'PAID' ? 'border-emerald-300 bg-emerald-50/30' : declaration.status === 'FILED' ? 'border-teal-300 bg-teal-50/30' : 'border-amber-300 bg-amber-50/30') : 'border-gray-200'}`}>
                 <CardContent className="p-5">
                   <div className="flex items-center justify-between mb-3">
                     <div>
@@ -257,8 +277,8 @@ function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, 
                         </div>
                         <p className="text-sm text-muted-foreground text-center">{t('لم يتم إنشاء إقرار', 'No Declaration Created', lang)}</p>
                       </div>
-                      <Button className="w-full bg-emerald-600 hover:bg-emerald-700 gap-1.5" size="sm" onClick={() => handleCreate(selectedYear, quarter)} disabled={isCreating && creatingQuarter === quarter}>
-                        {isCreating && creatingQuarter === quarter ? (<><RefreshCw className="size-4 animate-spin" />{t('جاري الإنشاء...', 'Creating...', lang)}</>) : (<><PlusCircle className="size-4" />{t('إنشاء إقرار', 'Create Declaration', lang)}</>)}
+                      <Button className="w-full bg-emerald-600 hover:bg-emerald-700 gap-1.5" size="sm" onClick={() => handleCreate(selectedYear, quarter)} disabled={createMutation.isPending && creatingQuarter === quarter}>
+                        {createMutation.isPending && creatingQuarter === quarter ? (<><RefreshCw className="size-4 animate-spin" />{t('جاري الإنشاء...', 'Creating...', lang)}</>) : (<><PlusCircle className="size-4" />{t('إنشاء إقرار', 'Create Declaration', lang)}</>)}
                       </Button>
                     </>
                   )}
@@ -273,10 +293,12 @@ function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, 
 }
 
 // ============ Declaration Detail View ============
-function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit, isSubmitting }: {
+function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit, onPay, isSubmitting }: {
   declaration: VATDeclaration; breakdown: DeclarationBreakdown | null; lang: 'ar' | 'en'
-  onBack: () => void; onSubmit: (id: string) => void; isSubmitting: boolean
+  onBack: () => void; onSubmit: (id: string) => void; onPay: (id: string, reference: string) => void; isSubmitting: boolean
 }) {
+  const [payDialogOpen, setPayDialogOpen] = useState(false)
+  const [payReference, setPayReference] = useState('')
   const cfg = quarterConfig[declaration.quarter]
   const isDraft = declaration.status === 'DRAFT'
   const isFiled = declaration.status === 'FILED' || declaration.status === 'PAID'
@@ -321,13 +343,18 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
               {t('تقديم الإقرار', 'Submit Declaration', lang)}
             </Button>
           )}
+          {declaration.status === 'FILED' && (
+            <Button size="sm" className="bg-teal-600 hover:bg-teal-700 gap-1.5" onClick={() => setPayDialogOpen(true)}>
+              <Wallet className="size-4" />{t('تسجيل الدفع', 'Record Payment', lang)}
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Auto-calculated notice */}
       <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 rounded-lg p-3 border border-amber-200">
         <Percent className="size-4 shrink-0" />
-        <span>{t('جميع الأرقام محسوبة تلقائياً من بيانات الفواتير الفعلية', 'All figures are auto-calculated from actual invoice data', lang)}</span>
+        <span>{t('جميع الأرقام محسوبة تلقائياً من بيانات الفواتير الفعلية ومجمّدة عند التقديم', 'All figures are auto-calculated from actual invoice data and frozen upon filing', lang)}</span>
       </div>
 
       {/* Period Info */}
@@ -389,6 +416,17 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
         </Card>
       )}
 
+      {declaration.status === 'PAID' && declaration.paymentDate && (
+        <Card className="border-teal-200 bg-teal-50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="size-5 text-teal-600" />
+              <span className="text-teal-800 font-medium">{t('تم الدفع في', 'Payment made on', lang)}: {formatDate(declaration.paymentDate, lang)} {declaration.paymentReference ? `(${t('مرجع', 'Ref', lang)}: ${declaration.paymentReference})` : ''}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Breakdown */}
       {breakdown && (
         <div className="space-y-4">
@@ -415,6 +453,36 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
                           <TableCell className="text-sm text-muted-foreground">{formatDate(inv.date, lang)}</TableCell>
                           <TableCell><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" /></TableCell>
                           <TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {breakdown.progressClaims && breakdown.progressClaims.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <h4 className="font-semibold text-emerald-800 flex items-center gap-2"><FileText className="size-4" />{t('المستخلصات', 'Progress Claims', lang)}<Badge className="bg-emerald-100 text-emerald-700 border-0">{breakdown.progressClaims.length}</Badge></h4>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                  <Table>
+                    <TableHeader><TableRow>
+                      <TableHead className="text-right">{t('رقم المستخلص', 'Claim No', lang)}</TableHead>
+                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {breakdown.progressClaims.map(c => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-mono text-sm">{c.claimNo}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{formatDate(c.date, lang)}</TableCell>
+                          <TableCell><MoneyDisplay value={c.totalAmount} lang={lang} size="sm" /></TableCell>
+                          <TableCell><MoneyDisplay value={c.vatAmount} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -454,6 +522,36 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
             </Card>
           )}
 
+          {breakdown.subcontractorInvoices && breakdown.subcontractorInvoices.length > 0 && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <h4 className="font-semibold text-orange-800 flex items-center gap-2"><ShoppingBag className="size-4" />{t('فواتير مقاولي الباطن', 'Subcontractor Invoices', lang)}<Badge className="bg-orange-100 text-orange-700 border-0">{breakdown.subcontractorInvoices.length}</Badge></h4>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                  <Table>
+                    <TableHeader><TableRow>
+                      <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No', lang)}</TableHead>
+                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {breakdown.subcontractorInvoices.map(inv => (
+                        <TableRow key={inv.id}>
+                          <TableCell className="font-mono text-sm">{inv.invoiceNo}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{formatDate(inv.date, lang)}</TableCell>
+                          <TableCell><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" /></TableCell>
+                          <TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="sm" className="text-orange-700" /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {breakdown.expenses.length > 0 && (
             <Card>
               <CardHeader className="pb-2 pt-4 px-4">
@@ -484,7 +582,7 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
             </Card>
           )}
 
-          {breakdown.salesInvoices.length === 0 && breakdown.purchaseInvoices.length === 0 && breakdown.expenses.length === 0 && (
+          {breakdown.salesInvoices.length === 0 && breakdown.purchaseInvoices.length === 0 && breakdown.expenses.length === 0 && (!breakdown.progressClaims || breakdown.progressClaims.length === 0) && (!breakdown.subcontractorInvoices || breakdown.subcontractorInvoices.length === 0) && (
             <Card className="border-dashed">
               <CardContent className="p-8 flex flex-col items-center gap-3">
                 <FileText className="size-12 text-gray-300" />
@@ -494,6 +592,27 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
           )}
         </div>
       )}
+
+      {/* Payment Dialog */}
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('تسجيل دفع الضريبة', 'Record VAT Payment', lang)}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>{t('رقم مرجع الدفع', 'Payment Reference', lang)}</Label>
+              <Input value={payReference} onChange={e => setPayReference(e.target.value)} placeholder={t('أدخل رقم المرجع', 'Enter reference number', lang)} dir="ltr" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { onPay(declaration.id, payReference); setPayDialogOpen(false) }} disabled={!payReference}>
+              {t('تأكيد الدفع', 'Confirm Payment', lang)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -517,10 +636,10 @@ export function VATModule() {
     },
   })
 
-  const { data: breakdownData } = useQuery<{ breakdown: DeclarationBreakdown }>({
+  const { data: breakdownData } = useQuery<{ declaration: VATDeclaration | null; autoCalc: { outputVat: number; inputVat: number; netVat: number }; breakdown: DeclarationBreakdown }>({
     queryKey: ['vat-breakdown', selectedDeclaration?.id],
     queryFn: async () => {
-      if (!selectedDeclaration) return { breakdown: { salesInvoices: [], purchaseInvoices: [], expenses: [] } }
+      if (!selectedDeclaration) return { declaration: null, autoCalc: { outputVat: 0, inputVat: 0, netVat: 0 }, breakdown: { salesInvoices: [], progressClaims: [], purchaseInvoices: [], subcontractorInvoices: [], expenses: [] } }
       const res = await fetch(`/api/vat?year=${selectedDeclaration.year}&quarter=${selectedDeclaration.quarter}`)
       if (!res.ok) throw new Error()
       return res.json()
@@ -528,24 +647,28 @@ export function VATModule() {
     enabled: viewState === 'detail' && !!selectedDeclaration,
   })
 
-  const createMutation = useMutation({
-    mutationFn: (data: { year: number; quarter: number }) =>
-      fetch('/api/vat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+  const submitMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch('/api/vat', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'FILE' }) })
         .then(async r => { if (!r.ok) { const err = await r.json(); throw new Error(err.error || 'Failed') } return r.json() }),
     onSuccess: (data: VATDeclaration) => {
       queryClient.invalidateQueries({ queryKey: ['vat-returns', selectedYear] })
-      setSelectedDeclaration(data); setViewState('detail')
+      setSelectedDeclaration(data)
+      toast.success(t('تم تقديم الإقرار الضريبي بنجاح', 'VAT return filed successfully', lang))
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
-  const submitMutation = useMutation({
-    mutationFn: (id: string) =>
-      fetch(`/api/vat/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'SUBMIT' }) })
-        .then(async r => { if (!r.ok) throw new Error(); return r.json() }),
+  const payMutation = useMutation({
+    mutationFn: (data: { id: string; reference: string }) =>
+      fetch('/api/vat', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.id, action: 'PAY', paymentReference: data.reference }) })
+        .then(async r => { if (!r.ok) { const err = await r.json(); throw new Error(err.error || 'Failed') } return r.json() }),
     onSuccess: (data: VATDeclaration) => {
       queryClient.invalidateQueries({ queryKey: ['vat-returns', selectedYear] })
       setSelectedDeclaration(data)
+      toast.success(t('تم تسجيل الدفع بنجاح', 'Payment recorded successfully', lang))
     },
+    onError: (err: Error) => toast.error(err.message),
   })
 
   // Detail view
@@ -558,6 +681,7 @@ export function VATModule() {
           lang={lang}
           onBack={() => { setViewState('list'); setSelectedDeclaration(null) }}
           onSubmit={(id) => submitMutation.mutate(id)}
+          onPay={(id, reference) => payMutation.mutate({ id, reference })}
           isSubmitting={submitMutation.isPending}
         />
       </ModuleLayout>
@@ -586,9 +710,8 @@ export function VATModule() {
             isLoading={isLoading}
             selectedYear={selectedYear}
             onSelectYear={setSelectedYear}
-            onCreate={(year, quarter) => createMutation.mutate({ year, quarter })}
             onView={(dec) => { setSelectedDeclaration(dec); setViewState('detail') }}
-            isCreating={createMutation.isPending}
+            isCreating={false}
           />
         </TabsContent>
       </Tabs>

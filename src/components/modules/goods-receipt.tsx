@@ -4,8 +4,9 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Package, Plus, Search, Trash2, RefreshCw, Eye, ArrowRight,
-  Printer, Download, CheckCircle, AlertCircle, Link2,
+  Printer, Download, CheckCircle, AlertCircle, Link2, BookOpen, FileText,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -47,6 +48,10 @@ interface GoodsReceiptItem {
   quantityRemaining: number; unitPrice: number; totalPrice: number; destination: string | null
 }
 
+interface LinkedInvoice {
+  id: string; invoiceNo: string; status: string; totalAmount: number; paidAmount: number
+}
+
 interface GoodsReceipt {
   id: string; receiptNo: string; purchaseOrderId: string; supplierId: string
   projectId: string | null; date: string; status: string; notes: string | null
@@ -54,6 +59,7 @@ interface GoodsReceipt {
   supplier: { id: string; name: string; code: string }
   project: { id: string; name: string; code: string } | null
   items: GoodsReceiptItem[]
+  purchaseInvoice?: LinkedInvoice | null
 }
 
 interface GRItemForm {
@@ -87,7 +93,6 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
   const [notes, setNotes] = useState('')
   const [items, setItems] = useState<GRItemForm[]>([])
 
-  // Fetch approved purchase orders
   const { data: purchaseOrders = [] } = useQuery<PurchaseOrderOption[]>({
     queryKey: ['purchase-orders-approved'],
     queryFn: async () => {
@@ -100,17 +105,14 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
 
   const selectedPO = purchaseOrderId ? purchaseOrders.find(po => po.id === purchaseOrderId) : null
 
-  // When PO is selected, auto-load items
   React.useEffect(() => {
     if (selectedPO) {
-      // Calculate already received quantities per PO item
       const receivedMap: Record<string, number> = {}
       selectedPO.goodsReceipts?.forEach(gr => {
         gr.items?.forEach((item: { quantityReceived: number }, idx: number) => {
           receivedMap[idx] = (receivedMap[idx] || 0) + item.quantityReceived
         })
       })
-
       setItems(selectedPO.items.map((item, idx) => ({
         description: item.description,
         quantityOrdered: item.quantity - (receivedMap[idx] || 0),
@@ -134,7 +136,8 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       fetch('/api/goods-receipt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }); onBack() },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }); queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم تسجيل الاستلام بنجاح', 'Goods receipt recorded successfully', lang)); onBack() },
+    onError: () => toast.error(t('فشل في تسجيل الاستلام', 'Failed to record goods receipt', lang)),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -211,7 +214,6 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
           </CardContent>
         </Card>
 
-        {/* Items with received quantities */}
         {items.length > 0 && (
           <Card>
             <CardHeader>
@@ -273,7 +275,6 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
           </Card>
         )}
 
-        {/* Summary */}
         {items.length > 0 && (
           <Card className="bg-gray-50 border-dashed">
             <CardContent className="p-4 space-y-2">
@@ -309,6 +310,7 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
 // ============ Detail View ============
 function GRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
   const { lang } = useAppStore()
+  const queryClient = useQueryClient()
 
   const { data: receipt, isLoading, isError } = useQuery<GoodsReceipt>({
     queryKey: ['goods-receipt', id],
@@ -318,6 +320,12 @@ function GRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
       return res.json()
     },
     enabled: !!id,
+  })
+
+  const completeMutation = useMutation({
+    mutationFn: () => fetch(`/api/goods-receipt/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'COMPLETED' }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['goods-receipt', id] }); queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }); toast.success(t('تم إكمال الاستلام', 'Receipt completed', lang)) },
+    onError: () => toast.error(t('فشل في التحديث', 'Failed to update', lang)),
   })
 
   if (isLoading) return <div className="p-6"><TableSkeleton /></div>
@@ -341,6 +349,11 @@ function GRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
           </div>
           <p className="text-sm text-muted-foreground">{receipt.supplier.name}</p>
         </div>
+        {(receipt.status === 'PENDING' || receipt.status === 'PARTIAL') && (
+          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => completeMutation.mutate()} disabled={completeMutation.isPending}>
+            <CheckCircle className="size-4" /> {t('إكمال', 'Complete', lang)}
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -350,7 +363,10 @@ function GRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-xs text-muted-foreground">{t('أمر الشراء', 'PO', lang)}</p>
-          <p className="text-sm font-medium">{receipt.purchaseOrder?.orderNo || '—'}</p>
+          <div className="flex items-center gap-1">
+            <Link2 className="size-3 text-blue-500" />
+            <p className="text-sm font-medium">{receipt.purchaseOrder?.orderNo || '—'}</p>
+          </div>
         </CardContent></Card>
         <Card><CardContent className="p-3">
           <p className="text-xs text-muted-foreground">{t('المشروع', 'Project', lang)}</p>
@@ -361,6 +377,17 @@ function GRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
           <p className="text-sm font-medium">{formatDate(receipt.date, lang)}</p>
         </CardContent></Card>
       </div>
+
+      {/* Linked Supplier Invoice */}
+      {receipt.purchaseInvoice && (
+        <Card className="bg-purple-50 border-purple-200">
+          <CardContent className="p-3 flex items-center gap-2">
+            <FileText className="size-4 text-purple-600" />
+            <span className="text-sm text-purple-700">{t('فاتورة مورد مرتبطة', 'Linked Supplier Invoice', lang)}: <strong>{receipt.purchaseInvoice.invoiceNo}</strong></span>
+            <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">{receipt.purchaseInvoice.status}</Badge>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Items comparison table */}
       <Card>
@@ -421,12 +448,8 @@ export function GoodsReceiptModule() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/goods-receipt/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }),
-  })
-
-  const completeMutation = useMutation({
-    mutationFn: (id: string) => fetch(`/api/goods-receipt/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'COMPLETED' }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }); toast.success(t('تم الحذف', 'Deleted', lang)) },
+    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
   const totalReceived = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + i.quantityReceived, 0), 0)
@@ -530,27 +553,33 @@ export function GoodsReceiptModule() {
                 <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
                 <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+                <TableHead className="text-right">{t('فاتورة', 'Invoice', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {filtered.map(r => {
                   const cfg = statusConfig[r.status] || statusConfig.PENDING
+                  const hasInvoice = !!r.purchaseInvoice
                   return (
                     <TableRow key={r.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', id: r.id })}>
                       <TableCell className="font-mono font-medium">{r.receiptNo || '—'}</TableCell>
                       <TableCell>
-                        <Badge className="bg-blue-50 text-blue-700 border-0 text-xs">{r.purchaseOrder?.orderNo || '—'}</Badge>
+                        <Badge className="bg-blue-50 text-blue-700 border-0 text-xs gap-1"><Link2 className="size-3" />{r.purchaseOrder?.orderNo || '—'}</Badge>
                       </TableCell>
                       <TableCell>{r.supplier?.name || '—'}</TableCell>
                       <TableCell>{r.project?.name || '—'}</TableCell>
                       <TableCell>{r.date ? formatDate(r.date, lang) : '—'}</TableCell>
                       <TableCell><Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge></TableCell>
                       <TableCell>
+                        {hasInvoice ? (
+                          <Badge className="bg-purple-100 text-purple-700 border-0 text-xs gap-1"><FileText className="size-3" />{r.purchaseInvoice!.invoiceNo}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-1">
                           <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: r.id }) }} title={t('عرض', 'View', lang)}><Eye className="size-4" /></Button>
-                          {(r.status === 'PENDING' || r.status === 'PARTIAL') && (
-                            <Button variant="ghost" size="icon" className="size-8 text-emerald-600" onClick={e => { e.stopPropagation(); completeMutation.mutate(r.id) }} title={t('إكمال', 'Complete', lang)}><CheckCircle className="size-4" /></Button>
-                          )}
                           {(r.status === 'PENDING' || r.status === 'PARTIAL') && (
                             <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={e => { e.stopPropagation(); if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate(r.id) }}><Trash2 className="size-4" /></Button>
                           )}

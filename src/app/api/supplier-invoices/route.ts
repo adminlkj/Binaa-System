@@ -18,16 +18,12 @@ export async function GET(request: Request) {
     if (projectId) where.projectId = projectId
     if (status) where.status = status
 
-    // Only return invoices that have a goodsReceiptId (supply chain invoices)
-    where.goodsReceiptId = { not: null }
-
     const invoices = await db.purchaseInvoice.findMany({
-      where,
+      where: Object.keys(where).length > 0 ? where : undefined,
       include: {
         supplier: { select: { id: true, name: true, code: true } },
         purchaseOrder: { select: { id: true, orderNo: true, status: true } },
         goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
-        project: { select: { id: true, name: true, code: true } },
         items: true,
       },
       orderBy: { date: 'desc' },
@@ -144,7 +140,6 @@ export async function POST(request: Request) {
         supplier: { select: { id: true, name: true, code: true } },
         purchaseOrder: { select: { id: true, orderNo: true, status: true } },
         goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
-        project: { select: { id: true, name: true, code: true } },
         items: true,
       },
     })

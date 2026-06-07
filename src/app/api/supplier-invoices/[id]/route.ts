@@ -2,6 +2,15 @@ import { db } from '@/lib/db'
 import { autoEntryPurchaseInvoice, initializeChartOfAccounts, createJournalEntry } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
+// Valid status transitions for Supplier Invoices
+const VALID_SI_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['SENT', 'CANCELLED'],
+  SENT: ['PARTIALLY_PAID', 'CANCELLED'], // Point of no return - cannot go back to DRAFT
+  PARTIALLY_PAID: ['PAID', 'CANCELLED'],
+  PAID: [], // Terminal state
+  CANCELLED: [], // Terminal state
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -49,42 +58,83 @@ export async function PUT(
       return NextResponse.json({ error: 'فاتورة المورد غير موجودة' }, { status: 404 })
     }
 
-    // Cannot modify cancelled invoices
-    if (existing.status === 'CANCELLED') {
-      return NextResponse.json({ error: 'لا يمكن تعديل فاتورة ملغاة' }, { status: 400 })
-    }
+    // Handle status change
+    if (body.status && body.status !== existing.status) {
+      const allowedTransitions = VALID_SI_TRANSITIONS[existing.status] || []
 
-    // Handle APPROVE action
-    if (body.status === 'SENT' && existing.status === 'DRAFT') {
-      // On APPROVE: create accounting entry using autoEntryPurchaseInvoice
-      let journalEntryId = existing.journalEntryId
-
-      if (!journalEntryId) {
-        try {
-          await initializeChartOfAccounts()
-          const journalEntry = await autoEntryPurchaseInvoice({
-            invoiceNo: existing.invoiceNo,
-            supplierId: existing.supplierId,
-            subtotal: existing.subtotal,
-            vatRate: existing.vatRate,
-            vatAmount: existing.vatAmount,
-            totalAmount: existing.totalAmount,
-            date: existing.date,
-            projectId: existing.projectId || undefined,
-            expenseCategory: existing.expenseCategory || undefined,
-          })
-          journalEntryId = journalEntry.id
-        } catch (accountingError) {
-          console.error('Accounting entry failed for supplier invoice:', accountingError)
+      if (!allowedTransitions.includes(body.status)) {
+        if (existing.status === 'SENT' && body.status === 'DRAFT') {
+          return NextResponse.json(
+            { error: 'لا يمكن الرجوع من حالة مرسلة إلى مسودة - لا يمكن التراجع بعد الإرسال' },
+            { status: 400 }
+          )
         }
+        if (existing.status === 'PAID') {
+          return NextResponse.json(
+            { error: 'لا يمكن تغيير حالة فاتورة مدفوعة بالكامل' },
+            { status: 400 }
+          )
+        }
+        if (existing.status === 'CANCELLED') {
+          return NextResponse.json(
+            { error: 'لا يمكن تعديل فاتورة ملغاة' },
+            { status: 400 }
+          )
+        }
+        return NextResponse.json(
+          { error: `لا يمكن التحويل من ${existing.status} إلى ${body.status}` },
+          { status: 400 }
+        )
       }
 
+      // CRITICAL: When status changes from DRAFT to SENT, auto-create accounting journal entry
+      if (body.status === 'SENT' && existing.status === 'DRAFT') {
+        let journalEntryId = existing.journalEntryId
+
+        if (!journalEntryId) {
+          try {
+            await initializeChartOfAccounts()
+            const journalEntry = await autoEntryPurchaseInvoice({
+              invoiceNo: existing.invoiceNo,
+              supplierId: existing.supplierId,
+              subtotal: existing.subtotal,
+              vatRate: existing.vatRate,
+              vatAmount: existing.vatAmount,
+              totalAmount: existing.totalAmount,
+              date: existing.date,
+              projectId: existing.projectId || undefined,
+              costCenterId: existing.projectId || undefined, // Use projectId as costCenterId
+              expenseCategory: existing.expenseCategory || undefined,
+            })
+            journalEntryId = journalEntry.id
+          } catch (accountingError) {
+            console.error('Accounting entry failed for supplier invoice:', accountingError)
+            // Continue with status change even if accounting fails
+          }
+        }
+
+        const updated = await db.purchaseInvoice.update({
+          where: { id },
+          data: {
+            status: 'SENT',
+            journalEntryId,
+          },
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+            purchaseOrder: { select: { id: true, orderNo: true, status: true } },
+            goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
+            project: { select: { id: true, name: true, code: true } },
+            items: true,
+          },
+        })
+
+        return NextResponse.json(updated)
+      }
+
+      // Other status changes (PARTIALLY_PAID, PAID, CANCELLED)
       const updated = await db.purchaseInvoice.update({
         where: { id },
-        data: {
-          status: 'SENT',
-          journalEntryId,
-        },
+        data: { status: body.status },
         include: {
           supplier: { select: { id: true, name: true, code: true } },
           purchaseOrder: { select: { id: true, orderNo: true, status: true } },
@@ -97,7 +147,20 @@ export async function PUT(
       return NextResponse.json(updated)
     }
 
-    // Handle modification after approval (reversal + new entry)
+    // Cannot modify cancelled invoices
+    if (existing.status === 'CANCELLED') {
+      return NextResponse.json({ error: 'لا يمكن تعديل فاتورة ملغاة' }, { status: 400 })
+    }
+
+    // Cannot modify after SENT (except status changes handled above)
+    if (existing.status !== 'DRAFT') {
+      return NextResponse.json(
+        { error: 'لا يمكن تعديل فاتورة بعد الإرسال - يمكن فقط تغيير الحالة' },
+        { status: 400 }
+      )
+    }
+
+    // Handle modification with reversal if journal entry exists
     if (existing.journalEntryId && (body.subtotal !== undefined || body.totalAmount !== undefined || body.vatAmount !== undefined)) {
       const originalEntry = await db.journalEntry.findUnique({
         where: { id: existing.journalEntryId },
@@ -150,19 +213,19 @@ export async function PUT(
         totalAmount: newTotalAmount,
         date: existing.date,
         projectId: existing.projectId || undefined,
+        costCenterId: existing.projectId || undefined,
         expenseCategory: existing.expenseCategory || undefined,
       })
 
       body.journalEntryId = newJournalEntry.id
     }
 
-    // General update
+    // General update for DRAFT invoices
     const updateData: Record<string, unknown> = {}
     if (body.supplierInvoiceNo !== undefined) updateData.supplierInvoiceNo = body.supplierInvoiceNo
     if (body.supplierInvoiceDate !== undefined) updateData.supplierInvoiceDate = body.supplierInvoiceDate ? new Date(body.supplierInvoiceDate) : null
     if (body.attachmentPath !== undefined) updateData.attachmentPath = body.attachmentPath
     if (body.notes !== undefined) updateData.notes = body.notes
-    if (body.status !== undefined) updateData.status = body.status
     if (body.journalEntryId !== undefined) updateData.journalEntryId = body.journalEntryId
     if (body.date !== undefined) updateData.date = new Date(body.date)
     if (body.dueDate !== undefined) updateData.dueDate = new Date(body.dueDate)
@@ -204,7 +267,7 @@ export async function DELETE(
     // Cannot delete after approval
     if (existing.status !== 'DRAFT') {
       return NextResponse.json(
-        { error: 'لا يمكن حذف فاتورة مورد بعد الاعتماد' },
+        { error: 'لا يمكن حذف فاتورة مورد بعد الاعتماد - يمكن فقط حذف المسودات' },
         { status: 400 }
       )
     }

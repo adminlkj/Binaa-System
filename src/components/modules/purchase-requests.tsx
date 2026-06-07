@@ -4,8 +4,9 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileCheck, Plus, Search, Trash2, RefreshCw,
-  Printer, Download, CheckCircle, XCircle, Eye, ArrowRight,
+  Printer, Download, CheckCircle, XCircle, Eye, ArrowRight, ShoppingCart,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,7 +41,7 @@ interface PurchaseRequest {
   projectId: string | null; createdAt: string
   project: Project | null
   items: PurchaseRequestItem[]
-  purchaseOrders?: { id: string; orderNo: string; status: string }[]
+  purchaseOrders?: { id: string; orderNo: string; status: string; totalAmount?: number }[]
 }
 
 interface PRFormData {
@@ -80,6 +81,7 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 type ViewState =
   | { type: 'list' }
   | { type: 'create' }
+  | { type: 'create-po'; prId: string }
   | { type: 'detail'; id: string }
 
 // ============ Create View ============
@@ -99,7 +101,8 @@ function PRCreateView({ onBack }: { onBack: () => void }) {
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => fetch('/api/purchase-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }); onBack() },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }); toast.success(t('تم إنشاء طلب الشراء بنجاح', 'Purchase request created successfully', lang)); onBack() },
+    onError: () => toast.error(t('فشل في إنشاء طلب الشراء', 'Failed to create purchase request', lang)),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -166,7 +169,6 @@ function PRCreateView({ onBack }: { onBack: () => void }) {
           </CardContent>
         </Card>
 
-        {/* Items */}
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -218,7 +220,7 @@ function PRCreateView({ onBack }: { onBack: () => void }) {
 }
 
 // ============ Detail View ============
-function PRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
+function PRDetailView({ id, onBack, onCreatePO }: { id: string; onBack: () => void; onCreatePO: (prId: string) => void }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
 
@@ -234,12 +236,14 @@ function PRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
 
   const approveMutation = useMutation({
     mutationFn: () => fetch(`/api/purchase-requests/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'APPROVED' }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['purchase-requests', id] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-requests', id] }); queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }); toast.success(t('تم اعتماد طلب الشراء', 'Purchase request approved', lang)) },
+    onError: () => toast.error(t('فشل في اعتماد الطلب', 'Failed to approve request', lang)),
   })
 
   const cancelMutation = useMutation({
     mutationFn: () => fetch(`/api/purchase-requests/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'CANCELLED' }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['purchase-requests', id] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-requests', id] }); queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }); toast.success(t('تم إلغاء الطلب', 'Request cancelled', lang)) },
+    onError: () => toast.error(t('فشل في إلغاء الطلب', 'Failed to cancel request', lang)),
   })
 
   if (isLoading) return <div className="p-6"><TableSkeleton /></div>
@@ -267,6 +271,11 @@ function PRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
         {pr.status === 'NEW' && (
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>
             <CheckCircle className="size-4" /> {t('اعتماد', 'Approve', lang)}
+          </Button>
+        )}
+        {pr.status === 'APPROVED' && (
+          <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => onCreatePO(pr.id)}>
+            <ShoppingCart className="size-4" /> {t('إنشاء أمر شراء', 'Create PO', lang)}
           </Button>
         )}
         {(pr.status === 'NEW' || pr.status === 'APPROVED') && (
@@ -299,10 +308,10 @@ function PRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
       {/* Workflow Status Indicator */}
       <Card className="bg-gray-50 border-dashed">
         <CardContent className="p-4">
-          <div className="flex items-center justify-center gap-2 text-sm">
-            <Badge className={pr.status === 'NEW' ? 'bg-yellow-100 text-yellow-700 border-0' : 'bg-gray-100 text-gray-500 border-0'}>1. {t('طلب شراء', 'PR', lang)}</Badge>
+          <div className="flex items-center justify-center gap-2 text-sm flex-wrap">
+            <Badge className={pr.status === 'NEW' ? 'bg-yellow-100 text-yellow-700 border-0' : 'bg-emerald-100 text-emerald-700 border-0'}>1. {t('طلب شراء', 'PR', lang)}</Badge>
             <span className="text-gray-400">→</span>
-            <Badge className={pr.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700 border-0' : pr.status === 'CONVERTED_TO_PO' ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-400 border-0'}>2. {t('اعتماد', 'Approved', lang)}</Badge>
+            <Badge className={pr.status === 'APPROVED' || pr.status === 'CONVERTED_TO_PO' ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-400 border-0'}>2. {t('اعتماد', 'Approved', lang)}</Badge>
             <span className="text-gray-400">→</span>
             <Badge className={pr.status === 'CONVERTED_TO_PO' ? 'bg-blue-100 text-blue-700 border-0' : 'bg-gray-100 text-gray-400 border-0'}>3. {t('أمر شراء', 'PO', lang)}</Badge>
             <span className="text-gray-400">→</span>
@@ -350,11 +359,20 @@ function PRDetailView({ id, onBack }: { id: string; onBack: () => void }) {
       {/* Linked POs */}
       {pr.purchaseOrders && pr.purchaseOrders.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-lg">{t('أوامر الشراء المرتبطة', 'Linked Purchase Orders', lang)}</CardTitle></CardHeader>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg">{t('أوامر الشراء المرتبطة', 'Linked Purchase Orders', lang)}</CardTitle>
+              <Badge className="bg-blue-100 text-blue-700 border-0">{pr.purchaseOrders.length}</Badge>
+            </div>
+          </CardHeader>
           <CardContent>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {pr.purchaseOrders.map(po => (
-                <Badge key={po.id} className="bg-blue-100 text-blue-700 border-0">{po.orderNo}</Badge>
+                <Badge key={po.id} className="bg-blue-100 text-blue-700 border-0 gap-1">
+                  <ShoppingCart className="size-3" />
+                  {po.orderNo}
+                  {po.status && <span className="text-blue-500">({po.status})</span>}
+                </Badge>
               ))}
             </div>
           </CardContent>
@@ -386,12 +404,14 @@ export function PurchaseRequestsModule() {
 
   const approveMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/purchase-requests/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'APPROVED' }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }); toast.success(t('تم الاعتماد', 'Approved', lang)) },
+    onError: () => toast.error(t('فشل في الاعتماد', 'Failed to approve', lang)),
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/purchase-requests/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }); toast.success(t('تم الحذف', 'Deleted', lang)) },
+    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
   // Summary counts
@@ -419,8 +439,38 @@ export function PurchaseRequestsModule() {
     })), `purchase-requests-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
+  const handleCreatePO = (prId: string) => {
+    setViewState({ type: 'create-po', prId })
+  }
+
   if (viewState.type === 'create') return <PRCreateView onBack={() => setViewState({ type: 'list' })} />
-  if (viewState.type === 'detail') return <PRDetailView id={viewState.id} onBack={() => setViewState({ type: 'list' })} />
+  if (viewState.type === 'detail') return <PRDetailView id={viewState.id} onBack={() => setViewState({ type: 'list' })} onCreatePO={handleCreatePO} />
+
+  // For the "Create PO from PR" case, we redirect to the purchase orders module
+  // The purchase orders module handles this via URL query params or state
+  if (viewState.type === 'create-po') {
+    // We'll handle this by showing a message to go to PO creation
+    // In practice, the parent component (page.tsx) can handle the module switch
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="icon" onClick={() => setViewState({ type: 'list' })}><ArrowRight className="size-4" /></Button>
+          <div>
+            <h1 className="text-2xl font-bold">{t('إنشاء أمر شراء', 'Create Purchase Order', lang)}</h1>
+            <p className="text-sm text-muted-foreground">{t('يمكنك إنشاء أمر شراء من طلب الشراء المعتمد من خلال وحدة أوامر الشراء', 'You can create a PO from the approved PR via the Purchase Orders module', lang)}</p>
+          </div>
+        </div>
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="p-6 text-center">
+            <ShoppingCart className="size-12 text-blue-400 mx-auto mb-3" />
+            <p className="text-blue-700 font-medium mb-2">{t('انتقل إلى أوامر الشراء لإنشاء أمر شراء من الطلب المعتمد', 'Go to Purchase Orders to create a PO from the approved request', lang)}</p>
+            <p className="text-sm text-blue-600 mb-4">{t('اختر الطلب المعتمد عند إنشاء أمر شراء جديد وسيتم تحميل البنود تلقائياً', 'Select the approved PR when creating a new PO and items will be loaded automatically', lang)}</p>
+            <Button onClick={() => setViewState({ type: 'list' })} className="bg-blue-600 hover:bg-blue-700">{t('عودة للقائمة', 'Back to List', lang)}</Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <ModuleLayout
@@ -502,6 +552,7 @@ export function PurchaseRequestsModule() {
                 {filtered.map(r => {
                   const cfg = statusConfig[r.status] || statusConfig.NEW
                   const srcCfg = sourceConfig[r.source || 'PROJECT'] || sourceConfig.PROJECT
+                  const hasPO = r.purchaseOrders && r.purchaseOrders.length > 0
                   return (
                     <TableRow key={r.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', id: r.id })}>
                       <TableCell className="font-mono font-medium">{r.requestNo}</TableCell>
@@ -510,11 +561,19 @@ export function PurchaseRequestsModule() {
                       <TableCell>{formatDate(r.date, lang)}</TableCell>
                       <TableCell>{r.requestedBy || '—'}</TableCell>
                       <TableCell><Badge className="bg-gray-100 text-gray-700 border-0">{r.items?.length || 0}</Badge></TableCell>
-                      <TableCell><Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+                          {hasPO && <Badge className="bg-blue-100 text-blue-700 border-0 gap-1 text-xs"><ShoppingCart className="size-3" />{r.purchaseOrders!.length}</Badge>}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           {r.status === 'NEW' && (
                             <Button variant="ghost" size="icon" className="size-8 text-emerald-600" onClick={e => { e.stopPropagation(); approveMutation.mutate(r.id) }} title={t('اعتماد', 'Approve', lang)}><CheckCircle className="size-4" /></Button>
+                          )}
+                          {r.status === 'APPROVED' && (
+                            <Button variant="ghost" size="icon" className="size-8 text-blue-600" onClick={e => { e.stopPropagation(); handleCreatePO(r.id) }} title={t('إنشاء أمر شراء', 'Create PO', lang)}><ShoppingCart className="size-4" /></Button>
                           )}
                           <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: r.id }) }} title={t('عرض', 'View', lang)}><Eye className="size-4" /></Button>
                           {r.status === 'NEW' && (

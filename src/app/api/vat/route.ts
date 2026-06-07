@@ -29,11 +29,11 @@ export async function GET(request: Request) {
       const startDate = new Date(year, (quarter - 1) * 3, 1)
       const endDate = new Date(year, quarter * 3, 0, 23, 59, 59, 999)
 
-      // Get sales invoice breakdown
+      // Get sales invoice breakdown (Output VAT)
       const salesInvoices = await db.salesInvoice.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
-          status: { not: 'CANCELLED' },
+          status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'] },
         },
         select: {
           id: true,
@@ -46,11 +46,28 @@ export async function GET(request: Request) {
         orderBy: { date: 'desc' },
       })
 
-      // Get purchase invoice breakdown
+      // Get progress claims breakdown (Output VAT)
+      const progressClaims = await db.progressClaim.findMany({
+        where: {
+          date: { gte: startDate, lte: endDate },
+          status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] },
+        },
+        select: {
+          id: true,
+          claimNo: true,
+          date: true,
+          totalAmount: true,
+          vatAmount: true,
+          status: true,
+        },
+        orderBy: { date: 'desc' },
+      })
+
+      // Get purchase invoice breakdown (Input VAT)
       const purchaseInvoices = await db.purchaseInvoice.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
-          status: { not: 'CANCELLED' },
+          status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'] },
         },
         select: {
           id: true,
@@ -63,11 +80,11 @@ export async function GET(request: Request) {
         orderBy: { date: 'desc' },
       })
 
-      // Get subcontractor invoice breakdown
+      // Get subcontractor invoice breakdown (Output VAT - reverse charge or Input VAT depending on context)
       const subcontractorInvoices = await db.subcontractorInvoice.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
-          status: { not: 'CANCELLED' },
+          status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] },
         },
         select: {
           id: true,
@@ -80,11 +97,11 @@ export async function GET(request: Request) {
         orderBy: { date: 'desc' },
       })
 
-      // Get expense breakdown
+      // Get expense breakdown (Input VAT)
       const expenses = await db.expense.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
-          vatAmount: { not: null },
+          vatAmount: { not: null, gt: 0 },
         },
         select: {
           id: true,
@@ -97,10 +114,34 @@ export async function GET(request: Request) {
         orderBy: { date: 'desc' },
       })
 
+      // Auto-calculate totals
+      const outputVat = salesInvoices.reduce((s, i) => s + (i.vatAmount || 0), 0) +
+        progressClaims.reduce((s, c) => s + (c.vatAmount || 0), 0)
+      const totalSales = salesInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0) +
+        progressClaims.reduce((s, c) => s + (c.totalAmount || 0), 0)
+
+      const inputVatFromPurchases = purchaseInvoices.reduce((s, i) => s + (i.vatAmount || 0), 0)
+      const inputVatFromSub = subcontractorInvoices.reduce((s, i) => s + (i.vatAmount || 0), 0)
+      const inputVatFromExpenses = expenses.reduce((s, e) => s + (e.vatAmount || 0), 0)
+      const inputVat = inputVatFromPurchases + inputVatFromSub + inputVatFromExpenses
+      const totalPurchases = purchaseInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0) +
+        subcontractorInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0) +
+        expenses.reduce((s, e) => s + (e.amount || 0), 0)
+
+      const netVat = outputVat - inputVat
+
       return NextResponse.json({
         declaration: vatReturns[0] || null,
+        autoCalc: {
+          outputVat,
+          inputVat,
+          netVat,
+          totalSales,
+          totalPurchases,
+        },
         breakdown: {
           salesInvoices,
+          progressClaims,
           purchaseInvoices,
           subcontractorInvoices,
           expenses,
@@ -131,7 +172,7 @@ export async function POST(request: Request) {
 
     const period = `${year}-Q${quarter}`
 
-    // Check if already exists - VAT returns are snapshots, cannot be recreated
+    // Check if already exists
     const existing = await db.vATReturn.findUnique({ where: { period } })
     if (existing) {
       return NextResponse.json(
@@ -144,23 +185,35 @@ export async function POST(request: Request) {
     const startDate = new Date(year, (quarter - 1) * 3, 1)
     const endDate = new Date(year, quarter * 3, 0, 23, 59, 59, 999)
 
-    // ===== OUTPUT VAT: Sum from Sales Invoices =====
+    // ===== OUTPUT VAT: Sales Invoices + Progress Claims =====
     const salesInvoices = await db.salesInvoice.findMany({
       where: {
         date: { gte: startDate, lte: endDate },
-        status: { not: 'CANCELLED' },
+        status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'] },
       },
       select: { id: true, totalAmount: true, vatAmount: true },
     })
     const totalSales = salesInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0)
-    const outputVat = salesInvoices.reduce((sum, inv) => sum + (inv.vatAmount || 0), 0)
+    const outputVatFromSales = salesInvoices.reduce((sum, inv) => sum + (inv.vatAmount || 0), 0)
     const salesInvoiceIds = JSON.stringify(salesInvoices.map(inv => inv.id))
 
-    // ===== INPUT VAT: Sum from Purchase Invoices =====
+    // Progress Claims
+    const progressClaims = await db.progressClaim.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
+        status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] },
+      },
+      select: { id: true, totalAmount: true, vatAmount: true },
+    })
+    const outputVatFromClaims = progressClaims.reduce((sum, c) => sum + (c.vatAmount || 0), 0)
+    const totalSalesWithClaims = totalSales + progressClaims.reduce((s, c) => s + (c.totalAmount || 0), 0)
+    const outputVat = outputVatFromSales + outputVatFromClaims
+
+    // ===== INPUT VAT: Purchase Invoices =====
     const purchaseInvoices = await db.purchaseInvoice.findMany({
       where: {
         date: { gte: startDate, lte: endDate },
-        status: { not: 'CANCELLED' },
+        status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'] },
       },
       select: { id: true, totalAmount: true, vatAmount: true },
     })
@@ -173,11 +226,11 @@ export async function POST(request: Request) {
     )
     const purchaseInvoiceIds = JSON.stringify(purchaseInvoices.map(inv => inv.id))
 
-    // ===== INPUT VAT: Sum from Subcontractor Invoices =====
+    // ===== INPUT VAT: Subcontractor Invoices =====
     const subcontractorInvoices = await db.subcontractorInvoice.findMany({
       where: {
         date: { gte: startDate, lte: endDate },
-        status: { not: 'CANCELLED' },
+        status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] },
       },
       select: { id: true, totalAmount: true, vatAmount: true },
     })
@@ -189,11 +242,11 @@ export async function POST(request: Request) {
       { amount: 0, vat: 0 }
     )
 
-    // ===== INPUT VAT: Sum from Expenses =====
+    // ===== INPUT VAT: Expenses with VAT =====
     const expenses = await db.expense.findMany({
       where: {
         date: { gte: startDate, lte: endDate },
-        vatAmount: { not: null },
+        vatAmount: { not: null, gt: 0 },
       },
       select: { id: true, amount: true, vatAmount: true },
     })
@@ -219,12 +272,11 @@ export async function POST(request: Request) {
         period,
         year,
         quarter,
-        totalSales,
+        totalSales: totalSalesWithClaims,
         outputVat,
         totalPurchases,
         inputVat,
         netVat,
-        // Snapshot details - frozen at creation time
         salesInvoiceIds,
         purchaseInvoiceIds,
         expenseIds,
@@ -237,6 +289,7 @@ export async function POST(request: Request) {
       _meta: {
         message: 'VAT return created as a fixed snapshot. Numbers are frozen and will not change.',
         salesInvoiceCount: salesInvoices.length,
+        progressClaimCount: progressClaims.length,
         purchaseInvoiceCount: purchaseInvoices.length,
         subcontractorInvoiceCount: subcontractorInvoices.length,
         expenseCount: expenses.length,
@@ -273,7 +326,7 @@ export async function PATCH(request: Request) {
     }
 
     if (action === 'FILE') {
-      // DRAFT → FILED
+      // DRAFT → FILED (immuatable after this)
       if (existing.status !== 'DRAFT') {
         return NextResponse.json(
           { error: 'لا يمكن تقديم إقرار ليس في حالة مسودة' },

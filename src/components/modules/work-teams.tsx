@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Users2, Plus, Search, Pencil, Trash2, RefreshCw,
-  Printer, Download, UserPlus, UserMinus,
+  Printer, Download, UserPlus, Banknote,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,16 +21,18 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
-interface Employee { id: string; code: string; name: string; nameAr: string | null }
+interface Employee { id: string; code: string; name: string; nameAr: string | null; basicSalary: number }
 interface Project { id: string; code: string; name: string }
 
 interface TeamMember {
-  id: string; employeeId: string; employee: Employee
+  id: string; employeeId: string; role: string | null; isLeader: boolean
+  employee: Employee
 }
 
 interface WorkTeam {
@@ -98,7 +100,6 @@ function TeamFormDialog({ open, onOpenChange, editingTeam, projects, employees }
       members: form.memberIds,
     }
     if (isEdit) {
-      // For edit, send addMembers/removeMembers
       const existingIds = editingTeam?.members?.map(m => m.employeeId) || []
       const addMembers = form.memberIds.filter(id => !existingIds.includes(id))
       const removeMembers = existingIds.filter(id => !form.memberIds.includes(id))
@@ -158,6 +159,7 @@ function TeamFormDialog({ open, onOpenChange, editingTeam, projects, employees }
                     onCheckedChange={() => toggleMember(emp.id)}
                   />
                   <span className="text-sm">{emp.name} <span className="text-muted-foreground">({emp.code})</span></span>
+                  <span className="text-xs text-muted-foreground mr-auto"><MoneyDisplay value={emp.basicSalary} lang={lang} size="sm" inline /></span>
                 </label>
               ))}
             </div>
@@ -215,10 +217,12 @@ export function WorkTeamsModule() {
       { key: 'specialty', label: t('التخصص', 'Specialty', lang) },
       { key: 'project', label: t('المشروع', 'Project', lang) },
       { key: 'memberCount', label: t('عدد الأعضاء', 'Members', lang) },
+      { key: 'totalCost', label: t('تكلفة الفريق', 'Team Cost', lang) },
     ]
     exportToCSV(filtered.map(team => ({
       code: team.code, name: team.name, specialty: team.specialty || '',
       project: team.project?.name || '', memberCount: team.members?.length || 0,
+      totalCost: team.members?.reduce((s, m) => s + m.employee.basicSalary, 0) || 0,
     })), `work-teams-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
@@ -256,53 +260,68 @@ export function WorkTeamsModule() {
                 <TableHead className="text-right">{t('التخصص', 'Specialty', lang)}</TableHead>
                 <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
                 <TableHead className="text-right">{t('عدد الأعضاء', 'Members', lang)}</TableHead>
+                <TableHead className="text-right">{t('تكلفة الفريق', 'Team Cost', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {filtered.map(team => (
-                  <React.Fragment key={team.id}>
-                    <TableRow className={expandedTeamId === team.id ? 'bg-emerald-50/50' : ''}>
-                      <TableCell className="font-medium font-mono">{team.code}</TableCell>
-                      <TableCell className="font-medium">{team.name}</TableCell>
-                      <TableCell>{team.specialty || '—'}</TableCell>
-                      <TableCell>{team.project?.name || '—'}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 cursor-pointer" onClick={() => setExpandedTeamId(expandedTeamId === team.id ? null : team.id)}>
-                          {team.members?.length || 0} {t('أعضاء', 'members', lang)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${(statusConfig[team.status] || statusConfig.ACTIVE).bg} ${(statusConfig[team.status] || statusConfig.ACTIVE).color} border-0`}>
-                          {(statusConfig[team.status] || statusConfig.ACTIVE).label[lang]}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditingTeam(team); setDialogOpen(true) }}><Pencil className="size-4" /></Button>
-                          <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من حذف الفريق؟', 'Are you sure you want to delete this team?', lang))) deleteMutation.mutate(team.id) }}><Trash2 className="size-4" /></Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    {/* Expanded Members Section */}
-                    {expandedTeamId === team.id && team.members && team.members.length > 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="bg-gray-50/50 p-0">
-                          <div className="px-6 py-3">
-                            <h5 className="text-xs font-semibold text-emerald-700 mb-2">{t('أعضاء الفريق', 'Team Members', lang)}</h5>
-                            <div className="flex flex-wrap gap-2">
-                              {team.members.map(m => (
-                                <Badge key={m.id} variant="outline" className="bg-white">
-                                  {m.employee.name} <span className="text-muted-foreground ml-1">({m.employee.code})</span>
-                                </Badge>
-                              ))}
-                            </div>
+                {filtered.map(team => {
+                  const teamCost = team.members?.reduce((s, m) => s + m.employee.basicSalary, 0) || 0
+                  return (
+                    <React.Fragment key={team.id}>
+                      <TableRow className={expandedTeamId === team.id ? 'bg-emerald-50/50' : ''}>
+                        <TableCell className="font-medium font-mono">{team.code}</TableCell>
+                        <TableCell className="font-medium">{team.name}</TableCell>
+                        <TableCell>{team.specialty || '—'}</TableCell>
+                        <TableCell>{team.project?.name || '—'}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 cursor-pointer" onClick={() => setExpandedTeamId(expandedTeamId === team.id ? null : team.id)}>
+                            {team.members?.length || 0} {t('أعضاء', 'members', lang)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell><MoneyDisplay value={teamCost} lang={lang} size="sm" bold /></TableCell>
+                        <TableCell>
+                          <Badge className={`${(statusConfig[team.status] || statusConfig.ACTIVE).bg} ${(statusConfig[team.status] || statusConfig.ACTIVE).color} border-0`}>
+                            {(statusConfig[team.status] || statusConfig.ACTIVE).label[lang]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditingTeam(team); setDialogOpen(true) }}><Pencil className="size-4" /></Button>
+                            <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من حذف الفريق؟', 'Are you sure you want to delete this team?', lang))) deleteMutation.mutate(team.id) }}><Trash2 className="size-4" /></Button>
                           </div>
                         </TableCell>
                       </TableRow>
-                    )}
-                  </React.Fragment>
-                ))}
+                      {/* Expanded Members Section */}
+                      {expandedTeamId === team.id && team.members && team.members.length > 0 && (
+                        <TableRow>
+                          <TableCell colSpan={8} className="bg-gray-50/50 p-0">
+                            <div className="px-6 py-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <h5 className="text-xs font-semibold text-emerald-700">{t('أعضاء الفريق', 'Team Members', lang)}</h5>
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Banknote className="size-3" />
+                                  {t('إجمالي الرواتب', 'Total Salaries', lang)}: <MoneyDisplay value={teamCost} lang={lang} size="sm" inline bold />
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {team.members.map(m => (
+                                  <Badge key={m.id} variant="outline" className={`${m.isLeader ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-white'}`}>
+                                    {m.isLeader && <span className="mr-1">★</span>}
+                                    {m.employee.name}
+                                    <span className="text-muted-foreground mx-1">({m.employee.code})</span>
+                                    {m.role && <span className="text-muted-foreground text-xs">- {m.role}</span>}
+                                    <span className="text-muted-foreground text-xs mr-1"><MoneyDisplay value={m.employee.basicSalary} lang={lang} size="sm" inline /></span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>

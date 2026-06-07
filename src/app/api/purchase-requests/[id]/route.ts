@@ -1,6 +1,14 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
+// Valid status transitions for Purchase Requests
+const VALID_PR_TRANSITIONS: Record<string, string[]> = {
+  NEW: ['APPROVED', 'CANCELLED'],
+  APPROVED: ['CONVERTED_TO_PO', 'CANCELLED'], // Cannot go back to NEW
+  CONVERTED_TO_PO: [], // Terminal state - cannot change further
+  CANCELLED: [], // Terminal state
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -14,7 +22,7 @@ export async function GET(
         project: { select: { id: true, name: true, code: true } },
         items: true,
         purchaseOrders: {
-          select: { id: true, orderNo: true, status: true },
+          select: { id: true, orderNo: true, status: true, totalAmount: true },
         },
       },
     })
@@ -46,59 +54,59 @@ export async function PUT(
       return NextResponse.json({ error: 'طلب الشراء غير موجود' }, { status: 404 })
     }
 
-    // Cannot modify after approval (except status changes to CONVERTED_TO_PO or CANCELLED)
-    if (existing.status === 'APPROVED' || existing.status === 'CONVERTED_TO_PO') {
-      // Only allow status changes for approved/converted requests
-      if (body.status && !body.items && !body.description && !body.projectId) {
-        // Validate status transition
-        if (existing.status === 'APPROVED' && body.status === 'CONVERTED_TO_PO') {
-          const updated = await db.purchaseRequest.update({
-            where: { id },
-            data: { status: 'CONVERTED_TO_PO' },
-            include: {
-              project: { select: { id: true, name: true, code: true } },
-              items: true,
-            },
-          })
-          return NextResponse.json(updated)
+    // Handle status change
+    if (body.status && body.status !== existing.status) {
+      const allowedTransitions = VALID_PR_TRANSITIONS[existing.status] || []
+
+      if (!allowedTransitions.includes(body.status)) {
+        // Provide specific error messages
+        if (existing.status === 'APPROVED' && body.status === 'NEW') {
+          return NextResponse.json(
+            { error: 'لا يمكن الرجوع من حالة معتمد إلى جديد - لا يمكن التراجع عن الاعتماد' },
+            { status: 400 }
+          )
         }
-        if (body.status === 'CANCELLED') {
-          const updated = await db.purchaseRequest.update({
-            where: { id },
-            data: { status: 'CANCELLED' },
-            include: {
-              project: { select: { id: true, name: true, code: true } },
-              items: true,
-            },
-          })
-          return NextResponse.json(updated)
+        if (existing.status === 'CONVERTED_TO_PO') {
+          return NextResponse.json(
+            { error: 'لا يمكن تغيير حالة طلب شراء تم تحويله إلى أمر شراء' },
+            { status: 400 }
+          )
         }
+        if (existing.status === 'CANCELLED') {
+          return NextResponse.json(
+            { error: 'لا يمكن تعديل طلب شراء ملغي' },
+            { status: 400 }
+          )
+        }
+        return NextResponse.json(
+          { error: `لا يمكن التحويل من ${existing.status} إلى ${body.status}` },
+          { status: 400 }
+        )
       }
+
+      const updated = await db.purchaseRequest.update({
+        where: { id },
+        data: { status: body.status },
+        include: {
+          project: { select: { id: true, name: true, code: true } },
+          items: true,
+          purchaseOrders: {
+            select: { id: true, orderNo: true, status: true, totalAmount: true },
+          },
+        },
+      })
+
+      return NextResponse.json(updated)
+    }
+
+    // General update - only allowed for NEW status
+    if (existing.status !== 'NEW') {
       return NextResponse.json(
         { error: 'لا يمكن تعديل طلب شراء معتمد أو محول - يمكن فقط تغيير الحالة' },
         { status: 400 }
       )
     }
 
-    // Cannot modify cancelled requests
-    if (existing.status === 'CANCELLED') {
-      return NextResponse.json({ error: 'لا يمكن تعديل طلب شراء ملغي' }, { status: 400 })
-    }
-
-    // Handle status change to APPROVED
-    if (body.status === 'APPROVED' && existing.status === 'NEW') {
-      const updated = await db.purchaseRequest.update({
-        where: { id },
-        data: { status: 'APPROVED' },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          items: true,
-        },
-      })
-      return NextResponse.json(updated)
-    }
-
-    // General update for NEW status requests
     const updateData: Record<string, unknown> = {}
     if (body.description !== undefined) updateData.description = body.description
     if (body.projectId !== undefined) updateData.projectId = body.projectId || null
@@ -106,43 +114,28 @@ export async function PUT(
     if (body.requestedBy !== undefined) updateData.requestedBy = body.requestedBy
     if (body.date !== undefined) updateData.date = new Date(body.date)
 
-    // Handle items update: delete old and create new
+    // Handle items update
     if (body.items && Array.isArray(body.items)) {
-      await db.purchaseRequestItem.deleteMany({ where: { requestId: id } })
-      await db.purchaseRequest.create({
-        data: {
-          items: {
-            create: body.items.map((item: { description: string; quantity: number; unit?: string | null; notes?: string | null }) => ({
-              description: item.description,
-              quantity: item.quantity,
-              unit: item.unit || null,
-              notes: item.notes || null,
-            })),
-          },
-        },
-      })
-      // Actually, we need to use update with items. Let me fix this.
+      updateData.items = {
+        deleteMany: {},
+        create: body.items.map((item: { description: string; quantity: number; unit?: string | null; notes?: string | null }) => ({
+          description: item.description,
+          quantity: item.quantity,
+          unit: item.unit || null,
+          notes: item.notes || null,
+        })),
+      }
     }
 
     const updated = await db.purchaseRequest.update({
       where: { id },
-      data: {
-        ...updateData,
-        ...(body.items && Array.isArray(body.items) && {
-          items: {
-            deleteMany: {},
-            create: body.items.map((item: { description: string; quantity: number; unit?: string | null; notes?: string | null }) => ({
-              description: item.description,
-              quantity: item.quantity,
-              unit: item.unit || null,
-              notes: item.notes || null,
-            })),
-          },
-        }),
-      },
+      data: updateData,
       include: {
         project: { select: { id: true, name: true, code: true } },
         items: true,
+        purchaseOrders: {
+          select: { id: true, orderNo: true, status: true, totalAmount: true },
+        },
       },
     })
 
@@ -168,10 +161,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'طلب الشراء غير موجود' }, { status: 404 })
     }
 
-    // Cannot delete approved or converted requests
-    if (existing.status === 'APPROVED' || existing.status === 'CONVERTED_TO_PO') {
+    // Only allow deletion of NEW status PRs
+    if (existing.status !== 'NEW') {
       return NextResponse.json(
-        { error: 'لا يمكن حذف طلب شراء معتمد أو محول إلى أمر شراء' },
+        { error: 'لا يمكن حذف طلب شراء معتمد أو محول إلى أمر شراء - يمكن فقط حذف الطلبات الجديدة' },
         { status: 400 }
       )
     }

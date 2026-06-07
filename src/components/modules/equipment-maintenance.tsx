@@ -4,11 +4,12 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Wrench, Plus, Search, Pencil, Trash2, RefreshCw,
-  Printer, Download,
+  Printer, Download, BookOpen, MapPin,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -27,10 +28,12 @@ import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 // ============ Types ============
 interface Equipment { id: string; code: string; name: string; nameAr: string | null }
 interface Supplier { id: string; code: string; name: string; nameAr: string | null }
+interface Project { id: string; code: string; name: string }
 
 interface EquipmentMaintenance {
   id: string; equipmentId: string; date: string; description: string
   cost: number; supplierId: string | null; nextDate: string | null
+  journalEntryId: string | null
   equipment: Equipment; supplier: Supplier | null
 }
 
@@ -157,6 +160,12 @@ export function EquipmentMaintenanceModule() {
     queryFn: async () => { const res = await fetch('/api/suppliers'); if (!res.ok) return []; return res.json() },
   })
 
+  // Fetch resource allocations for equipment to show project assignment
+  const { data: allocations = [] } = useQuery<{ resourceId: string; resourceType: string; projectId: string; project: Project }[]>({
+    queryKey: ['resource-distribution'],
+    queryFn: async () => { const res = await fetch('/api/resource-distribution'); if (!res.ok) return []; return res.json() },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/equipment/maintenance/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['equipment-maintenance'] }),
@@ -170,6 +179,12 @@ export function EquipmentMaintenanceModule() {
 
   const totalCost = filtered.reduce((sum, r) => sum + r.cost, 0)
 
+  // Get project assignment for an equipment
+  const getProjectForEquipment = (equipmentId: string): Project | null => {
+    const alloc = allocations.find(a => a.resourceId === equipmentId && a.resourceType === 'EQUIPMENT')
+    return alloc?.project || null
+  }
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'equipmentName', label: t('المعدة', 'Equipment', lang) },
@@ -178,10 +193,14 @@ export function EquipmentMaintenanceModule() {
       { key: 'cost', label: t('التكلفة', 'Cost', lang) },
       { key: 'supplierName', label: t('المورد', 'Supplier', lang) },
       { key: 'nextDate', label: t('الصيانة القادمة', 'Next Date', lang) },
+      { key: 'projectName', label: t('المشروع', 'Project', lang) },
+      { key: 'accountingEntry', label: t('قيد محاسبي', 'Accounting Entry', lang) },
     ]
     exportToCSV(filtered.map(r => ({
       equipmentName: r.equipment.name, date: r.date, description: r.description,
       cost: r.cost, supplierName: r.supplier?.name || '', nextDate: r.nextDate || '',
+      projectName: getProjectForEquipment(r.equipmentId)?.name || '',
+      accountingEntry: r.journalEntryId ? t('نعم', 'Yes', lang) : t('لا', 'No', lang),
     })), `equipment-maintenance-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
@@ -228,26 +247,45 @@ export function EquipmentMaintenanceModule() {
                 <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
                 <TableHead className="text-right">{t('التكلفة', 'Cost', lang)}</TableHead>
                 <TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead>
+                <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+                <TableHead className="text-right">{t('قيد محاسبي', 'Accounting', lang)}</TableHead>
                 <TableHead className="text-right">{t('الصيانة القادمة', 'Next Date', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {filtered.map(r => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-medium">{r.equipment.name}</TableCell>
-                    <TableCell>{formatDate(r.date, lang)}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">{r.description}</TableCell>
-                    <TableCell><MoneyDisplay value={r.cost} lang={lang} size="sm" /></TableCell>
-                    <TableCell>{r.supplier?.name || '—'}</TableCell>
-                    <TableCell>{r.nextDate ? formatDate(r.nextDate, lang) : '—'}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditingRecord(r); setDialogOpen(true) }}><Pencil className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من حذف السجل؟', 'Are you sure you want to delete this record?', lang))) deleteMutation.mutate(r.id) }}><Trash2 className="size-4" /></Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {filtered.map(r => {
+                  const project = getProjectForEquipment(r.equipmentId)
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-medium">{r.equipment.name}</TableCell>
+                      <TableCell>{formatDate(r.date, lang)}</TableCell>
+                      <TableCell className="max-w-[200px] truncate">{r.description}</TableCell>
+                      <TableCell><MoneyDisplay value={r.cost} lang={lang} size="sm" /></TableCell>
+                      <TableCell>{r.supplier?.name || '—'}</TableCell>
+                      <TableCell>
+                        {project ? (
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
+                            <MapPin className="size-3" />{project.name}
+                          </Badge>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {r.journalEntryId ? (
+                          <Badge className="bg-purple-100 text-purple-700 border-0 gap-1"><BookOpen className="size-3" />{t('مسجل', 'Posted', lang)}</Badge>
+                        ) : (
+                          <Badge variant="outline" className="bg-gray-50 text-gray-500">—</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>{r.nextDate ? formatDate(r.nextDate, lang) : '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={() => { setEditingRecord(r); setDialogOpen(true) }}><Pencil className="size-4" /></Button>
+                          <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من حذف السجل؟', 'Are you sure you want to delete this record?', lang))) deleteMutation.mutate(r.id) }}><Trash2 className="size-4" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
