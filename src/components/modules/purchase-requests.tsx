@@ -27,9 +27,10 @@ import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 
 // ============ Types ============
-interface Project { id: string; code: string; name: string }
+interface Project { id: string; code: string; name: string; projectType?: string }
 
 interface PurchaseRequestItem {
   id: string; description: string; quantity: number; unit: string | null; notes: string | null
@@ -556,7 +557,12 @@ export function PurchaseRequestsModule() {
                   return (
                     <TableRow key={r.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', id: r.id })}>
                       <TableCell className="font-mono font-medium">{r.requestNo}</TableCell>
-                      <TableCell>{r.project?.name || '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {r.project?.name || '—'}
+                          {r.project?.projectType && <ProjectTypeBadge projectType={r.project.projectType} lang={lang} />}
+                        </div>
+                      </TableCell>
                       <TableCell><Badge className={`${srcCfg.bg} ${srcCfg.color} border-0 text-xs`}>{srcCfg.label[lang]}</Badge></TableCell>
                       <TableCell>{formatDate(r.date, lang)}</TableCell>
                       <TableCell>{r.requestedBy || '—'}</TableCell>

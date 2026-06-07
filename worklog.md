@@ -320,13 +320,7 @@ Work Log:
 - Fixed TypeScript errors in sales-invoices route (Timesheet INVOICED status check, paymentTerms variable)
 - Fixed TypeScript error in goods-receipt route (PurchaseOrderStatus type casting)
 - Added auto accounting entry creation to supplier-invoices POST handler
-- Verified all 6 key API endpoints returning HTTP 200:
-  - /api/projects - returns projects with projectType field
-  - /api/sales-invoices - empty (expected, no invoices created yet)
-  - /api/supplier-invoices - empty (expected, no invoices created yet)
-  - /api/expenses - empty (expected, no expenses created yet)
-  - /api/progress-claims - empty (expected, no claims created yet)
-  - /api/goods-receipt - empty (expected, no GRs created yet)
+- Verified all 6 key API endpoints returning HTTP 200
 - Dev server running without errors
 - Lint passes (only pre-existing error in take-screenshots.mjs)
 
@@ -341,3 +335,128 @@ Stage Summary:
   7. Workflow enforcement: Strict sequential flow with no skipping
 - All API endpoints tested and working
 - Database schema updated and synced
+
+---
+Task ID: 3
+Agent: Project Type & Activity Awareness Developer
+Task: Add Project Type Indicators and Activity Awareness to Key Module Components
+
+Work Log:
+- Created shared ProjectTypeBadge component at `/src/components/shared/project-type-badge.tsx`
+  - Shows emerald "تنفيذي"/"Const." badge for CONSTRUCTION projects
+  - Shows cyan "تأجير"/"Rental" badge for EQUIPMENT_RENTAL projects
+
+- Updated 7 API routes to include `projectType` in project select:
+  - `/api/supplier-invoices/route.ts` - GET, POST, re-fetch all include projectType
+  - `/api/purchase-invoices/route.ts` - GET, POST, PUT all include projectType
+  - `/api/expenses/route.ts` - GET, POST, PUT all include projectType
+  - `/api/purchase-requests/route.ts` - GET, POST include projectType
+  - `/api/purchase-orders/route.ts` - GET, POST include projectType
+  - `/api/goods-receipt/route.ts` - GET, POST, re-fetch all include projectType
+  - `/api/resource-distribution/route.ts` - GET, POST include projectType
+
+- Updated 7 frontend modules with ProjectTypeBadge:
+  1. Purchases (purchases.tsx):
+     - Added projectType to PurchaseRequest, PurchaseOrder, PurchaseInvoice, GoodsReceipt interfaces
+     - Added ProjectTypeBadge next to project names in all 3 table tabs (PRs, POs, Invoices)
+  2. Expenses (expenses.tsx):
+     - Added projectType to Expense interface
+     - Added ProjectTypeBadge next to project name in project expenses table
+  3. Purchase Requests (purchase-requests.tsx):
+     - Added projectType to Project interface
+     - Added ProjectTypeBadge next to project name in requests list
+  4. Purchase Orders (purchase-orders.tsx):
+     - Added projectType to PurchaseOrder interface
+     - Added ProjectTypeBadge next to project name in POs list
+  5. Goods Receipt (goods-receipt.tsx):
+     - Added projectType to GoodsReceipt interface
+     - Added ProjectTypeBadge next to project name in receipts list
+  6. Supplier Invoices (supplier-invoices.tsx):
+     - Added projectType to SupplierInvoice interface
+     - Added Project column to invoices table
+     - Added ProjectTypeBadge next to project name
+  7. Resource Distribution (resource-distribution.tsx):
+     - Added projectType to Project and ResourceDistribution interfaces
+     - Added ProjectTypeBadge in both visual grid cards and table view
+
+- Added Activity awareness to Equipment module (equipment.tsx):
+  - Created ActivityBadge component showing:
+    - Emerald "تنفيذي"/"Const." for IN_USE status (construction activity)
+    - Cyan "تأجير"/"Rental" for RENTED status (rental activity)
+  - Added "النشاط"/"Activity" column to equipment list table
+  - Activity badge appears alongside existing StatusBadge
+
+Stage Summary:
+- All 7 key modules now display ProjectTypeBadge next to project names
+- API routes return projectType field in project relations
+- Equipment module shows activity type (construction vs rental) based on status
+- Shared ProjectTypeBadge component ensures visual consistency across all modules
+- ESLint passes with zero errors (excluding pre-existing take-screenshots.mjs)
+
+---
+Task ID: 10
+Agent: Dashboard Activity Split Developer
+Task: Update Dashboard API & UI to show Construction vs Equipment Rental Activity Split
+
+Work Log:
+- Updated Dashboard API (`/src/app/api/dashboard/route.ts`):
+  - Added activity-based project counts: constructionProjects, rentalProjects, activeConstructionProjects, activeRentalProjects
+  - Fetched project IDs by type (CONSTRUCTION / EQUIPMENT_RENTAL) for filtering aggregates
+  - Added construction revenue: progress claims + sales invoices linked to CONSTRUCTION projects
+  - Added rental revenue: sales invoices where sourceType='TIMESHEET' or linked to EQUIPMENT_RENTAL projects
+  - Added construction costs: expenses + purchase invoices + labor + equipment costs + subcontractor invoices for CONSTRUCTION projects
+  - Added rental costs: expenses + purchase invoices + equipment costs + fuel logs for EQUIPMENT_RENTAL projects
+  - Added constructionProfit and rentalProfit calculations
+  - Added rentedEquipment and inUseEquipment counts from equipmentStatusMap
+  - Added `projectType` field to each projectProfitability entry
+  - Removed duplicate `inUseEquipment` / `rentedEquipment` declarations from section 10 (moved to section 5b)
+  - All new fields included in the JSON response
+
+- Updated Dashboard UI (`/src/components/modules/dashboard.tsx`):
+  - Extended DashboardData interface with 12 new fields: constructionProjects, rentalProjects, activeConstructionProjects, activeRentalProjects, constructionRevenue, rentalRevenue, constructionCosts, rentalCosts, constructionProfit, rentalProfit, rentedEquipment, inUseEquipment
+  - Added `projectType: string` to projectProfitability interface type
+  - Added "نشاطات الشركة" (Company Activities) section after second KPI row with two side-by-side cards:
+    - Construction Card (emerald/green theme, Building2 icon): shows active projects, revenue, costs, profit with MoneyDisplay
+    - Equipment Rental Card (cyan/blue theme, Truck icon): shows active projects, rented equipment count, revenue, costs, profit with MoneyDisplay
+  - Added "النوع" (Type) column to Project Profitability table with colored badges:
+    - CONSTRUCTION → emerald badge "تنفيذي"/"Construction"
+    - EQUIPMENT_RENTAL → cyan badge "تأجير"/"Rental"
+  - Used explicit return in profitability map callback to avoid JSX parsing issues
+  - All monetary values use MoneyDisplay component
+  - All text uses bilingual t(ar, en) pattern
+  - Activity cards have gradient backgrounds and prominent icon badges
+
+Stage Summary:
+- Dashboard now clearly shows the two core business activities side-by-side
+- Construction vs Equipment Rental split is visually prominent with emerald/cyan theming
+- Activity-specific financial metrics (revenue, costs, profit) are computed from project-type-filtered data
+- Project Profitability table includes Type column for easy identification
+- Both API and UI changes pass ESLint with zero errors (excluding pre-existing take-screenshots.mjs)
+---
+Task ID: 1-3
+Agent: Main Coordinator + Subagents
+Task: Ensure entire system is integrated with Construction Projects and Equipment Rental activities
+
+Work Log:
+- Updated Dashboard API with activity-based metrics (constructionProjects, rentalProjects, constructionRevenue, rentalRevenue, constructionCosts, rentalCosts, constructionProfit, rentalProfit, rentedEquipment, inUseEquipment)
+- Updated Dashboard UI with "نشاطات الشركة" (Company Activities) section showing side-by-side Construction vs Rental cards
+- Added projectType column to Project Profitability table with colored badges
+- Updated Reports API with new "activity-summary" report type returning construction and rental breakdowns
+- Updated Reports UI with "ملخص الأنشطة" (Activity Summary) as first tab with comparison cards and cost breakdowns
+- Created shared ProjectTypeBadge component at /src/components/shared/project-type-badge.tsx
+- Updated 7 backend API routes to include projectType in project select clauses (supplier-invoices, purchase-invoices, expenses, purchase-requests, purchase-orders, goods-receipt, resource-distribution)
+- Updated 8 frontend modules with ProjectTypeBadge indicators (purchases, expenses, purchase-requests, purchase-orders, goods-receipt, supplier-invoices, equipment, resource-distribution)
+- Added ActivityType mapping to app-store (navItemActivity) with construction/rental/both classification for all nav items
+- Updated sidebar with colored activity dots (emerald for construction, cyan for rental) next to each nav item
+- Added activity legend at bottom of sidebar
+- Lint passes with zero new errors
+- Dashboard API verified returning correct activity metrics
+- No runtime errors in dev server logs
+
+Stage Summary:
+- The entire system now clearly distinguishes between the two core business activities
+- Dashboard shows Construction vs Rental KPIs side by side
+- Reports include Activity Summary with detailed breakdowns
+- All modules that reference projects show project type badges
+- Sidebar navigation shows activity context with colored dots
+- The two activities (مشاريع تنفيذية and تأجير المعدات) are the clear core of every screen

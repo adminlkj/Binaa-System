@@ -24,6 +24,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 
 // ============ Types ============
 type ViewState =
@@ -56,7 +57,7 @@ interface PurchaseOrder {
   vatAmount: number; totalAmount: number; paidAmount: number; status: string
   receiptStatus?: string; notes: string | null
   supplier: { id: string; name: string; code: string }
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   purchaseRequest: { id: string; requestNo: string; status: string } | null
   items: POLineItem[]
   goodsReceipts: { id: string; receiptNo: string; status: string; date: string }[]
@@ -725,7 +726,12 @@ export function PurchaseOrdersModule() {
                         </div>
                       </TableCell>
                       <TableCell>{po.supplier.name}</TableCell>
-                      <TableCell>{po.project?.name || '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {po.project?.name || '—'}
+                          {po.project?.projectType && <ProjectTypeBadge projectType={po.project.projectType} lang={lang} />}
+                        </div>
+                      </TableCell>
                       <TableCell>{formatDate(po.date, lang)}</TableCell>
                       <TableCell className="font-semibold"><MoneyDisplay value={po.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
                       <TableCell><Badge className={`${statusCfg.bg} ${statusCfg.color} border-0`}>{statusCfg.label[lang]}</Badge></TableCell>

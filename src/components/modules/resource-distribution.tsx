@@ -25,17 +25,18 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 
 // ============ Types ============
 interface Employee { id: string; code: string; name: string; nameAr: string | null; basicSalary: number }
 interface Equipment { id: string; code: string; name: string; nameAr: string | null }
 interface WorkTeam { id: string; code: string; name: string; nameAr: string | null; members: { employeeId: string; employee: Employee }[] }
-interface Project { id: string; code: string; name: string; nameAr?: string | null; contractValue: number }
+interface Project { id: string; code: string; name: string; nameAr?: string | null; contractValue: number; projectType?: string }
 
 interface ResourceDistribution {
   id: string; projectId: string; resourceType: string; resourceId: string
   startDate: string; endDate: string | null
-  project: Project
+  project: Project & { projectType?: string }
   resource?: Record<string, unknown>
 }
 
@@ -519,7 +520,12 @@ export function ResourceDistributionModule() {
             <Card key={group.project.id} className="border-l-4 border-l-emerald-500">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold text-sm">{group.project.name}</h3>
+                  <h3 className="font-semibold text-sm">
+                    <div className="flex items-center gap-1">
+                      {group.project.name}
+                      {group.project.projectType && <ProjectTypeBadge projectType={group.project.projectType} lang={lang} />}
+                    </div>
+                  </h3>
                   <Button
                     variant="outline"
                     size="sm"
@@ -576,7 +582,12 @@ export function ResourceDistributionModule() {
               <TableBody>
                 {filtered.map(d => (
                   <TableRow key={d.id}>
-                    <TableCell className="font-medium">{d.project.name}</TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-1">
+                        {d.project.name}
+                        {d.project.projectType && <ProjectTypeBadge projectType={d.project.projectType} lang={lang} />}
+                      </div>
+                    </TableCell>
                     <TableCell><ResourceTypeBadge type={d.resourceType} lang={lang} /></TableCell>
                     <TableCell>{(d.resource as Record<string, unknown>)?.name as string || '—'}</TableCell>
                     <TableCell>{formatDate(d.startDate, lang)}</TableCell>

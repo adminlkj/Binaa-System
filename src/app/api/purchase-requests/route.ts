@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const requests = await db.purchaseRequest.findMany({
       where,
       include: {
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, projectType: true } },
         items: true,
       },
       orderBy: { date: 'desc' },
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
         },
       },
       include: {
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, projectType: true } },
         items: true,
       },
     })

@@ -24,6 +24,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 
 // ============ Types ============
 type ViewState =
@@ -53,7 +54,7 @@ interface SupplierInvoice {
   supplier: { id: string; name: string; code: string }
   purchaseOrder: { id: string; orderNo: string; status: string } | null
   goodsReceipt: { id: string; receiptNo: string; status: string } | null
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   items: InvoiceItem[]
 }
 
@@ -596,6 +597,7 @@ export function SupplierInvoicesModule() {
                 <TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead>
                 <TableHead className="text-right">{t('أمر الشراء', 'PO', lang)}</TableHead>
                 <TableHead className="text-right">{t('إيصال الاستلام', 'GR', lang)}</TableHead>
+                <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
                 <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
@@ -610,6 +612,12 @@ export function SupplierInvoicesModule() {
                       <TableCell>{i.supplier.name}</TableCell>
                       <TableCell><Badge className="bg-blue-50 text-blue-700 border-0 text-xs gap-1"><Link2 className="size-3" />{i.purchaseOrder?.orderNo || '—'}</Badge></TableCell>
                       <TableCell><Badge className="bg-teal-50 text-teal-700 border-0 text-xs gap-1"><Link2 className="size-3" />{i.goodsReceipt?.receiptNo || '—'}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {i.project?.name || '—'}
+                          {i.project?.projectType && <ProjectTypeBadge projectType={i.project.projectType} lang={lang} />}
+                        </div>
+                      </TableCell>
                       <TableCell>{formatDate(i.date, lang)}</TableCell>
                       <TableCell className="font-semibold"><MoneyDisplay value={i.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
                       <TableCell>

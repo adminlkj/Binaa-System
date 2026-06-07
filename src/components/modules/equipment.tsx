@@ -92,6 +92,25 @@ function StatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
   return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
 }
 
+// Activity badge: shows if equipment is RENTED (rental activity) or IN_USE (construction activity)
+function ActivityBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+  if (status === 'RENTED') {
+    return (
+      <Badge className="bg-cyan-100 text-cyan-700 border-cyan-200 text-[10px] px-1.5 py-0 border">
+        {lang === 'ar' ? 'تأجير' : 'Rental'}
+      </Badge>
+    )
+  }
+  if (status === 'IN_USE') {
+    return (
+      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] px-1.5 py-0 border">
+        {lang === 'ar' ? 'تنفيذي' : 'Const.'}
+      </Badge>
+    )
+  }
+  return null
+}
+
 // Rental status config
 const rentalStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
   ACTIVE: { label: { ar: 'نشط', en: 'Active' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
@@ -1313,6 +1332,7 @@ export function EquipmentModule() {
                     <TableHead className="text-right">{lang === 'ar' ? 'سعر الشراء' : 'Purchase Price'}</TableHead>
                     <TableHead className="text-right">{lang === 'ar' ? 'سعر البيع/التأجير' : 'Selling/Rental'}</TableHead>
                     <TableHead className="text-right">{lang === 'ar' ? 'الحالة' : 'Status'}</TableHead>
+                    <TableHead className="text-right">{lang === 'ar' ? 'النشاط' : 'Activity'}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1325,6 +1345,7 @@ export function EquipmentModule() {
                       <TableCell className="text-teal-700">{formatSAR(eq.purchasePrice, lang)}</TableCell>
                       <TableCell className="text-purple-700">{formatSAR(eq.sellingPrice, lang)}</TableCell>
                       <TableCell><StatusBadge status={eq.status} lang={lang} /></TableCell>
+                      <TableCell><ActivityBadge status={eq.status} lang={lang} /></TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

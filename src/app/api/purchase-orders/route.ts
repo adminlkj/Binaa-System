@@ -19,7 +19,7 @@ export async function GET(request: Request) {
       where,
       include: {
         supplier: { select: { id: true, name: true, code: true } },
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, projectType: true } },
         purchaseRequest: { select: { id: true, requestNo: true, status: true } },
         items: true,
         goodsReceipts: {
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       },
       include: {
         supplier: { select: { id: true, name: true, code: true } },
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, projectType: true } },
         purchaseRequest: { select: { id: true, requestNo: true, status: true } },
         items: true,
       },

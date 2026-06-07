@@ -8,6 +8,7 @@ import {
   Printer, Download, CreditCard, Users, Percent,
   RefreshCw, Building2, ArrowLeft, CheckCircle2,
   Clock, Send, AlertTriangle, Wallet, BookOpen,
+  Activity,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -68,6 +69,37 @@ interface VATDeclaration {
   status: string; filedDate: string | null; paymentDate: string | null; paymentReference: string | null
 }
 
+// ============ Activity Summary Types ============
+interface ActivitySummaryData {
+  construction: {
+    projectCount: number
+    activeProjectCount: number
+    totalContractValue: number
+    totalRevenue: number
+    totalCosts: number
+    profit: number
+    profitMargin: number
+    materialCosts: number
+    laborCosts: number
+    subcontractorCosts: number
+    equipmentCosts: number
+    projectExpenses: number
+  }
+  rental: {
+    projectCount: number
+    activeProjectCount: number
+    totalRentalRevenue: number
+    totalRentalCosts: number
+    profit: number
+    profitMargin: number
+    maintenanceCosts: number
+    fuelCosts: number
+    operationCosts: number
+    rentalExpenses: number
+    rentedEquipmentCount: number
+  }
+}
+
 // ============ Cost Row Component ============
 function CostRow({ label, value, lang, color }: { label: string; value: number; lang: 'ar' | 'en'; color?: string }) {
   const pctOfTotal = value
@@ -75,6 +107,332 @@ function CostRow({ label, value, lang, color }: { label: string; value: number; 
     <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50">
       <span className="text-sm text-gray-700">{label}</span>
       <MoneyDisplay value={value} lang={lang} size="sm" bold inline showSymbol={false} className={color || ''} />
+    </div>
+  )
+}
+
+// ============ 0. Activity Summary Tab ============
+function ActivitySummaryTab({ lang }: { lang: 'ar' | 'en' }) {
+  const { data, isLoading, refetch } = useQuery<ActivitySummaryData>({
+    queryKey: ['activity-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/reports?type=activity-summary')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const handleExport = useCallback(() => {
+    if (!data) return
+    const rows = [
+      { metric: t('عدد المشاريع', 'Project Count', lang), construction: data.construction.projectCount, rental: data.rental.projectCount },
+      { metric: t('المشاريع النشطة', 'Active Projects', lang), construction: data.construction.activeProjectCount, rental: data.rental.activeProjectCount },
+      { metric: t('إجمالي قيمة العقود', 'Total Contract Value', lang), construction: data.construction.totalContractValue, rental: 0 },
+      { metric: t('الإيرادات', 'Revenue', lang), construction: data.construction.totalRevenue, rental: data.rental.totalRentalRevenue },
+      { metric: t('التكاليف', 'Costs', lang), construction: data.construction.totalCosts, rental: data.rental.totalRentalCosts },
+      { metric: t('الربح', 'Profit', lang), construction: data.construction.profit, rental: data.rental.profit },
+      { metric: t('هامش الربح %', 'Profit Margin %', lang), construction: Math.round(data.construction.profitMargin), rental: Math.round(data.rental.profitMargin) },
+    ]
+    const columns: CSVColumn[] = [
+      { key: 'metric', label: t('المؤشر', 'Metric', lang) },
+      { key: 'construction', label: t('التنفيذية', 'Construction', lang) },
+      { key: 'rental', label: t('تأجير المعدات', 'Equipment Rental', lang) },
+    ]
+    exportToCSV(rows as Record<string, unknown>[], 'activity-summary', columns)
+  }, [data, lang])
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-48 animate-pulse rounded-lg bg-gray-100" />)}
+        </div>
+        <div className="h-64 animate-pulse rounded-lg bg-gray-100" />
+      </div>
+    )
+  }
+
+  const c = data?.construction
+  const r = data?.rental
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExport}><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
+      </div>
+
+      {/* Side-by-side Activity Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Construction Card */}
+        <Card className="border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 to-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center justify-center size-12 rounded-xl bg-emerald-100">
+                <Building2 className="size-6 text-emerald-700" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-emerald-900">{t('مشاريع تنفيذية', 'Construction Projects', lang)}</h3>
+                <p className="text-sm text-emerald-600">{c ? `${c.projectCount} ${t('مشروع', 'projects', lang)} • ${c.activeProjectCount} ${t('نشط', 'active', lang)}` : '-'}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/70 rounded-lg p-3 border border-emerald-200">
+                <p className="text-xs text-emerald-600">{t('قيمة العقود', 'Contract Value', lang)}</p>
+                <MoneyDisplay value={c?.totalContractValue || 0} lang={lang} size="md" bold className="text-emerald-800" />
+              </div>
+              <div className="bg-white/70 rounded-lg p-3 border border-emerald-200">
+                <p className="text-xs text-emerald-600">{t('الإيرادات', 'Revenue', lang)}</p>
+                <MoneyDisplay value={c?.totalRevenue || 0} lang={lang} size="md" bold className="text-emerald-800" />
+              </div>
+              <div className="bg-white/70 rounded-lg p-3 border border-emerald-200">
+                <p className="text-xs text-emerald-600">{t('التكاليف', 'Costs', lang)}</p>
+                <MoneyDisplay value={c?.totalCosts || 0} lang={lang} size="md" bold className="text-rose-700" />
+              </div>
+              <div className={`${(c?.profit || 0) >= 0 ? 'bg-emerald-100/70' : 'bg-rose-50/70'} rounded-lg p-3 border ${(c?.profit || 0) >= 0 ? 'border-emerald-300' : 'border-rose-200'}`}>
+                <p className="text-xs ${(c?.profit || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}">{t('الربح', 'Profit', lang)}</p>
+                <MoneyDisplay value={c?.profit || 0} lang={lang} size="md" bold className={(c?.profit || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
+                <p className="text-xs mt-0.5 text-muted-foreground">{formatNumber(Math.round(c?.profitMargin || 0))}% {t('هامش', 'margin', lang)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Rental Card */}
+        <Card className="border-2 border-cyan-300 bg-gradient-to-br from-cyan-50 to-white">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center justify-center size-12 rounded-xl bg-cyan-100">
+                <Truck className="size-6 text-cyan-700" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-cyan-900">{t('تأجير المعدات', 'Equipment Rental', lang)}</h3>
+                <p className="text-sm text-cyan-600">{r ? `${r.projectCount} ${t('مشروع', 'projects', lang)} • ${r.activeProjectCount} ${t('نشط', 'active', lang)} • ${r.rentedEquipmentCount} ${t('معدات', 'equipment', lang)}` : '-'}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-white/70 rounded-lg p-3 border border-cyan-200">
+                <p className="text-xs text-cyan-600">{t('إيرادات التأجير', 'Rental Revenue', lang)}</p>
+                <MoneyDisplay value={r?.totalRentalRevenue || 0} lang={lang} size="md" bold className="text-cyan-800" />
+              </div>
+              <div className="bg-white/70 rounded-lg p-3 border border-cyan-200">
+                <p className="text-xs text-cyan-600">{t('المعدات المؤجرة', 'Rented Equipment', lang)}</p>
+                <p className="text-xl font-bold text-cyan-800">{r?.rentedEquipmentCount || 0}</p>
+              </div>
+              <div className="bg-white/70 rounded-lg p-3 border border-cyan-200">
+                <p className="text-xs text-cyan-600">{t('التكاليف', 'Costs', lang)}</p>
+                <MoneyDisplay value={r?.totalRentalCosts || 0} lang={lang} size="md" bold className="text-rose-700" />
+              </div>
+              <div className={`${(r?.profit || 0) >= 0 ? 'bg-cyan-100/70' : 'bg-rose-50/70'} rounded-lg p-3 border ${(r?.profit || 0) >= 0 ? 'border-cyan-300' : 'border-rose-200'}`}>
+                <p className="text-xs ${(r?.profit || 0) >= 0 ? 'text-cyan-600' : 'text-rose-600'}">{t('الربح', 'Profit', lang)}</p>
+                <MoneyDisplay value={r?.profit || 0} lang={lang} size="md" bold className={(r?.profit || 0) >= 0 ? 'text-cyan-700' : 'text-rose-700'} />
+                <p className="text-xs mt-0.5 text-muted-foreground">{formatNumber(Math.round(r?.profitMargin || 0))}% {t('هامش', 'margin', lang)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Comparison Table */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Activity className="size-5 text-emerald-600" />
+            {t('مقارنة الأنشطة', 'Activity Comparison', lang)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-right">{t('المؤشر', 'Metric', lang)}</TableHead>
+                  <TableHead className="text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Building2 className="size-4 text-emerald-600" />
+                      {t('التنفيذية', 'Construction', lang)}
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <Truck className="size-4 text-cyan-600" />
+                      {t('تأجير المعدات', 'Rental', lang)}
+                    </div>
+                  </TableHead>
+                  <TableHead className="text-center">{t('الفرق', 'Difference', lang)}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="font-medium">{t('عدد المشاريع', 'Project Count', lang)}</TableCell>
+                  <TableCell className="text-center">{c?.projectCount || 0}</TableCell>
+                  <TableCell className="text-center">{r?.projectCount || 0}</TableCell>
+                  <TableCell className="text-center text-muted-foreground">{(c?.projectCount || 0) - (r?.projectCount || 0)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">{t('المشاريع النشطة', 'Active Projects', lang)}</TableCell>
+                  <TableCell className="text-center">{c?.activeProjectCount || 0}</TableCell>
+                  <TableCell className="text-center">{r?.activeProjectCount || 0}</TableCell>
+                  <TableCell className="text-center text-muted-foreground">{(c?.activeProjectCount || 0) - (r?.activeProjectCount || 0)}</TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">{t('الإيرادات', 'Revenue', lang)}</TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={c?.totalRevenue || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-emerald-700" /></TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={r?.totalRentalRevenue || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-cyan-700" /></TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={(c?.totalRevenue || 0) - (r?.totalRentalRevenue || 0)} lang={lang} size="xs" inline showSymbol={false} className="text-muted-foreground" /></TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">{t('التكاليف', 'Costs', lang)}</TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={c?.totalCosts || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-rose-600" /></TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={r?.totalRentalCosts || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-rose-600" /></TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={(c?.totalCosts || 0) - (r?.totalRentalCosts || 0)} lang={lang} size="xs" inline showSymbol={false} className="text-muted-foreground" /></TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">{t('الربح', 'Profit', lang)}</TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={c?.profit || 0} lang={lang} size="xs" bold inline showSymbol={false} className={(c?.profit || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={r?.profit || 0} lang={lang} size="xs" bold inline showSymbol={false} className={(r?.profit || 0) >= 0 ? 'text-cyan-700' : 'text-rose-700'} /></TableCell>
+                  <TableCell className="text-center"><MoneyDisplay value={(c?.profit || 0) - (r?.profit || 0)} lang={lang} size="xs" inline showSymbol={false} className="text-muted-foreground" /></TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell className="font-medium">{t('هامش الربح', 'Profit Margin', lang)}</TableCell>
+                  <TableCell className="text-center font-bold text-emerald-700">{formatNumber(Math.round(c?.profitMargin || 0))}%</TableCell>
+                  <TableCell className="text-center font-bold text-cyan-700">{formatNumber(Math.round(r?.profitMargin || 0))}%</TableCell>
+                  <TableCell className="text-center text-muted-foreground">{formatNumber(Math.round((c?.profitMargin || 0) - (r?.profitMargin || 0)))}%</TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Cost Breakdown Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Construction Cost Breakdown */}
+        <Card className="border-emerald-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-emerald-800">
+              <Receipt className="size-5 text-emerald-600" />
+              {t('تفصيل تكاليف التنفيذية', 'Construction Cost Breakdown', lang)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <CostRow label={t('المواد (مشتريات)', 'Materials (Purchases)', lang)} value={c?.materialCosts || 0} lang={lang} />
+            <CostRow label={t('العمالة', 'Labor', lang)} value={c?.laborCosts || 0} lang={lang} />
+            <CostRow label={t('مقاولو الباطن', 'Subcontractors', lang)} value={c?.subcontractorCosts || 0} lang={lang} />
+            <CostRow label={t('المعدات', 'Equipment', lang)} value={c?.equipmentCosts || 0} lang={lang} />
+            <CostRow label={t('مصروفات المشروع', 'Project Expenses', lang)} value={c?.projectExpenses || 0} lang={lang} />
+            <Separator className="my-2" />
+            <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-emerald-50">
+              <span className="font-semibold text-emerald-800">{t('إجمالي التكاليف', 'Total Costs', lang)}</span>
+              <MoneyDisplay value={c?.totalCosts || 0} lang={lang} size="md" bold className="text-emerald-700" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Rental Cost Breakdown */}
+        <Card className="border-cyan-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base text-cyan-800">
+              <Receipt className="size-5 text-cyan-600" />
+              {t('تفصيل تكاليف التأجير', 'Rental Cost Breakdown', lang)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <CostRow label={t('الصيانة', 'Maintenance', lang)} value={r?.maintenanceCosts || 0} lang={lang} />
+            <CostRow label={t('الوقود', 'Fuel', lang)} value={r?.fuelCosts || 0} lang={lang} />
+            <CostRow label={t('التشغيل', 'Operations', lang)} value={r?.operationCosts || 0} lang={lang} />
+            <CostRow label={t('مصروفات التأجير', 'Rental Expenses', lang)} value={r?.rentalExpenses || 0} lang={lang} />
+            <Separator className="my-2" />
+            <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-cyan-50">
+              <span className="font-semibold text-cyan-800">{t('إجمالي التكاليف', 'Total Costs', lang)}</span>
+              <MoneyDisplay value={r?.totalRentalCosts || 0} lang={lang} size="md" bold className="text-cyan-700" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Revenue vs Costs Visual */}
+      {data && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="size-5 text-emerald-600" />
+              {t('الإيرادات مقابل التكاليف', 'Revenue vs Costs', lang)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Construction */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Building2 className="size-4 text-emerald-600" />
+                  <span className="font-medium text-sm">{t('التنفيذية', 'Construction', lang)}</span>
+                </div>
+                {c && c.totalRevenue > 0 && (
+                  <div className="space-y-1.5">
+                    <div>
+                      <div className="flex justify-between text-xs mb-0.5">
+                        <span className="text-emerald-600">{t('الإيرادات', 'Revenue', lang)}</span>
+                        <MoneyDisplay value={c.totalRevenue} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-700" />
+                      </div>
+                      <div className="h-3 w-full rounded-full bg-gray-100">
+                        <div className="h-3 rounded-full bg-emerald-500 transition-all" style={{ width: '100%' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-0.5">
+                        <span className="text-rose-600">{t('التكاليف', 'Costs', lang)}</span>
+                        <MoneyDisplay value={c.totalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" />
+                      </div>
+                      <div className="h-3 w-full rounded-full bg-gray-100">
+                        <div className="h-3 rounded-full bg-rose-400 transition-all" style={{ width: `${Math.min((c.totalCosts / c.totalRevenue) * 100, 100)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {c && c.totalRevenue === 0 && (
+                  <p className="text-xs text-muted-foreground">{t('لا توجد إيرادات بعد', 'No revenue yet', lang)}</p>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Rental */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Truck className="size-4 text-cyan-600" />
+                  <span className="font-medium text-sm">{t('تأجير المعدات', 'Equipment Rental', lang)}</span>
+                </div>
+                {r && r.totalRentalRevenue > 0 && (
+                  <div className="space-y-1.5">
+                    <div>
+                      <div className="flex justify-between text-xs mb-0.5">
+                        <span className="text-cyan-600">{t('الإيرادات', 'Revenue', lang)}</span>
+                        <MoneyDisplay value={r.totalRentalRevenue} lang={lang} size="xs" inline showSymbol={false} className="text-cyan-700" />
+                      </div>
+                      <div className="h-3 w-full rounded-full bg-gray-100">
+                        <div className="h-3 rounded-full bg-cyan-500 transition-all" style={{ width: '100%' }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs mb-0.5">
+                        <span className="text-rose-600">{t('التكاليف', 'Costs', lang)}</span>
+                        <MoneyDisplay value={r.totalRentalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" />
+                      </div>
+                      <div className="h-3 w-full rounded-full bg-gray-100">
+                        <div className="h-3 rounded-full bg-rose-400 transition-all" style={{ width: `${Math.min((r.totalRentalCosts / r.totalRentalRevenue) * 100, 100)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {r && r.totalRentalRevenue === 0 && (
+                  <p className="text-xs text-muted-foreground">{t('لا توجد إيرادات بعد', 'No revenue yet', lang)}</p>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
@@ -818,7 +1176,7 @@ function CashFlowTab({ lang }: { lang: 'ar' | 'en' }) {
 // ============ Main Reports Module ============
 export function ReportsModule() {
   const { lang } = useAppStore()
-  const [activeTab, setActiveTab] = useState('project-costs')
+  const [activeTab, setActiveTab] = useState('activity-summary')
 
   return (
     <ModuleLayout
@@ -826,7 +1184,8 @@ export function ReportsModule() {
       subtitle={{ ar: 'تقارير شاملة لإدارة المشاريع والمالية', en: 'Comprehensive project and financial reports' }}
     >
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-3 sm:grid-cols-6 w-full gap-1">
+        <TabsList className="grid grid-cols-4 sm:grid-cols-7 w-full gap-1">
+          <TabsTrigger value="activity-summary" className="text-xs">{t('ملخص الأنشطة', 'Activity Summary', lang)}</TabsTrigger>
           <TabsTrigger value="project-costs" className="text-xs">{t('تكاليف المشاريع', 'Project Costs', lang)}</TabsTrigger>
           <TabsTrigger value="supplier-balances" className="text-xs">{t('أرصدة الموردين', 'Supplier Bal.', lang)}</TabsTrigger>
           <TabsTrigger value="client-balances" className="text-xs">{t('أرصدة العملاء', 'Client Bal.', lang)}</TabsTrigger>
@@ -835,6 +1194,9 @@ export function ReportsModule() {
           <TabsTrigger value="cash-flow" className="text-xs">{t('التدفق النقدي', 'Cash Flow', lang)}</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="activity-summary">
+          <ActivitySummaryTab lang={lang} />
+        </TabsContent>
         <TabsContent value="project-costs">
           <ProjectCostSheetTab lang={lang} />
         </TabsContent>

@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const expenses = await db.expense.findMany({
       where,
       include: {
-        project: { select: { id: true, code: true, name: true } },
+        project: { select: { id: true, code: true, name: true, projectType: true } },
       },
       orderBy: { date: 'desc' },
     })
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
         attachmentPath: body.attachmentPath || null,
       },
       include: {
-        project: { select: { id: true, code: true, name: true } },
+        project: { select: { id: true, code: true, name: true, projectType: true } },
       },
     })
 
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
     const updatedExpense = await db.expense.findUnique({
       where: { id: expense.id },
       include: {
-        project: { select: { id: true, code: true, name: true } },
+        project: { select: { id: true, code: true, name: true, projectType: true } },
       },
     })
 
@@ -216,7 +216,7 @@ export async function PUT(request: Request) {
         ...(updateData.projectId !== undefined && { projectId: updateData.projectId || null }),
       },
       include: {
-        project: { select: { id: true, code: true, name: true } },
+        project: { select: { id: true, code: true, name: true, projectType: true } },
       },
     })
 

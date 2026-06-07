@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const allocations = await db.resourceAllocation.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
       include: {
-        project: { select: { id: true, code: true, name: true, nameAr: true } },
+        project: { select: { id: true, code: true, name: true, nameAr: true, projectType: true } },
       },
       orderBy: { startDate: 'desc' },
     })
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
         notes: body.notes || null,
       },
       include: {
-        project: { select: { id: true, code: true, name: true, nameAr: true } },
+        project: { select: { id: true, code: true, name: true, nameAr: true, projectType: true } },
       },
     })
 

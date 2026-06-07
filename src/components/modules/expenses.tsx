@@ -27,6 +27,7 @@ import { StatusBadge } from '@/components/shared/module-layout'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 
 // ============ Types ============
 interface ProjectOption { id: string; code: string; name: string }
@@ -35,7 +36,7 @@ interface Expense {
   id: string; projectId: string | null; expenseType: string; category: string; description: string
   amount: number; vatRate: number; vatAmount: number | null; totalAmount: number; date: string
   reference: string | null; payFrom: string; attachmentPath: string | null
-  project: { id: string; code: string; name: string } | null
+  project: { id: string; code: string; name: string; projectType?: string } | null
 }
 
 // ============ Bilingual Helpers ============
@@ -598,9 +599,12 @@ export function ExpensesModule() {
                       {filtered.map(exp => (
                         <TableRow key={exp.id}>
                           <TableCell className="font-medium">
-                            {exp.project ? exp.project.name : (
-                              <Badge variant="outline" className="bg-gray-50 text-gray-600">{t(lang, 'عام', 'General')}</Badge>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {exp.project ? exp.project.name : (
+                                <Badge variant="outline" className="bg-gray-50 text-gray-600">{t(lang, 'عام', 'General')}</Badge>
+                              )}
+                              {exp.project?.projectType && <ProjectTypeBadge projectType={exp.project.projectType} lang={lang} />}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <Badge className={`${categoryColors[exp.category] || 'bg-gray-100 text-gray-700'} border-0`}>

@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, formatNumber, formatSAR } from '@/stores/app-store'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 
 // ============ Types ============
 interface SupplierOption { id: string; code: string; name: string }
@@ -37,7 +38,7 @@ interface PRItem {
 interface PurchaseRequest {
   id: string; requestNo: string; projectId: string | null; date: string
   description: string | null; status: string; requestedBy: string | null
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   items: PRItem[]
 }
 
@@ -52,7 +53,7 @@ interface PurchaseOrder {
   vatAmount: number; totalAmount: number; paidAmount: number; status: string
   notes: string | null
   supplier: { id: string; name: string; code: string }
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   items: POLineItem[]
 }
 
@@ -70,7 +71,7 @@ interface PurchaseInvoice {
   supplier: { id: string; name: string; code: string }
   purchaseOrder: { id: string; orderNo: string; status?: string } | null
   goodsReceipt: { id: string; receiptNo: string; status?: string } | null
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   items: PILineItem[]
 }
 
@@ -84,7 +85,7 @@ interface GoodsReceipt {
   projectId: string | null; date: string; status: string; notes: string | null
   supplier: { id: string; name: string; code: string }
   purchaseOrder: { id: string; orderNo: string; status: string }
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   items: GRItem[]
 }
 
@@ -837,7 +838,12 @@ export function PurchasesModule() {
                       {filteredPR.map(pr => (
                         <TableRow key={pr.id}>
                           <TableCell className="font-medium font-mono">{pr.requestNo}</TableCell>
-                          <TableCell>{pr.project?.name || '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {pr.project?.name || '—'}
+                              {pr.project?.projectType && <ProjectTypeBadge projectType={pr.project.projectType} lang={lang} />}
+                            </div>
+                          </TableCell>
                           <TableCell>{pr.description || '—'}</TableCell>
                           <TableCell>{pr.items.length}</TableCell>
                           <TableCell>{formatDate(pr.date, lang)}</TableCell>
@@ -893,7 +899,12 @@ export function PurchasesModule() {
                         <TableRow key={po.id}>
                           <TableCell className="font-medium font-mono">{po.orderNo}</TableCell>
                           <TableCell>{po.supplier.name}</TableCell>
-                          <TableCell>{po.project?.name || '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {po.project?.name || '—'}
+                              {po.project?.projectType && <ProjectTypeBadge projectType={po.project.projectType} lang={lang} />}
+                            </div>
+                          </TableCell>
                           <TableCell>{formatDate(po.date, lang)}</TableCell>
                           <TableCell className="font-semibold">
                             <MoneyDisplay value={po.totalAmount} lang={lang} bold size="sm" />
@@ -961,7 +972,12 @@ export function PurchasesModule() {
                             ) : '—'}
                           </TableCell>
                           <TableCell className="font-mono text-xs">{pi.purchaseOrder?.orderNo || '—'}</TableCell>
-                          <TableCell>{pi.project?.name || '—'}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              {pi.project?.name || '—'}
+                              {pi.project?.projectType && <ProjectTypeBadge projectType={pi.project.projectType} lang={lang} />}
+                            </div>
+                          </TableCell>
                           <TableCell className="font-semibold">
                             <MoneyDisplay value={pi.totalAmount} lang={lang} bold size="sm" />
                           </TableCell>

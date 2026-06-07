@@ -182,6 +182,7 @@ export async function GET(request: Request) {
             nameAr: p.nameAr,
             client: p.client.name,
             status: p.status,
+            projectType: p.projectType,
             contractValue,
             issuedExtracts,
             purchases,
@@ -204,6 +205,169 @@ export async function GET(request: Request) {
           ? (totals.profit / totals.contractValue) * 100
           : 0
         return NextResponse.json({ projects: projectCards, totals })
+      }
+
+      case 'activity-summary': {
+        // ===== CONSTRUCTION PROJECTS =====
+        const constructionProjects = await db.project.findMany({
+          where: { projectType: 'CONSTRUCTION' },
+          select: {
+            id: true,
+            status: true,
+            contractValue: true,
+            contracts: { select: { totalValue: true } },
+            progressClaims: { select: { totalAmount: true, status: true } },
+            purchaseOrders: { select: { totalAmount: true } },
+            subcontractorInvoices: { select: { totalAmount: true } },
+            expenses: { select: { amount: true, category: true } },
+            laborCosts: { select: { totalAmount: true } },
+            equipmentCosts: { select: { amount: true } },
+            equipmentUsages: { select: { cost: true } },
+          },
+        })
+
+        const constructionProjectCount = constructionProjects.length
+        const constructionActiveProjectCount = constructionProjects.filter(p => p.status === 'ACTIVE').length
+        const constructionTotalContractValue = constructionProjects.reduce((s, p) => {
+          const cv = p.contracts.reduce((s2, c) => s2 + c.totalValue, 0)
+          return s + (cv > 0 ? cv : p.contractValue)
+        }, 0)
+
+        // Construction revenue: progress claims + construction sales invoices
+        const constructionProgressClaimRevenue = constructionProjects.reduce(
+          (s, p) => s + p.progressClaims.reduce((s2, c) => s2 + c.totalAmount, 0), 0
+        )
+        const constructionSalesInvoices = await db.salesInvoice.findMany({
+          where: {
+            project: { projectType: 'CONSTRUCTION' },
+            sourceType: 'EXTRACT',
+          },
+          select: { totalAmount: true },
+        })
+        const constructionSalesInvoiceRevenue = constructionSalesInvoices.reduce((s, i) => s + i.totalAmount, 0)
+        const constructionTotalRevenue = constructionProgressClaimRevenue + constructionSalesInvoiceRevenue
+
+        // Construction cost breakdown
+        const constructionMaterialCosts = constructionProjects.reduce(
+          (s, p) => s + p.purchaseOrders.reduce((s2, po) => s2 + po.totalAmount, 0), 0
+        )
+        const constructionLaborCosts = constructionProjects.reduce(
+          (s, p) => s + p.laborCosts.reduce((s2, l) => s2 + l.totalAmount, 0), 0
+        )
+        const constructionSubcontractorCosts = constructionProjects.reduce(
+          (s, p) => s + p.subcontractorInvoices.reduce((s2, si) => s2 + si.totalAmount, 0), 0
+        )
+        const constructionEquipmentCosts = constructionProjects.reduce(
+          (s, p) => s + p.equipmentCosts.reduce((s2, e) => s2 + e.amount, 0) +
+            p.equipmentUsages.reduce((s2, u) => s2 + u.cost, 0), 0
+        )
+        const constructionProjectExpenses = constructionProjects.reduce(
+          (s, p) => s + p.expenses.reduce((s2, e) => s2 + e.amount, 0), 0
+        )
+        const constructionTotalCosts = constructionMaterialCosts + constructionLaborCosts +
+          constructionSubcontractorCosts + constructionEquipmentCosts + constructionProjectExpenses
+        const constructionProfit = constructionTotalRevenue - constructionTotalCosts
+        const constructionProfitMargin = constructionTotalRevenue > 0
+          ? (constructionProfit / constructionTotalRevenue) * 100 : 0
+
+        // ===== RENTAL PROJECTS =====
+        const rentalProjects = await db.project.findMany({
+          where: { projectType: 'EQUIPMENT_RENTAL' },
+          select: {
+            id: true,
+            status: true,
+            expenses: { select: { amount: true, category: true } },
+            equipmentCosts: { select: { amount: true } },
+            equipmentUsages: { select: { cost: true } },
+            timesheets: { select: { id: true, operatingHours: true } },
+          },
+        })
+
+        const rentalProjectCount = rentalProjects.length
+        const rentalActiveProjectCount = rentalProjects.filter(p => p.status === 'ACTIVE').length
+
+        // Rental revenue: timesheet-based sales invoices
+        const rentalSalesInvoices = await db.salesInvoice.findMany({
+          where: {
+            project: { projectType: 'EQUIPMENT_RENTAL' },
+            sourceType: 'TIMESHEET',
+          },
+          select: { totalAmount: true },
+        })
+        const rentalTotalRevenue = rentalSalesInvoices.reduce((s, i) => s + i.totalAmount, 0)
+
+        // Rental costs: maintenance + fuel + equipment expenses for rental projects
+        const rentalProjectIds = rentalProjects.map(p => p.id)
+
+        // Equipment used in rental projects
+        const rentalEquipments = await db.equipmentRental.findMany({
+          where: { projectId: { in: rentalProjectIds } },
+          select: { equipmentId: true },
+        })
+        const rentalEquipmentIds = [...new Set(rentalEquipments.map(r => r.equipmentId))]
+        const rentedEquipmentCount = rentalEquipmentIds.length
+
+        // Maintenance costs for equipment used in rental projects
+        const rentalMaintenanceCosts = rentalEquipmentIds.length > 0
+          ? (await db.equipmentMaintenance.findMany({
+              where: { equipmentId: { in: rentalEquipmentIds } },
+              select: { cost: true },
+            })).reduce((s, m) => s + m.cost, 0)
+          : 0
+
+        // Fuel costs for rental projects
+        const rentalFuelCosts = rentalProjectIds.length > 0
+          ? (await db.equipmentFuelLog.findMany({
+              where: { projectId: { in: rentalProjectIds } },
+              select: { totalCost: true },
+            })).reduce((s, f) => s + f.totalCost, 0)
+          : 0
+
+        // Operation costs (equipment usages for rental projects)
+        const rentalOperationCosts = rentalProjects.reduce(
+          (s, p) => s + p.equipmentUsages.reduce((s2, u) => s2 + u.cost, 0), 0
+        )
+
+        // Rental expenses
+        const rentalExpenses = rentalProjects.reduce(
+          (s, p) => s + p.expenses.reduce((s2, e) => s2 + e.amount, 0) +
+            p.equipmentCosts.reduce((s2, e) => s2 + e.amount, 0), 0
+        )
+
+        const rentalTotalCosts = rentalMaintenanceCosts + rentalFuelCosts + rentalOperationCosts + rentalExpenses
+        const rentalProfit = rentalTotalRevenue - rentalTotalCosts
+        const rentalProfitMargin = rentalTotalRevenue > 0
+          ? (rentalProfit / rentalTotalRevenue) * 100 : 0
+
+        return NextResponse.json({
+          construction: {
+            projectCount: constructionProjectCount,
+            activeProjectCount: constructionActiveProjectCount,
+            totalContractValue: constructionTotalContractValue,
+            totalRevenue: constructionTotalRevenue,
+            totalCosts: constructionTotalCosts,
+            profit: constructionProfit,
+            profitMargin: constructionProfitMargin,
+            materialCosts: constructionMaterialCosts,
+            laborCosts: constructionLaborCosts,
+            subcontractorCosts: constructionSubcontractorCosts,
+            equipmentCosts: constructionEquipmentCosts,
+            projectExpenses: constructionProjectExpenses,
+          },
+          rental: {
+            projectCount: rentalProjectCount,
+            activeProjectCount: rentalActiveProjectCount,
+            totalRentalRevenue: rentalTotalRevenue,
+            totalRentalCosts: rentalTotalCosts,
+            profit: rentalProfit,
+            profitMargin: rentalProfitMargin,
+            maintenanceCosts: rentalMaintenanceCosts,
+            fuelCosts: rentalFuelCosts,
+            operationCosts: rentalOperationCosts,
+            rentalExpenses: rentalExpenses,
+            rentedEquipmentCount: rentedEquipmentCount,
+          },
+        })
       }
 
       default:

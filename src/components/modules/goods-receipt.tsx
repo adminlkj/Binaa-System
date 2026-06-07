@@ -24,6 +24,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 
 // ============ Types ============
 type ViewState =
@@ -57,7 +58,7 @@ interface GoodsReceipt {
   projectId: string | null; date: string; status: string; notes: string | null
   purchaseOrder: { id: string; orderNo: string; status: string; supplierId: string }
   supplier: { id: string; name: string; code: string }
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   items: GoodsReceiptItem[]
   purchaseInvoice?: LinkedInvoice | null
 }
@@ -567,7 +568,12 @@ export function GoodsReceiptModule() {
                         <Badge className="bg-blue-50 text-blue-700 border-0 text-xs gap-1"><Link2 className="size-3" />{r.purchaseOrder?.orderNo || '—'}</Badge>
                       </TableCell>
                       <TableCell>{r.supplier?.name || '—'}</TableCell>
-                      <TableCell>{r.project?.name || '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          {r.project?.name || '—'}
+                          {r.project?.projectType && <ProjectTypeBadge projectType={r.project.projectType} lang={lang} />}
+                        </div>
+                      </TableCell>
                       <TableCell>{r.date ? formatDate(r.date, lang) : '—'}</TableCell>
                       <TableCell><Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge></TableCell>
                       <TableCell>

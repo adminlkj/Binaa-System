@@ -119,6 +119,54 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'settings': { ar: 'الإعدادات', en: 'Settings' },
 }
 
+// Activity type mapping: which nav items primarily serve which business activity
+// CONSTRUCTION = مشاريع تنفيذية, RENTAL = تأجير المعدات, BOTH = مشترك
+export type ActivityType = 'construction' | 'rental' | 'both'
+
+export const navItemActivity: Record<NavItem, ActivityType> = {
+  // الرئيسية
+  'dashboard': 'both',
+  // المبيعات
+  'sales': 'both',
+  'extracts': 'construction',
+  'clients': 'both',
+  'client-payments': 'both',
+  // المشتريات
+  'purchases': 'both',
+  'suppliers': 'both',
+  'subcontractors': 'construction',
+  'supplier-payments': 'both',
+  // المشاريع
+  'projects': 'both',
+  'contracts': 'both',
+  'boq': 'construction',
+  'timesheets': 'rental',
+  // الموارد
+  'equipment': 'rental',
+  'equipment-operations': 'rental',
+  'resource-distribution': 'both',
+  'employees': 'both',
+  'salaries': 'both',
+  'attendance': 'both',
+  'equipment-maintenance': 'rental',
+  'fuel': 'rental',
+  'work-teams': 'construction',
+  'employee-contracts': 'both',
+  // سلسلة التوريد
+  'purchase-requests': 'both',
+  'purchase-orders': 'both',
+  'goods-receipt': 'both',
+  'supplier-invoices': 'both',
+  'supplier-payments': 'both',
+  // المخزون والمحاسبة
+  'inventory': 'both',
+  'accounting': 'both',
+  'vat': 'both',
+  // التقارير والإعدادات
+  'reports': 'both',
+  'settings': 'both',
+}
+
 // Accounting sub-tabs
 export type AccountingTab = 'chart-of-accounts' | 'journal-entries' | 'general-ledger' | 'trial-balance' | 'receivables' | 'payables'
 

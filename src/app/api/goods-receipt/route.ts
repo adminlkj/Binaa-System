@@ -22,7 +22,7 @@ export async function GET(request: Request) {
           select: { id: true, orderNo: true, status: true, supplierId: true },
         },
         supplier: { select: { id: true, name: true, code: true } },
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, projectType: true } },
         items: true,
       },
       orderBy: { date: 'desc' },
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
           select: { id: true, orderNo: true, status: true },
         },
         supplier: { select: { id: true, name: true, code: true } },
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, projectType: true } },
         items: true,
       },
     })
@@ -183,7 +183,7 @@ export async function POST(request: Request) {
           select: { id: true, orderNo: true, status: true },
         },
         supplier: { select: { id: true, name: true, code: true } },
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, projectType: true } },
         items: true,
       },
     })

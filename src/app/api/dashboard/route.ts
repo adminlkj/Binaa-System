@@ -125,6 +125,104 @@ export async function GET() {
     const totalExpenses = monthlyData.reduce((s, m) => s + m.expenses, 0)
     const netProfit = totalRevenue - totalExpenses
 
+    // ===== 5b. Activity-Based Metrics =====
+    const constructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION' } })
+    const rentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL' } })
+    const activeConstructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION', status: { in: ['ACTIVE', 'PLANNING'] } } })
+    const activeRentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL', status: { in: ['ACTIVE', 'PLANNING'] } } })
+
+    // Get project IDs by type for filtering
+    const constructionProjectIds = (await db.project.findMany({
+      where: { projectType: 'CONSTRUCTION' },
+      select: { id: true },
+    })).map(p => p.id)
+    const rentalProjectIds = (await db.project.findMany({
+      where: { projectType: 'EQUIPMENT_RENTAL' },
+      select: { id: true },
+    })).map(p => p.id)
+
+    // Construction revenue: progress claims + sales invoices linked to CONSTRUCTION projects
+    const constructionClaimsAgg = await db.progressClaim.aggregate({
+      _sum: { totalAmount: true },
+      where: { projectId: { in: constructionProjectIds }, status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] } },
+    })
+    const constructionSalesAgg = await db.salesInvoice.aggregate({
+      _sum: { subtotal: true },
+      where: { projectId: { in: constructionProjectIds }, status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] } },
+    })
+    const constructionRevenue = (constructionClaimsAgg._sum.totalAmount || 0) + (constructionSalesAgg._sum.subtotal || 0)
+
+    // Rental revenue: sales invoices where sourceType = TIMESHEET or linked to EQUIPMENT_RENTAL projects
+    const rentalSalesAgg = await db.salesInvoice.aggregate({
+      _sum: { subtotal: true },
+      where: {
+        OR: [
+          { sourceType: 'TIMESHEET' },
+          { projectId: { in: rentalProjectIds } },
+        ],
+        status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] },
+      },
+    })
+    const rentalRevenue = rentalSalesAgg._sum.subtotal || 0
+
+    // Construction costs: expenses + purchase invoices + labor + equipment + subcontractor for CONSTRUCTION projects
+    const constructionExpenseAgg = await db.expense.aggregate({
+      _sum: { amount: true },
+      where: { projectId: { in: constructionProjectIds } },
+    })
+    const constructionPurchaseAgg = await db.purchaseInvoice.aggregate({
+      _sum: { subtotal: true },
+      where: { projectId: { in: constructionProjectIds }, status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] } },
+    })
+    const constructionLaborAgg = await db.laborCost.aggregate({
+      _sum: { totalAmount: true },
+      where: { projectId: { in: constructionProjectIds } },
+    })
+    const constructionEquipCostAgg = await db.equipmentCost.aggregate({
+      _sum: { amount: true },
+      where: { projectId: { in: constructionProjectIds } },
+    })
+    const constructionSubcontractorAgg = await db.subcontractorInvoice.aggregate({
+      _sum: { totalAmount: true },
+      where: { projectId: { in: constructionProjectIds } },
+    })
+    const constructionCosts =
+      (constructionExpenseAgg._sum.amount || 0) +
+      (constructionPurchaseAgg._sum.subtotal || 0) +
+      (constructionLaborAgg._sum.totalAmount || 0) +
+      (constructionEquipCostAgg._sum.amount || 0) +
+      (constructionSubcontractorAgg._sum.totalAmount || 0)
+
+    // Rental costs: expenses + purchase invoices + equipment maintenance + fuel for EQUIPMENT_RENTAL projects
+    const rentalExpenseAgg = await db.expense.aggregate({
+      _sum: { amount: true },
+      where: { projectId: { in: rentalProjectIds } },
+    })
+    const rentalPurchaseAgg = await db.purchaseInvoice.aggregate({
+      _sum: { subtotal: true },
+      where: { projectId: { in: rentalProjectIds }, status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] } },
+    })
+    const rentalEquipCostAgg = await db.equipmentCost.aggregate({
+      _sum: { amount: true },
+      where: { projectId: { in: rentalProjectIds } },
+    })
+    const rentalFuelAgg = await db.equipmentFuelLog.aggregate({
+      _sum: { totalCost: true },
+      where: { projectId: { in: rentalProjectIds } },
+    })
+    const rentalCosts =
+      (rentalExpenseAgg._sum.amount || 0) +
+      (rentalPurchaseAgg._sum.subtotal || 0) +
+      (rentalEquipCostAgg._sum.amount || 0) +
+      (rentalFuelAgg._sum.totalCost || 0)
+
+    const constructionProfit = constructionRevenue - constructionCosts
+    const rentalProfit = rentalRevenue - rentalCosts
+
+    // Equipment rented out count
+    const rentedEquipment = equipmentStatusMap['RENTED'] || 0
+    const inUseEquipment = equipmentStatusMap['IN_USE'] || 0
+
     // ===== 6. Project Profitability Summary =====
     const projects = await db.project.findMany({
       where: { status: { in: ['ACTIVE', 'PLANNING', 'COMPLETED'] } },
@@ -161,6 +259,7 @@ export async function GET() {
         code: p.code,
         name: p.name,
         status: p.status,
+        projectType: p.projectType,
         clientName: p.client.name,
         contractValue,
         totalCosts,
@@ -236,8 +335,6 @@ export async function GET() {
     }))
 
     // ===== 10. Equipment Utilization Rate =====
-    const inUseEquipment = equipmentStatusMap['IN_USE'] || 0
-    const rentedEquipment = equipmentStatusMap['RENTED'] || 0
     const availableEquipment = equipmentStatusMap['AVAILABLE'] || 0
     const equipmentUtilizationRate = totalEquipment > 0
       ? ((inUseEquipment + rentedEquipment) / totalEquipment) * 100
@@ -345,6 +442,20 @@ export async function GET() {
       vatPayable,
       vatReceivable,
       lowInventoryItems,
+
+      // Activity-Based Metrics
+      constructionProjects,
+      rentalProjects,
+      activeConstructionProjects,
+      activeRentalProjects,
+      constructionRevenue,
+      rentalRevenue,
+      constructionCosts,
+      rentalCosts,
+      constructionProfit,
+      rentalProfit,
+      rentedEquipment,
+      inUseEquipment,
 
       // Charts & Tables
       monthlyData,

@@ -40,8 +40,20 @@ interface DashboardData {
   vatPayable: number
   vatReceivable: number
   lowInventoryItems: number
+  constructionProjects: number
+  rentalProjects: number
+  activeConstructionProjects: number
+  activeRentalProjects: number
+  constructionRevenue: number
+  rentalRevenue: number
+  constructionCosts: number
+  rentalCosts: number
+  constructionProfit: number
+  rentalProfit: number
+  rentedEquipment: number
+  inUseEquipment: number
   monthlyData: { month: string; labelAr: string; labelEn: string; revenue: number; expenses: number; profit: number }[]
-  projectProfitability: { id: string; code: string; name: string; status: string; clientName: string; contractValue: number; totalCosts: number; totalRevenue: number; profit: number; margin: number }[]
+  projectProfitability: { id: string; code: string; name: string; status: string; projectType: string; clientName: string; contractValue: number; totalCosts: number; totalRevenue: number; profit: number; margin: number }[]
   recentTransactions: { id: string; entryNo: string; date: string; description: string; totalDebit: number; totalCredit: number; sourceType: string | null }[]
   projectStatusDistribution: { status: string; count: number }[]
   alerts: { type: string; title: string; detail: string; date: string; severity: string }[]
@@ -286,6 +298,72 @@ export function DashboardModule() {
         />
       </div>
 
+      {/* ===== Activity Split: Construction vs Equipment Rental ===== */}
+      <div>
+        <h2 className="mb-3 text-base font-semibold text-gray-800">{t('نشاطات الشركة', 'Company Activities', lang)}</h2>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Construction Activity Card */}
+          <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-emerald-100/50">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex size-12 items-center justify-center rounded-xl bg-emerald-600 shadow-sm">
+                  <Building2 className="size-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-emerald-900">{t('مشاريع تنفيذية', 'Construction Projects', lang)}</h3>
+                  <p className="text-xs text-emerald-700">{dashboard?.activeConstructionProjects || 0} {t('مشروع نشط', 'active projects', lang)}</p>
+                </div>
+                <Badge className="ml-auto bg-emerald-600 text-white hover:bg-emerald-700">{dashboard?.constructionProjects || 0} {t('إجمالي', 'total', lang)}</Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-white/70 p-3 text-center">
+                  <p className="text-xs text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
+                  <MoneyDisplay value={dashboard?.constructionRevenue || 0} lang={lang} size="sm" bold className="text-emerald-700 justify-center" />
+                </div>
+                <div className="rounded-lg bg-white/70 p-3 text-center">
+                  <p className="text-xs text-muted-foreground">{t('التكاليف', 'Costs', lang)}</p>
+                  <MoneyDisplay value={dashboard?.constructionCosts || 0} lang={lang} size="sm" bold className="text-rose-600 justify-center" />
+                </div>
+                <div className="rounded-lg bg-white/70 p-3 text-center">
+                  <p className="text-xs text-muted-foreground">{t('الربح', 'Profit', lang)}</p>
+                  <MoneyDisplay value={dashboard?.constructionProfit || 0} lang={lang} size="sm" bold className={(dashboard?.constructionProfit || 0) >= 0 ? 'text-emerald-700 justify-center' : 'text-rose-600 justify-center'} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Equipment Rental Activity Card */}
+          <Card className="border-cyan-200 bg-gradient-to-br from-cyan-50 to-cyan-100/50">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex size-12 items-center justify-center rounded-xl bg-cyan-600 shadow-sm">
+                  <Truck className="size-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-cyan-900">{t('تأجير المعدات', 'Equipment Rental', lang)}</h3>
+                  <p className="text-xs text-cyan-700">{dashboard?.activeRentalProjects || 0} {t('مشروع نشط', 'active projects', lang)} &bull; {(dashboard?.rentedEquipment || 0) + (dashboard?.inUseEquipment || 0)} {t('معدات مؤجرة', 'rented equipment', lang)}</p>
+                </div>
+                <Badge className="ml-auto bg-cyan-600 text-white hover:bg-cyan-700">{dashboard?.rentalProjects || 0} {t('إجمالي', 'total', lang)}</Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-white/70 p-3 text-center">
+                  <p className="text-xs text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
+                  <MoneyDisplay value={dashboard?.rentalRevenue || 0} lang={lang} size="sm" bold className="text-cyan-700 justify-center" />
+                </div>
+                <div className="rounded-lg bg-white/70 p-3 text-center">
+                  <p className="text-xs text-muted-foreground">{t('التكاليف', 'Costs', lang)}</p>
+                  <MoneyDisplay value={dashboard?.rentalCosts || 0} lang={lang} size="sm" bold className="text-rose-600 justify-center" />
+                </div>
+                <div className="rounded-lg bg-white/70 p-3 text-center">
+                  <p className="text-xs text-muted-foreground">{t('الربح', 'Profit', lang)}</p>
+                  <MoneyDisplay value={dashboard?.rentalProfit || 0} lang={lang} size="sm" bold className={(dashboard?.rentalProfit || 0) >= 0 ? 'text-cyan-700 justify-center' : 'text-rose-600 justify-center'} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
       {/* ===== Third Row: Charts + Equipment + Alerts ===== */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Revenue vs Expenses Chart */}
@@ -390,6 +468,7 @@ export function DashboardModule() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+                      <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
                       <TableHead className="text-right">{t('قيمة العقد', 'Contract', lang)}</TableHead>
                       <TableHead className="text-right">{t('التكاليف', 'Costs', lang)}</TableHead>
                       <TableHead className="text-right">{t('الربح', 'Profit', lang)}</TableHead>
@@ -397,24 +476,32 @@ export function DashboardModule() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dashboard.projectProfitability.map(p => (
-                      <TableRow key={p.id}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium text-sm">{p.name}</p>
-                            <p className="text-xs text-muted-foreground">{p.clientName}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell><MoneyDisplay value={p.contractValue} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
-                        <TableCell><MoneyDisplay value={p.totalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell>
-                        <TableCell><MoneyDisplay value={p.profit} lang={lang} size="xs" bold inline showSymbol={false} className={p.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'} /></TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-xs ${p.margin >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                            {formatNumber(Math.round(p.margin))}%
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {dashboard.projectProfitability.map(p => {
+                      const isConstruction = p.projectType === 'CONSTRUCTION'
+                      return (
+                        <TableRow key={p.id}>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium text-sm">{p.name}</p>
+                              <p className="text-xs text-muted-foreground">{p.clientName}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-xs ${isConstruction ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-cyan-50 text-cyan-700 border-cyan-200'}`}>
+                              {isConstruction ? t('تنفيذي', 'Construction', lang) : t('تأجير', 'Rental', lang)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell><MoneyDisplay value={p.contractValue} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                          <TableCell><MoneyDisplay value={p.totalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell>
+                          <TableCell><MoneyDisplay value={p.profit} lang={lang} size="xs" bold inline showSymbol={false} className={p.profit >= 0 ? 'text-emerald-600' : 'text-rose-600'} /></TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-xs ${p.margin >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                              {formatNumber(Math.round(p.margin))}%
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>

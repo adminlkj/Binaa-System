@@ -14,6 +14,7 @@ import {
   useAppStore,
   navGroups,
   navItemLabels,
+  navItemActivity,
   type NavItem,
   type NavGroup,
 } from '@/stores/app-store'
@@ -172,8 +173,14 @@ export function Sidebar() {
                   >
                     <Icon className="size-4 shrink-0" />
                     {!sidebarCollapsed && (
-                      <span className="truncate">{label[lang]}</span>
+                      <span className="truncate flex-1">{label[lang]}</span>
                     )}
+                    {!sidebarCollapsed && (() => {
+                      const activity = navItemActivity[item]
+                      if (activity === 'construction') return <div className="size-2 rounded-full bg-emerald-500 shrink-0" title={lang === 'ar' ? 'مشاريع تنفيذية' : 'Construction'} />
+                      if (activity === 'rental') return <div className="size-2 rounded-full bg-cyan-500 shrink-0" title={lang === 'ar' ? 'تأجير معدات' : 'Equipment Rental'} />
+                      return null
+                    })()}
                   </button>
                 )
               })}
@@ -181,6 +188,25 @@ export function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Activity Legend */}
+      {!sidebarCollapsed && (
+        <div className="border-t px-3 py-2 space-y-1.5">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            {lang === 'ar' ? 'النشاط' : 'Activity'}
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1.5">
+              <div className="size-2 rounded-full bg-emerald-500" />
+              <span className="text-[10px] text-muted-foreground">{lang === 'ar' ? 'تنفيذي' : 'Const.'}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="size-2 rounded-full bg-cyan-500" />
+              <span className="text-[10px] text-muted-foreground">{lang === 'ar' ? 'تأجير' : 'Rental'}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Footer */}
       <div className="border-t p-2 space-y-1">
@@ -314,7 +340,13 @@ export function MobileSidebar() {
                       )}
                     >
                       <Icon className="size-4 shrink-0" />
-                      <span>{label[lang]}</span>
+                      <span className="flex-1">{label[lang]}</span>
+                      {(() => {
+                        const activity = navItemActivity[item]
+                        if (activity === 'construction') return <div className="size-2 rounded-full bg-emerald-500 shrink-0" title={lang === 'ar' ? 'مشاريع تنفيذية' : 'Construction'} />
+                        if (activity === 'rental') return <div className="size-2 rounded-full bg-cyan-500 shrink-0" title={lang === 'ar' ? 'تأجير معدات' : 'Equipment Rental'} />
+                        return null
+                      })()}
                     </button>
                   )
                 })}
