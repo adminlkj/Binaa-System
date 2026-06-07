@@ -61,15 +61,31 @@ interface PILineItem {
 }
 
 interface PurchaseInvoice {
-  id: string; invoiceNo: string; purchaseOrderId: string | null; projectId: string | null
+  id: string; invoiceNo: string; purchaseOrderId: string | null; goodsReceiptId: string | null; projectId: string | null
   supplierId: string; date: string; dueDate: string
+  supplierInvoiceNo: string | null; supplierInvoiceDate: string | null; attachmentPath: string | null
   subtotal: number; vatRate: number; vatAmount: number
   totalAmount: number; paidAmount: number; status: string; notes: string | null
   expenseCategory: string | null
   supplier: { id: string; name: string; code: string }
-  purchaseOrder: { id: string; orderNo: string } | null
+  purchaseOrder: { id: string; orderNo: string; status?: string } | null
+  goodsReceipt: { id: string; receiptNo: string; status?: string } | null
   project: { id: string; name: string; code: string } | null
   items: PILineItem[]
+}
+
+interface GRItem {
+  id: string; description: string; quantityOrdered: number; quantityReceived: number
+  quantityRemaining: number; unitPrice: number; totalPrice: number; destination: string
+}
+
+interface GoodsReceipt {
+  id: string; receiptNo: string; purchaseOrderId: string; supplierId: string
+  projectId: string | null; date: string; status: string; notes: string | null
+  supplier: { id: string; name: string; code: string }
+  purchaseOrder: { id: string; orderNo: string; status: string }
+  project: { id: string; name: string; code: string } | null
+  items: GRItem[]
 }
 
 interface LineItemForm {
@@ -115,16 +131,6 @@ const invoiceStatusColors: Record<string, string> = {
   OVERDUE: 'bg-rose-100 text-rose-700 border-rose-200',
   CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
 }
-
-// Expense categories for PI accounting mapping
-const expenseCategoryOptions = [
-  { value: 'CONSUMABLES', ar: 'مواد استهلاكية', en: 'Consumables' },
-  { value: 'SERVICES', ar: 'خدمات', en: 'Services' },
-  { value: 'RENT', ar: 'إيجارات', en: 'Rent' },
-  { value: 'MAINTENANCE', ar: 'صيانة', en: 'Maintenance' },
-  { value: 'TRANSPORT', ar: 'نقل', en: 'Transport' },
-  { value: 'OTHER', ar: 'أخرى', en: 'Other' },
-]
 
 const defaultLineItem: LineItemForm = { description: '', quantity: 1, unit: '', unitPrice: 0 }
 
@@ -419,65 +425,76 @@ function PurchaseOrderFormDialog({
   )
 }
 
-// ============ Purchase Invoice Form Dialog ============
-function PurchaseInvoiceFormDialog({
-  open, onOpenChange, suppliers, purchaseOrders, projects,
+// ============ GR-Based Invoice Form Dialog ============
+function GRBasedInvoiceDialog({
+  open, onOpenChange,
 }: {
   open: boolean; onOpenChange: (open: boolean) => void
-  suppliers: SupplierOption[]; purchaseOrders: PurchaseOrder[]; projects: ProjectOption[]
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
 
-  const [supplierId, setSupplierId] = useState('')
-  const [purchaseOrderId, setPurchaseOrderId] = useState('')
-  const [projectId, setProjectId] = useState('')
+  const [goodsReceiptId, setGoodsReceiptId] = useState('')
   const [date, setDate] = useState('')
   const [dueDate, setDueDate] = useState('')
+  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('')
+  const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('')
+  const [attachmentPath, setAttachmentPath] = useState('')
   const [notes, setNotes] = useState('')
-  const [expenseCategory, setExpenseCategory] = useState('')
-  const [lineItems, setLineItems] = useState<{ description: string; quantity: number; unitPrice: number }[]>([{ description: '', quantity: 1, unitPrice: 0 }])
 
-  React.useEffect(() => {
-    if (open) {
-      setSupplierId(''); setPurchaseOrderId(''); setProjectId(''); setDate(''); setDueDate('')
-      setNotes(''); setExpenseCategory(''); setLineItems([{ description: '', quantity: 1, unitPrice: 0 }])
-    }
-  }, [open])
+  // Fetch available (uninvoiced) GRs
+  const { data: goodsReceipts = [], isLoading: grLoading } = useQuery<GoodsReceipt[]>({
+    queryKey: ['goods-receipts-available'],
+    queryFn: async () => {
+      const res = await fetch('/api/goods-receipt')
+      if (!res.ok) return []
+      const allGRs: GoodsReceipt[] = await res.json()
+      // Only show GRs that are confirmed and not yet invoiced
+      return allGRs.filter(gr => gr.status === 'CONFIRMED' || gr.status === 'PENDING')
+    },
+    enabled: open,
+  })
 
-  React.useEffect(() => {
-    if (purchaseOrderId && open) {
-      const po = purchaseOrders.find(p => p.id === purchaseOrderId)
-      if (po) {
-        setSupplierId(po.supplierId)
-        setLineItems(po.items.map(i => ({ description: i.description, quantity: i.quantity, unitPrice: i.unitPrice })))
-      }
-    }
-  }, [purchaseOrderId, open, purchaseOrders])
+  const selectedGR = useMemo(
+    () => goodsReceipts.find(gr => gr.id === goodsReceiptId),
+    [goodsReceipts, goodsReceiptId]
+  )
 
-  const subtotal = useMemo(() => lineItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0), [lineItems])
+  // Financial amounts are computed from GR items (READ-ONLY)
+  const subtotal = useMemo(() => selectedGR?.items.reduce((s, i) => s + i.totalPrice, 0) ?? 0, [selectedGR])
   const vatRate = 0.15
   const vatAmount = subtotal * vatRate
   const totalAmount = subtotal + vatAmount
 
-  const addLine = () => setLineItems([...lineItems, { description: '', quantity: 1, unitPrice: 0 }])
-  const removeLine = (idx: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, i) => i !== idx)) }
-  const updateLine = (idx: number, field: string, value: string | number) => {
-    setLineItems(lineItems.map((item, i) => i === idx ? { ...item, [field]: value } : item))
-  }
+  React.useEffect(() => {
+    if (open) {
+      setGoodsReceiptId(''); setDate(''); setDueDate('')
+      setSupplierInvoiceNo(''); setSupplierInvoiceDate('')
+      setAttachmentPath(''); setNotes('')
+    }
+  }, [open])
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
-      fetch('/api/purchase-invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-invoices'] }); onOpenChange(false) },
+      fetch('/api/supplier-invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(async r => {
+        if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error((err as { error?: string }).error || 'Failed') }
+        return r.json()
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] })
+      onOpenChange(false)
+    },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     createMutation.mutate({
-      supplierId, purchaseOrderId: purchaseOrderId || null, projectId: projectId || null,
-      date, dueDate, notes, expenseCategory: expenseCategory || null,
-      items: lineItems.map(i => ({ description: i.description, quantity: i.quantity, unitPrice: i.unitPrice })),
+      goodsReceiptId,
+      date, dueDate,
+      supplierInvoiceNo: supplierInvoiceNo || undefined,
+      supplierInvoiceDate: supplierInvoiceDate || undefined,
+      attachmentPath: attachmentPath || undefined,
+      notes: notes || undefined,
     })
   }
 
@@ -485,46 +502,111 @@ function PurchaseInvoiceFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t(lang, 'فاتورة شراء جديدة', 'New Purchase Invoice')}</DialogTitle>
-          <DialogDescription>{t(lang, 'إنشاء فاتورة شراء جديدة', 'Create a new purchase invoice')}</DialogDescription>
+          <DialogTitle>{t(lang, 'فاتورة مورد من إيصال استلام', 'Supplier Invoice from Goods Receipt')}</DialogTitle>
+          <DialogDescription>{t(lang, 'إنشاء فاتورة مورد بناءً على إيصال استلام بضائع', 'Create a supplier invoice based on a goods receipt')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* GR Selection */}
+          <div className="space-y-2">
+            <Label className="text-base font-semibold">{t(lang, 'إيصال الاستلام *', 'Goods Receipt *')}</Label>
+            {grLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground p-2">
+                <RefreshCw className="size-4 animate-spin" /> {t(lang, 'جاري التحميل...', 'Loading...')}
+              </div>
+            ) : goodsReceipts.length === 0 ? (
+              <div className="p-3 rounded-lg border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700">
+                {t(lang, 'لا توجد إيصالات استلام متاحة. يجب إنشاء إيصال استلام أولاً قبل إصدار فاتورة.', 'No available goods receipts. A goods receipt must be created first before issuing an invoice.')}
+              </div>
+            ) : (
+              <Select value={goodsReceiptId} onValueChange={setGoodsReceiptId}>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر إيصال الاستلام', 'Select Goods Receipt')} /></SelectTrigger>
+                <SelectContent>
+                  {goodsReceipts.map(gr => (
+                    <SelectItem key={gr.id} value={gr.id}>
+                      {gr.receiptNo} — {gr.supplier.name} ({formatDate(gr.date)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Auto-populated info from GR */}
+          {selectedGR && (
+            <Card className="bg-gray-50 border-dashed">
+              <CardContent className="p-4 space-y-3">
+                <p className="text-sm font-semibold">{t(lang, 'بيانات من إيصال الاستلام', 'Data from Goods Receipt')}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">{t(lang, 'المورد', 'Supplier')}</span>
+                    <p className="font-medium">{selectedGR.supplier.name}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t(lang, 'أمر الشراء', 'Purchase Order')}</span>
+                    <p className="font-medium font-mono">{selectedGR.purchaseOrder.orderNo}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{t(lang, 'المشروع', 'Project')}</span>
+                    <p className="font-medium">{selectedGR.project?.name || '—'}</p>
+                  </div>
+                </div>
+
+                {/* GR Items (read-only) */}
+                <div className="space-y-1 mt-2">
+                  <p className="text-xs text-muted-foreground">{t(lang, 'بنود إيصال الاستلام', 'GR Items')}</p>
+                  <div className="max-h-32 overflow-y-auto">
+                    <Table size="sm">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs h-8">{t(lang, 'الوصف', 'Description')}</TableHead>
+                          <TableHead className="text-xs h-8 w-16">{t(lang, 'الكمية', 'Qty')}</TableHead>
+                          <TableHead className="text-xs h-8 w-24">{t(lang, 'سعر الوحدة', 'Unit Price')}</TableHead>
+                          <TableHead className="text-xs h-8 w-24">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedGR.items.map(item => (
+                          <TableRow key={item.id}>
+                            <TableCell className="text-xs py-1">{item.description}</TableCell>
+                            <TableCell className="text-xs py-1 font-mono">{item.quantityReceived}</TableCell>
+                            <TableCell className="text-xs py-1"><MoneyDisplay value={item.unitPrice} lang={lang} size="xs" /></TableCell>
+                            <TableCell className="text-xs py-1 font-medium"><MoneyDisplay value={item.totalPrice} lang={lang} size="xs" /></TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+
+                <Separator />
+                <div className="space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span>{t(lang, 'المجموع قبل الضريبة', 'Subtotal')}</span>
+                    <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" /></span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>{t(lang, 'ضريبة القيمة المضافة (15%)', 'VAT (15%)')}</span>
+                    <span className="font-medium"><MoneyDisplay value={vatAmount} lang={lang} size="sm" /></span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between text-lg font-bold">
+                    <span>{t(lang, 'الإجمالي', 'Total')}</span>
+                    <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} bold size="md" /></span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* User-editable fields */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{t(lang, 'المورد *', 'Supplier *')}</Label>
-              <Select value={supplierId} onValueChange={setSupplierId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المورد', 'Select supplier')} /></SelectTrigger>
-                <SelectContent>
-                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label>{t(lang, 'رقم فاتورة المورد', 'Supplier Invoice No')}</Label>
+              <Input value={supplierInvoiceNo} onChange={e => setSupplierInvoiceNo(e.target.value)} placeholder={t(lang, 'رقم فاتورة المورد', 'Supplier invoice number')} />
             </div>
             <div className="space-y-2">
-              <Label>{t(lang, 'أمر الشراء (اختياري)', 'Purchase Order (optional)')}</Label>
-              <Select value={purchaseOrderId} onValueChange={setPurchaseOrderId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر أمر الشراء', 'Select PO')} /></SelectTrigger>
-                <SelectContent>
-                  {purchaseOrders.map(po => <SelectItem key={po.id} value={po.id}>{po.orderNo}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>{t(lang, 'المشروع (اختياري)', 'Project (optional)')}</Label>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المشروع', 'Select project')} /></SelectTrigger>
-                <SelectContent>
-                  {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>{t(lang, 'فئة المصروف (للمحاسبة)', 'Expense Category (Accounting)')}</Label>
-              <Select value={expenseCategory} onValueChange={setExpenseCategory}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر الفئة', 'Select category')} /></SelectTrigger>
-                <SelectContent>
-                  {expenseCategoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c[lang]}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <Label>{t(lang, 'تاريخ فاتورة المورد', 'Supplier Invoice Date')}</Label>
+              <Input type="date" value={supplierInvoiceDate} onChange={e => setSupplierInvoiceDate(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>{t(lang, 'تاريخ الفاتورة *', 'Invoice Date *')}</Label>
@@ -534,61 +616,11 @@ function PurchaseInvoiceFormDialog({
               <Label>{t(lang, 'تاريخ الاستحقاق *', 'Due Date *')}</Label>
               <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
             </div>
-          </div>
-
-          {/* Line Items */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-base font-semibold">{t(lang, 'بنود الفاتورة', 'Invoice Items')}</Label>
-              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={addLine}>
-                <Plus className="size-3" /> {t(lang, 'إضافة بند', 'Add Item')}
-              </Button>
-            </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {lineItems.map((item, idx) => (
-                <div key={idx} className="flex items-end gap-2 p-2 rounded-lg border bg-gray-50">
-                  <div className="flex-1 min-w-0">
-                    <Label className="text-xs">{t(lang, 'الوصف', 'Description')}</Label>
-                    <Input value={item.description} onChange={e => updateLine(idx, 'description', e.target.value)} placeholder={t(lang, 'وصف البند', 'Item description')} className="h-9" />
-                  </div>
-                  <div className="w-20">
-                    <Label className="text-xs">{t(lang, 'الكمية', 'Qty')}</Label>
-                    <Input type="number" min="0" step="0.01" value={item.quantity || ''} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
-                  </div>
-                  <div className="w-28">
-                    <Label className="text-xs">{t(lang, 'سعر الوحدة', 'Unit Price')}</Label>
-                    <Input type="number" min="0" step="0.01" value={item.unitPrice || ''} onChange={e => updateLine(idx, 'unitPrice', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
-                  </div>
-                  <div className="w-28 text-left">
-                    <Label className="text-xs">{t(lang, 'الإجمالي', 'Total')}</Label>
-                    <p className="text-sm font-medium mt-1.5"><MoneyDisplay value={item.quantity * item.unitPrice} lang={lang} size="xs" /></p>
-                  </div>
-                  <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 text-rose-500" onClick={() => removeLine(idx)} disabled={lineItems.length <= 1}>
-                    <X className="size-4" />
-                  </Button>
-                </div>
-              ))}
+            <div className="space-y-2 sm:col-span-2">
+              <Label>{t(lang, 'المرفق', 'Attachment')}</Label>
+              <Input value={attachmentPath} onChange={e => setAttachmentPath(e.target.value)} placeholder={t(lang, 'مسار المرفق', 'Attachment path')} />
             </div>
           </div>
-
-          {/* Summary */}
-          <Card className="bg-gray-50 border-dashed">
-            <CardContent className="p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>{t(lang, 'المجموع قبل الضريبة', 'Subtotal')}</span>
-                <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" /></span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span>{t(lang, 'ضريبة القيمة المضافة (15%)', 'VAT (15%)')}</span>
-                <span className="font-medium"><MoneyDisplay value={vatAmount} lang={lang} size="sm" /></span>
-              </div>
-              <Separator />
-              <div className="flex justify-between text-lg font-bold">
-                <span>{t(lang, 'الإجمالي', 'Total')}</span>
-                <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} bold size="md" /></span>
-              </div>
-            </CardContent>
-          </Card>
 
           <div className="space-y-2">
             <Label>{t(lang, 'ملاحظات', 'Notes')}</Label>
@@ -597,7 +629,7 @@ function PurchaseInvoiceFormDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !supplierId || !date || !dueDate} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button type="submit" disabled={createMutation.isPending || !goodsReceiptId || !date || !dueDate || goodsReceipts.length === 0} className="bg-emerald-600 hover:bg-emerald-700">
               {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إنشاء الفاتورة', 'Create Invoice')}
             </Button>
           </DialogFooter>
@@ -636,11 +668,11 @@ export function PurchasesModule() {
     },
   })
 
-  // Fetch purchase invoices
+  // Fetch purchase invoices (supplier invoices)
   const { data: purchaseInvoices = [], isLoading: piLoading, isError: piError, refetch: refetchPI } = useQuery<PurchaseInvoice[]>({
-    queryKey: ['purchase-invoices'],
+    queryKey: ['supplier-invoices'],
     queryFn: async () => {
-      const res = await fetch('/api/purchase-invoices')
+      const res = await fetch('/api/supplier-invoices')
       if (!res.ok) throw new Error()
       return res.json()
     },
@@ -678,7 +710,7 @@ export function PurchasesModule() {
   })
 
   const filteredPI = purchaseInvoices.filter(pi => {
-    const matchSearch = !search || pi.invoiceNo.toLowerCase().includes(search.toLowerCase()) || pi.supplier.name.toLowerCase().includes(search.toLowerCase())
+    const matchSearch = !search || pi.invoiceNo.toLowerCase().includes(search.toLowerCase()) || pi.supplier.name.toLowerCase().includes(search.toLowerCase()) || (pi.goodsReceipt?.receiptNo || '').toLowerCase().includes(search.toLowerCase())
     return matchSearch
   })
 
@@ -764,7 +796,7 @@ export function PurchasesModule() {
             </Button>
           ) : (
             <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setPiDialogOpen(true)}>
-              <Plus className="size-4" /> {t(lang, 'فاتورة شراء جديدة', 'New Invoice')}
+              <Plus className="size-4" /> {t(lang, 'فاتورة من إيصال استلام', 'Invoice from GR')}
             </Button>
           )}
         </div>
@@ -895,9 +927,9 @@ export function PurchasesModule() {
               ) : filteredPI.length === 0 ? (
                 <div className="flex flex-col items-center gap-3 py-10">
                   <FileText className="size-12 text-gray-300" />
-                  <p className="text-muted-foreground">{t(lang, 'لا توجد فواتير شراء', 'No purchase invoices')}</p>
+                  <p className="text-muted-foreground">{t(lang, 'لا توجد فواتير موردين', 'No supplier invoices')}</p>
                   <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setPiDialogOpen(true)}>
-                    <Plus className="size-4 mr-1" /> {t(lang, 'إنشاء فاتورة', 'Create Invoice')}
+                    <Plus className="size-4 mr-1" /> {t(lang, 'إنشاء فاتورة من إيصال', 'Create Invoice from GR')}
                   </Button>
                 </div>
               ) : (
@@ -907,6 +939,7 @@ export function PurchasesModule() {
                       <TableRow>
                         <TableHead className="text-right">{t(lang, 'رقم الفاتورة', 'Invoice No')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'المورد', 'Supplier')}</TableHead>
+                        <TableHead className="text-right">{t(lang, 'إيصال الاستلام', 'GR')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'أمر الشراء', 'PO')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'المشروع', 'Project')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
@@ -919,7 +952,15 @@ export function PurchasesModule() {
                         <TableRow key={pi.id}>
                           <TableCell className="font-medium font-mono">{pi.invoiceNo}</TableCell>
                           <TableCell>{pi.supplier.name}</TableCell>
-                          <TableCell>{pi.purchaseOrder?.orderNo || '—'}</TableCell>
+                          <TableCell>
+                            {pi.goodsReceipt ? (
+                              <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 gap-1">
+                                <ArrowRight className="size-3" />
+                                {pi.goodsReceipt.receiptNo}
+                              </Badge>
+                            ) : '—'}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">{pi.purchaseOrder?.orderNo || '—'}</TableCell>
                           <TableCell>{pi.project?.name || '—'}</TableCell>
                           <TableCell className="font-semibold">
                             <MoneyDisplay value={pi.totalAmount} lang={lang} bold size="sm" />
@@ -946,7 +987,7 @@ export function PurchasesModule() {
       {/* Form Dialogs */}
       <PurchaseRequestFormDialog open={prDialogOpen} onOpenChange={setPrDialogOpen} projects={projects} />
       <PurchaseOrderFormDialog open={poDialogOpen} onOpenChange={setPoDialogOpen} suppliers={suppliers} projects={projects} />
-      <PurchaseInvoiceFormDialog open={piDialogOpen} onOpenChange={setPiDialogOpen} suppliers={suppliers} purchaseOrders={purchaseOrders} projects={projects} />
+      <GRBasedInvoiceDialog open={piDialogOpen} onOpenChange={setPiDialogOpen} />
     </ModuleLayout>
   )
 }

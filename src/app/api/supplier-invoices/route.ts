@@ -2,6 +2,8 @@ import { db } from '@/lib/db'
 import { autoEntryPurchaseInvoice, initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -144,7 +146,40 @@ export async function POST(request: Request) {
       },
     })
 
-    return NextResponse.json(invoice, { status: 201 })
+    // Auto-create accounting journal entry
+    try {
+      await initializeChartOfAccounts()
+      const journalEntry = await autoEntryPurchaseInvoice({
+        invoiceNo: invoice.invoiceNo,
+        supplierId: invoice.supplierId,
+        subtotal: invoice.subtotal,
+        vatRate: invoice.vatRate,
+        vatAmount: invoice.vatAmount,
+        totalAmount: invoice.totalAmount,
+        date: invoice.date,
+        projectId: invoice.projectId || undefined,
+      })
+
+      await db.purchaseInvoice.update({
+        where: { id: invoice.id },
+        data: { journalEntryId: journalEntry.id },
+      })
+    } catch (accountingError) {
+      console.error('Accounting entry failed for supplier invoice:', accountingError)
+    }
+
+    // Re-fetch to include journalEntryId
+    const updatedInvoice = await db.purchaseInvoice.findUnique({
+      where: { id: invoice.id },
+      include: {
+        supplier: { select: { id: true, name: true, code: true } },
+        purchaseOrder: { select: { id: true, orderNo: true, status: true } },
+        goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
+        items: true,
+      },
+    })
+
+    return NextResponse.json(updatedInvoice, { status: 201 })
   } catch (error) {
     console.error('Error creating supplier invoice:', error)
     return NextResponse.json({ error: 'فشل في إنشاء فاتورة المورد' }, { status: 500 })

@@ -7,13 +7,15 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
     const category = searchParams.get('category')
-    const status = searchParams.get('status')
+    const expenseType = searchParams.get('expenseType')
+
+    const where: Record<string, unknown> = {}
+    if (projectId) where.projectId = projectId
+    if (category) where.category = category
+    if (expenseType) where.expenseType = expenseType
 
     const expenses = await db.expense.findMany({
-      where: {
-        ...(projectId ? { projectId } : {}),
-        ...(category ? { category } : {}),
-      },
+      where,
       include: {
         project: { select: { id: true, code: true, name: true } },
       },
@@ -31,20 +33,43 @@ export async function POST(request: Request) {
     const body = await request.json()
 
     const amount = parseFloat(body.amount)
-    const vatAmount = body.vatAmount ? parseFloat(body.vatAmount) : null
-    const totalAmount = body.totalAmount ? parseFloat(body.totalAmount) : (amount + (vatAmount || 0))
+    if (isNaN(amount) || amount <= 0) {
+      return NextResponse.json({ error: 'المبلغ يجب أن يكون رقماً أكبر من صفر' }, { status: 400 })
+    }
+
+    // Determine expenseType based on projectId
+    const hasProject = !!body.projectId
+    const expenseType = body.expenseType || (hasProject ? 'PROJECT' : 'INTERNAL')
+
+    // Validate: PROJECT expenses require projectId
+    if (expenseType === 'PROJECT' && !body.projectId) {
+      return NextResponse.json({ error: 'مصروفات المشاريع تتطلب تحديد المشروع' }, { status: 400 })
+    }
+
+    // For INTERNAL expenses, ensure projectId is null
+    const projectId = expenseType === 'INTERNAL' ? null : (body.projectId || null)
+
+    // Calculate VAT
+    const vatRate = body.vatRate !== undefined ? parseFloat(body.vatRate) : 0.15
+    const vatAmount = body.vatAmount !== undefined
+      ? parseFloat(body.vatAmount)
+      : Math.round(amount * vatRate * 100) / 100
+    const totalAmount = Math.round((amount + vatAmount) * 100) / 100
 
     const expense = await db.expense.create({
       data: {
-        projectId: body.projectId || null,
+        projectId,
+        expenseType,
         category: body.category,
         description: body.description,
         amount,
+        vatRate,
         vatAmount,
         totalAmount,
         date: new Date(body.date),
         reference: body.reference || null,
         payFrom: body.payFrom || 'TREASURY',
+        attachmentPath: body.attachmentPath || null,
       },
       include: {
         project: { select: { id: true, code: true, name: true } },
@@ -103,6 +128,18 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'المصروف غير موجود' }, { status: 404 })
     }
 
+    // Handle expenseType and projectId consistency
+    if (updateData.expenseType === 'INTERNAL') {
+      updateData.projectId = null
+    } else if (updateData.expenseType === 'PROJECT' && !existing.projectId && !updateData.projectId) {
+      return NextResponse.json({ error: 'مصروفات المشاريع تتطلب تحديد المشروع' }, { status: 400 })
+    }
+
+    // Auto-determine expenseType if projectId is changing
+    if (updateData.projectId !== undefined && !updateData.expenseType) {
+      updateData.expenseType = updateData.projectId ? 'PROJECT' : 'INTERNAL'
+    }
+
     // If the expense has a journal entry and amounts are changing, create reversal + new entry
     if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
       const originalEntry = await db.journalEntry.findUnique({
@@ -141,11 +178,12 @@ export async function PUT(request: Request) {
 
       // Create new entry with updated values
       const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : existing.amount
-      const newVatAmount = updateData.vatAmount !== undefined ? (updateData.vatAmount ? parseFloat(updateData.vatAmount) : null) : existing.vatAmount
+      const newVatAmount = updateData.vatAmount !== undefined ? (updateData.vatAmount ? parseFloat(updateData.vatAmount) : 0) : existing.vatAmount
       const newPayFrom = updateData.payFrom || existing.payFrom
       const newDate = updateData.date ? new Date(updateData.date) : existing.date
       const newCategory = updateData.category || existing.category
       const newDescription = updateData.description || existing.description
+      const newProjectId = updateData.projectId !== undefined ? updateData.projectId : existing.projectId
 
       await initializeChartOfAccounts()
       const newJournalEntry = await autoEntryExpense({
@@ -155,7 +193,7 @@ export async function PUT(request: Request) {
         category: newCategory,
         date: newDate,
         payFrom: newPayFrom,
-        costCenterId: existing.projectId || undefined,
+        costCenterId: newProjectId || undefined,
       })
 
       updateData.journalEntryId = newJournalEntry.id
@@ -173,8 +211,9 @@ export async function PUT(request: Request) {
       data: {
         ...updateData,
         ...(updateData.amount && { amount: parseFloat(updateData.amount) }),
-        ...(updateData.vatAmount !== undefined && { vatAmount: updateData.vatAmount ? parseFloat(updateData.vatAmount) : null }),
+        ...(updateData.vatAmount !== undefined && { vatAmount: updateData.vatAmount ? parseFloat(updateData.vatAmount) : 0 }),
         ...(updateData.date && { date: new Date(updateData.date) }),
+        ...(updateData.projectId !== undefined && { projectId: updateData.projectId || null }),
       },
       include: {
         project: { select: { id: true, code: true, name: true } },

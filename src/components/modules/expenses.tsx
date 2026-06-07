@@ -32,9 +32,9 @@ import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 interface ProjectOption { id: string; code: string; name: string }
 
 interface Expense {
-  id: string; projectId: string | null; category: string; description: string
-  amount: number; vatAmount: number | null; totalAmount: number; date: string
-  reference: string | null; payFrom: string
+  id: string; projectId: string | null; expenseType: string; category: string; description: string
+  amount: number; vatRate: number; vatAmount: number | null; totalAmount: number; date: string
+  reference: string | null; payFrom: string; attachmentPath: string | null
   project: { id: string; code: string; name: string } | null
 }
 
@@ -157,6 +157,8 @@ function ExpenseFormDialog({
   const [date, setDate] = useState('')
   const [reference, setReference] = useState('')
   const [payFrom, setPayFrom] = useState('TREASURY')
+  const [attachmentPath, setAttachmentPath] = useState('')
+  const [vatRate, setVatRate] = useState('0.15')
 
   React.useEffect(() => {
     if (open) {
@@ -165,18 +167,20 @@ function ExpenseFormDialog({
       setCategory(''); setDescription('')
       setAmount(''); setVatAmount(''); setDate('')
       setReference(''); setPayFrom('TREASURY')
+      setAttachmentPath(''); setVatRate('0.15')
     }
   }, [open, initialTab])
 
   const categoryOptions = tab === 'project' ? projectCategoryOptions : adminCategoryOptions
 
-  // Auto-calc VAT 15% if applicable
+  // Auto-calc VAT if applicable
   const parsedAmount = parseFloat(amount) || 0
+  const parsedVatRate = parseFloat(vatRate) || 0.15
   const autoVat = useMemo(() => {
     const manualVat = parseFloat(vatAmount)
     if (!isNaN(manualVat)) return manualVat
-    return parsedAmount * 0.15
-  }, [amount, vatAmount, parsedAmount])
+    return parsedAmount * parsedVatRate
+  }, [amount, vatAmount, parsedAmount, parsedVatRate])
 
   const totalAmount = parsedAmount + autoVat
 
@@ -189,13 +193,17 @@ function ExpenseFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const isProjectTab = tab === 'project'
     createMutation.mutate({
-      projectId: tab === 'project' ? (projectId || null) : null,
+      projectId: isProjectTab ? projectId : null,
+      expenseType: isProjectTab ? 'PROJECT' : 'INTERNAL',
       category, description, amount,
+      vatRate: parsedVatRate,
       vatAmount: autoVat || null,
       totalAmount,
       date, reference: reference || null,
       payFrom,
+      attachmentPath: attachmentPath || null,
     })
   }
 
@@ -299,6 +307,14 @@ function ExpenseFormDialog({
               <Label>{t(lang, 'المرجع', 'Reference')}</Label>
               <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={t(lang, 'رقم المرجع', 'Reference number')} />
             </div>
+            <div className="space-y-2">
+              <Label>{t(lang, 'نسبة الضريبة', 'VAT Rate')}</Label>
+              <Input type="number" min="0" max="1" step="0.01" value={vatRate} onChange={e => setVatRate(e.target.value)} dir="ltr" placeholder="0.15" />
+            </div>
+            <div className="space-y-2">
+              <Label>{t(lang, 'مسار المرفق', 'Attachment Path')}</Label>
+              <Input value={attachmentPath} onChange={e => setAttachmentPath(e.target.value)} placeholder={t(lang, 'مسار الملف', 'File path')} />
+            </div>
           </div>
 
           {/* Total Preview */}
@@ -310,7 +326,7 @@ function ExpenseFormDialog({
                   <span className="font-medium"><MoneyDisplay value={parsedAmount} lang={lang} size="sm" /></span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>{t(lang, 'الضريبة (15%)', 'VAT (15%)')}</span>
+                  <span>{t(lang, `الضريبة (${(parsedVatRate * 100).toFixed(0)}%)`, `VAT (${(parsedVatRate * 100).toFixed(0)}%)`)}</span>
                   <span className="font-medium"><MoneyDisplay value={autoVat} lang={lang} size="sm" /></span>
                 </div>
                 <Separator />

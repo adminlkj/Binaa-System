@@ -7,15 +7,22 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
+    const uninvoiced = searchParams.get('uninvoiced')
 
     const where: Record<string, unknown> = {}
     if (projectId) where.projectId = projectId
     if (status) where.status = status
 
+    // Filter for uninvoiced claims (APPROVED but not yet invoiced)
+    if (uninvoiced === 'true' || uninvoiced === '1') {
+      where.invoiced = false
+      where.status = 'APPROVED'
+    }
+
     const claims = await db.progressClaim.findMany({
       where,
       include: {
-        project: { select: { id: true, name: true, code: true } },
+        project: { select: { id: true, name: true, code: true, clientId: true, client: { select: { id: true, name: true, nameAr: true, code: true } } } },
         contract: { select: { id: true, contractNo: true, totalValue: true } },
       },
       orderBy: { date: 'desc' },
@@ -55,6 +62,7 @@ export async function POST(request: Request) {
         status: status || 'DRAFT',
         approvedDate: approvedDate ? new Date(approvedDate) : null,
         notes: notes || null,
+        invoiced: false,
       },
       include: {
         project: { select: { id: true, name: true, code: true } },
@@ -119,6 +127,11 @@ export async function PUT(request: Request) {
     // Cannot modify REJECTED claims
     if (existing.status === 'REJECTED') {
       return NextResponse.json({ error: 'لا يمكن تعديل مستخلص مرفوض' }, { status: 400 })
+    }
+
+    // Cannot modify invoiced claims (must cancel the invoice first)
+    if (existing.invoiced && (updateData.amount !== undefined || updateData.status !== undefined)) {
+      return NextResponse.json({ error: 'لا يمكن تعديل مستخلص تم إصدار فاتورة له. يجب إلغاء الفاتورة أولاً' }, { status: 400 })
     }
 
     // If the claim has a journal entry and amounts are changing, create reversal + new entry

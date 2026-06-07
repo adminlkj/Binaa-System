@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Building2, Plus, Search, Eye, Pencil, Trash2, ArrowRight,
   FileText, ClipboardList, TrendingUp, Calculator, RefreshCw,
+  Truck,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -33,6 +34,7 @@ interface ContractSummary { id: string; contractNo: string; totalValue: number; 
 interface ProjectListItem {
   id: string; code: string; name: string; nameAr: string | null; location: string | null
   startDate: string; endDate: string | null; status: string; description: string | null
+  projectType: string
   client: { id: string; name: string; code: string }
   branch: { id: string; name: string; code: string }
   contracts: ContractSummary[]
@@ -129,7 +131,7 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 interface ProjectFormData {
   code: string; name: string; nameAr: string; clientId: string; branchId: string
   location: string; startDate: string; endDate: string; status: string; description: string
-  contractValue: string
+  contractValue: string; projectType: string
 }
 
 function ProjectFormDialog({
@@ -140,12 +142,13 @@ function ProjectFormDialog({
   clients: Client[]; branches: Branch[]
 }) {
   const queryClient = useQueryClient()
+  const { lang } = useAppStore()
   const isEdit = !!editingProject
 
   const [form, setForm] = useState<ProjectFormData>({
     code: '', name: '', nameAr: '', clientId: '', branchId: '',
     location: '', startDate: '', endDate: '', status: 'PLANNING', description: '',
-    contractValue: '',
+    contractValue: '', projectType: 'CONSTRUCTION',
   })
 
   React.useEffect(() => {
@@ -163,9 +166,10 @@ function ProjectFormDialog({
           status: editingProject.status,
           description: editingProject.description || '',
           contractValue: '',
+          projectType: editingProject.projectType || 'CONSTRUCTION',
         })
       } else {
-        setForm({ code: '', name: '', nameAr: '', clientId: '', branchId: '', location: '', startDate: '', endDate: '', status: 'PLANNING', description: '', contractValue: '' })
+        setForm({ code: '', name: '', nameAr: '', clientId: '', branchId: '', location: '', startDate: '', endDate: '', status: 'PLANNING', description: '', contractValue: '', projectType: 'CONSTRUCTION' })
       }
     }
   }, [open, editingProject])
@@ -198,6 +202,59 @@ function ProjectFormDialog({
           <DialogDescription>{isEdit ? 'تعديل بيانات المشروع' : 'إضافة مشروع جديد للنظام'}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Project Type Selector */}
+          <div className="space-y-2">
+            <Label>{lang === 'ar' ? 'نوع المشروع' : 'Project Type'}</Label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, projectType: 'CONSTRUCTION' }))}
+                className={`flex items-center gap-3 rounded-lg border-2 p-4 transition-all ${
+                  form.projectType === 'CONSTRUCTION'
+                    ? 'border-emerald-500 bg-emerald-50 shadow-sm'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className={`flex size-10 items-center justify-center rounded-lg ${
+                  form.projectType === 'CONSTRUCTION' ? 'bg-emerald-100' : 'bg-gray-100'
+                }`}>
+                  <Building2 className={`size-5 ${form.projectType === 'CONSTRUCTION' ? 'text-emerald-600' : 'text-gray-400'}`} />
+                </div>
+                <div className="text-right">
+                  <p className={`text-sm font-bold ${form.projectType === 'CONSTRUCTION' ? 'text-emerald-700' : 'text-gray-700'}`}>
+                    {lang === 'ar' ? 'مشروع تنفيذي' : 'Construction'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {lang === 'ar' ? 'Construction Project' : 'Construction Project'}
+                  </p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, projectType: 'EQUIPMENT_RENTAL' }))}
+                className={`flex items-center gap-3 rounded-lg border-2 p-4 transition-all ${
+                  form.projectType === 'EQUIPMENT_RENTAL'
+                    ? 'border-cyan-500 bg-cyan-50 shadow-sm'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div className={`flex size-10 items-center justify-center rounded-lg ${
+                  form.projectType === 'EQUIPMENT_RENTAL' ? 'bg-cyan-100' : 'bg-gray-100'
+                }`}>
+                  <Truck className={`size-5 ${form.projectType === 'EQUIPMENT_RENTAL' ? 'text-cyan-600' : 'text-gray-400'}`} />
+                </div>
+                <div className="text-right">
+                  <p className={`text-sm font-bold ${form.projectType === 'EQUIPMENT_RENTAL' ? 'text-cyan-700' : 'text-gray-700'}`}>
+                    {lang === 'ar' ? 'مشروع تأجير معدات' : 'Equipment Rental'}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {lang === 'ar' ? 'Equipment Rental Project' : 'Equipment Rental Project'}
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="code">كود المشروع *</Label>
@@ -405,6 +462,29 @@ function ProjectDetailView({ project, onBack, lang }: { project: ProjectDetail; 
           <p className="text-sm text-muted-foreground">{project.code} — {project.client.name}</p>
         </div>
       </div>
+
+      {/* Project Type Banner */}
+      {project.projectType === 'EQUIPMENT_RENTAL' ? (
+        <div className="flex items-center gap-3 rounded-lg bg-cyan-50 border border-cyan-200 px-4 py-3">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-cyan-100">
+            <Truck className="size-5 text-cyan-600" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-cyan-700">{t('مشروع تأجير معدات', 'Equipment Rental Project')}</p>
+            <p className="text-xs text-cyan-600">{t('هذا المشروع مخصص لتأجير المعدات', 'This project is dedicated to equipment rental')}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-3 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-100">
+            <Building2 className="size-5 text-emerald-600" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-emerald-700">{t('مشروع تنفيذي', 'Construction Project')}</p>
+            <p className="text-xs text-emerald-600">{t('هذا المشروع تنفيذي للمقاولات', 'This is a construction project')}</p>
+          </div>
+        </div>
+      )}
 
       {/* Info Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -766,6 +846,7 @@ export function ProjectsModule() {
                   <TableRow>
                     <TableHead className="text-right">الكود</TableHead>
                     <TableHead className="text-right">اسم المشروع</TableHead>
+                    <TableHead className="text-right">{lang === 'ar' ? 'النوع' : 'Type'}</TableHead>
                     <TableHead className="text-right">العميل</TableHead>
                     <TableHead className="text-right">الموقع</TableHead>
                     <TableHead className="text-right">تاريخ البدء</TableHead>
@@ -778,6 +859,21 @@ export function ProjectsModule() {
                     <TableRow key={p.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setSelectedProjectId(p.id)}>
                       <TableCell className="font-medium">{p.code}</TableCell>
                       <TableCell>{p.name}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            p.projectType === 'EQUIPMENT_RENTAL'
+                              ? 'bg-cyan-100 text-cyan-700 border-cyan-200'
+                              : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                          }
+                        >
+                          {p.projectType === 'EQUIPMENT_RENTAL'
+                            ? (lang === 'ar' ? 'تأجير' : 'Rental')
+                            : (lang === 'ar' ? 'تنفيذي' : 'Construction')
+                          }
+                        </Badge>
+                      </TableCell>
                       <TableCell>{p.client.name}</TableCell>
                       <TableCell className="max-w-[120px] truncate">{p.location || '—'}</TableCell>
                       <TableCell>{formatDate(p.startDate, lang)}</TableCell>

@@ -3,11 +3,11 @@
 import React, { useState } from 'react'
 import {
   LayoutDashboard, ShoppingCart, FileText, Users, Truck, HardHat,
-  ClipboardList, Clock, ListChecks, Receipt, Wrench, Wallet,
+  ClipboardList, Clock, ListChecks, Wrench,
   Package, Calculator, Percent, BarChart3, Settings, ChevronDown,
-  Globe, Menu, X, Layers, UserCheck, Briefcase,
+  Globe, Menu, X, Layers, Briefcase,
   Fuel as FuelIcon, UsersRound, CalendarDays, Banknote,
-  PackageCheck, FilePlus, ClipboardCheck, ReceiptText, CreditCard,
+  PackageCheck, FilePlus, ReceiptText, CreditCard,
   Cog, Network,
 } from 'lucide-react'
 import {
@@ -22,33 +22,32 @@ import { cn } from '@/lib/utils'
 // Icon mapping for each nav item
 const navItemIcons: Record<NavItem, React.ElementType> = {
   'dashboard': LayoutDashboard,
-  // المبيعات والمشتريات
+  // المبيعات
   'sales': ShoppingCart,
-  'purchases': Truck,
   'extracts': FileText,
   'clients': Users,
+  'client-payments': CreditCard,
+  // المشتريات
+  'purchases': Truck,
   'suppliers': Briefcase,
   'subcontractors': HardHat,
-  // المشاريع والتكاليف
+  'supplier-payments': CreditCard,
+  // المشاريع
   'projects': Layers,
   'contracts': FileText,
-  'timesheets': Clock,
   'boq': ListChecks,
-  'expenses': Receipt,
-  'labor-costs': UserCheck,
-  'advances': Wallet,
-  'petty-cash': Package,
+  'timesheets': Clock,
   // الموارد
-  'employees': Users,
-  'employee-contracts': FileText,
-  'attendance': CalendarDays,
-  'salaries': Banknote,
-  'work-teams': UsersRound,
   'equipment': Wrench,
   'equipment-operations': Cog,
+  'resource-distribution': Network,
+  'employees': Users,
+  'salaries': Banknote,
+  'attendance': CalendarDays,
   'equipment-maintenance': Wrench,
   'fuel': FuelIcon,
-  'resource-distribution': Network,
+  'work-teams': UsersRound,
+  'employee-contracts': FileText,
   // سلسلة التوريد
   'purchase-requests': FilePlus,
   'purchase-orders': ClipboardList,
@@ -69,7 +68,7 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
 export function Sidebar() {
   const { activeItem, setActiveItem, lang, toggleLang, sidebarCollapsed, setSidebarCollapsed } = useAppStore()
   const [expandedGroups, setExpandedGroups] = useState<Set<NavGroup>>(
-    new Set(['home', 'sales-purchases', 'projects-costs', 'resources', 'supply-chain'])
+    new Set(['home', 'sales', 'purchases', 'projects', 'resources', 'supply-chain'])
   )
 
   const toggleGroup = (group: NavGroup) => {
@@ -224,7 +223,7 @@ export function Sidebar() {
 export function MobileSidebar() {
   const { activeItem, setActiveItem, sidebarOpen, setSidebarOpen, lang, toggleLang } = useAppStore()
   const [expandedGroups, setExpandedGroups] = useState<Set<NavGroup>>(
-    new Set(['home', 'sales-purchases', 'projects-costs', 'resources', 'supply-chain', 'inventory-accounting', 'reports-settings'])
+    new Set(['home', 'sales', 'purchases', 'projects', 'resources', 'supply-chain', 'inventory-accounting', 'reports-settings'])
   )
 
   const toggleGroup = (group: NavGroup) => {

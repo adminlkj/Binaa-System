@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET: List all timesheets with contract info (includes equipment, client, project)
+// Supports filtering by status, uninvoiced (APPROVED but not INVOICED)
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -9,6 +10,7 @@ export async function GET(request: NextRequest) {
     const contractId = searchParams.get('contractId')
     const year = searchParams.get('year')
     const rentalId = searchParams.get('rentalId')
+    const uninvoiced = searchParams.get('uninvoiced')
 
     const where: Record<string, unknown> = {}
     if (status) where.status = status
@@ -16,13 +18,24 @@ export async function GET(request: NextRequest) {
     if (year) where.year = parseInt(year)
     if (rentalId) where.rentalId = rentalId
 
+    // Filter for uninvoiced timesheets: APPROVED but not yet INVOICED
+    if (uninvoiced === 'true' || uninvoiced === '1') {
+      where.status = 'APPROVED'
+    }
+
     const timesheets = await db.timesheet.findMany({
       where,
       include: {
         contract: {
-          include: {
-            equipment: {
-              select: { id: true, code: true, name: true, nameAr: true },
+          select: {
+            id: true, contractNo: true, clientId: true, projectId: true,
+            hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true,
+            paymentTerms: true, contractType: true, startDate: true, endDate: true,
+            rental: {
+              select: {
+                id: true, rate: true, rateType: true, deliveryFees: true,
+                deliveryFeesTaxable: true, clientId: true, salesOrderNo: true, paymentTerms: true,
+              },
             },
           },
         },
@@ -30,10 +43,13 @@ export async function GET(request: NextRequest) {
           select: { id: true, code: true, name: true, nameAr: true },
         },
         rental: {
-          select: { id: true, rate: true, rateType: true, status: true },
+          select: {
+            id: true, rate: true, rateType: true, status: true, clientId: true,
+            deliveryFees: true, deliveryFeesTaxable: true, salesOrderNo: true, paymentTerms: true,
+          },
         },
         project: {
-          select: { id: true, code: true, name: true, nameAr: true },
+          select: { id: true, code: true, name: true, nameAr: true, clientId: true, client: { select: { id: true, name: true, nameAr: true } } },
         },
         invoice: {
           select: { id: true, invoiceNo: true, status: true },
@@ -49,11 +65,6 @@ export async function GET(request: NextRequest) {
         let clientNameAr = ''
 
         if (ts.rental) {
-          const client = await db.client.findUnique({
-            where: { id: ts.rental.clientId || '' },
-            select: { name: true, nameAr: true },
-          })
-          // Get clientId from rental directly
           const rentalWithClient = await db.equipmentRental.findUnique({
             where: { id: ts.rentalId },
             select: { clientId: true },
@@ -96,10 +107,10 @@ export async function POST(request: Request) {
     // Get rental details
     const rental = await db.equipmentRental.findUnique({
       where: { id: rentalId },
-      select: { 
-        rate: true, 
-        rateType: true, 
-        status: true, 
+      select: {
+        rate: true,
+        rateType: true,
+        status: true,
         equipmentId: true,
         projectId: true,
         clientId: true,
@@ -133,7 +144,6 @@ export async function POST(request: Request) {
     }
 
     const oh = parseFloat(operatingHours) || 0
-    const hourlyRate = rental.rate
 
     const timesheet = await db.timesheet.create({
       data: {
@@ -149,11 +159,7 @@ export async function POST(request: Request) {
       },
       include: {
         contract: {
-          include: {
-            equipment: {
-              select: { id: true, code: true, name: true, nameAr: true },
-            },
-          },
+          select: { id: true, contractNo: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true, paymentTerms: true },
         },
         equipment: {
           select: { id: true, code: true, name: true, nameAr: true },
@@ -223,11 +229,7 @@ export async function PUT(request: Request) {
       data: updateData,
       include: {
         contract: {
-          include: {
-            equipment: {
-              select: { id: true, code: true, name: true, nameAr: true },
-            },
-          },
+          select: { id: true, contractNo: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true, paymentTerms: true },
         },
         equipment: {
           select: { id: true, code: true, name: true, nameAr: true },

@@ -6,14 +6,15 @@ import { create } from 'zustand'
 export type NavItem =
   // الرئيسية
   | 'dashboard'
-  // المبيعات والمشتريات
-  | 'sales' | 'purchases' | 'extracts' | 'clients' | 'suppliers' | 'subcontractors'
-  // المشاريع والتكاليف
-  | 'projects' | 'contracts' | 'timesheets' | 'boq' | 'expenses' | 'labor-costs'
-  | 'advances' | 'petty-cash'
+  // المبيعات
+  | 'sales' | 'extracts' | 'clients' | 'client-payments'
+  // المشتريات
+  | 'purchases' | 'suppliers' | 'subcontractors' | 'supplier-payments'
+  // المشاريع
+  | 'projects' | 'contracts' | 'boq' | 'timesheets'
   // الموارد
-  | 'employees' | 'employee-contracts' | 'attendance' | 'salaries' | 'work-teams'
-  | 'equipment' | 'equipment-operations' | 'equipment-maintenance' | 'fuel' | 'resource-distribution'
+  | 'equipment' | 'equipment-operations' | 'resource-distribution' | 'employees' | 'salaries' | 'attendance'
+  | 'equipment-maintenance' | 'fuel' | 'work-teams' | 'employee-contracts'
   // سلسلة التوريد
   | 'purchase-requests' | 'purchase-orders' | 'goods-receipt' | 'supplier-invoices' | 'supplier-payments'
   // المخزون والمحاسبة
@@ -21,7 +22,7 @@ export type NavItem =
   // التقارير والإعدادات
   | 'reports' | 'settings'
 
-export type NavGroup = 'home' | 'sales-purchases' | 'projects-costs' | 'resources' | 'supply-chain' | 'inventory-accounting' | 'reports-settings'
+export type NavGroup = 'home' | 'sales' | 'purchases' | 'projects' | 'resources' | 'supply-chain' | 'inventory-accounting' | 'reports-settings'
 
 export type Lang = 'ar' | 'en'
 
@@ -38,14 +39,19 @@ export const navGroups: NavGroupConfig[] = [
     items: ['dashboard'],
   },
   {
-    key: 'sales-purchases',
-    label: { ar: 'المبيعات والمشتريات', en: 'Sales & Purchases' },
-    items: ['sales', 'purchases', 'extracts', 'clients', 'suppliers', 'subcontractors'],
+    key: 'sales',
+    label: { ar: 'المبيعات', en: 'Sales' },
+    items: ['sales', 'extracts', 'clients', 'client-payments'],
   },
   {
-    key: 'projects-costs',
-    label: { ar: 'المشاريع والتكاليف', en: 'Projects & Costs' },
-    items: ['projects', 'contracts', 'timesheets', 'boq', 'expenses', 'labor-costs', 'advances', 'petty-cash'],
+    key: 'purchases',
+    label: { ar: 'المشتريات', en: 'Purchases' },
+    items: ['purchases', 'suppliers', 'subcontractors', 'supplier-payments'],
+  },
+  {
+    key: 'projects',
+    label: { ar: 'المشاريع', en: 'Projects' },
+    items: ['projects', 'contracts', 'boq', 'timesheets'],
   },
   {
     key: 'resources',
@@ -72,33 +78,32 @@ export const navGroups: NavGroupConfig[] = [
 export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   // الرئيسية
   'dashboard': { ar: 'لوحة التحكم', en: 'Dashboard' },
-  // المبيعات والمشتريات
-  'sales': { ar: 'المبيعات', en: 'Sales' },
-  'purchases': { ar: 'المشتريات', en: 'Purchases' },
+  // المبيعات
+  'sales': { ar: 'المبيعات', en: 'Sales Invoices' },
   'extracts': { ar: 'المستخلصات', en: 'Extracts' },
   'clients': { ar: 'العملاء', en: 'Clients' },
+  'client-payments': { ar: 'تحصيلات العملاء', en: 'Client Payments' },
+  // المشتريات
+  'purchases': { ar: 'المشتريات', en: 'Purchase Invoices' },
   'suppliers': { ar: 'الموردون', en: 'Suppliers' },
   'subcontractors': { ar: 'مقاولو الباطن', en: 'Subcontractors' },
-  // المشاريع والتكاليف
+  'supplier-payments': { ar: 'سداد الموردين', en: 'Supplier Payments' },
+  // المشاريع
   'projects': { ar: 'المشاريع', en: 'Projects' },
   'contracts': { ar: 'العقود', en: 'Contracts' },
-  'timesheets': { ar: 'ساعات العمل', en: 'Timesheets' },
   'boq': { ar: 'جدول الكميات BOQ', en: 'Bill of Quantities' },
-  'expenses': { ar: 'المصروفات', en: 'Expenses' },
-  'labor-costs': { ar: 'تكاليف العمالة', en: 'Labor Costs' },
-  'advances': { ar: 'العهد والسلف', en: 'Advances' },
-  'petty-cash': { ar: 'الصندوق النقدي', en: 'Petty Cash' },
+  'timesheets': { ar: 'ساعات العمل', en: 'Timesheets' },
   // الموارد
-  'employees': { ar: 'الموظفون', en: 'Employees' },
-  'employee-contracts': { ar: 'عقود الموظفين', en: 'Employee Contracts' },
-  'attendance': { ar: 'الحضور والانصراف', en: 'Attendance' },
-  'salaries': { ar: 'الرواتب', en: 'Salaries' },
-  'work-teams': { ar: 'فرق العمل', en: 'Work Teams' },
   'equipment': { ar: 'المعدات', en: 'Equipment' },
   'equipment-operations': { ar: 'التشغيل', en: 'Operations' },
+  'resource-distribution': { ar: 'توزيع الموارد', en: 'Resource Distribution' },
+  'employees': { ar: 'الموظفون', en: 'Employees' },
+  'salaries': { ar: 'الرواتب', en: 'Salaries' },
+  'attendance': { ar: 'الحضور والانصراف', en: 'Attendance' },
   'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
   'fuel': { ar: 'الوقود', en: 'Fuel' },
-  'resource-distribution': { ar: 'توزيع الموارد', en: 'Resource Distribution' },
+  'work-teams': { ar: 'فرق العمل', en: 'Work Teams' },
+  'employee-contracts': { ar: 'عقود الموظفين', en: 'Employee Contracts' },
   // سلسلة التوريد
   'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
   'purchase-orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },

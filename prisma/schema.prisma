@@ -88,6 +88,16 @@ enum InventoryItemType {
   SERVICE
 }
 
+enum ProjectType {
+  CONSTRUCTION
+  EQUIPMENT_RENTAL
+}
+
+enum ExpenseType {
+  PROJECT
+  INTERNAL
+}
+
 enum ExpenseCategory {
   RENT
   MAINTENANCE
@@ -428,6 +438,7 @@ model Project {
   location      String?
   branchId      String
   clientId      String
+  projectType   ProjectType   @default(CONSTRUCTION)
   startDate     DateTime
   endDate       DateTime?
   contractValue Float         @default(0)
@@ -452,6 +463,7 @@ model Project {
   timesheets     Timesheet[]
   workTeams      WorkTeam[]
   goodsReceipts  GoodsReceipt[]
+  purchaseInvoices PurchaseInvoice[]
   fuelLogs       EquipmentFuelLog[]
   resourceAllocations ResourceAllocation[]
   equipmentOperations EquipmentOperation[]
@@ -524,11 +536,13 @@ model ProgressClaim {
   approvedDate  DateTime?
   notes         String?
   journalEntryId String?
+  invoiced      Boolean     @default(false)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  project  Project  @relation(fields: [projectId], references: [id])
-  contract Contract @relation(fields: [contractId], references: [id])
+  project      Project       @relation(fields: [projectId], references: [id])
+  contract     Contract      @relation(fields: [contractId], references: [id])
+  salesInvoice SalesInvoice?
 }
 
 // ============ SALES / CLIENT INVOICES ============
@@ -550,11 +564,13 @@ model SalesInvoice {
   totalAmount   Float
   paidAmount    Float         @default(0)
   status        InvoiceStatus @default(DRAFT)
-  invoiceType   String        @default("SERVICE")
+  invoiceType   String        @default("PROGRESS_CLAIM")
   notes         String?
   paymentTerms  String?
   referenceNo   String?
+  sourceType    String        @default("EXTRACT")  // EXTRACT or TIMESHEET
   timesheetId   String?       @unique
+  progressClaimId String?     @unique
   deliveryMonth String?
   includeDelivery Boolean     @default(false)
   deliveryAmount Float        @default(0)
@@ -574,11 +590,12 @@ model SalesInvoice {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  project   Project?  @relation(fields: [projectId], references: [id])
-  contract  Contract? @relation(fields: [contractId], references: [id])
-  client    Client    @relation(fields: [clientId], references: [id])
-  items     SalesInvoiceItem[]
-  timesheet Timesheet? @relation(fields: [timesheetId], references: [id])
+  project       Project?       @relation(fields: [projectId], references: [id])
+  contract      Contract?      @relation(fields: [contractId], references: [id])
+  client        Client         @relation(fields: [clientId], references: [id])
+  items         SalesInvoiceItem[]
+  timesheet     Timesheet?     @relation(fields: [timesheetId], references: [id])
+  progressClaim ProgressClaim? @relation(fields: [progressClaimId], references: [id])
 }
 
 model SalesInvoiceItem {
@@ -728,6 +745,7 @@ model PurchaseInvoice {
   purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
   goodsReceipt  GoodsReceipt?   @relation(fields: [goodsReceiptId], references: [id])
   supplier      Supplier        @relation(fields: [supplierId], references: [id])
+  project       Project?        @relation(fields: [projectId], references: [id])
   items         PurchaseInvoiceItem[]
 }
 
@@ -792,14 +810,17 @@ model SubcontractorInvoice {
 model Expense {
   id               String          @id @default(cuid())
   projectId        String?
+  expenseType      ExpenseType     @default(PROJECT)
   category         ExpenseCategory
   description      String
   amount           Float
-  vatAmount        Float?
+  vatRate          Float           @default(0.15)
+  vatAmount        Float           @default(0)
   totalAmount      Float           @default(0)
   date             DateTime
   reference        String?
   payFrom          String          @default("TREASURY")
+  attachmentPath   String?
   journalEntryId   String?
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt

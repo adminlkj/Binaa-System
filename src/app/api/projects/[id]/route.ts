@@ -76,7 +76,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { code, name, nameAr, clientId, branchId, location, startDate, endDate, status, description, contractValue } = body
+    const { code, name, nameAr, clientId, branchId, location, startDate, endDate, status, description, contractValue, projectType } = body
 
     const existing = await db.project.findUnique({ where: { id } })
     if (!existing) {
@@ -104,6 +104,7 @@ export async function PUT(
         ...(status !== undefined && { status }),
         ...(description !== undefined && { description: description || null }),
         ...(contractValue !== undefined && { contractValue: parseFloat(contractValue) || 0 }),
+        ...(projectType !== undefined && { projectType }),
       },
       include: {
         client: { select: { id: true, name: true, code: true } },

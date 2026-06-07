@@ -1,6 +1,26 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
+const sourceIncludes = {
+  progressClaim: {
+    select: {
+      id: true, claimNo: true, date: true, amount: true, vatAmount: true,
+      totalAmount: true, status: true, invoiced: true,
+      project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
+      contract: { select: { id: true, contractNo: true } },
+    },
+  },
+  timesheet: {
+    select: {
+      id: true, operatingHours: true, month: true, year: true, status: true,
+      project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
+      equipment: { select: { id: true, name: true, code: true, nameAr: true } },
+      rental: { select: { id: true, rate: true, deliveryFees: true, deliveryFeesTaxable: true } },
+      contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
+    },
+  },
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -14,6 +34,7 @@ export async function GET(
         project: { select: { id: true, name: true, nameAr: true, code: true } },
         contract: { select: { id: true, contractNo: true } },
         items: true,
+        ...sourceIncludes,
       },
     })
     if (!invoice) {
@@ -52,6 +73,7 @@ export async function PATCH(
         project: { select: { id: true, name: true, nameAr: true, code: true } },
         contract: { select: { id: true, contractNo: true } },
         items: true,
+        ...sourceIncludes,
       },
     })
 

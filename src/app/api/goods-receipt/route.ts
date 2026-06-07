@@ -136,7 +136,7 @@ export async function POST(request: Request) {
 
     await db.purchaseOrder.update({
       where: { id: purchaseOrderId },
-      data: { status: newPoStatus },
+      data: { status: newPoStatus as any },
     })
 
     // Handle inventory and project cost based on item destination

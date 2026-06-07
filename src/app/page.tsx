@@ -14,11 +14,7 @@ import { ProjectsModule } from '@/components/modules/projects'
 import { ContractsModule } from '@/components/modules/contracts'
 import { TimesheetsModule } from '@/components/modules/timesheets'
 import { BOQModule } from '@/components/modules/boq'
-import { ExpensesModule } from '@/components/modules/expenses'
-import { LaborModule } from '@/components/modules/labor'
 import { EquipmentModule } from '@/components/modules/equipment'
-import { AdvancesModule } from '@/components/modules/advances'
-import { PettyCashModule } from '@/components/modules/petty-cash'
 import { InventoryModule } from '@/components/modules/inventory'
 import { AccountingModule } from '@/components/modules/accounting'
 import { VATModule } from '@/components/modules/vat'
@@ -44,42 +40,45 @@ import { PlaceholderModule } from '@/components/modules/placeholder'
 
 const moduleMap: Record<NavItem, React.ComponentType> = {
   'dashboard': DashboardModule,
+  // المبيعات
   'sales': SalesModule,
-  'purchases': PurchasesModule,
   'extracts': ExtractsModule,
   'clients': ClientsModule,
+  'client-payments': PlaceholderModule,
+  // المشتريات
+  'purchases': PurchasesModule,
   'suppliers': SuppliersModule,
   'subcontractors': SubcontractorsModule,
+  'supplier-payments': SupplierPaymentsModule,
+  // المشاريع
   'projects': ProjectsModule,
   'contracts': ContractsModule,
-  'timesheets': TimesheetsModule,
   'boq': BOQModule,
-  'expenses': ExpensesModule,
-  'labor-costs': LaborModule,
+  'timesheets': TimesheetsModule,
+  // الموارد
   'equipment': EquipmentModule,
-  'advances': AdvancesModule,
-  'petty-cash': PettyCashModule,
-  'inventory': InventoryModule,
-  'accounting': AccountingModule,
-  'vat': VATModule,
-  'reports': ReportsModule,
-  'settings': SettingsModule,
-  // Resources
-  'employees': EmployeesModule,
-  'employee-contracts': EmployeeContractsModule,
-  'attendance': AttendanceModule,
-  'salaries': SalariesModule,
-  'work-teams': WorkTeamsModule,
   'equipment-operations': EquipmentOperationsModule,
+  'resource-distribution': ResourceDistributionModule,
+  'employees': EmployeesModule,
+  'salaries': SalariesModule,
+  'attendance': AttendanceModule,
   'equipment-maintenance': EquipmentMaintenanceModule,
   'fuel': FuelModule,
-  'resource-distribution': ResourceDistributionModule,
-  // Supply Chain
+  'work-teams': WorkTeamsModule,
+  'employee-contracts': EmployeeContractsModule,
+  // سلسلة التوريد
   'purchase-requests': PurchaseRequestsModule,
   'purchase-orders': PurchaseOrdersModule,
   'goods-receipt': GoodsReceiptModule,
   'supplier-invoices': SupplierInvoicesModule,
   'supplier-payments': SupplierPaymentsModule,
+  // المخزون والمحاسبة
+  'inventory': InventoryModule,
+  'accounting': AccountingModule,
+  'vat': VATModule,
+  // التقارير والإعدادات
+  'reports': ReportsModule,
+  'settings': SettingsModule,
 }
 
 function ModuleRouter() {
