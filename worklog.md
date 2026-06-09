@@ -460,3 +460,151 @@ Stage Summary:
 - All modules that reference projects show project type badges
 - Sidebar navigation shows activity context with colored dots
 - The two activities (مشاريع تنفيذية and تأجير المعدات) are the clear core of every screen
+
+---
+Task ID: 2
+Agent: Prisma Schema Updater
+Task: Update the Prisma schema to add new fields to the Account model that support activity-based accounting
+
+Work Log:
+- Reviewed current Account model: already had `activityType`, `isSystem`, `allowPosting`, `level` fields from prior work
+- Found `allowPosting` had `@default(false)` but task required `@default(true)` — fixed to `@default(true)`
+- Added missing `description` field (String?) — optional description of the account
+- Added missing `descriptionAr` field (String?) — Arabic description
+- Verified `AccountActivityType` enum already existed with correct values (CONSTRUCTION, EQUIPMENT_RENTAL, BOTH)
+- Ran `bun run db:push` — database synced successfully, Prisma Client regenerated
+
+Stage Summary:
+- Account model now fully supports activity-based accounting with all 6 required fields:
+  - `activityType` (String?) — CONSTRUCTION | EQUIPMENT_RENTAL | BOTH (null = BOTH)
+  - `isSystem` (Boolean @default(false)) — system accounts that cannot be deleted
+  - `allowPosting` (Boolean @default(true)) — whether journal entries can be posted directly
+  - `level` (Int @default(0)) — hierarchy level (0=root, 1=group, 2=subgroup, 3=detail)
+  - `description` (String?) — optional English description
+  - `descriptionAr` (String?) — optional Arabic description
+- `AccountActivityType` enum confirmed with CONSTRUCTION, EQUIPMENT_RENTAL, BOTH values
+- Database push completed successfully with no errors
+
+---
+Task ID: 3
+Agent: Chart of Accounts Rebuilder
+Task: Rebuild the Chart of Accounts template in the accounting engine with 120+ comprehensive accounts following Saudi SOCPA standards
+
+Work Log:
+- Updated Prisma schema Account model: added `activityType` (String?), `isSystem` (Boolean @default(false)), `allowPosting` (Boolean @default(false)), `level` (Int @default(0)) fields
+- Ran `bun run db:push` — database synced successfully, Prisma Client regenerated
+- Updated AccountTemplate interface with 4 new fields: `activityType`, `isSystem`, `allowPosting`, `level`
+- Replaced CHART_OF_ACCOUNTS_TEMPLATE with 147 comprehensive accounts across 8 major groups:
+  - 1xxx Current Assets (27 accounts): Cash, Receivables, Inventory, VAT, Prepaid, Contract Assets, Deposits
+  - 2xxx Non-Current Assets (17 accounts): P&E, Accumulated Depreciation, ROU Assets, Intangibles
+  - 3xxx Current Liabilities (23 accounts): AP, VAT, Accrued, Customer Advances, Retention, Contract Liabilities, Provisions, Taxes & Zakat, Short-term Loans
+  - 4xxx Non-Current Liabilities (5 accounts): Long-term Loans, Finance Lease Obligations, Deferred Revenue
+  - 5xxx Equity (7 accounts): Capital, Retained Earnings, Current Year Earnings, Statutory/Voluntary Reserves, Owner's Current Account
+  - 6xxx Revenue (15 accounts): Project Revenue (Progress Claims, Contract Modifications, Claims), Rental Revenue (Equipment Rental, Delivery Fees, Equipment Operation), Other Revenue (Used Equipment, Penalties, Discounts, Services, Miscellaneous)
+  - 7xxx Direct Costs (20 accounts): Cost of Contracts (Materials, Labor, Subcontractors, Site Establishment, Temporary Works, Permits, Testing, Overhead), Equipment Costs (Operation, Maintenance, Fuel, Delivery/Transport, Rental Depreciation), Rental Project Costs, Project Insurance, Project Expenses
+  - 8xxx Indirect Costs (37 accounts): Admin Expenses (Salaries, Office Rent, Utilities, Office Supplies, Communication, Professional Fees, Legal Fees), HR Expenses (GOSI, Staff Housing, Worker Permits, Travel, Safety), Depreciation (Construction Equip, Vehicles, Office, Software), Financial Expenses (Bank Charges, Loan Interest, Bad Debts), Tax Expenses (Zakat, Income Tax), Other Losses (Asset Disposal, Penalties, Other)
+- Updated `ensureAccountExists` to save new fields (activityType, isSystem, allowPosting, level) and update existing accounts if they're missing the fields
+- Updated `initializeChartOfAccounts` to be re-runnable: now updates existing accounts with new fields instead of skipping them; returns created, updated, and total counts
+- Updated all auto-entry function account codes:
+  - autoEntrySalesInvoice: 6110 (Progress Claims), 6210 (Rental), 6340 (Service), 1210 (Clients Receivable), 3200 (VAT Payable)
+  - autoEntryPurchaseInvoice: Updated categoryMap with new codes (7110 Materials, 7130 Subcontractors, 7220 Maintenance, 7230 Fuel, 7240 Transport, 8120 Rent, 7400 Insurance, 7160 Permits, 8630 Other); added activityType parameter for context-aware mapping
+  - autoEntrySubcontractorInvoice: 7130 (Subcontractor Costs), 3120 (Subcontractors Payable)
+  - autoEntryEquipmentCost: 7210 (Operation), 7220 (Maintenance), 7230 (Fuel), 7300 (Other/Rental Project)
+  - autoEntryRentalInvoice: 6210 (Equipment Rental Revenue)
+  - autoEntryExpense: Updated categoryMap to match new codes
+  - autoEntryPettyCash: Updated categoryMap; changed JE prefix from JE-PC to JE-PTC to avoid collision with Client Payment
+- Added 10 NEW auto-entry functions:
+  1. `autoEntrySalary` - Salary payments with GOSI: DR 8110/8210 / CR 1110/1120/3830
+  2. `autoEntryGOSI` - GOSI contributions: DR 8210 / CR 3830
+  3. `autoEntryDepreciation` - General depreciation by asset type: DR 8310/8320/8330/8340 / CR 2210/2230/2240
+  4. `autoEntryRentalDepreciation` - Rental equipment: DR 7250 / CR 2220
+  5. `autoEntryDeliveryFees` - Delivery fees on rental: DR 1210 / CR 6220 / CR 3200
+  6. `autoEntryContractAdvance` - Client advances: DR 1110/1120 / CR 3410/3420 (activity-specific)
+  7. `autoEntryRetention` - Retention: DR 1220 / CR 1210
+  8. `autoEntryZakat` - Zakat provision: DR 8510 / CR 3810
+  9. `autoEntryEndOfService` - End of service provision: DR 8110 / CR 3710
+  10. `autoEntryAssetDisposal` - Asset disposal with gain/loss: DR cash / CR asset+accum.depr / gain(6310)/loss(8610)
+- Lint passes with zero new errors (only pre-existing take-screenshots.mjs error)
+
+Stage Summary:
+- Chart of Accounts expanded from ~40 accounts to 147 comprehensive accounts following Saudi SOCPA standards
+- Full support for both Construction Projects and Equipment Rental activities with activityType classification
+- Hierarchy with level indicators (0=root, 1=group, 2=detail) and allowPosting flags for proper account control
+- System accounts (isSystem=true) protected from deletion (root accounts, VAT, Capital, etc.)
+- All auto-entry functions updated with new account codes for correct SOCPA-compliant journal entries
+- 10 new auto-entry functions added covering salary, GOSI, depreciation, delivery fees, contract advances, retention, zakat, end-of-service, and asset disposal
+- initializeChartOfAccounts is now re-runnable and updates existing accounts with new fields
+- Database schema synced and verified
+
+---
+Task ID: 5
+Agent: Accounting Module Updater
+Task: Update accounts API routes and accounting UI module to support new chart of accounts fields and display activity indicators
+
+Work Log:
+- Updated `/src/app/api/accounts/route.ts` POST endpoint:
+  - Added validation for `activityType` field (CONSTRUCTION, EQUIPMENT_RENTAL, BOTH)
+  - Added support for new fields in account creation: `activityType`, `isSystem` (default false), `allowPosting` (default true), `level` (default 0), `description`, `descriptionAr`
+  - GET endpoint already returns all scalar fields via Prisma `include` (activityType, isSystem, allowPosting, level, description, descriptionAr are included automatically)
+
+- Rebuilt `/src/components/modules/accounting.tsx` with comprehensive enhancements:
+  - Updated `Account` interface with all new fields: `activityType`, `isSystem`, `allowPosting`, `level`, `description`, `descriptionAr`, `balance`, `normalBalance`
+  - Added `ActivityBadge` component with activity config:
+    - CONSTRUCTION: Blue dot + "مشاريع" / "Construction"
+    - EQUIPMENT_RENTAL: Orange dot + "تأجير" / "Rental"
+    - BOTH: Gray dot + "مشترك" / "Both"
+  - Updated `sourceTypeLabels` with 9 new source types: SALARY, GOSI, DEPRECIATION, RENTAL_DEPRECIATION, DELIVERY_FEES, CONTRACT_ADVANCE, RETENTION, ZAKAT, END_OF_SERVICE, ASSET_DISPOSAL
+  - Fixed accounts query to properly extract `data.accounts` from API response object `{ accounts: [...], tree: [...], total: number }`
+  - Added Account Detail Dialog showing: code, name (AR/EN), type badge, activity badge, system/posting indicators, balance, journal line count, level, normal balance, description, parent account, and "View in General Ledger" button
+  - Added Activity Type filter dropdown: الكل / مشاريع تنفيذية / تأجير معدات / مشترك
+  - Added Account Type filter dropdown: All / ASSET / LIABILITY / EQUITY / REVENUE / EXPENSE
+  - Added Search input for filtering by code or name
+  - Added Summary Cards at top: accounts per type (5 cards), system accounts count (amber), posting accounts count (emerald), non-posting/header accounts count (red)
+  - Added Activity Summary row: Construction count, Equipment Rental count, Both count
+  - Added Balance column in chart of accounts table using MoneyDisplay
+  - Added Properties column showing Shield icon (system accounts) and Lock icon (non-posting/header accounts)
+  - Added expand/collapse functionality for parent accounts with toggle buttons
+  - Added "Expand All" / "Collapse All" buttons
+  - Added "Re-initialize Chart" button for updating existing chart of accounts
+  - Improved tree visualization with level-based indentation, bold fonts for group headers, amber background for system accounts
+  - Made responsive with proper overflow handling, flexible grid layouts, and mobile-friendly filter bar
+  - All existing tabs preserved: Chart of Accounts, Journal Entries, General Ledger, Trial Balance
+  - General Ledger tab enhanced with ActivityBadge display for selected account
+  - Fixed recursive `flattenTree` function (moved inside useMemo to avoid useCallback self-reference lint error)
+
+- ESLint passes with zero new errors (only pre-existing take-screenshots.mjs error)
+- Dev server running without errors
+
+Stage Summary:
+- Accounts API POST endpoint now supports all new chart of accounts fields with validation
+- Accounting UI module completely enhanced with activity badges, filters, detail dialog, balance column, summary cards
+- Chart of Accounts tab now shows: type summary cards, activity summary, activity/type/search filters, expand/collapse, balance column, property indicators (system/posting), and account detail dialog
+- 9 new source type labels added to Journal Entries tab
+- All new fields from Prisma schema (activityType, isSystem, allowPosting, level, description, descriptionAr) are properly displayed in the UI
+- Re-initialize button allows updating the chart of accounts with new fields from the template
+
+---
+Task ID: Accounting-Engine-Review
+Agent: Main Coordinator
+Task: Comprehensive review of the accounting engine starting from the chart of accounts - ensuring it's complete and supports both business activities (Construction Projects & Equipment Rental)
+
+Work Log:
+- Analyzed existing chart of accounts (50 accounts) and identified 70+ missing accounts critical for construction/rental businesses
+- Key gaps found: Contract Assets/Liabilities (IFRS 15), EOSB Provision, GOSI Payable, Zakat Payable, Cost of Contracts, Site Establishment, Permits, Equipment Rental specific accounts, Depreciation breakdown, Financial Expenses, Tax Expenses
+- Expanded Chart of Accounts from 50 to 152 accounts across 8 major groups following Saudi SOCPA standards
+- Added 5 new fields to Account model: activityType, isSystem, allowPosting, level, description, descriptionAr
+- Added 10 new auto-entry functions: Salary, GOSI, Depreciation, Rental Depreciation, Delivery Fees, Contract Advance, Retention, Zakat, End of Service, Asset Disposal
+- Updated all existing auto-entry functions with new account codes
+- Enhanced Accounting UI with: ActivityBadge, filters (activity type + account type + search), Account Detail Dialog, Balance column, Properties column, expand/collapse, Re-initialize button, Summary Cards
+- Optimized accounts API to avoid expensive per-account balance queries (now uses single aggregation query with ?withBalances=true parameter)
+- Re-initialized chart of accounts: 86 new accounts created, 61 existing accounts updated with new fields
+
+Stage Summary:
+- Complete chart of accounts with 152 accounts: 45 Assets, 30 Liabilities, 7 Equity, 16 Revenue, 54 Expenses
+- Activity breakdown: 96 BOTH, 28 CONSTRUCTION, 23 EQUIPMENT_RENTAL, 5 legacy (NONE)
+- 22 auto-entry functions covering all business transaction types
+- Full SOCPA compliance with IFRS 15 (Contract Assets/Liabilities) and IFRS 16 (ROU Assets) support
+- Saudi-specific accounts: GOSI (3830/8210), Zakat (3810/8510), EOSB Provision (3710), Statutory Reserve (5400)
+- Construction-specific: Cost of Contracts (7100), Retention (1220/3500), Site Establishment (7140), Temporary Works (7150), Permits (7160), Testing (7170), Project Overhead (7180)
+- Rental-specific: Equipment Rental Revenue (6210), Delivery Fees (6220/7240), Rental Equipment Depreciation (7250), Spare Parts (1330), Equipment Maintenance Provision (3730)
+- All APIs verified working: Accounts (152), Trial Balance (4 items), Journal Entries (3 entries)

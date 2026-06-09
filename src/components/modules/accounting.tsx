@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BookOpen, RefreshCw, FileText, ChevronLeft, Eye, TreePine,
   ArrowUpDown, Calculator, Scale, Database, PlusCircle,
+  Lock, Shield, ChevronDown, ChevronRight, X, Info,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,9 @@ import {
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
@@ -27,9 +31,13 @@ import { ModuleLayout } from '@/components/shared/module-layout'
 interface Account {
   id: string; code: string; name: string; nameAr: string | null
   type: string; parentId: string | null; isActive: boolean
-  parent: { id: string; code: string; name: string } | null
-  children: { id: string; code: string; name: string }[]
+  activityType: string | null; isSystem: boolean; allowPosting: boolean
+  level: number; description: string | null; descriptionAr: string | null
+  parent: { id: string; code: string; name: string; nameAr: string | null } | null
+  children: { id: string; code: string; name: string; nameAr: string | null }[]
   _count: { journalLines: number }
+  balance: number
+  normalBalance: string
 }
 
 interface JournalLine {
@@ -80,6 +88,26 @@ function TypeBadge({ type, lang }: { type: string; lang: 'ar' | 'en' }) {
   return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
 }
 
+// ============ Activity Config ============
+const activityConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string; dot: string }> = {
+  CONSTRUCTION: { label: { ar: 'مشاريع', en: 'Construction' }, color: 'text-blue-700', bg: 'bg-blue-100', dot: 'bg-blue-500' },
+  EQUIPMENT_RENTAL: { label: { ar: 'تأجير', en: 'Rental' }, color: 'text-orange-700', bg: 'bg-orange-100', dot: 'bg-orange-500' },
+  BOTH: { label: { ar: 'مشترك', en: 'Both' }, color: 'text-gray-700', bg: 'bg-gray-100', dot: 'bg-gray-500' },
+}
+
+function ActivityBadge({ activityType, lang }: { activityType: string | null; lang: 'ar' | 'en' }) {
+  const at = activityType || 'BOTH'
+  const cfg = activityConfig[at]
+  if (!cfg) return null
+  return (
+    <Badge className={`${cfg.bg} ${cfg.color} border-0 text-xs gap-1`}>
+      <span className={`size-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label[lang]}
+    </Badge>
+  )
+}
+
+// ============ JE Status Config ============
 const jeStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
   DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-amber-700', bg: 'bg-amber-100' },
   POSTED: { label: { ar: 'مرحّل', en: 'Posted' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
@@ -105,6 +133,16 @@ const sourceTypeLabels: Record<string, { ar: string; en: string }> = {
   EQUIPMENT_COST: { ar: 'تكلفة معدات', en: 'Equipment Cost' },
   RENTAL_INVOICE: { ar: 'فاتورة تأجير', en: 'Rental Invoice' },
   PETTY_CASH: { ar: 'صندوق نقدي', en: 'Petty Cash' },
+  SALARY: { ar: 'رواتب', en: 'Salary' },
+  GOSI: { ar: 'تأمينات اجتماعية', en: 'GOSI' },
+  DEPRECIATION: { ar: 'إهلاك', en: 'Depreciation' },
+  RENTAL_DEPRECIATION: { ar: 'إهلاك معدات تأجير', en: 'Rental Depreciation' },
+  DELIVERY_FEES: { ar: 'رسوم نقل وتوصيل', en: 'Delivery Fees' },
+  CONTRACT_ADVANCE: { ar: 'مقدمات عقود', en: 'Contract Advance' },
+  RETENTION: { ar: 'مبالغ محتجزة', en: 'Retention' },
+  ZAKAT: { ar: 'زكاة', en: 'Zakat' },
+  END_OF_SERVICE: { ar: 'مكافأة نهاية خدمة', en: 'End of Service' },
+  ASSET_DISPOSAL: { ar: 'تخلص من أصول', en: 'Asset Disposal' },
 }
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
@@ -118,6 +156,125 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// ============ Account Detail Dialog ============
+function AccountDetailDialog({ account, open, onClose, onViewLedger }: {
+  account: Account | null; open: boolean; onClose: () => void
+  onViewLedger: (code: string) => void
+}) {
+  const { lang } = useAppStore()
+  if (!account) return null
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className="font-mono">{account.code}</span>
+            <span>-</span>
+            <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          {/* Names */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-muted-foreground">{t('الاسم بالإنجليزي', 'English Name', lang)}</p>
+              <p className="font-medium">{account.name}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">{t('الاسم بالعربي', 'Arabic Name', lang)}</p>
+              <p className="font-medium">{account.nameAr || '—'}</p>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Badges */}
+          <div className="flex flex-wrap gap-2">
+            <TypeBadge type={account.type} lang={lang} />
+            <ActivityBadge activityType={account.activityType} lang={lang} />
+            {account.isSystem && (
+              <Badge className="bg-amber-100 text-amber-700 border-0 gap-1">
+                <Shield className="size-3" />
+                {t('حساب نظامي', 'System', lang)}
+              </Badge>
+            )}
+            {!account.allowPosting && (
+              <Badge className="bg-red-100 text-red-700 border-0 gap-1">
+                <Lock className="size-3" />
+                {t('رأسي', 'Header', lang)}
+              </Badge>
+            )}
+            {account.allowPosting && (
+              <Badge className="bg-emerald-100 text-emerald-700 border-0 gap-1">
+                {t('تفصيلي', 'Posting', lang)}
+              </Badge>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Details Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <Card className="bg-gray-50">
+              <CardContent className="p-3 text-center">
+                <p className="text-xs text-muted-foreground">{t('الرصيد الحالي', 'Current Balance', lang)}</p>
+                <MoneyDisplay value={account.balance} lang={lang} bold className={account.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-50">
+              <CardContent className="p-3 text-center">
+                <p className="text-xs text-muted-foreground">{t('عدد القيود', 'Journal Lines', lang)}</p>
+                <p className="text-lg font-bold">{formatNumber(account._count.journalLines)}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-50">
+              <CardContent className="p-3 text-center">
+                <p className="text-xs text-muted-foreground">{t('المستوى', 'Level', lang)}</p>
+                <p className="text-lg font-bold">{account.level}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-50">
+              <CardContent className="p-3 text-center">
+                <p className="text-xs text-muted-foreground">{t('الرصيد الطبيعي', 'Normal Balance', lang)}</p>
+                <p className="text-lg font-bold">{account.normalBalance === 'DEBIT' ? t('مدين', 'Debit', lang) : t('دائن', 'Credit', lang)}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Description */}
+          {(account.description || account.descriptionAr) && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">{t('الوصف', 'Description', lang)}</p>
+              <p className="text-sm bg-gray-50 p-2 rounded">
+                {lang === 'ar' && account.descriptionAr ? account.descriptionAr : (account.description || '—')}
+              </p>
+            </div>
+          )}
+
+          {/* Parent */}
+          {account.parent && (
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">{t('الحساب الأب', 'Parent Account', lang)}</p>
+              <p className="text-sm font-medium">
+                {account.parent.code} - {lang === 'ar' && account.parent.nameAr ? account.parent.nameAr : account.parent.name}
+              </p>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => { onViewLedger(account.code); onClose() }} className="gap-2">
+              <BookOpen className="size-4" />
+              {t('عرض في اليومية العامة', 'View in General Ledger', lang)}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -200,46 +357,142 @@ function JournalEntryDetail({ entry, onBack }: { entry: JournalEntry; onBack: ()
 }
 
 // ============ Tab 1: Chart of Accounts ============
-function ChartOfAccountsTab({ accounts, isLoading, onInitialize, isInitializing }: {
-  accounts: Account[]; isLoading: boolean; onInitialize: () => void; isInitializing: boolean
+function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize, isInitializing }: {
+  accounts: Account[]; isLoading: boolean; onInitialize: () => void; onReInitialize: () => void; isInitializing: boolean
 }) {
   const { lang } = useAppStore()
-
-  // Build tree structure
-  const rootAccounts = accounts.filter(a => !a.parentId)
-  const childMap = new Map<string, Account[]>()
-  accounts.forEach(a => {
-    if (a.parentId) {
-      const siblings = childMap.get(a.parentId) || []
-      siblings.push(a)
-      childMap.set(a.parentId, siblings)
-    }
+  const [activityFilter, setActivityFilter] = useState<string>('all')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    // Start with all root and level-0 accounts expanded
+    const initial = new Set<string>()
+    accounts.forEach(a => { if (!a.parentId || a.level === 0) initial.add(a.id) })
+    return initial
   })
+  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
-  const flattenTree = (roots: Account[], depth: number): (Account & { depth: number })[] => {
-    const result: (Account & { depth: number })[] = []
-    for (const root of roots) {
-      result.push({ ...root, depth })
-      const children = childMap.get(root.id) || []
-      if (children.length > 0) {
-        result.push(...flattenTree(children.sort((a, b) => a.code.localeCompare(b.code)), depth + 1))
+  // Update expanded IDs when accounts change
+  const allParentIds = useMemo(() => {
+    const ids = new Set<string>()
+    accounts.forEach(a => {
+      if (a.children && a.children.length > 0) ids.add(a.id)
+    })
+    return ids
+  }, [accounts])
+
+  // Build tree structure using level field
+  const rootAccounts = useMemo(() => {
+    return accounts.filter(a => !a.parentId).sort((a, b) => a.code.localeCompare(b.code))
+  }, [accounts])
+
+  const childMap = useMemo(() => {
+    const map = new Map<string, Account[]>()
+    accounts.forEach(a => {
+      if (a.parentId) {
+        const siblings = map.get(a.parentId) || []
+        siblings.push(a)
+        map.set(a.parentId, siblings)
+      }
+    })
+    map.forEach((children) => children.sort((a, b) => a.code.localeCompare(b.code)))
+    return map
+  }, [accounts])
+
+  // Filter accounts
+  const filteredAccounts = useMemo(() => {
+    let filtered = accounts
+    if (activityFilter !== 'all') {
+      if (activityFilter === 'NONE') {
+        filtered = filtered.filter(a => !a.activityType)
+      } else if (activityFilter === 'BOTH') {
+        filtered = filtered.filter(a => a.activityType === 'BOTH' || !a.activityType)
+      } else {
+        filtered = filtered.filter(a => a.activityType === activityFilter)
       }
     }
-    return result
-  }
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter(a => a.type === typeFilter)
+    }
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter(a =>
+        a.code.toLowerCase().includes(term) ||
+        a.name.toLowerCase().includes(term) ||
+        (a.nameAr && a.nameAr.toLowerCase().includes(term))
+      )
+    }
+    return filtered
+  }, [accounts, activityFilter, typeFilter, searchTerm])
 
-  const flatAccounts = flattenTree(rootAccounts.sort((a, b) => a.code.localeCompare(b.code)), 0)
+  // Build flat list for display with level-based indentation
+  const flatAccounts = useMemo(() => {
+    function flatten(roots: Account[], level: number): (Account & { displayLevel: number })[] {
+      const result: (Account & { displayLevel: number })[] = []
+      for (const root of roots) {
+        if (!filteredAccounts.find(a => a.id === root.id)) continue
+        result.push({ ...root, displayLevel: level })
+        const children = childMap.get(root.id) || []
+        if (children.length > 0 && expandedIds.has(root.id)) {
+          result.push(...flatten(children, level + 1))
+        }
+      }
+      return result
+    }
+    return flatten(rootAccounts, 0)
+  }, [rootAccounts, filteredAccounts, childMap, expandedIds])
 
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const expandAll = useCallback(() => {
+    setExpandedIds(new Set(allParentIds))
+  }, [allParentIds])
+
+  const collapseAll = useCallback(() => {
+    setExpandedIds(new Set())
+  }, [])
+
+  // Summary statistics
   const typeSummary = useMemo(() => {
     const summary: Record<string, number> = {}
     accounts.forEach(a => { summary[a.type] = (summary[a.type] || 0) + 1 })
     return summary
   }, [accounts])
 
+  const activitySummary = useMemo(() => {
+    const summary: Record<string, number> = { CONSTRUCTION: 0, EQUIPMENT_RENTAL: 0, BOTH: 0, NONE: 0 }
+    accounts.forEach(a => {
+      if (!a.activityType) summary.NONE++
+      else summary[a.activityType] = (summary[a.activityType] || 0) + 1
+    })
+    return summary
+  }, [accounts])
+
+  const systemCount = useMemo(() => accounts.filter(a => a.isSystem).length, [accounts])
+  const postingCount = useMemo(() => accounts.filter(a => a.allowPosting).length, [accounts])
+  const nonPostingCount = useMemo(() => accounts.filter(a => !a.allowPosting).length, [accounts])
+
+  const handleAccountClick = useCallback((account: Account) => {
+    setSelectedAccount(account)
+    setDetailOpen(true)
+  }, [])
+
+  const handleViewLedger = useCallback((_code: string) => {
+    // This will be handled by parent component
+  }, [])
+
   return (
     <div className="space-y-4">
-      {/* Type Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
         {Object.entries(typeSummary).map(([type, count]) => {
           const cfg = typeConfig[type]
           if (!cfg) return null
@@ -248,6 +501,44 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, isInitializing 
               <CardContent className="p-3 text-center">
                 <p className={`text-xs ${cfg.color}`}>{cfg.label[lang]}</p>
                 <p className={`text-lg font-bold ${cfg.color}`}>{count}</p>
+              </CardContent>
+            </Card>
+          )
+        })}
+        <Card className="bg-amber-50 border-amber-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-amber-700 flex items-center justify-center gap-1">
+              <Shield className="size-3" /> {t('نظامي', 'System', lang)}
+            </p>
+            <p className="text-lg font-bold text-amber-700">{systemCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-emerald-50 border-emerald-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-emerald-700">{t('ترحيل', 'Posting', lang)}</p>
+            <p className="text-lg font-bold text-emerald-700">{postingCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-3 text-center">
+            <p className="text-xs text-red-700 flex items-center justify-center gap-1">
+              <Lock className="size-3" /> {t('رأسي', 'Header', lang)}
+            </p>
+            <p className="text-lg font-bold text-red-700">{nonPostingCount}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Activity Summary */}
+      <div className="grid grid-cols-3 gap-2">
+        {Object.entries(activitySummary).filter(([k]) => k !== 'NONE').map(([key, count]) => {
+          const cfg = activityConfig[key]
+          if (!cfg) return null
+          return (
+            <Card key={key} className={`${cfg.bg} border-0`}>
+              <CardContent className="p-3 text-center flex items-center justify-center gap-2">
+                <span className={`size-2.5 rounded-full ${cfg.dot}`} />
+                <span className={`text-sm font-medium ${cfg.color}`}>{cfg.label[lang]}: {count}</span>
               </CardContent>
             </Card>
           )
@@ -271,6 +562,75 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, isInitializing 
         </Card>
       )}
 
+      {/* Filters */}
+      {accounts.length > 0 && (
+        <Card className="bg-gray-50/50">
+          <CardContent className="p-4">
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
+              <div className="space-y-1 flex-1 min-w-[150px]">
+                <Label className="text-xs">{t('النشاط', 'Activity', lang)}</Label>
+                <Select value={activityFilter} onValueChange={setActivityFilter}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+                    <SelectItem value="CONSTRUCTION">{t('مشاريع تنفيذية', 'Construction', lang)}</SelectItem>
+                    <SelectItem value="EQUIPMENT_RENTAL">{t('تأجير معدات', 'Equipment Rental', lang)}</SelectItem>
+                    <SelectItem value="BOTH">{t('مشترك', 'Both', lang)}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 flex-1 min-w-[150px]">
+                <Label className="text-xs">{t('نوع الحساب', 'Account Type', lang)}</Label>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+                    <SelectItem value="ASSET">{t('أصول', 'Asset', lang)}</SelectItem>
+                    <SelectItem value="LIABILITY">{t('التزامات', 'Liability', lang)}</SelectItem>
+                    <SelectItem value="EQUITY">{t('حقوق ملكية', 'Equity', lang)}</SelectItem>
+                    <SelectItem value="REVENUE">{t('إيرادات', 'Revenue', lang)}</SelectItem>
+                    <SelectItem value="EXPENSE">{t('مصروفات', 'Expense', lang)}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1 flex-1 min-w-[180px]">
+                <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+                <Input
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  placeholder={t('بحث بالكود أو الاسم...', 'Search by code or name...', lang)}
+                  className="h-9"
+                />
+              </div>
+              <div className="flex gap-1">
+                <Button variant="outline" size="sm" onClick={expandAll} className="text-xs gap-1 h-9">
+                  <ChevronDown className="size-3" /> {t('توسيع', 'Expand', lang)}
+                </Button>
+                <Button variant="outline" size="sm" onClick={collapseAll} className="text-xs gap-1 h-9">
+                  <ChevronRight className="size-3" /> {t('تقليص', 'Collapse', lang)}
+                </Button>
+              </div>
+              {(activityFilter !== 'all' || typeFilter !== 'all' || searchTerm) && (
+                <Button variant="ghost" size="sm" className="text-rose-600 h-9"
+                  onClick={() => { setActivityFilter('all'); setTypeFilter('all'); setSearchTerm('') }}>
+                  <X className="size-3 mr-1" /> {t('مسح', 'Clear', lang)}
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Re-initialize button */}
+      {accounts.length > 0 && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={onReInitialize} disabled={isInitializing} className="gap-2 text-xs">
+            {isInitializing ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+            {isInitializing ? t('جاري التحديث...', 'Updating...', lang) : t('تحديث دليل الحسابات', 'Re-initialize Chart', lang)}
+          </Button>
+        </div>
+      )}
+
       {isLoading ? (
         <TableSkeleton />
       ) : accounts.length === 0 ? null : (
@@ -280,36 +640,89 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, isInitializing 
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-                    <TableHead className="text-right">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
+                    <TableHead className="text-right min-w-[120px]">{t('الكود', 'Code', lang)}</TableHead>
+                    <TableHead className="text-right min-w-[200px]">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
                     <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
-                    <TableHead className="text-right">{t('عدد القيود', 'Entries', lang)}</TableHead>
+                    <TableHead className="text-right">{t('النشاط', 'Activity', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+                    <TableHead className="text-center">{t('خيارات', 'Props', lang)}</TableHead>
+                    <TableHead className="text-right">{t('القيود', 'Entries', lang)}</TableHead>
+                    <TableHead className="text-center">{t('تفاصيل', 'Detail', lang)}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {flatAccounts.map(a => (
-                    <TableRow key={a.id} className={a.depth === 0 ? 'bg-gray-50/50 font-semibold' : ''}>
-                      <TableCell>
-                        <span style={{ display: 'inline-block', width: `${a.depth * 20}px` }} />
-                        {a.depth > 0 && <span className="text-gray-300 ml-1 mr-1">└</span>}
-                        <span className="font-mono text-sm">{a.code}</span>
-                      </TableCell>
-                      <TableCell>
-                        {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
-                        {lang === 'ar' && a.nameAr && (
-                          <span className="text-muted-foreground text-xs mr-1">({a.name})</span>
-                        )}
-                      </TableCell>
-                      <TableCell><TypeBadge type={a.type} lang={lang} /></TableCell>
-                      <TableCell>{formatNumber(a._count.journalLines)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {flatAccounts.map(a => {
+                    const hasChildren = childMap.has(a.id) && (childMap.get(a.id)?.length || 0) > 0
+                    const isExpanded = expandedIds.has(a.id)
+                    return (
+                      <TableRow
+                        key={a.id}
+                        className={`cursor-pointer hover:bg-emerald-50/30 ${
+                          a.displayLevel === 0 ? 'bg-gray-50/50 font-semibold' : ''
+                        } ${a.isSystem ? 'bg-amber-50/30' : ''}`}
+                        onClick={() => handleAccountClick(a)}
+                      >
+                        <TableCell>
+                          <div className="flex items-center" style={{ paddingLeft: `${a.displayLevel * 24}px` }}>
+                            {hasChildren && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleExpand(a.id) }}
+                                className="mr-1 p-0.5 hover:bg-gray-200 rounded"
+                              >
+                                {isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+                              </button>
+                            )}
+                            {!hasChildren && a.displayLevel > 0 && (
+                              <span className="text-gray-300 mr-1 ml-1 text-xs">└</span>
+                            )}
+                            <span className="font-mono text-sm">{a.code}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className={a.displayLevel === 0 ? 'font-bold' : a.displayLevel === 1 ? 'font-semibold' : ''}>
+                            {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+                          </span>
+                          {lang === 'ar' && a.nameAr && (
+                            <span className="text-muted-foreground text-xs mr-1">({a.name})</span>
+                          )}
+                        </TableCell>
+                        <TableCell><TypeBadge type={a.type} lang={lang} /></TableCell>
+                        <TableCell><ActivityBadge activityType={a.activityType} lang={lang} /></TableCell>
+                        <TableCell>
+                          <MoneyDisplay value={a.balance} lang={lang} size="sm" bold
+                            className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center justify-center gap-1">
+                            {a.isSystem && <Shield className="size-3.5 text-amber-500" title={t('حساب نظامي', 'System Account', lang)} />}
+                            {!a.allowPosting && <Lock className="size-3.5 text-red-400" title={t('رأسي - لا يرحل عليه', 'Header - No Posting', lang)} />}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">{formatNumber(a._count.journalLines)}</TableCell>
+                        <TableCell className="text-center">
+                          <Button size="sm" variant="ghost" className="text-emerald-600 h-7 w-7 p-0"
+                            onClick={(e) => { e.stopPropagation(); handleAccountClick(a) }}>
+                            <Info className="size-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Account Detail Dialog */}
+      <AccountDetailDialog
+        account={selectedAccount}
+        open={detailOpen}
+        onClose={() => setDetailOpen(false)}
+        onViewLedger={handleViewLedger}
+      />
     </div>
   )
 }
@@ -528,12 +941,15 @@ function GeneralLedgerTab({ accounts }: { accounts: Account[] }) {
       {selectedAccount && ledgerData && (
         <Card className="border-emerald-200">
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <div className="flex-1">
                 <h3 className="text-lg font-bold">
                   {selectedAccount.code} - {lang === 'ar' && selectedAccount.nameAr ? selectedAccount.nameAr : selectedAccount.name}
                 </h3>
-                <TypeBadge type={selectedAccount.type} lang={lang} />
+                <div className="flex items-center gap-2 mt-1">
+                  <TypeBadge type={selectedAccount.type} lang={lang} />
+                  <ActivityBadge activityType={selectedAccount.activityType} lang={lang} />
+                </div>
               </div>
               {ledgerData.length > 0 && (
                 <div className="text-center">
@@ -659,7 +1075,7 @@ function TrialBalanceTab() {
       {/* Balance Status */}
       {trialBalance.length > 0 && (
         <Card className={isBalanced ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}>
-          <CardContent className="p-3 flex items-center justify-between">
+          <CardContent className="p-3 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Scale className={`size-5 ${isBalanced ? 'text-emerald-600' : 'text-rose-600'}`} />
               <span className={`font-medium ${isBalanced ? 'text-emerald-800' : 'text-rose-800'}`}>
@@ -742,7 +1158,10 @@ export function AccountingModule() {
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('chart-of-accounts')
 
-  const { data: accounts = [], isLoading: loadingAccounts, refetch: refetchAccounts } = useQuery<Account[]>({
+  // Fetch accounts - API returns { accounts: [...], tree: [...], total: number }
+  const { data: accountsData, isLoading: loadingAccounts, refetch: refetchAccounts } = useQuery<{
+    accounts: Account[]; tree: unknown[]; total: number
+  }>({
     queryKey: ['accounts'],
     queryFn: async () => {
       const res = await fetch('/api/accounts')
@@ -750,6 +1169,8 @@ export function AccountingModule() {
       return res.json()
     },
   })
+
+  const accounts = accountsData?.accounts || []
 
   const { data: entries = [], isLoading: loadingEntries, isError: entriesError, refetch: refetchEntries } = useQuery<JournalEntry[]>({
     queryKey: ['journal-entries'],
@@ -765,6 +1186,14 @@ export function AccountingModule() {
     mutationFn: () => fetch('/api/accounts/initialize', { method: 'POST' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounts'] }) },
   })
+
+  // Re-initialize (update) chart of accounts
+  const reInitMutation = useMutation({
+    mutationFn: () => fetch('/api/accounts/initialize', { method: 'POST' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['accounts'] }) },
+  })
+
+  const isInitializing = initMutation.isPending || reInitMutation.isPending
 
   return (
     <ModuleLayout
@@ -801,7 +1230,8 @@ export function AccountingModule() {
             accounts={accounts}
             isLoading={loadingAccounts}
             onInitialize={() => initMutation.mutate()}
-            isInitializing={initMutation.isPending}
+            onReInitialize={() => reInitMutation.mutate()}
+            isInitializing={isInitializing}
           />
         </TabsContent>
 

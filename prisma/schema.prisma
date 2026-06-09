@@ -132,6 +132,12 @@ enum DeliveryOrderStatus {
   CANCELLED
 }
 
+enum AccountActivityType {
+  CONSTRUCTION
+  EQUIPMENT_RENTAL
+  BOTH
+}
+
 enum VATReturnStatus {
   DRAFT
   FILED
@@ -1094,13 +1100,19 @@ model InventoryItem {
 // ============ DOUBLE ENTRY ACCOUNTING ============
 
 model Account {
-  id       String   @id @default(cuid())
-  code     String   @unique
-  name     String
-  nameAr   String?
-  type     String
-  parentId String?
-  isActive Boolean  @default(true)
+  id           String   @id @default(cuid())
+  code         String   @unique
+  name         String
+  nameAr       String?
+  type         String
+  parentId     String?
+  isActive     Boolean  @default(true)
+  activityType String?  // CONSTRUCTION | EQUIPMENT_RENTAL | BOTH
+  isSystem     Boolean  @default(false)
+  allowPosting Boolean  @default(true)
+  level        Int      @default(0)
+  description   String?
+  descriptionAr String?
 
   parent      Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
   children    Account[]     @relation("AccountHierarchy")

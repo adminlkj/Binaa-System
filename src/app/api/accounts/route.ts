@@ -1,9 +1,12 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { getAccountBalance, NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
+import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url)
+    const withBalances = searchParams.get('withBalances') === 'true'
+
     const accounts = await db.account.findMany({
       where: { isActive: true },
       include: {
@@ -25,17 +28,34 @@ export async function GET() {
       orderBy: { code: 'asc' },
     })
 
-    // Calculate balances for all accounts
-    const accountsWithBalances = await Promise.all(
-      accounts.map(async (account) => {
-        const balance = await getAccountBalance(account.code)
-        return {
-          ...account,
-          balance,
-          normalBalance: NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT',
-        }
+    // Efficiently compute all balances in a single aggregation query
+    let balanceMap = new Map<string, number>()
+    if (withBalances) {
+      // Aggregate all journal line amounts by account in one query
+      const lines = await db.journalLine.findMany({
+        where: { journalEntry: { status: 'POSTED' } },
+        select: {
+          accountId: true,
+          debit: true,
+          credit: true,
+          account: { select: { type: true } },
+        },
       })
-    )
+
+      for (const line of lines) {
+        const normalBalance = NORMAL_BALANCE[line.account.type as AccountTypeValue] || 'DEBIT'
+        const amount = normalBalance === 'DEBIT'
+          ? line.debit - line.credit
+          : line.credit - line.debit
+        balanceMap.set(line.accountId, (balanceMap.get(line.accountId) || 0) + amount)
+      }
+    }
+
+    const accountsWithBalances = accounts.map((account) => ({
+      ...account,
+      balance: withBalances ? (balanceMap.get(account.id) || 0) : 0,
+      normalBalance: NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT',
+    }))
 
     // Build hierarchical tree structure
     const rootAccounts = accountsWithBalances.filter((a) => !a.parentId)
@@ -153,6 +173,15 @@ export async function POST(request: Request) {
       }
     }
 
+    // Validate activity type if provided
+    const validActivityTypes = ['CONSTRUCTION', 'EQUIPMENT_RENTAL', 'BOTH']
+    if (body.activityType && !validActivityTypes.includes(body.activityType)) {
+      return NextResponse.json(
+        { error: `نوع النشاط غير صالح. الأنواع المسموحة: ${validActivityTypes.join(', ')}` },
+        { status: 400 }
+      )
+    }
+
     const account = await db.account.create({
       data: {
         code,
@@ -161,6 +190,12 @@ export async function POST(request: Request) {
         type: body.type,
         parentId: body.parentId || null,
         isActive: true,
+        activityType: body.activityType || null,
+        isSystem: body.isSystem ?? false,
+        allowPosting: body.allowPosting ?? true,
+        level: body.level ?? 0,
+        description: body.description || null,
+        descriptionAr: body.descriptionAr || null,
       },
       include: {
         parent: { select: { id: true, code: true, name: true, nameAr: true } },
