@@ -1427,7 +1427,7 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
   const formatDate = (d: unknown) => {
     if (!d) return ''
     try {
-      return new Date(d as string).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+      return new Date(d as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     } catch {
       return String(d)
     }
@@ -1571,10 +1571,16 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
   const vatTotalStr = formatMoneyPrint(vatAmount)
   const tlvBase64 = encodeZATCATLV(sellerName, vatNumber, invoiceDate, totalStr, vatTotalStr)
 
+  // QR code image: use server-generated data URL if provided, otherwise use inline fallback
+  const qrDataUrl = data.qrDataUrl as string | undefined
+
   const qrSection = settings.taxNumber ? `
     <div class="ri-qr-section">
-      <canvas id="ri-qr-canvas" style="display:none;"></canvas>
-      <img id="ri-qr-image" class="ri-qr-image" alt="ZATCA QR Code" style="display:none;" />
+      ${qrDataUrl
+        ? `<img class="ri-qr-image" src="${qrDataUrl}" alt="ZATCA QR Code" style="display:block;" />`
+        : `<canvas id="ri-qr-canvas" style="display:none;"></canvas>
+           <img id="ri-qr-image" class="ri-qr-image" alt="ZATCA QR Code" style="display:none;" />`
+      }
       <div class="ri-qr-info">
         <div class="ri-qr-title">${lang === 'ar' ? 'رمز الاستجابة السريعة - هيئة الزكاة والضريبة والجمارك' : 'ZATCA QR Code'}</div>
         <div>${lang === 'ar' ? 'اسم البائع' : 'Seller'}: ${sellerName}</div>
@@ -1584,11 +1590,10 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
         <div>${lang === 'ar' ? 'مبلغ الضريبة' : 'VAT Amount'}: ${vatTotalStr} ${currency}</div>
       </div>
     </div>
+    ${!qrDataUrl ? `
     <script>
       (function() {
         var tlvBase64 = "${tlvBase64}";
-        // Inline QR code generation using minimal library approach
-        // We use the QRCode CDN if available, otherwise skip
         function generateQR() {
           if (typeof QRCode === 'undefined') return;
           var canvas = document.getElementById('ri-qr-canvas');
@@ -1609,7 +1614,6 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
         if (typeof QRCode !== 'undefined') {
           generateQR();
         } else {
-          // Wait for CDN to load
           var checkInterval = setInterval(function() {
             if (typeof QRCode !== 'undefined') {
               clearInterval(checkInterval);
@@ -1620,6 +1624,7 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
         }
       })();
     </script>
+    ` : ''}
   ` : ''
 
   // ─── Section 7: Bank Info ───
@@ -1738,7 +1743,7 @@ function generateInvoiceBody(data: Record<string, unknown>, settings: PrintOptio
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
-        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') : ''}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'رقم العقد' : 'Contract No'}</div>
@@ -1821,7 +1826,7 @@ function generateExtractBody(data: Record<string, unknown>, settings: PrintOptio
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
-        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') : ''}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
@@ -1896,7 +1901,7 @@ function generateSupplierInvoiceBody(data: Record<string, unknown>, settings: Pr
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
-        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') : ''}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
       </div>
     </div>
 
@@ -1969,7 +1974,7 @@ function generatePurchaseOrderBody(data: Record<string, unknown>, settings: Prin
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
-        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') : ''}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
@@ -2136,7 +2141,7 @@ function generatePaymentVoucherBody(data: Record<string, unknown>, settings: Pri
       </div>
       <div class="info-item">
         <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
-        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') : ''}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${isClient ? (lang === 'ar' ? 'العميل' : 'Client') : (lang === 'ar' ? 'المورد' : 'Supplier')}</div>

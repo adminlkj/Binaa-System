@@ -303,8 +303,11 @@ export function formatSAR(value: number, lang: Lang = 'ar'): string {
 
 export function formatDate(dateStr: string, lang: Lang = 'ar'): string {
   const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return dateStr
+  // Always use Gregorian (ميلادية) calendar
+  // Arabic uses Arabic digit formatting but Gregorian calendar
   if (lang === 'ar') {
-    return date.toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' })
+    return date.toLocaleDateString('ar-SA-u-ca-gregory', { year: 'numeric', month: 'short', day: 'numeric' })
   }
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
 }

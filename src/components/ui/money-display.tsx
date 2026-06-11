@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { CurrencySymbol } from '@/components/ui/currency-symbol'
 
 /**
@@ -11,7 +11,7 @@ import { CurrencySymbol } from '@/components/ui/currency-symbol'
  * - Official mode: No thousand separators for ZATCA compliance (42514.85)
  * - Bilingual support (Arabic with ﷼ / English with SAR)
  * - Multiple size variants
- * - SVG Saudi Riyal symbol rendering via CurrencySymbol
+ * - Currency symbol image with transparent background rendering
  *
  * Usage:
  * <MoneyDisplay value={42514.85} />                           // Default: Arabic with ﷼
@@ -69,14 +69,17 @@ const symbolSizeMap: Record<string, 'xs' | 'sm' | 'md' | 'lg'> = {
   xl: 'lg',
 }
 
-// Image size mapping for symbol images (in pixels)
+// Image size mapping for symbol images (in pixels) - proportional to text
 const symbolImageSizeMap: Record<string, number> = {
   xs: 12,
-  sm: 16,
-  md: 20,
-  lg: 24,
-  xl: 30,
+  sm: 14,
+  md: 18,
+  lg: 22,
+  xl: 28,
 }
+
+// Cache for processed symbol images (transparent background)
+const symbolImageCache = new Map<string, string>()
 
 /**
  * Format just the number without symbol
@@ -131,6 +134,115 @@ export function formatMoney(
 }
 
 /**
+ * CurrencySymbolImage - Renders the currency symbol image with transparent background
+ * Uses the /api/remove-bg endpoint to process the image and remove the background
+ */
+function CurrencySymbolImage({
+  src,
+  alt,
+  imgSize,
+  textFontSize,
+}: {
+  src: string
+  alt: string
+  imgSize: number
+  textFontSize: number
+}) {
+  const [processedSrc, setProcessedSrc] = useState<string | null>(() => {
+    // Check cache first (synchronous initial state)
+    if (symbolImageCache.has(src)) {
+      return symbolImageCache.get(src)!
+    }
+    // For SVG files, use directly (they already support transparency)
+    if (src.endsWith('.svg')) {
+      symbolImageCache.set(src, src)
+      return src
+    }
+    return null
+  })
+
+  useEffect(() => {
+    // If already processed (from cache or SVG), skip
+    if (processedSrc) return
+
+    // For raster images, process to remove background
+    let cancelled = false
+    const processImage = async () => {
+      try {
+        const res = await fetch('/api/remove-bg', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl: src }),
+        })
+        if (res.ok && !cancelled) {
+          const data = await res.json()
+          if (data.dataUrl) {
+            symbolImageCache.set(src, data.dataUrl)
+            setProcessedSrc(data.dataUrl)
+            return
+          }
+        }
+      } catch {
+        // Fallback: use original image
+      }
+      if (!cancelled) {
+        // Fallback to original URL
+        symbolImageCache.set(src, src)
+        setProcessedSrc(src)
+      }
+    }
+    processImage()
+
+    return () => { cancelled = true }
+  }, [src, processedSrc])
+
+  // The image height should match the text line-height for proper alignment
+  // We calculate it relative to the font size
+  const heightInEm = 1.1 // slightly taller than cap height
+  const widthInEm = (imgSize / textFontSize) * heightInEm
+
+  if (!processedSrc) {
+    // Show a small placeholder while loading
+    return (
+      <span
+        className="inline-block animate-pulse rounded"
+        style={{
+          width: `${widthInEm}em`,
+          height: `${heightInEm}em`,
+          backgroundColor: 'rgba(0,0,0,0.06)',
+          verticalAlign: 'middle',
+        }}
+      />
+    )
+  }
+
+  return (
+    <img
+      src={processedSrc}
+      alt={alt}
+      className="inline-block"
+      style={{
+        height: `${heightInEm}em`,
+        width: 'auto',
+        maxWidth: `${widthInEm * 1.5}em`,
+        objectFit: 'contain',
+        verticalAlign: 'middle',
+        // Additional background removal via CSS for fallback
+        filter: 'contrast(1) brightness(1)',
+        mixBlendMode: 'multiply',
+      }}
+      onError={(e) => {
+        // If processed image fails, try original
+        const img = e.target as HTMLImageElement
+        if (img.src !== src) {
+          img.src = src
+        }
+      }}
+    />
+  )
+}
+
+/**
  * MoneyDisplay Component
  *
  * The unified financial display component for the entire نظام بِنَاء system.
@@ -159,6 +271,16 @@ export function MoneyDisplay({
   // Size class
   const sizeClass = sizeClassMap[size] || sizeClassMap.md
 
+  // Font size in pixels for calculations
+  const fontSizeMap: Record<string, number> = {
+    xs: 12,
+    sm: 14,
+    md: 16,
+    lg: 18,
+    xl: 20,
+  }
+  const textFontSize = fontSizeMap[size] || 16
+
   // Build container classes
   const containerClasses = [
     inline ? 'inline-flex' : 'flex',
@@ -178,17 +300,15 @@ export function MoneyDisplay({
   const renderSymbol = () => {
     if (!showSymbol) return null
 
-    // If a symbol image is provided, render it (takes priority over text symbols)
+    // If a symbol image is provided, render it with transparent background
     if (symbolImage) {
       const imgSize = symbolImageSizeMap[size] || 16
       return (
-        <img
+        <CurrencySymbolImage
           src={symbolImage}
           alt={lang === 'ar' ? symbolAr : symbolEn}
-          width={imgSize}
-          height={imgSize}
-          className="inline-block align-middle object-contain"
-          style={{ maxWidth: imgSize * 1.5, maxHeight: imgSize * 1.5 }}
+          imgSize={imgSize}
+          textFontSize={textFontSize}
         />
       )
     }

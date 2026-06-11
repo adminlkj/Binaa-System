@@ -168,7 +168,7 @@ export function AccountingEntryDisplay({ journalEntryId, lang }: AccountingEntry
                   <div>
                     <span className="text-muted-foreground">{t('التاريخ', 'Date')}:</span>
                     <p className="font-medium">
-                      {new Date(entry.date).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}
+                      {new Date(entry.date).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US')}
                     </p>
                   </div>
                   {(entry.description || entry.descriptionAr) && (

@@ -234,7 +234,34 @@ export function PrintButton({
       // 3. Transform data for print service (flatten nested objects)
       const transformedData = transformDataForPrint(type, documentData)
 
-      // 4. Generate print HTML using the professional print service
+      // 4. For invoice types, generate QR code from server (ZATCA compliance)
+      if ((type === 'rental-invoice' || type === 'service-invoice') && settings.taxNumber) {
+        try {
+          const sellerName = lang === 'ar' ? (settings.nameAr || '') : (settings.nameEn || '')
+          const vatNumber = settings.taxNumber
+          const invoiceDate = transformedData.date
+            ? new Date(transformedData.date as string).toISOString().split('T')[0]
+            : ''
+          const totalAmount = Number(transformedData.totalAmount) || 0
+          const vatAmount = Number(transformedData.vatAmount) || 0
+          const totalStr = totalAmount.toFixed(2)
+          const vatTotalStr = vatAmount.toFixed(2)
+
+          const qrRes = await fetch(
+            `/api/generate-qr?seller=${encodeURIComponent(sellerName)}&vat=${encodeURIComponent(vatNumber)}&date=${encodeURIComponent(invoiceDate)}&total=${encodeURIComponent(totalStr)}&vatTotal=${encodeURIComponent(vatTotalStr)}`
+          )
+          if (qrRes.ok) {
+            const qrData = await qrRes.json()
+            if (qrData.qrDataUrl) {
+              transformedData.qrDataUrl = qrData.qrDataUrl
+            }
+          }
+        } catch {
+          // QR generation failed, will fall back to CDN approach in template
+        }
+      }
+
+      // 5. Generate print HTML using the professional print service
       const { generatePrintHTML } = await import('@/lib/print-service')
       const html = generatePrintHTML({
         type,
