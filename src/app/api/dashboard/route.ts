@@ -401,10 +401,11 @@ export async function GET() {
     const pettyCashBalance = await getAccountBalance('1130')
     const cashPosition = cashBalance + bankBalance + pettyCashBalance
 
-    // ===== 13. VAT Payable =====
-    const vatPayable = await getAccountBalance('3200')
-    const vatReceivable = await getAccountBalance('1400')
-    const netVAT = vatPayable - vatReceivable
+    // ===== 13. VAT Position =====
+    const outputVat = await getAccountBalance('3110')  // Output VAT (ضريبة مخرجات)
+    const inputVat = await getAccountBalance('3120')    // Input VAT (ضريبة مدخلات)
+    const vatDue = await getAccountBalance('3130')      // VAT Due (ضريبة مستحقة)
+    const netVAT = outputVat - inputVat
 
     // ===== 14. Low Inventory Items =====
     const lowInventoryItems = await db.inventoryItem.count({
@@ -439,8 +440,9 @@ export async function GET() {
       overdueReceivables,
       overduePayables,
       netVAT,
-      vatPayable,
-      vatReceivable,
+      outputVat,
+      inputVat,
+      vatDue,
       lowInventoryItems,
 
       // Activity-Based Metrics

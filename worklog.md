@@ -954,3 +954,51 @@ Stage Summary:
 - VAT Route: Fixed critical Prisma syntax errors
 - Chart of Accounts: Already comprehensive (90+ accounts) with Construction/Rental/Both tagging
 - Server: Running on port 3000, Dashboard API verified working (3 projects, all Construction)
+---
+Task ID: 1
+Agent: Main Agent
+Task: Restructure Chart of Accounts and Accounting Engine for Binaa ERP
+
+Work Log:
+- Analyzed current project structure (45+ Prisma models, 80+ API routes, 30+ modules)
+- Identified key changes needed: VAT accounts restructuring (3110/3120/3130), payables renumbering (3210/3220), rental cost codes (7210-7250)
+- Updated Chart of Accounts template in accounting engine:
+  - 3110: Output VAT (ضريبة مخرجات) - was Suppliers Payable
+  - 3120: Input VAT (ضريبة مدخلات) - was Subcontractors Payable
+  - 3130: VAT Due (ضريبة مستحقة) - NEW
+  - 3210: Suppliers Payable (موردون) - was old 3110
+  - 3220: Subcontractors Payable (مقاولو الباطن) - was old 3120
+  - 7210: Equipment Fuel (وقود المعدات) - was Equipment Operation Costs
+  - 7230: Driver Costs (تكاليف السائقين) - NEW
+  - 1410: VAT Refund Receivable - NEW child under 1400
+- Updated all auto-entry functions with new account codes:
+  - Sales Invoice: Output VAT 3110 instead of old 3200
+  - Purchase Invoice: Input VAT 3120 instead of old 1400, Suppliers Payable 3210 instead of old 3110
+  - Progress Claim: Output VAT 3110 instead of old 3200
+  - Expense: Input VAT 3120 instead of old 1400
+  - Supplier Payment: Suppliers Payable 3210 instead of old 3110
+  - Subcontractor Invoice: Input VAT 3120 instead of old 1400, Subcontractors Payable 3220 instead of old 3120
+  - Rental Invoice: Output VAT 3110 instead of old 3200
+  - Delivery Fees: Output VAT 3110 instead of old 3200
+- Added new auto-entry functions:
+  - autoEntryVATDeclaration: Dr Output VAT 3110 / Cr Input VAT 3120 / Cr VAT Due 3130
+  - autoEntryVATPayment: Dr VAT Due 3130 / Cr Bank 1120
+- Updated category maps to use new account codes (FUEL→7210, DRIVERS→7230)
+- Added DRIVERS to ExpenseCategory enum in Prisma schema
+- Updated API routes:
+  - dashboard/route.ts: VAT position uses 3110/3120/3130
+  - financial-summary/route.ts: AP balance uses 3210, VAT uses 3110/3120/3130
+- Fixed print-service.ts: Replaced invalid import of formatAmount from ./utils with inline function
+- Fixed print/route.ts: Replaced non-existent fetchPrintPageData with actual DB queries
+- Fixed seed/route.ts: Added GoodsReceipt deletion, fixed Employee profession field, fixed VAT expense query
+- Pushed Prisma schema and reinitialized Chart of Accounts (151 accounts)
+- Seeded demo data successfully: 5 clients, 5 suppliers, 4 subcontractors, 5 employees, 3 projects, 3 contracts, 11 BOQ items, 5 progress claims, 4 sales invoices, 2 purchase orders, 2 purchase invoices, 2 subcontractor invoices, 3 equipment, 5 expenses, 3 inventory items, 3 cost centers, 13 journal entries, 1 VAT return
+
+Stage Summary:
+- Complete Chart of Accounts restructuring with Saudi SOCPA-compliant VAT accounts (3110/3120/3130)
+- All auto-entry functions updated to use new account codes
+- VAT Declaration and Payment journal entry functions added
+- 151 accounts in Chart of Accounts covering Construction and Equipment Rental
+- 13 auto-generated journal entries from seed data
+- Build errors fixed (print-service.ts, print route)
+- Server works but needs stability improvements

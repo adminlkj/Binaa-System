@@ -50,16 +50,17 @@ export async function GET() {
 
     // Specific account balances
     const arBalance = await getAccountBalance('1210')   // Clients Receivable
-    const apBalance = await getAccountBalance('3110')   // Suppliers Payable
+    const apBalance = await getAccountBalance('3210')   // Suppliers Payable (موردون)
     const cashTreasury = await getAccountBalance('1110') // Cash - Treasury
     const cashBank = await getAccountBalance('1120')     // Bank Accounts
     const cashPetty = await getAccountBalance('1130')    // Petty Cash
     const cashBalance = cashTreasury + cashBank + cashPetty
 
     // VAT balances
-    const vatReceivable = await getAccountBalance('1400') // VAT Receivable
-    const vatPayable = await getAccountBalance('3200')    // VAT Payable
-    const vatNet = vatPayable - vatReceivable             // Net VAT payable (positive = owed to tax authority)
+    const outputVat = await getAccountBalance('3110')  // Output VAT (ضريبة مخرجات)
+    const inputVat = await getAccountBalance('3120')    // Input VAT (ضريبة مدخلات)
+    const vatDue = await getAccountBalance('3130')      // VAT Due (ضريبة مستحقة)
+    const vatNet = outputVat - inputVat                // Net VAT position (positive = owed to tax authority)
 
     // Key financial ratios
     const currentRatio = totalLiabilities > 0 ? totalAssets / totalLiabilities : 0
@@ -86,8 +87,9 @@ export async function GET() {
       },
 
       // VAT
-      vatReceivable,
-      vatPayable,
+      outputVat,
+      inputVat,
+      vatDue,
       vatNet,
 
       // Ratios

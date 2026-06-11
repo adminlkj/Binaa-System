@@ -24,6 +24,8 @@ export async function POST() {
     await db.purchaseOrderItem.deleteMany()
 
     // Invoices and orders
+    await db.goodsReceiptItem.deleteMany()
+    await db.goodsReceipt.deleteMany()
     await db.purchaseInvoice.deleteMany()
     await db.purchaseOrder.deleteMany()
     await db.purchaseRequest.deleteMany()
@@ -270,11 +272,11 @@ export async function POST() {
 
     // 9. Employees
     const employees = await Promise.all([
-      db.employee.create({ data: { code: 'EMP-001', name: 'م. عبدالله خالد العتيبي', nameAr: 'م. عبدالله خالد العتيبي', position: 'مهندس مشروع', branchId: branch.id, phone: '0551234567', email: 'a.otibi@erp.sa', isActive: true } }),
-      db.employee.create({ data: { code: 'EMP-002', name: 'فهد محمد الشمري', nameAr: 'فهد محمد الشمري', position: 'مراقب موقع', branchId: branch.id, phone: '0552345678', email: 'f.shamri@erp.sa', isActive: true } }),
-      db.employee.create({ data: { code: 'EMP-003', name: 'سعد ناصر القحطاني', nameAr: 'سعد ناصر القحطاني', position: 'محاسب', branchId: branch.id, phone: '0553456789', email: 's.qahtani@erp.sa', isActive: true } }),
-      db.employee.create({ data: { code: 'EMP-004', name: 'محمد إبراهيم الحربي', nameAr: 'محمد إبراهيم الحربي', position: 'مسؤول مشتريات', branchId: branch.id, phone: '0554567890', email: 'm.harbi@erp.sa', isActive: true } }),
-      db.employee.create({ data: { code: 'EMP-005', name: 'يوسف عبدالرحمن الدوسري', nameAr: 'يوسف عبدالرحمن الدوسري', position: 'مهندس مدني', branchId: branch.id, phone: '0555678901', email: 'y.dosari@erp.sa', isActive: true } }),
+      db.employee.create({ data: { code: 'EMP-001', name: 'م. عبدالله خالد العتيبي', nameAr: 'م. عبدالله خالد العتيبي', profession: 'مهندس مشروع', basicSalary: 15000, branchId: branch.id, phone: '0551234567', email: 'a.otibi@erp.sa', isActive: true } }),
+      db.employee.create({ data: { code: 'EMP-002', name: 'فهد محمد الشمري', nameAr: 'فهد محمد الشمري', profession: 'مراقب موقع', basicSalary: 10000, branchId: branch.id, phone: '0552345678', email: 'f.shamri@erp.sa', isActive: true } }),
+      db.employee.create({ data: { code: 'EMP-003', name: 'سعد ناصر القحطاني', nameAr: 'سعد ناصر القحطاني', profession: 'محاسب', basicSalary: 12000, branchId: branch.id, phone: '0553456789', email: 's.qahtani@erp.sa', isActive: true } }),
+      db.employee.create({ data: { code: 'EMP-004', name: 'محمد إبراهيم الحربي', nameAr: 'محمد إبراهيم الحربي', profession: 'مسؤول مشتريات', basicSalary: 9000, branchId: branch.id, phone: '0554567890', email: 'm.harbi@erp.sa', isActive: true } }),
+      db.employee.create({ data: { code: 'EMP-005', name: 'يوسف عبدالرحمن الدوسري', nameAr: 'يوسف عبدالرحمن الدوسري', profession: 'مهندس مدني', basicSalary: 14000, branchId: branch.id, phone: '0555678901', email: 'y.dosari@erp.sa', isActive: true } }),
     ])
 
     // 10. Projects
@@ -555,7 +557,7 @@ export async function POST() {
       select: { id: true, totalAmount: true, vatAmount: true },
     })
     const vatExpenses = await db.expense.findMany({
-      where: { date: { gte: new Date('2024-07-01'), lte: new Date('2024-09-30') }, vatAmount: { not: null } },
+      where: { date: { gte: new Date('2024-07-01'), lte: new Date('2024-09-30') }, vatAmount: { gt: 0 } },
       select: { id: true, amount: true, vatAmount: true },
     })
 

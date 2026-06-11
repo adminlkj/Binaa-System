@@ -6,7 +6,16 @@
 // Each document gets its own A4 portrait template.
 // ============================================================================
 
-import { formatAmount } from './utils'
+// Inline format function for print service (avoids import from client component)
+function formatAmount(value: number, mode: 'system' | 'official' = 'official'): string {
+  if (mode === 'official') {
+    return value.toFixed(2)
+  }
+  return value.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
 
 export type PrintDocumentType =
   | 'service-invoice'

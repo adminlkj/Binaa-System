@@ -67,7 +67,8 @@ export const CHART_OF_ACCOUNTS_TEMPLATE: AccountTemplate[] = [
       { code: '1330', name: 'Spare Parts', nameAr: 'قطع غيار', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
       { code: '1340', name: 'Consumable Supplies', nameAr: 'لوازم مستهلكة', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'BOTH' },
       { code: '1350', name: 'Equipment Available for Rent', nameAr: 'معدات جاهزة للتأجير', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
-    { code: '1400', name: 'VAT Receivable', nameAr: 'ضريبة القيمة المضافة مستحقة الاسترداد', type: 'ASSET', parentId: '1000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+    { code: '1400', name: 'Input VAT (Asset)', nameAr: 'ضريبة مدخلات (أصل)', type: 'ASSET', parentId: '1000', allowPosting: false, isSystem: true, level: 1, activityType: 'BOTH' },
+      { code: '1410', name: 'VAT Refund Receivable', nameAr: 'ضريبة مستحقة الاسترداد', type: 'ASSET', parentId: '1400', allowPosting: true, level: 2, activityType: 'BOTH' },
     { code: '1500', name: 'Prepaid Expenses', nameAr: 'مصروفات مقدمة', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
       { code: '1510', name: 'Prepaid Rent', nameAr: 'إيجار مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
       { code: '1520', name: 'Prepaid Insurance', nameAr: 'تأمين مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
@@ -103,10 +104,13 @@ export const CHART_OF_ACCOUNTS_TEMPLATE: AccountTemplate[] = [
   // الخصوم المتداولة - Current Liabilities (3xxx)
   // ============================================================================
   { code: '3000', name: 'Current Liabilities', nameAr: 'الخصوم المتداولة', type: 'LIABILITY', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
-    { code: '3100', name: 'Accounts Payable', nameAr: 'الذمم الدائنة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
-      { code: '3110', name: 'Suppliers Payable', nameAr: 'موردون', type: 'LIABILITY', parentId: '3100', allowPosting: true, level: 2, activityType: 'BOTH' },
-      { code: '3120', name: 'Subcontractors Payable', nameAr: 'مقاولو الباطن', type: 'LIABILITY', parentId: '3100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
-    { code: '3200', name: 'VAT Payable', nameAr: 'ضريبة القيمة المضافة مستحقة الدفع', type: 'LIABILITY', parentId: '3000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+    { code: '3100', name: 'Taxes', nameAr: 'الضرائب', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+      { code: '3110', name: 'Output VAT', nameAr: 'ضريبة مخرجات', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+      { code: '3120', name: 'Input VAT', nameAr: 'ضريبة مدخلات', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+      { code: '3130', name: 'VAT Due', nameAr: 'ضريبة مستحقة', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+    { code: '3200', name: 'Accounts Payable', nameAr: 'الذمم الدائنة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+      { code: '3210', name: 'Suppliers Payable', nameAr: 'موردون', type: 'LIABILITY', parentId: '3200', allowPosting: true, level: 2, activityType: 'BOTH' },
+      { code: '3220', name: 'Subcontractors Payable', nameAr: 'مقاولو الباطن', type: 'LIABILITY', parentId: '3200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
     { code: '3300', name: 'Accrued Expenses', nameAr: 'مصروفات مستحقة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
       { code: '3310', name: 'Salaries Payable', nameAr: 'رواتب مستحقة', type: 'LIABILITY', parentId: '3300', allowPosting: true, level: 2, activityType: 'BOTH' },
       { code: '3320', name: 'Other Accrued Expenses', nameAr: 'مصروفات مستحقة أخرى', type: 'LIABILITY', parentId: '3300', allowPosting: true, level: 2, activityType: 'BOTH' },
@@ -181,10 +185,10 @@ export const CHART_OF_ACCOUNTS_TEMPLATE: AccountTemplate[] = [
       { code: '7170', name: 'Testing & Commissioning', nameAr: 'اختبارات وتشغيل تجريبي', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
       { code: '7180', name: 'Project Overhead', nameAr: 'مصروفات عامة مشاريع', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
     { code: '7200', name: 'Equipment Costs', nameAr: 'تكاليف المعدات', type: 'EXPENSE', parentId: '7000', allowPosting: false, level: 1, activityType: 'EQUIPMENT_RENTAL' },
-      { code: '7210', name: 'Equipment Operation Costs', nameAr: 'تكاليف تشغيل المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+      { code: '7210', name: 'Equipment Fuel', nameAr: 'وقود المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
       { code: '7220', name: 'Equipment Maintenance', nameAr: 'صيانة المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
-      { code: '7230', name: 'Equipment Fuel', nameAr: 'وقود المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
-      { code: '7240', name: 'Delivery & Transport Costs', nameAr: 'تكاليف نقل وتوصيل', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+      { code: '7230', name: 'Driver Costs', nameAr: 'تكاليف السائقين', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+      { code: '7240', name: 'Equipment Transport Costs', nameAr: 'تكاليف نقل المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
       { code: '7250', name: 'Rental Equipment Depreciation', nameAr: 'إهلاك معدات التأجير', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
     { code: '7300', name: 'Rental Project Costs', nameAr: 'تكاليف مشاريع التأجير', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'EQUIPMENT_RENTAL' },
     { code: '7400', name: 'Project Insurance', nameAr: 'تأمين مشاريع', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'CONSTRUCTION' },
@@ -437,9 +441,9 @@ export async function autoEntrySalesInvoice(data: {
     { accountCode: revenueAccountCode, debit: 0, credit: data.subtotal, costCenterId: data.costCenterId }, // Revenue
   ]
 
-  // Add VAT line only if VAT > 0
+  // Add VAT line only if VAT > 0 (Output VAT)
   if (data.vatAmount > 0) {
-    lines.push({ accountCode: '3200', debit: 0, credit: data.vatAmount }) // VAT Payable
+    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
   }
 
   return createJournalEntry({
@@ -479,7 +483,8 @@ export async function autoEntryPurchaseInvoice(data: {
       'CONSUMABLES': '7110',
       'SERVICES': data.activityType === 'EQUIPMENT_RENTAL' ? '7210' : '7130',
       'MAINTENANCE': '7220',
-      'FUEL': '7230',
+      'FUEL': '7210',
+      'DRIVERS': '7230',
       'TRANSPORT': '7240',
       'DELIVERY': '7240',
       'RENT': '8120',
@@ -502,10 +507,10 @@ export async function autoEntryPurchaseInvoice(data: {
   ]
 
   if (data.vatAmount > 0) {
-    lines.push({ accountCode: '1400', debit: data.vatAmount, credit: 0 }) // VAT Receivable
+    lines.push({ accountCode: '3120', debit: data.vatAmount, credit: 0 }) // Input VAT (ضريبة مدخلات)
   }
 
-  lines.push({ accountCode: '3110', debit: 0, credit: data.totalAmount }) // Suppliers Payable
+  lines.push({ accountCode: '3210', debit: 0, credit: data.totalAmount }) // Suppliers Payable (موردون)
 
   return createJournalEntry({
     entryNo: `JE-PI-${Date.now()}`,
@@ -541,7 +546,7 @@ export async function autoEntryProgressClaim(data: {
   ]
 
   if (data.vatAmount > 0) {
-    lines.push({ accountCode: '3200', debit: 0, credit: data.vatAmount }) // VAT Payable
+    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
   }
 
   return createJournalEntry({
@@ -574,7 +579,8 @@ export async function autoEntryExpense(data: {
     'CONSUMABLES': '7110',
     'SERVICES': '7130',
     'MAINTENANCE': '7220',
-    'FUEL': '7230',
+    'FUEL': '7210',
+    'DRIVERS': '7230',
     'TRANSPORT': '7240',
     'DELIVERY': '7240',
     'RENT': '8120',
@@ -599,7 +605,7 @@ export async function autoEntryExpense(data: {
   ]
 
   if (data.vatAmount && data.vatAmount > 0) {
-    lines.push({ accountCode: '1400', debit: data.vatAmount, credit: 0 })
+    lines.push({ accountCode: '3120', debit: data.vatAmount, credit: 0 }) // Input VAT (ضريبة مدخلات)
   }
 
   lines.push({ accountCode: cashAccountCode, debit: 0, credit: totalCashOut })
@@ -663,7 +669,7 @@ export async function autoEntrySupplierPayment(data: {
     description: `Payment to ${data.supplierName}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
     descriptionAr: `دفع إلى ${data.supplierName}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
     lines: [
-      { accountCode: '3110', debit: data.amount, credit: 0 }, // Suppliers Payable
+      { accountCode: '3210', debit: data.amount, credit: 0 }, // Suppliers Payable (موردون)
       { accountCode: cashAccountCode, debit: 0, credit: data.amount },
     ],
     sourceType: 'SUPPLIER_PAYMENT',
@@ -740,10 +746,10 @@ export async function autoEntrySubcontractorInvoice(data: {
   ]
 
   if (data.vatAmount > 0) {
-    lines.push({ accountCode: '1400', debit: data.vatAmount, credit: 0 }) // VAT Receivable
+    lines.push({ accountCode: '3120', debit: data.vatAmount, credit: 0 }) // Input VAT (ضريبة مدخلات)
   }
 
-  lines.push({ accountCode: '3120', debit: 0, credit: data.totalAmount }) // Subcontractors Payable
+  lines.push({ accountCode: '3220', debit: 0, credit: data.totalAmount }) // Subcontractors Payable (مقاولو الباطن)
 
   return createJournalEntry({
     entryNo: `JE-SCI-${Date.now()}`,
@@ -795,7 +801,7 @@ export async function autoEntryEquipmentCost(data: {
  * إيراد تأجير - Rental Invoice (from Timesheet)
  * Dr: Clients Receivable (1210)
  * Cr: Equipment Rental Revenue (6210)
- * Cr: VAT Payable (3200)
+ * Cr: Output VAT (3110)
  */
 export async function autoEntryRentalInvoice(data: {
   invoiceNo: string
@@ -811,7 +817,7 @@ export async function autoEntryRentalInvoice(data: {
   ]
 
   if (data.vatAmount > 0) {
-    lines.push({ accountCode: '3200', debit: 0, credit: data.vatAmount }) // VAT Payable
+    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
   }
 
   return createJournalEntry({
@@ -1011,7 +1017,7 @@ export async function autoEntryDeliveryFees(data: {
   ]
 
   if (data.vatAmount > 0) {
-    lines.push({ accountCode: '3200', debit: 0, credit: data.vatAmount }) // VAT Payable
+    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
   }
 
   return createJournalEntry({
@@ -1167,6 +1173,78 @@ export async function autoEntryAssetDisposal(data: {
     lines,
     sourceType: 'ASSET_DISPOSAL',
     sourceId: `DSP-${Date.now()}`,
+  })
+}
+
+// ============ VAT DECLARATION & PAYMENT ============
+
+/**
+ * إقرار ضريبي - VAT Declaration
+ * Dr: Output VAT (3110) - total output VAT
+ * Cr: Input VAT (3120) - total input VAT
+ * Cr: VAT Due (3130) - net VAT payable (if output > input)
+ * OR
+ * Dr: Input VAT (3120) - if input > output (refund scenario)
+ * Cr: Output VAT (3110)
+ * Dr: VAT Refund Receivable (1410) - if refund due
+ */
+export async function autoEntryVATDeclaration(data: {
+  period: string
+  outputVat: number
+  inputVat: number
+  netVat: number // positive = payable, negative = refundable
+  date: Date
+}) {
+  const lines: { accountCode: string; debit: number; credit: number }[] = []
+
+  // Close Output VAT (3110) - debit to zero it out
+  lines.push({ accountCode: '3110', debit: data.outputVat, credit: 0 })
+
+  // Close Input VAT (3120) - credit to zero it out
+  lines.push({ accountCode: '3120', debit: 0, credit: data.inputVat })
+
+  // Net VAT position
+  if (data.netVat > 0) {
+    // More output than input → owe VAT
+    lines.push({ accountCode: '3130', debit: 0, credit: data.netVat }) // VAT Due
+  } else if (data.netVat < 0) {
+    // More input than output → refund due
+    lines.push({ accountCode: '1410', debit: Math.abs(data.netVat), credit: 0 }) // VAT Refund Receivable
+  }
+
+  return createJournalEntry({
+    entryNo: `JE-VAT-${Date.now()}`,
+    date: data.date,
+    description: `VAT Declaration - ${data.period}`,
+    descriptionAr: `إقرار ضريبي - ${data.period}`,
+    lines,
+    sourceType: 'VAT_DECLARATION',
+    sourceId: `VAT-${data.period}`,
+  })
+}
+
+/**
+ * سداد الضريبة - VAT Payment
+ * Dr: VAT Due (3130)
+ * Cr: Bank (1120)
+ */
+export async function autoEntryVATPayment(data: {
+  period: string
+  amount: number
+  date: Date
+  reference?: string
+}) {
+  return createJournalEntry({
+    entryNo: `JE-VTP-${Date.now()}`,
+    date: data.date,
+    description: `VAT Payment - ${data.period}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
+    descriptionAr: `سداد ضريبي - ${data.period}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
+    lines: [
+      { accountCode: '3130', debit: data.amount, credit: 0 }, // VAT Due (ضريبة مستحقة)
+      { accountCode: '1120', debit: 0, credit: data.amount }, // Bank (البنك)
+    ],
+    sourceType: 'VAT_PAYMENT',
+    sourceId: `VTP-${data.period}`,
   })
 }
 
