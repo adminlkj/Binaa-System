@@ -223,7 +223,7 @@ function TableSkeleton({ rows = 3 }: { rows?: number }) {
 
 // ============ Company Settings Tab ============
 function CompanySettingsTab() {
-  const { lang, setCurrencySymbol, setCurrencySymbolImage, setThousandSeparatorSettings: updateStoreSeparators } = useAppStore()
+  const { lang, setCurrencySymbolImage, setThousandSeparatorSettings: updateStoreSeparators } = useAppStore()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<CompanySettings>({
     nameAr: '',
@@ -306,13 +306,9 @@ function CompanySettingsTab() {
         return r.json()
       }),
     onSuccess: (data) => {
+      // Reset the loaded ref so form will re-sync with fresh data
+      settingsLoadedRef.current = false
       queryClient.invalidateQueries({ queryKey: ['company-settings'] })
-      // Update global currency symbols
-      setCurrencySymbol(
-        data.currencySymbol || '\uFDFC',
-        data.currencySymbolEn || 'SAR',
-        data.currencySymbolAr || 'ر.س'
-      )
       // Update currency symbol image in global store
       setCurrencySymbolImage(data.currencySymbolImage || null)
       // Update thousand separator settings in global store
