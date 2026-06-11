@@ -21,12 +21,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
-import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+import { useAppStore, formatDate, formatNumber, commonText } from '@/stores/app-store'
 
 // ============ Arabic/English Month Names ============
 const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
@@ -513,20 +512,20 @@ export function RentalInvoicesModule() {
   // Filters
   const filtered = invoices.filter(inv => {
     const matchSearch = !search || inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
-      inv.client.name.toLowerCase().includes(search.toLowerCase()) ||
+      inv.client?.name?.toLowerCase().includes(search.toLowerCase()) ||
       (inv.project?.name?.toLowerCase().includes(search.toLowerCase()))
     const matchStatus = statusFilter === 'all' || inv.status === statusFilter
     return matchSearch && matchStatus
   })
 
-  const totalRevenue = invoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+  const totalRevenue = invoices.reduce((s, i) => s + (i.totalAmount ?? 0), 0)
+  const totalPaid = invoices.reduce((s, i) => s + (i.paidAmount ?? 0), 0)
   const totalOutstanding = totalRevenue - totalPaid
 
   const handleExport = () => {
     const csv = [
       [t('رقم الفاتورة', 'Invoice No'), t('العميل', 'Client'), t('المشروع', 'Project'), t('التاريخ', 'Date'), t('الإجمالي', 'Total'), t('المدفوع', 'Paid'), t('المتبقي', 'Outstanding'), t('الحالة', 'Status')].join(','),
-      ...filtered.map(inv => [inv.invoiceNo, `"${inv.client.name}"`, `"${inv.project?.name || ''}"`, formatDate(inv.date, lang), inv.totalAmount.toFixed(2), inv.paidAmount.toFixed(2), (inv.totalAmount - inv.paidAmount).toFixed(2), inv.status].join(','))
+      ...filtered.map(inv => [inv.invoiceNo, `"${inv.client?.name || ''}"`, `"${inv.project?.name || ''}"`, formatDate(inv.date, lang), (inv.totalAmount ?? 0).toFixed(2), (inv.paidAmount ?? 0).toFixed(2), ((inv.totalAmount ?? 0) - (inv.paidAmount ?? 0)).toFixed(2), inv.status].join(','))
     ].join('\n')
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
@@ -568,7 +567,7 @@ export function RentalInvoicesModule() {
               <h2 className="text-xl font-bold">{t('فاتورة إيجار', 'Rental Invoice')} {invoice.invoiceNo}</h2>
               <StatusBadge status={invoice.status} lang={lang} />
             </div>
-            <p className="text-sm text-muted-foreground">{invoice.client.name}</p>
+            <p className="text-sm text-muted-foreground">{invoice.client?.name || '—'}</p>
           </div>
           <div className="flex items-center gap-2">
             <PrintButton type="rental-invoice" documentId={invoice.id} />
@@ -598,7 +597,7 @@ export function RentalInvoicesModule() {
 
         {/* Info Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.client.ar, labels.client.en)}</p><p className="text-sm font-medium truncate">{invoice.client.name}</p></CardContent></Card>
+          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.client.ar, labels.client.en)}</p><p className="text-sm font-medium truncate">{invoice.client?.name || '—'}</p></CardContent></Card>
           <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.project.ar, labels.project.en)}</p><p className="text-sm font-medium truncate">{invoice.project?.name || '—'}</p></CardContent></Card>
           <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.date.ar, labels.date.en)}</p><p className="text-sm font-medium">{formatDate(invoice.date, lang)}</p></CardContent></Card>
           <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.dueDate.ar, labels.dueDate.en)}</p><p className="text-sm font-medium">{formatDate(invoice.dueDate, lang)}</p></CardContent></Card>
@@ -659,7 +658,7 @@ export function RentalInvoicesModule() {
                     </TableRow>
                   )}
                   <TableRow className="bg-gray-50">
-                    <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({(invoice.vatRate * 100).toFixed(0)}%)</TableCell>
+                    <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({((invoice.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
                     <TableCell className="font-semibold"><MoneyDisplay value={invoice.vatAmount} lang={lang} size="sm" inline /></TableCell>
                   </TableRow>
                   <TableRow className="bg-emerald-50">
@@ -672,7 +671,7 @@ export function RentalInvoicesModule() {
                   </TableRow>
                   <TableRow className="bg-rose-50">
                     <TableCell colSpan={3} className="text-left font-bold text-rose-700">{t(labels.outstanding.ar, labels.outstanding.en)}</TableCell>
-                    <TableCell className="font-bold text-rose-700"><MoneyDisplay value={invoice.totalAmount - invoice.paidAmount} lang={lang} size="md" inline bold /></TableCell>
+                    <TableCell className="font-bold text-rose-700"><MoneyDisplay value={(invoice.totalAmount ?? 0) - (invoice.paidAmount ?? 0)} lang={lang} size="md" inline bold /></TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -837,7 +836,7 @@ export function RentalInvoicesModule() {
                   {filtered.map(inv => (
                     <TableRow key={inv.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })}>
                       <TableCell className="font-medium font-mono">{inv.invoiceNo}</TableCell>
-                      <TableCell>{inv.client.name}</TableCell>
+                      <TableCell>{inv.client?.name || '—'}</TableCell>
                       <TableCell>{inv.project?.name || '—'}</TableCell>
                       <TableCell>{inv.equipmentName || '—'}</TableCell>
                       <TableCell>{inv.deliveryMonth || '—'}</TableCell>

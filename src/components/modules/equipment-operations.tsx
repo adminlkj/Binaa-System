@@ -193,7 +193,7 @@ export function EquipmentOperationsModule() {
   const getOpCost = (op: EquipmentOperation) => op.hours * (op.equipment.hourlyRate || 0)
 
   const totalCost = filtered.reduce((sum, op) => sum + getOpCost(op), 0)
-  const totalHours = filtered.reduce((sum, op) => sum + op.hours, 0)
+  const totalHours = filtered.reduce((sum, op) => sum + (op.hours ?? 0), 0)
 
   const printData = {
     columns: [
@@ -275,7 +275,7 @@ export function EquipmentOperationsModule() {
         <Card className="bg-teal-50 border-teal-200">
           <CardContent className="p-3 text-center">
             <p className="text-xs text-teal-600">{t('إجمالي الساعات', 'Total Hours', lang)}</p>
-            <p className="text-xl font-bold text-teal-700">{totalHours.toFixed(1)} {t('ساعة', 'hrs', lang)}</p>
+            <p className="text-xl font-bold text-teal-700">{(totalHours ?? 0).toFixed(1)} {t('ساعة', 'hrs', lang)}</p>
           </CardContent>
         </Card>
         <Card className="bg-amber-50 border-amber-200">
@@ -301,7 +301,7 @@ export function EquipmentOperationsModule() {
                 {projectCosts.map(p => (
                   <TableRow key={p.name}>
                     <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{p.hours.toFixed(1)} {t('ساعة', 'hrs', lang)}</TableCell>
+                    <TableCell>{(p.hours ?? 0).toFixed(1)} {t('ساعة', 'hrs', lang)}</TableCell>
                     <TableCell><MoneyDisplay value={p.cost} lang={lang} size="sm" bold /></TableCell>
                   </TableRow>
                 ))}

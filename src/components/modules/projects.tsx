@@ -600,7 +600,7 @@ function CostSheetView({ costSheet, projectName, lang }: { costSheet: CostSheet;
             <div className={`text-center rounded-xl px-6 py-3 ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
               <p className="text-xs font-medium text-gray-500 mb-1">{t('هامش الربح', 'Profit Margin')}</p>
               <p className={`text-3xl font-bold ${profitColor}`}>
-                {Math.abs(costSheet.profitMargin).toFixed(2)}%
+                {Math.abs(costSheet.profitMargin ?? 0).toFixed(2)}%
               </p>
             </div>
           </div>
@@ -742,12 +742,12 @@ function WorkflowChainView({ project, lang }: { project: ProjectDetail; lang: 'a
 function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
-  const purchaseTotal = project.purchaseInvoices.reduce((s, p) => s + p.totalAmount, 0)
-  const expenseTotal = project.expenses.reduce((s, e) => s + e.totalAmount, 0)
-  const laborTotal = project.laborCosts.reduce((s, l) => s + l.totalAmount, 0)
-  const equipmentTotal = project.equipmentCosts.reduce((s, e) => s + e.amount, 0) +
-    project.equipmentUsages.reduce((s, e) => s + e.cost, 0)
-  const subcontractorTotal = project.subcontractorInvoices.reduce((s, si) => s + si.totalAmount, 0)
+  const purchaseTotal = project.purchaseInvoices.reduce((s, p) => s + (p.totalAmount ?? 0), 0)
+  const expenseTotal = project.expenses.reduce((s, e) => s + (e.totalAmount ?? 0), 0)
+  const laborTotal = project.laborCosts.reduce((s, l) => s + (l.totalAmount ?? 0), 0)
+  const equipmentTotal = project.equipmentCosts.reduce((s, e) => s + (e.amount ?? 0), 0) +
+    project.equipmentUsages.reduce((s, e) => s + (e.cost ?? 0), 0)
+  const subcontractorTotal = project.subcontractorInvoices.reduce((s, si) => s + (si.totalAmount ?? 0), 0)
 
   const categories = [
     { key: 'purchases', label: t('فواتير المشتريات', 'Purchase Invoices'), count: project.purchaseInvoices.length, total: purchaseTotal, color: 'bg-rose-50 border-rose-200', badge: 'bg-rose-100 text-rose-700' },
@@ -1031,11 +1031,11 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
 function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
-  const extractsTotal = project.progressClaims.reduce((s, c) => s + c.totalAmount, 0)
-  const invoicesTotal = project.salesInvoices.reduce((s, si) => s + si.totalAmount, 0)
-  const paidTotal = project.salesInvoices.reduce((s, si) => s + si.paidAmount, 0)
+  const extractsTotal = project.progressClaims.reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+  const invoicesTotal = project.salesInvoices.reduce((s, si) => s + (si.totalAmount ?? 0), 0)
+  const paidTotal = project.salesInvoices.reduce((s, si) => s + (si.paidAmount ?? 0), 0)
   const collectionsTotal = project.salesInvoices.reduce((s, si) =>
-    s + si.clientPayments.reduce((ps, cp) => ps + cp.amount, 0), 0)
+    s + si.clientPayments.reduce((ps, cp) => ps + (cp.amount ?? 0), 0), 0)
 
   return (
     <div className="space-y-4">

@@ -8,8 +8,8 @@ export async function GET(request: Request) {
     const sourceType = searchParams.get('sourceType')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1)
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
     const search = searchParams.get('search')
 
     // Build where clause

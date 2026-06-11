@@ -296,7 +296,7 @@ export function SupplierPaymentsModule() {
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'supplierName', label: t('المورد', 'Supplier', lang) },
-      { key: 'amount', label: t('المبلغ', 'Amount', lang), format: (v) => Number(v).toFixed(2) },
+      { key: 'amount', label: t('المبلغ', 'Amount', lang), format: (v) => (Number(v) || 0).toFixed(2) },
       { key: 'date', label: t('التاريخ', 'Date', lang) },
       { key: 'paidFrom', label: t('طريقة الدفع', 'Paid From', lang) },
       { key: 'paymentMethod', label: t('وسيلة الدفع', 'Payment Method', lang) },

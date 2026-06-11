@@ -582,7 +582,7 @@ export function ServiceInvoicesModule() {
                 {serviceStatusLabels[invoice.status]}
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground">{invoice.client.name}</p>
+            <p className="text-sm text-muted-foreground">{invoice.client?.name || '—'}</p>
           </div>
           <Button variant="outline" className="gap-2" onClick={() => setViewState({ type: 'preview', invoiceId: invoice.id })}>
             <Printer className="size-4" />
@@ -594,7 +594,7 @@ export function ServiceInvoicesModule() {
           <Card>
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground">{t('العميل', 'Client')}</p>
-              <p className="text-sm font-medium truncate">{invoice.client.name}</p>
+              <p className="text-sm font-medium truncate">{invoice.client?.name || '—'}</p>
             </CardContent>
           </Card>
           <Card>
@@ -647,14 +647,14 @@ export function ServiceInvoicesModule() {
                     <TableCell colSpan={4} className="text-left font-medium">{t('المجموع قبل الضريبة', 'Subtotal')}</TableCell>
                     <TableCell className="font-semibold">{formatSAR(invoice.subtotal, lang)}</TableCell>
                   </TableRow>
-                  {invoice.discountAmount > 0 && (
+                  {(invoice.discountAmount ?? 0) > 0 && (
                     <TableRow className="bg-rose-50">
                       <TableCell colSpan={4} className="text-left font-medium text-rose-700">{t('الخصم', 'Discount')}</TableCell>
                       <TableCell className="font-semibold text-rose-700">-{formatSAR(invoice.discountAmount, lang)}</TableCell>
                     </TableRow>
                   )}
                   <TableRow className="bg-gray-50">
-                    <TableCell colSpan={4} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({(invoice.vatRate * 100).toFixed(0)}%)</TableCell>
+                    <TableCell colSpan={4} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({((invoice.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
                     <TableCell className="font-semibold">{formatSAR(invoice.vatAmount, lang)}</TableCell>
                   </TableRow>
                   <TableRow className="bg-emerald-50">
@@ -667,7 +667,7 @@ export function ServiceInvoicesModule() {
                   </TableRow>
                   <TableRow className="bg-rose-50">
                     <TableCell colSpan={4} className="text-left font-bold text-rose-700">{t('المتبقي', 'Outstanding')}</TableCell>
-                    <TableCell className="font-bold text-rose-700">{formatSAR(invoice.totalAmount - invoice.paidAmount, lang)}</TableCell>
+                    <TableCell className="font-bold text-rose-700">{formatSAR((invoice.totalAmount ?? 0) - (invoice.paidAmount ?? 0), lang)}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -690,20 +690,20 @@ export function ServiceInvoicesModule() {
   // ============ LIST VIEW ============
   const filtered = invoices.filter(inv => {
     const matchSearch = !search || inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
-      inv.client.name.toLowerCase().includes(search.toLowerCase()) ||
+      inv.client?.name?.toLowerCase().includes(search.toLowerCase()) ||
       (inv.project?.name?.toLowerCase().includes(search.toLowerCase()))
     const matchStatus = statusFilter === 'all' || inv.status === statusFilter
     return matchSearch && matchStatus
   })
 
-  const totalRevenue = invoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+  const totalRevenue = invoices.reduce((s, i) => s + (i.totalAmount ?? 0), 0)
+  const totalPaid = invoices.reduce((s, i) => s + (i.paidAmount ?? 0), 0)
   const totalOutstanding = totalRevenue - totalPaid
 
   const handleExport = () => {
     const csv = [
       [t('رقم الفاتورة', 'Invoice No'), t('العميل', 'Client'), t('المشروع', 'Project'), t('التاريخ', 'Date'), t('الإجمالي', 'Total'), t('المدفوع', 'Paid'), t('المتبقي', 'Outstanding'), t('الحالة', 'Status')].join(','),
-      ...filtered.map(inv => [inv.invoiceNo, `"${inv.client.name}"`, `"${inv.project?.name || ''}"`, formatDate(inv.date, lang), inv.totalAmount.toFixed(2), inv.paidAmount.toFixed(2), (inv.totalAmount - inv.paidAmount).toFixed(2), inv.status].join(','))
+      ...filtered.map(inv => [inv.invoiceNo, `"${inv.client?.name || ''}"`, `"${inv.project?.name || ''}"`, formatDate(inv.date, lang), (inv.totalAmount ?? 0).toFixed(2), (inv.paidAmount ?? 0).toFixed(2), ((inv.totalAmount ?? 0) - (inv.paidAmount ?? 0)).toFixed(2), inv.status].join(','))
     ].join('\n')
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
@@ -815,7 +815,7 @@ export function ServiceInvoicesModule() {
                   {filtered.map(inv => (
                     <TableRow key={inv.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })}>
                       <TableCell className="font-medium font-mono">{inv.invoiceNo}</TableCell>
-                      <TableCell>{inv.client.name}</TableCell>
+                      <TableCell>{inv.client?.name || '—'}</TableCell>
                       <TableCell>{inv.project?.name || '—'}</TableCell>
                       <TableCell>{formatDate(inv.date, lang)}</TableCell>
                       <TableCell className="font-semibold">

@@ -12,7 +12,7 @@ export async function GET(
       where: { id },
       include: {
         client: { select: { id: true, name: true, code: true } },
-        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
+        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true, sourceType: true, invoiceType: true } },
       },
     })
 
@@ -64,7 +64,7 @@ export async function PATCH(
       data: updateData,
       include: {
         client: { select: { id: true, name: true, code: true } },
-        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
+        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true, sourceType: true, invoiceType: true } },
       },
     })
 
@@ -108,7 +108,8 @@ export async function DELETE(
         let newStatus = invoice.status
 
         if (newPaidAmount <= 0) {
-          newStatus = 'DRAFT'
+          // Revert to SENT status (not DRAFT) since invoice was already issued
+          newStatus = 'SENT'
         } else if (newPaidAmount < invoice.totalAmount) {
           newStatus = 'PARTIALLY_PAID'
         }

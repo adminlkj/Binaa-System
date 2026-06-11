@@ -375,11 +375,11 @@ function ContractFormPage({
               <div className="space-y-2">
                 <Label>{t(labels.vatRate.ar, labels.vatRate.en)}</Label>
                 <Input type="number" step="0.01" value={form.vatRate} onChange={e => setForm(f => ({ ...f, vatRate: e.target.value }))} dir="ltr" />
-                <p className="text-xs text-muted-foreground">({(rate * 100).toFixed(0)}%)</p>
+                <p className="text-xs text-muted-foreground">({((rate ?? 0) * 100).toFixed(0)}%)</p>
               </div>
               <div className="space-y-2">
                 <Label>{t(labels.vatAmount.ar, labels.vatAmount.en)}</Label>
-                <Input value={vatAmount.toFixed(2)} readOnly className="bg-gray-50" dir="ltr" />
+                <Input value={(vatAmount ?? 0).toFixed(2)} readOnly className="bg-gray-50" dir="ltr" />
                 <p className="text-xs text-muted-foreground">{t('محسوب تلقائياً', 'Auto-calculated')}</p>
               </div>
             </div>
@@ -394,7 +394,7 @@ function ContractFormPage({
                       <MoneyDisplay value={val} lang={lang} bold size="md" className="justify-center" />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground">{t('الضريبة', 'VAT')} ({(rate * 100).toFixed(0)}%)</p>
+                      <p className="text-xs text-muted-foreground">{t('الضريبة', 'VAT')} ({((rate ?? 0) * 100).toFixed(0)}%)</p>
                       <MoneyDisplay value={vatAmount} lang={lang} bold size="md" className="justify-center" />
                     </div>
                     <div>
@@ -634,15 +634,15 @@ export function ContractsModule() {
     clientId: c.clientId || '',
     contractNo: c.contractNo,
     date: c.date?.split('T')[0] || '',
-    value: c.value.toString(),
-    vatRate: c.vatRate.toString(),
+    value: (c.value ?? 0).toString(),
+    vatRate: (c.vatRate ?? 0).toString(),
     startDate: c.startDate?.split('T')[0] || '',
     endDate: c.endDate?.split('T')[0] || '',
     status: c.status,
     description: c.description || '',
     contractType: c.contractType || 'PROJECT',
     hourlyRate: c.hourlyRate?.toString() || '',
-    deliveryFees: c.deliveryFees.toString(),
+    deliveryFees: (c.deliveryFees ?? 0).toString(),
     deliveryFeesTaxable: c.deliveryFeesTaxable,
     paymentTerms: c.paymentTerms || '',
     salesOrderNo: c.salesOrderNo || '',

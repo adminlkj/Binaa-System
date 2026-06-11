@@ -470,7 +470,7 @@ function PODetailView({ id, onBack }: { id: string; onBack: () => void }) {
                   <TableCell className="font-semibold"><MoneyDisplay value={order.subtotal} mode="system" lang={lang} size="sm" /></TableCell>
                 </TableRow>
                 <TableRow className="bg-gray-50">
-                  <TableCell colSpan={4} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT', lang)} ({(order.vatRate * 100).toFixed(0)}%)</TableCell>
+                  <TableCell colSpan={4} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT', lang)} ({((order.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
                   <TableCell className="font-semibold"><MoneyDisplay value={order.vatAmount} mode="system" lang={lang} size="sm" /></TableCell>
                 </TableRow>
                 <TableRow className="bg-emerald-50">
@@ -596,7 +596,7 @@ export function PurchaseOrdersModule() {
     return matchSearch && matchStatus
   })
 
-  const totalPOAmount = purchaseOrders.reduce((s, o) => s + o.totalAmount, 0)
+  const totalPOAmount = purchaseOrders.reduce((s, o) => s + (o.totalAmount ?? 0), 0)
   const approvedCount = purchaseOrders.filter(o => o.status === 'APPROVED').length
   const pendingCount = purchaseOrders.filter(o => o.status === 'PENDING_APPROVAL' || o.status === 'DRAFT').length
 
@@ -606,7 +606,7 @@ export function PurchaseOrdersModule() {
       { key: 'supplierName', label: t('المورد', 'Supplier', lang) },
       { key: 'projectName', label: t('المشروع', 'Project', lang) },
       { key: 'date', label: t('التاريخ', 'Date', lang) },
-      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), format: (v) => Number(v).toFixed(2) },
+      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), format: (v) => (Number(v) || 0).toFixed(2) },
       { key: 'status', label: t('الحالة', 'Status', lang) },
     ]
     exportToCSV(filtered.map(po => ({

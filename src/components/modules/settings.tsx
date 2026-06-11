@@ -626,7 +626,7 @@ function CompanySettingsTab() {
                   dir="ltr"
                 />
                 <span className="text-sm text-muted-foreground whitespace-nowrap">
-                  ({(form.defaultVatRate * 100).toFixed(0)}%)
+                  ({((form.defaultVatRate ?? 0) * 100).toFixed(0)}%)
                 </span>
               </div>
             </div>

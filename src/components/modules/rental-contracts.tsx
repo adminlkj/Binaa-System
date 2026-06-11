@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, RefreshCw, ArrowRight, Calendar,
   DollarSign, Clock, Truck, Info, Eye, Edit3,
-  CheckCircle, XCircle, AlertTriangle, MapPin,
+  CheckCircle, AlertTriangle, MapPin,
   User, Phone, Fuel, Shield, Wrench, Send, Ban,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -387,10 +387,10 @@ export function RentalContractsModule() {
                   <TableBody>
                     {filteredContracts.map(contract => {
                       const pricingLabel = pricingTypeOptions.find(p => p.value === contract.pricingType)
-                      const contractValue = contract.pricingType === 'HOURLY' ? contract.referenceRate
-                        : contract.pricingType === 'DAILY' ? contract.dailyRate
-                        : contract.pricingType === 'MONTHLY' ? contract.monthlyRate
-                        : contract.lumpSumAmount
+                      const contractValue = contract.pricingType === 'HOURLY' ? (contract.referenceRate ?? 0)
+                        : contract.pricingType === 'DAILY' ? (contract.dailyRate ?? 0)
+                        : contract.pricingType === 'MONTHLY' ? (contract.monthlyRate ?? 0)
+                        : (contract.lumpSumAmount ?? 0)
                       return (
                         <TableRow key={contract.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewDetail(contract.id)}>
                           <TableCell className="font-mono font-semibold text-emerald-700">{contract.contractNo}</TableCell>
@@ -922,7 +922,7 @@ function ContractFormView({
                     {t('سعر الساعة (محسوب)', 'Hourly Rate (calculated)', lang)}
                   </Label>
                   <Input
-                    value={calculatedHourlyRate > 0 ? calculatedHourlyRate.toFixed(2) : ''}
+                    value={calculatedHourlyRate > 0 ? (calculatedHourlyRate ?? 0).toFixed(2) : ''}
                     readOnly
                     className="bg-emerald-50 border-emerald-200 font-bold text-emerald-700"
                     dir="ltr"
@@ -1003,7 +1003,7 @@ function ContractFormView({
                     <span className="text-emerald-500">÷</span>
                     <span className="font-semibold text-emerald-800">{formatNumber(refHours)}</span>
                     <span className="text-emerald-500">=</span>
-                    <span className="font-bold text-emerald-900 text-xl">{calculatedHourlyRate.toFixed(2)}</span>
+                    <span className="font-bold text-emerald-900 text-xl">{(calculatedHourlyRate ?? 0).toFixed(2)}</span>
                     <span className="text-emerald-600">{t('﷼', 'SAR', lang)}</span>
                   </div>
                   <p className="text-xs text-emerald-500 mt-1">
@@ -1330,8 +1330,8 @@ function ContractDetailView({
   }
 
   const timesheets = contract.timesheets || []
-  const totalTimesheetAmount = timesheets.reduce((s, ts) => s + ts.totalAmount, 0)
-  const totalWorkedHours = timesheets.reduce((s, ts) => s + ts.workedHours, 0)
+  const totalTimesheetAmount = timesheets.reduce((s, ts) => s + (ts.totalAmount ?? 0), 0)
+  const totalWorkedHours = timesheets.reduce((s, ts) => s + (ts.workedHours ?? 0), 0)
 
   const pricingLabel = pricingTypeOptions.find(p => p.value === contract.pricingType)
   const deliveryLabel = deliveryFeesTypeOptions.find(d => d.value === contract.deliveryFeesType)
@@ -1339,10 +1339,10 @@ function ContractDetailView({
   const fuelLabel = responsibilityOptions.find(f => f.value === contract.fuelResponsibility)
   const insuranceLabel = responsibilityOptions.find(i => i.value === contract.insuranceResponsibility)
 
-  const contractValue = contract.pricingType === 'HOURLY' ? contract.referenceRate
-    : contract.pricingType === 'DAILY' ? contract.dailyRate
-    : contract.pricingType === 'MONTHLY' ? contract.monthlyRate
-    : contract.lumpSumAmount
+  const contractValue = contract.pricingType === 'HOURLY' ? (contract.referenceRate ?? 0)
+    : contract.pricingType === 'DAILY' ? (contract.dailyRate ?? 0)
+    : contract.pricingType === 'MONTHLY' ? (contract.monthlyRate ?? 0)
+    : (contract.lumpSumAmount ?? 0)
 
   return (
     <ModuleLayout
@@ -1547,7 +1547,7 @@ function ContractDetailView({
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
             <DetailRow label={t('رسوم النقل', 'Delivery Fees Type', lang)} value={deliveryLabel ? deliveryLabel[lang] : contract.deliveryFeesType} />
-            {contract.deliveryFeesType !== 'NONE' && (
+            {(contract.deliveryFeesType ?? 'NONE') !== 'NONE' && (
               <>
                 <DetailRow label={t('مبلغ النقل', 'Delivery Amount', lang)} value={<MoneyDisplay value={contract.deliveryFees} lang={lang} size="sm" bold />} />
                 <DetailRow label={t('ضريبة القيمة المضافة', 'VAT Applicable', lang)} value={contract.deliveryFeesTaxable ? t('نعم', 'Yes', lang) : t('لا', 'No', lang)} />

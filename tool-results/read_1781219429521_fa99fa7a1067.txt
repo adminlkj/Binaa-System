@@ -1,0 +1,853 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  CreditCard, Plus, Search, RefreshCw, Eye, ArrowRight, X, Printer,
+     7→  Download, FileText,
+     8→} from 'lucide-react'
+     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import {
+    14→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    15→} from '@/components/ui/table'
+    16→import {
+    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→} from '@/components/ui/select'
+    19→import { Label } from '@/components/ui/label'
+    20→import { Textarea } from '@/components/ui/textarea'
+    21→import { Separator } from '@/components/ui/separator'
+    22→import { Switch } from '@/components/ui/switch'
+    23→import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber } from '@/stores/app-store'
+    24→import { PrintButton } from '@/components/shared/print-button'
+    25→import { MoneyDisplay } from '@/components/ui/money-display'
+    26→import { InvoicePreview } from '@/components/invoice/invoice-preview'
+    27→import type { InvoiceData, CompanySettings } from '@/components/invoice/invoice-preview'
+    28→
+    29→// ============ Types ============
+    30→interface ClientOption { id: string; code: string; name: string }
+    31→interface ProjectOption { id: string; code: string; name: string }
+    32→
+    33→interface ServiceInvoiceItem {
+    34→  id: string; description: string; descriptionEn?: string | null; quantity: number; unit?: string | null; unitPrice: number; totalPrice: number; itemType?: string
+    35→}
+    36→
+    37→interface ServiceInvoice {
+    38→  id: string; invoiceNo: string; projectId: string | null; contractId?: string | null; clientId: string
+    39→  date: string; dueDate: string; subtotal: number; discountRate: number; discountAmount: number; netAmount: number
+    40→  vatRate: number; vatAmount: number; totalAmount: number; paidAmount: number; status: string; invoiceType?: string
+    41→  notes: string | null; paymentTerms?: string | null
+    42→  amountInWordsAr?: string | null; amountInWordsEn?: string | null
+    43→  referenceNo?: string | null; contractNo?: string | null; contractType?: string | null
+    44→  contractPeriodStart?: string | null; contractPeriodEnd?: string | null
+    45→  deliveryMonth?: string | null; includeDelivery?: boolean; deliveryAmount?: number; includeVat?: boolean
+    46→  client: { id: string; name: string; nameAr?: string | null; code: string; taxNumber?: string | null; phone?: string | null; email?: string | null; address?: string | null }
+    47→  project: { id: string; name: string; nameAr?: string | null; code: string } | null
+    48→  contract?: { id: string; contractNo: string } | null
+    49→  items: ServiceInvoiceItem[]
+    50→}
+    51→
+    52→interface LineItemForm {
+    53→  description: string; descriptionEn?: string; quantity: number; unitPrice: number; unit: string; itemType: string
+    54→}
+    55→
+    56→// ============ View State ============
+    57→type ViewState =
+    58→  | { type: 'list' }
+    59→  | { type: 'create' }
+    60→  | { type: 'detail'; invoiceId: string }
+    61→  | { type: 'preview'; invoiceId: string }
+    62→
+    63→function formatSAR(value: number, lang: 'ar' | 'en' = 'ar'): string {
+    64→  return storeFormatSAR(value, lang)
+    65→}
+    66→
+    67→function formatDate(dateStr: string, lang: 'ar' | 'en' = 'ar'): string {
+    68→  return storeFormatDate(dateStr, lang)
+    69→}
+    70→
+    71→const serviceStatusLabels: Record<string, string> = {
+    72→  DRAFT: 'مسودة', SENT: 'مرسلة', PARTIALLY_PAID: 'مدفوعة جزئياً',
+    73→  PAID: 'مدفوعة', OVERDUE: 'متأخرة', CANCELLED: 'ملغية',
+    74→}
+    75→const serviceStatusColors: Record<string, string> = {
+    76→  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
+    77→  SENT: 'bg-blue-100 text-blue-700 border-blue-200',
+    78→  PARTIALLY_PAID: 'bg-amber-100 text-amber-700 border-amber-200',
+    79→  PAID: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    80→  OVERDUE: 'bg-rose-100 text-rose-700 border-rose-200',
+    81→  CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
+    82→}
+    83→
+    84→const serviceUnitOptions = [
+    85→  { value: 'ساعة', label: 'ساعة / Hour' },
+    86→  { value: 'يوم', label: 'يوم / Day' },
+    87→  { value: 'أسبوع', label: 'أسبوع / Week' },
+    88→  { value: 'شهر', label: 'شهر / Month' },
+    89→  { value: 'زيارة', label: 'زيارة / Visit' },
+    90→  { value: 'مشروع', label: 'مشروع / Project' },
+    91→]
+    92→
+    93→const defaultLineItem: LineItemForm = { description: '', quantity: 1, unitPrice: 0, unit: 'ساعة', itemType: 'SERVICE' }
+    94→
+    95→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    96→  return (
+    97→    <div className="space-y-2">
+    98→      {Array.from({ length: rows }).map((_, i) => (
+    99→        <div key={i} className="flex gap-4 p-3">
+   100→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   101→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   102→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   103→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   104→        </div>
+   105→      ))}
+   106→    </div>
+   107→  )
+   108→}
+   109→
+   110→// ============ Service Invoice Creation Form ============
+   111→function ServiceInvoiceFormPage({
+   112→  clients, projects, onBack,
+   113→}: {
+   114→  clients: ClientOption[]; projects: ProjectOption[]; onBack: () => void
+   115→}) {
+   116→  const queryClient = useQueryClient()
+   117→  const { lang } = useAppStore()
+   118→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   119→
+   120→  const [clientId, setClientId] = useState('')
+   121→  const [projectId, setProjectId] = useState('')
+   122→  const [date, setDate] = useState('')
+   123→  const [dueDate, setDueDate] = useState('')
+   124→  const [notes, setNotes] = useState('')
+   125→  const [paymentTerms, setPaymentTerms] = useState('30 days')
+   126→  const [referenceNo, setReferenceNo] = useState('')
+   127→  const [contractNo, setContractNo] = useState('')
+   128→  const [contractType, setContractType] = useState('')
+   129→  const [contractPeriodStart, setContractPeriodStart] = useState('')
+   130→  const [contractPeriodEnd, setContractPeriodEnd] = useState('')
+   131→  const [includeVat, setIncludeVat] = useState(true)
+   132→  const [discountType, setDiscountType] = useState<'none' | 'rate' | 'amount'>('none')
+   133→  const [discountRate, setDiscountRate] = useState(0)
+   134→  const [discountAmount, setDiscountAmount] = useState(0)
+   135→  const [lineItems, setLineItems] = useState<LineItemForm[]>([{ ...defaultLineItem }])
+   136→
+   137→  // Auto-suggest reference number
+   138→  React.useEffect(() => {
+   139→    const year = new Date().getFullYear()
+   140→    const rand = Math.floor(1000 + Math.random() * 9000)
+   141→    setReferenceNo(`SVC-REF-${year}-${rand}`)
+   142→  }, [])
+   143→
+   144→  // Auto-calculate
+   145→  const subtotal = useMemo(() => lineItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0), [lineItems])
+   146→  const vatRate = 0.15
+   147→  const finalDiscountAmount = useMemo(() => {
+   148→    if (discountType === 'rate') return subtotal * (discountRate / 100)
+   149→    if (discountType === 'amount') return discountAmount
+   150→    return 0
+   151→  }, [subtotal, discountType, discountRate, discountAmount])
+   152→  const netAmount = subtotal - finalDiscountAmount
+   153→  const vatAmount = includeVat ? netAmount * vatRate : 0
+   154→  const totalAmount = netAmount + vatAmount
+   155→
+   156→  const addLine = () => setLineItems([...lineItems, { ...defaultLineItem }])
+   157→  const removeLine = (idx: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, i) => i !== idx)) }
+   158→  const updateLine = (idx: number, field: keyof LineItemForm, value: string | number) => {
+   159→    setLineItems(lineItems.map((item, i) => i === idx ? { ...item, [field]: value } : item))
+   160→  }
+   161→
+   162→  const createMutation = useMutation({
+   163→    mutationFn: (data: Record<string, unknown>) =>
+   164→      fetch('/api/sales-invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   165→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['service-invoices'] }); onBack() },
+   166→  })
+   167→
+   168→  const handleSubmit = (e: React.FormEvent) => {
+   169→    e.preventDefault()
+   170→    createMutation.mutate({
+   171→      clientId, projectId: projectId || null, date, dueDate, notes, paymentTerms,
+   172→      invoiceType: 'SERVICE',
+   173→      referenceNo: referenceNo || null,
+   174→      contractNo: contractNo || null,
+   175→      contractType: contractType || null,
+   176→      contractPeriodStart: contractPeriodStart || null,
+   177→      contractPeriodEnd: contractPeriodEnd || null,
+   178→      includeDelivery: false,
+   179→      deliveryAmount: 0,
+   180→      includeVat,
+   181→      discountRate: discountType === 'rate' ? discountRate / 100 : 0,
+   182→      discountAmount: finalDiscountAmount,
+   183→      items: lineItems.map(i => ({
+   184→        description: i.description,
+   185→        quantity: i.quantity,
+   186→        unitPrice: i.unitPrice,
+   187→        unit: i.unit || undefined,
+   188→        itemType: 'SERVICE',
+   189→      })),
+   190→    })
+   191→  }
+   192→
+   193→  return (
+   194→    <div className="space-y-6">
+   195→      <div className="flex items-center gap-3 no-print">
+   196→        <Button variant="outline" size="icon" onClick={onBack}>
+   197→          <ArrowRight className="size-4" />
+   198→        </Button>
+   199→        <div className="flex-1">
+   200→          <h1 className="text-2xl font-bold text-gray-900">{t('فاتورة خدمة جديدة', 'New Service Invoice')}</h1>
+   201→          <p className="text-sm text-muted-foreground">{t('إنشاء فاتورة خدمات استشارية أو فنية', 'Create consulting or technical service invoice')}</p>
+   202→        </div>
+   203→      </div>
+   204→
+   205→      <form onSubmit={handleSubmit} className="space-y-6">
+   206→        {/* Section 1: Basic Info */}
+   207→        <Card>
+   208→          <CardHeader className="pb-4">
+   209→            <CardTitle className="text-lg">{t('المعلومات الأساسية', 'Basic Information')}</CardTitle>
+   210→          </CardHeader>
+   211→          <CardContent className="space-y-4">
+   212→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   213→              <div className="space-y-2">
+   214→                <Label>{t('العميل *', 'Client *')}</Label>
+   215→                <Select value={clientId} onValueChange={setClientId}>
+   216→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر العميل', 'Select client')} /></SelectTrigger>
+   217→                  <SelectContent>
+   218→                    {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+   219→                  </SelectContent>
+   220→                </Select>
+   221→              </div>
+   222→              <div className="space-y-2">
+   223→                <Label>{t('المشروع', 'Project')}</Label>
+   224→                <Select value={projectId} onValueChange={setProjectId}>
+   225→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المشروع', 'Select project')} /></SelectTrigger>
+   226→                  <SelectContent>
+   227→                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   228→                  </SelectContent>
+   229→                </Select>
+   230→              </div>
+   231→            </div>
+   232→            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+   233→              <div className="space-y-2">
+   234→                <Label>{t('تاريخ الفاتورة *', 'Invoice Date *')}</Label>
+   235→                <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   236→              </div>
+   237→              <div className="space-y-2">
+   238→                <Label>{t('تاريخ الاستحقاق *', 'Due Date *')}</Label>
+   239→                <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+   240→              </div>
+   241→              <div className="space-y-2">
+   242→                <Label>{t('شروط السداد', 'Payment Terms')}</Label>
+   243→                <Input value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} />
+   244→              </div>
+   245→              <div className="space-y-2">
+   246→                <Label>{t('رقم المرجع', 'Reference No.')}</Label>
+   247→                <Input value={referenceNo} onChange={e => setReferenceNo(e.target.value)} dir="ltr" />
+   248→              </div>
+   249→            </div>
+   250→          </CardContent>
+   251→        </Card>
+   252→
+   253→        {/* Section 2: Contract Data */}
+   254→        <Card>
+   255→          <CardHeader className="pb-4">
+   256→            <CardTitle className="text-lg">{t('بيانات العقد', 'Contract Data')} ({t('اختياري', 'Optional')})</CardTitle>
+   257→          </CardHeader>
+   258→          <CardContent>
+   259→            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+   260→              <div className="space-y-2">
+   261→                <Label>{t('رقم العقد', 'Contract No.')}</Label>
+   262→                <Input value={contractNo} onChange={e => setContractNo(e.target.value)} placeholder="CTR-001" dir="ltr" />
+   263→              </div>
+   264→              <div className="space-y-2">
+   265→                <Label>{t('نوع العقد', 'Contract Type')}</Label>
+   266→                <Select value={contractType} onValueChange={setContractType}>
+   267→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر النوع', 'Select type')} /></SelectTrigger>
+   268→                  <SelectContent>
+   269→                    <SelectItem value="Lump Sum">{t('مقطوعية / Lump Sum', 'Lump Sum')}</SelectItem>
+   270→                    <SelectItem value="Unit Rate">{t('أسعار وحدوية / Unit Rate', 'Unit Rate')}</SelectItem>
+   271→                    <SelectItem value="Time & Materials">{t('وقت ومواد / Time & Materials', 'Time & Materials')}</SelectItem>
+   272→                    <SelectItem value="Cost Plus">{t('تكلفة + هامش / Cost Plus', 'Cost Plus')}</SelectItem>
+   273→                  </SelectContent>
+   274→                </Select>
+   275→              </div>
+   276→              <div className="space-y-2">
+   277→                <Label>{t('بداية فترة العمل', 'Period Start')}</Label>
+   278→                <Input type="date" value={contractPeriodStart} onChange={e => setContractPeriodStart(e.target.value)} />
+   279→              </div>
+   280→              <div className="space-y-2">
+   281→                <Label>{t('نهاية فترة العمل', 'Period End')}</Label>
+   282→                <Input type="date" value={contractPeriodEnd} onChange={e => setContractPeriodEnd(e.target.value)} />
+   283→              </div>
+   284→            </div>
+   285→          </CardContent>
+   286→        </Card>
+   287→
+   288→        {/* Section 3: VAT */}
+   289→        <Card>
+   290→          <CardHeader className="pb-4">
+   291→            <CardTitle className="text-lg">{t('الضريبة', 'Tax')}</CardTitle>
+   292→          </CardHeader>
+   293→          <CardContent>
+   294→            <div className="p-4 rounded-lg border bg-gray-50">
+   295→              <div className="flex items-center justify-between">
+   296→                <Label className="text-sm font-semibold">{t('ضريبة القيمة المضافة (15%)', 'VAT (15%)')}</Label>
+   297→                <Switch checked={includeVat} onCheckedChange={setIncludeVat} />
+   298→              </div>
+   299→              <p className="text-xs text-muted-foreground mt-1">
+   300→                {includeVat ? t('سيتم احتساب ضريبة القيمة المضافة', 'VAT will be calculated') : t('لن يتم احتساب ضريبة القيمة المضافة', 'VAT will not be calculated')}
+   301→              </p>
+   302→            </div>
+   303→          </CardContent>
+   304→        </Card>
+   305→
+   306→        {/* Section 4: Line Items */}
+   307→        <Card>
+   308→          <CardHeader className="pb-4">
+   309→            <div className="flex items-center justify-between">
+   310→              <CardTitle className="text-lg">{t('بنود الخدمة', 'Service Items')}</CardTitle>
+   311→              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={addLine}>
+   312→                <Plus className="size-3" /> {t('إضافة بند', 'Add Item')}
+   313→              </Button>
+   314→            </div>
+   315→          </CardHeader>
+   316→          <CardContent>
+   317→            <div className="space-y-3">
+   318→              {lineItems.map((item, idx) => (
+   319→                <div key={idx} className="flex items-end gap-2 p-3 rounded-lg border bg-gray-50">
+   320→                  <div className="flex-1 min-w-0">
+   321→                    <Label className="text-xs">{t('وصف الخدمة', 'Service Description')}</Label>
+   322→                    <Input value={item.description} onChange={e => updateLine(idx, 'description', e.target.value)} placeholder={t('وصف الخدمة المقدمة', 'Service description')} className="h-9" />
+   323→                  </div>
+   324→                  <div className="w-20">
+   325→                    <Label className="text-xs">{t('الكمية', 'Qty')}</Label>
+   326→                    <Input type="number" min="0" step="0.01" value={item.quantity || ''} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
+   327→                  </div>
+   328→                  <div className="w-24">
+   329→                    <Label className="text-xs">{t('الوحدة', 'Unit')}</Label>
+   330→                    <Select value={item.unit} onValueChange={v => updateLine(idx, 'unit', v)}>
+   331→                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   332→                      <SelectContent>
+   333→                        {serviceUnitOptions.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+   334→                      </SelectContent>
+   335→                    </Select>
+   336→                  </div>
+   337→                  <div className="w-28">
+   338→                    <Label className="text-xs">{t('سعر الوحدة', 'Unit Price')}</Label>
+   339→                    <Input type="number" min="0" step="0.01" value={item.unitPrice || ''} onChange={e => updateLine(idx, 'unitPrice', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
+   340→                  </div>
+   341→                  <div className="w-28 text-left">
+   342→                    <Label className="text-xs">{t('الإجمالي', 'Total')}</Label>
+   343→                    <p className="text-sm font-medium mt-1.5">{formatSAR(item.quantity * item.unitPrice, lang)}</p>
+   344→                  </div>
+   345→                  <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 text-rose-500" onClick={() => removeLine(idx)} disabled={lineItems.length <= 1}>
+   346→                    <X className="size-4" />
+   347→                  </Button>
+   348→                </div>
+   349→              ))}
+   350→            </div>
+   351→          </CardContent>
+   352→        </Card>
+   353→
+   354→        {/* Section 5: Discount */}
+   355→        <Card>
+   356→          <CardHeader className="pb-4">
+   357→            <CardTitle className="text-lg">{t('الخصم', 'Discount')}</CardTitle>
+   358→          </CardHeader>
+   359→          <CardContent>
+   360→            <div className="flex items-center gap-3 flex-wrap">
+   361→              <Select value={discountType} onValueChange={(v) => setDiscountType(v as 'none' | 'rate' | 'amount')}>
+   362→                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+   363→                <SelectContent>
+   364→                  <SelectItem value="none">{t('بدون خصم', 'No Discount')}</SelectItem>
+   365→                  <SelectItem value="rate">{t('نسبة مئوية (%)', 'Percentage (%)')}</SelectItem>
+   366→                  <SelectItem value="amount">{t('مبلغ ثابت', 'Fixed Amount')}</SelectItem>
+   367→                </SelectContent>
+   368→              </Select>
+   369→              {discountType === 'rate' && (
+   370→                <Input type="number" min="0" max="100" step="0.1" value={discountRate || ''} onChange={e => setDiscountRate(parseFloat(e.target.value) || 0)} className="w-24" dir="ltr" placeholder="%" />
+   371→              )}
+   372→              {discountType === 'amount' && (
+   373→                <Input type="number" min="0" step="0.01" value={discountAmount || ''} onChange={e => setDiscountAmount(parseFloat(e.target.value) || 0)} className="w-32" dir="ltr" placeholder="0.00" />
+   374→              )}
+   375→              {finalDiscountAmount > 0 && (
+   376→                <span className="text-sm text-rose-600 font-medium">-{formatSAR(finalDiscountAmount, lang)}</span>
+   377→              )}
+   378→            </div>
+   379→          </CardContent>
+   380→        </Card>
+   381→
+   382→        {/* Section 6: Summary */}
+   383→        <Card className="bg-gray-50 border-dashed">
+   384→          <CardContent className="p-6 space-y-3">
+   385→            <h3 className="text-lg font-semibold mb-2">{t('ملخص الفاتورة', 'Invoice Summary')}</h3>
+   386→            <div className="flex justify-between text-sm">
+   387→              <span>{t('المجموع قبل الضريبة', 'Subtotal')}</span>
+   388→              <span className="font-medium">{formatSAR(subtotal, lang)}</span>
+   389→            </div>
+   390→            {finalDiscountAmount > 0 && (
+   391→              <div className="flex justify-between text-sm text-rose-600">
+   392→                <span>{t('الخصم', 'Discount')}</span>
+   393→                <span className="font-medium">-{formatSAR(finalDiscountAmount, lang)}</span>
+   394→              </div>
+   395→            )}
+   396→            <div className="flex justify-between text-sm">
+   397→              <span>{t('صافي المبلغ', 'Net Amount')}</span>
+   398→              <span className="font-medium">{formatSAR(netAmount, lang)}</span>
+   399→            </div>
+   400→            {includeVat && (
+   401→              <div className="flex justify-between text-sm">
+   402→                <span>{t('ضريبة القيمة المضافة (15%)', 'VAT (15%)')}</span>
+   403→                <span className="font-medium">{formatSAR(vatAmount, lang)}</span>
+   404→              </div>
+   405→            )}
+   406→            <Separator />
+   407→            <div className="flex justify-between text-lg font-bold">
+   408→              <span>{t('الإجمالي', 'Total')}</span>
+   409→              <span className="text-emerald-700">{formatSAR(totalAmount, lang)}</span>
+   410→            </div>
+   411→          </CardContent>
+   412→        </Card>
+   413→
+   414→        {/* Section 7: Notes */}
+   415→        <Card>
+   416→          <CardHeader className="pb-4">
+   417→            <CardTitle className="text-lg">{t('ملاحظات', 'Notes')}</CardTitle>
+   418→          </CardHeader>
+   419→          <CardContent>
+   420→            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات إضافية', 'Additional notes')} rows={3} />
+   421→          </CardContent>
+   422→        </Card>
+   423→
+   424→        {/* Actions */}
+   425→        <div className="flex items-center justify-end gap-3 no-print">
+   426→          <Button type="button" variant="outline" onClick={onBack}>{t('إلغاء', 'Cancel')}</Button>
+   427→          <Button type="submit" disabled={createMutation.isPending || !clientId || !date || !dueDate} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+   428→            {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء فاتورة الخدمة', 'Create Service Invoice')}
+   429→          </Button>
+   430→        </div>
+   431→      </form>
+   432→    </div>
+   433→  )
+   434→}
+   435→
+   436→// ============ Main Service Invoices Module ============
+   437→export function ServiceInvoicesModule() {
+   438→  const { lang } = useAppStore()
+   439→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   440→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+   441→  const [search, setSearch] = useState('')
+   442→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   443→
+   444→  const { data: invoices = [], isLoading, isError, refetch } = useQuery<ServiceInvoice[]>({
+   445→    queryKey: ['service-invoices'],
+   446→    queryFn: async () => {
+   447→      const res = await fetch('/api/sales-invoices?invoiceType=SERVICE')
+   448→      if (!res.ok) throw new Error('Failed to fetch')
+   449→      return res.json()
+   450→    },
+   451→  })
+   452→
+   453→  const selectedInvoiceId = viewState.type === 'detail' || viewState.type === 'preview' ? viewState.invoiceId : null
+   454→
+   455→  const { data: invoiceDetail, isLoading: isLoadingDetail } = useQuery<ServiceInvoice>({
+   456→    queryKey: ['service-invoice', selectedInvoiceId],
+   457→    queryFn: async () => {
+   458→      const res = await fetch('/api/sales-invoices?invoiceType=SERVICE')
+   459→      if (!res.ok) throw new Error('Failed to fetch')
+   460→      const all: ServiceInvoice[] = await res.json()
+   461→      return all.find(i => i.id === selectedInvoiceId)!
+   462→    },
+   463→    enabled: !!selectedInvoiceId,
+   464→  })
+   465→
+   466→  const { data: companySettings } = useQuery<CompanySettings>({
+   467→    queryKey: ['company-settings'],
+   468→    queryFn: async () => {
+   469→      const res = await fetch('/api/company-settings')
+   470→      if (!res.ok) throw new Error('Failed to fetch')
+   471→      return res.json()
+   472→    },
+   473→  })
+   474→
+   475→  const { data: clients = [] } = useQuery<ClientOption[]>({
+   476→    queryKey: ['clients-simple'],
+   477→    queryFn: async () => {
+   478→      const res = await fetch('/api/clients?simple=true&active=true')
+   479→      if (!res.ok) return []
+   480→      return res.json()
+   481→    },
+   482→  })
+   483→
+   484→  const { data: projects = [] } = useQuery<ProjectOption[]>({
+   485→    queryKey: ['projects-list'],
+   486→    queryFn: async () => {
+   487→      const res = await fetch('/api/projects/list')
+   488→      if (!res.ok) return []
+   489→      return res.json()
+   490→    },
+   491→  })
+   492→
+   493→  const defaultCompany: CompanySettings = {
+   494→    nameAr: 'شركة البناء الحديثة للمقاولات',
+   495→    nameEn: 'Al Binaa Al Haditha Contracting Co.',
+   496→    taxNumber: '300123456700003',
+   497→    commercialReg: '1234567890',
+   498→    address: 'الدمام - المملكة العربية السعودية',
+   499→    phone: '0500000000',
+   500→    email: 'info@albinaa.com',
+   501→    bankName: 'الراجحي',
+   502→    bankIban: 'SA00 8000 0000 6080 1016 7519',
+   503→    bankAccountName: 'شركة البناء الحديثة للمقاولات',
+   504→    defaultVatRate: 0.15,
+   505→    currency: 'SAR',
+   506→    currencySymbol: '\uFDFC',
+   507→    currencySymbolEn: 'SAR',
+   508→    currencySymbolAr: '\uFDFC',
+   509→    invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
+   510→  }
+   511→
+   512→  const company = companySettings || defaultCompany
+   513→
+   514→  // ============ CREATE VIEW ============
+   515→  if (viewState.type === 'create') {
+   516→    return (
+   517→      <ServiceInvoiceFormPage
+   518→        clients={clients}
+   519→        projects={projects}
+   520→        onBack={() => setViewState({ type: 'list' })}
+   521→      />
+   522→    )
+   523→  }
+   524→
+   525→  // ============ PREVIEW VIEW ============
+   526→  if (viewState.type === 'preview') {
+   527→    if (isLoadingDetail) return <div className="p-6"><TableSkeleton /></div>
+   528→    if (!invoiceDetail) {
+   529→      return (
+   530→        <div className="flex flex-col items-center gap-3 py-10">
+   531→          <p className="text-rose-600">{t('لم يتم العثور على الفاتورة', 'Invoice not found')}</p>
+   532→          <Button variant="outline" onClick={() => setViewState({ type: 'list' })}>{t('العودة للقائمة', 'Back to list')}</Button>
+   533→        </div>
+   534→      )
+   535→    }
+   536→    return (
+   537→      <div className="invoice-print-root space-y-4">
+   538→        <div className="flex items-center gap-3 no-print">
+   539→          <Button variant="outline" size="sm" className="gap-2" onClick={() => setViewState({ type: 'list' })}>
+   540→            <ArrowRight className="size-4" />
+   541→            {t('العودة للقائمة', 'Back to list')}
+   542→          </Button>
+   543→          <Separator orientation="vertical" className="h-6" />
+   544→          <Button variant="outline" size="sm" className="gap-2" onClick={() => setViewState({ type: 'detail', invoiceId: viewState.invoiceId })}>
+   545→            <Eye className="size-4" />
+   546→            {t('عرض التفاصيل', 'View Details')}
+   547→          </Button>
+   548→        </div>
+   549→        <InvoicePreview
+   550→          invoice={invoiceDetail as unknown as InvoiceData}
+   551→          company={company}
+   552→          onClose={() => setViewState({ type: 'list' })}
+   553→        />
+   554→      </div>
+   555→    )
+   556→  }
+   557→
+   558→  // ============ DETAIL VIEW ============
+   559→  if (viewState.type === 'detail') {
+   560→    if (isLoadingDetail) return <div className="p-6"><TableSkeleton /></div>
+   561→    if (!invoiceDetail) {
+   562→      return (
+   563→        <div className="flex flex-col items-center gap-3 py-10">
+   564→          <p className="text-rose-600">{t('لم يتم العثور على الفاتورة', 'Invoice not found')}</p>
+   565→          <Button variant="outline" onClick={() => setViewState({ type: 'list' })}>{t('العودة للقائمة', 'Back to list')}</Button>
+   566→        </div>
+   567→      )
+   568→    }
+   569→
+   570→    const invoice = invoiceDetail
+   571→
+   572→    return (
+   573→      <div className="space-y-6">
+   574→        <div className="flex items-center gap-3 no-print">
+   575→          <Button variant="outline" size="icon" onClick={() => setViewState({ type: 'list' })}>
+   576→            <ArrowRight className="size-4" />
+   577→          </Button>
+   578→          <div className="flex-1">
+   579→            <div className="flex items-center gap-3">
+   580→              <h2 className="text-xl font-bold">{t('فاتورة خدمة', 'Service Invoice')} {invoice.invoiceNo}</h2>
+   581→              <Badge variant="outline" className={serviceStatusColors[invoice.status]}>
+   582→                {serviceStatusLabels[invoice.status]}
+   583→              </Badge>
+   584→            </div>
+   585→            <p className="text-sm text-muted-foreground">{invoice.client.name}</p>
+   586→          </div>
+   587→          <Button variant="outline" className="gap-2" onClick={() => setViewState({ type: 'preview', invoiceId: invoice.id })}>
+   588→            <Printer className="size-4" />
+   589→            {t('معاينة الفاتورة', 'Preview Invoice')}
+   590→          </Button>
+   591→        </div>
+   592→
+   593→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   594→          <Card>
+   595→            <CardContent className="p-3">
+   596→              <p className="text-xs text-muted-foreground">{t('العميل', 'Client')}</p>
+   597→              <p className="text-sm font-medium truncate">{invoice.client.name}</p>
+   598→            </CardContent>
+   599→          </Card>
+   600→          <Card>
+   601→            <CardContent className="p-3">
+   602→              <p className="text-xs text-muted-foreground">{t('المشروع', 'Project')}</p>
+   603→              <p className="text-sm font-medium truncate">{invoice.project?.name || '—'}</p>
+   604→            </CardContent>
+   605→          </Card>
+   606→          <Card>
+   607→            <CardContent className="p-3">
+   608→              <p className="text-xs text-muted-foreground">{t('تاريخ الفاتورة', 'Invoice Date')}</p>
+   609→              <p className="text-sm font-medium">{formatDate(invoice.date, lang)}</p>
+   610→            </CardContent>
+   611→          </Card>
+   612→          <Card>
+   613→            <CardContent className="p-3">
+   614→              <p className="text-xs text-muted-foreground">{t('تاريخ الاستحقاق', 'Due Date')}</p>
+   615→              <p className="text-sm font-medium">{formatDate(invoice.dueDate, lang)}</p>
+   616→            </CardContent>
+   617→          </Card>
+   618→        </div>
+   619→
+   620→        <Card>
+   621→          <CardHeader>
+   622→            <CardTitle className="text-lg">{t('بنود الخدمة', 'Service Items')}</CardTitle>
+   623→          </CardHeader>
+   624→          <CardContent className="px-0 pb-2">
+   625→            <div className="overflow-x-auto">
+   626→              <Table>
+   627→                <TableHeader>
+   628→                  <TableRow>
+   629→                    <TableHead className="text-right">{t('الوصف', 'Description')}</TableHead>
+   630→                    <TableHead className="text-right">{t('الكمية', 'Qty')}</TableHead>
+   631→                    <TableHead className="text-right">{t('الوحدة', 'Unit')}</TableHead>
+   632→                    <TableHead className="text-right">{t('سعر الوحدة', 'Unit Price')}</TableHead>
+   633→                    <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+   634→                  </TableRow>
+   635→                </TableHeader>
+   636→                <TableBody>
+   637→                  {invoice.items.map(item => (
+   638→                    <TableRow key={item.id}>
+   639→                      <TableCell>{item.description}</TableCell>
+   640→                      <TableCell>{formatNumber(item.quantity)}</TableCell>
+   641→                      <TableCell>{item.unit || '—'}</TableCell>
+   642→                      <TableCell>{formatSAR(item.unitPrice, lang)}</TableCell>
+   643→                      <TableCell className="font-semibold">{formatSAR(item.totalPrice, lang)}</TableCell>
+   644→                    </TableRow>
+   645→                  ))}
+   646→                  <TableRow className="bg-gray-50">
+   647→                    <TableCell colSpan={4} className="text-left font-medium">{t('المجموع قبل الضريبة', 'Subtotal')}</TableCell>
+   648→                    <TableCell className="font-semibold">{formatSAR(invoice.subtotal, lang)}</TableCell>
+   649→                  </TableRow>
+   650→                  {invoice.discountAmount > 0 && (
+   651→                    <TableRow className="bg-rose-50">
+   652→                      <TableCell colSpan={4} className="text-left font-medium text-rose-700">{t('الخصم', 'Discount')}</TableCell>
+   653→                      <TableCell className="font-semibold text-rose-700">-{formatSAR(invoice.discountAmount, lang)}</TableCell>
+   654→                    </TableRow>
+   655→                  )}
+   656→                  <TableRow className="bg-gray-50">
+   657→                    <TableCell colSpan={4} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({(invoice.vatRate * 100).toFixed(0)}%)</TableCell>
+   658→                    <TableCell className="font-semibold">{formatSAR(invoice.vatAmount, lang)}</TableCell>
+   659→                  </TableRow>
+   660→                  <TableRow className="bg-emerald-50">
+   661→                    <TableCell colSpan={4} className="text-left font-bold text-emerald-700">{t('الإجمالي', 'Total')}</TableCell>
+   662→                    <TableCell className="font-bold text-emerald-700">{formatSAR(invoice.totalAmount, lang)}</TableCell>
+   663→                  </TableRow>
+   664→                  <TableRow className="bg-amber-50">
+   665→                    <TableCell colSpan={4} className="text-left font-medium text-amber-700">{t('المدفوع', 'Paid')}</TableCell>
+   666→                    <TableCell className="font-medium text-amber-700">{formatSAR(invoice.paidAmount, lang)}</TableCell>
+   667→                  </TableRow>
+   668→                  <TableRow className="bg-rose-50">
+   669→                    <TableCell colSpan={4} className="text-left font-bold text-rose-700">{t('المتبقي', 'Outstanding')}</TableCell>
+   670→                    <TableCell className="font-bold text-rose-700">{formatSAR(invoice.totalAmount - invoice.paidAmount, lang)}</TableCell>
+   671→                  </TableRow>
+   672→                </TableBody>
+   673→              </Table>
+   674→            </div>
+   675→          </CardContent>
+   676→        </Card>
+   677→
+   678→        {invoice.notes && (
+   679→          <Card>
+   680→            <CardContent className="p-4">
+   681→              <p className="text-sm text-muted-foreground mb-1">{t('ملاحظات', 'Notes')}</p>
+   682→              <p className="text-sm">{invoice.notes}</p>
+   683→            </CardContent>
+   684→          </Card>
+   685→        )}
+   686→      </div>
+   687→    )
+   688→  }
+   689→
+   690→  // ============ LIST VIEW ============
+   691→  const filtered = invoices.filter(inv => {
+   692→    const matchSearch = !search || inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
+   693→      inv.client.name.toLowerCase().includes(search.toLowerCase()) ||
+   694→      (inv.project?.name?.toLowerCase().includes(search.toLowerCase()))
+   695→    const matchStatus = statusFilter === 'all' || inv.status === statusFilter
+   696→    return matchSearch && matchStatus
+   697→  })
+   698→
+   699→  const totalRevenue = invoices.reduce((s, i) => s + i.totalAmount, 0)
+   700→  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+   701→  const totalOutstanding = totalRevenue - totalPaid
+   702→
+   703→  const handleExport = () => {
+   704→    const csv = [
+   705→      [t('رقم الفاتورة', 'Invoice No'), t('العميل', 'Client'), t('المشروع', 'Project'), t('التاريخ', 'Date'), t('الإجمالي', 'Total'), t('المدفوع', 'Paid'), t('المتبقي', 'Outstanding'), t('الحالة', 'Status')].join(','),
+   706→      ...filtered.map(inv => [inv.invoiceNo, `"${inv.client.name}"`, `"${inv.project?.name || ''}"`, formatDate(inv.date, lang), inv.totalAmount.toFixed(2), inv.paidAmount.toFixed(2), (inv.totalAmount - inv.paidAmount).toFixed(2), inv.status].join(','))
+   707→    ].join('\n')
+   708→    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+   709→    const link = document.createElement('a')
+   710→    link.href = URL.createObjectURL(blob)
+   711→    link.download = `service-invoices-${new Date().toISOString().split('T')[0]}.csv`
+   712→    link.click()
+   713→  }
+   714→
+   715→  return (
+   716→    <div className="space-y-6">
+   717→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   718→        <div>
+   719→          <h1 className="text-2xl font-bold text-gray-900">{t('فواتير الخدمات', 'Service Invoices')}</h1>
+   720→          <p className="text-sm text-muted-foreground">{t('إدارة فواتير الخدمات الاستشارية والفنية', 'Manage consulting and technical service invoices')}</p>
+   721→        </div>
+   722→        <div className="flex items-center gap-2">
+   723→          <PrintButton type="generic-table" size="icon" />
+   724→          <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير', 'Export')}>
+   725→            <Download className="size-4" />
+   726→          </Button>
+   727→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
+   728→            <RefreshCw className="size-4" />
+   729→          </Button>
+   730→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   731→            <Plus className="size-4" /> {t('فاتورة خدمة جديدة', 'New Service Invoice')}
+   732→          </Button>
+   733→        </div>
+   734→      </div>
+   735→
+   736→      {/* Summary Cards */}
+   737→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   738→        <Card className="bg-emerald-50 border-emerald-200">
+   739→          <CardContent className="p-4">
+   740→            <p className="text-sm text-emerald-600">{t('إجمالي إيرادات الخدمات', 'Total Service Revenue')}</p>
+   741→            <MoneyDisplay value={totalRevenue} lang={lang} size="xl" bold className="text-emerald-700" />
+   742→          </CardContent>
+   743→        </Card>
+   744→        <Card className="bg-amber-50 border-amber-200">
+   745→          <CardContent className="p-4">
+   746→            <p className="text-sm text-amber-600">{t('المدفوع', 'Paid')}</p>
+   747→            <MoneyDisplay value={totalPaid} lang={lang} size="xl" bold className="text-amber-700" />
+   748→          </CardContent>
+   749→        </Card>
+   750→        <Card className="bg-rose-50 border-rose-200">
+   751→          <CardContent className="p-4">
+   752→            <p className="text-sm text-rose-600">{t('المستحق', 'Outstanding')}</p>
+   753→            <MoneyDisplay value={totalOutstanding} lang={lang} size="xl" bold className="text-rose-700" />
+   754→          </CardContent>
+   755→        </Card>
+   756→      </div>
+   757→
+   758→      {/* Filters */}
+   759→      <Card>
+   760→        <CardContent className="p-4">
+   761→          <div className="flex flex-col sm:flex-row gap-3">
+   762→            <div className="relative flex-1">
+   763→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   764→              <Input placeholder={t('بحث برقم الفاتورة أو العميل...', 'Search by invoice no. or client...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   765→            </div>
+   766→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   767→              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t('كل الحالات', 'All Status')} /></SelectTrigger>
+   768→              <SelectContent>
+   769→                <SelectItem value="all">{t('كل الحالات', 'All Status')}</SelectItem>
+   770→                <SelectItem value="DRAFT">{t('مسودة', 'Draft')}</SelectItem>
+   771→                <SelectItem value="SENT">{t('مرسلة', 'Sent')}</SelectItem>
+   772→                <SelectItem value="PARTIALLY_PAID">{t('مدفوعة جزئياً', 'Partially Paid')}</SelectItem>
+   773→                <SelectItem value="PAID">{t('مدفوعة', 'Paid')}</SelectItem>
+   774→                <SelectItem value="OVERDUE">{t('متأخرة', 'Overdue')}</SelectItem>
+   775→              </SelectContent>
+   776→            </Select>
+   777→          </div>
+   778→        </CardContent>
+   779→      </Card>
+   780→
+   781→      {/* Table */}
+   782→      <Card>
+   783→        <CardContent className="p-0">
+   784→          {isLoading ? (
+   785→            <div className="p-6"><TableSkeleton /></div>
+   786→          ) : isError ? (
+   787→            <div className="flex flex-col items-center gap-3 py-10">
+   788→              <p className="text-rose-600">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+   789→              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry')}</Button>
+   790→            </div>
+   791→          ) : filtered.length === 0 ? (
+   792→            <div className="flex flex-col items-center gap-3 py-10">
+   793→              <CreditCard className="size-12 text-gray-300" />
+   794→              <p className="text-muted-foreground">{t('لا توجد فواتير خدمات', 'No service invoices')}</p>
+   795→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   796→                <Plus className="size-4 mr-1" /> {t('إنشاء فاتورة خدمة', 'Create Service Invoice')}
+   797→              </Button>
+   798→            </div>
+   799→          ) : (
+   800→            <div className="overflow-x-auto">
+   801→              <Table>
+   802→                <TableHeader>
+   803→                  <TableRow>
+   804→                    <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No')}</TableHead>
+   805→                    <TableHead className="text-right">{t('العميل', 'Client')}</TableHead>
+   806→                    <TableHead className="text-right">{t('المشروع', 'Project')}</TableHead>
+   807→                    <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+   808→                    <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+   809→                    <TableHead className="text-right">{t('المدفوع', 'Paid')}</TableHead>
+   810→                    <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+   811→                    <TableHead className="text-right">{t('الإجراءات', 'Actions')}</TableHead>
+   812→                  </TableRow>
+   813→                </TableHeader>
+   814→                <TableBody>
+   815→                  {filtered.map(inv => (
+   816→                    <TableRow key={inv.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })}>
+   817→                      <TableCell className="font-medium font-mono">{inv.invoiceNo}</TableCell>
+   818→                      <TableCell>{inv.client.name}</TableCell>
+   819→                      <TableCell>{inv.project?.name || '—'}</TableCell>
+   820→                      <TableCell>{formatDate(inv.date, lang)}</TableCell>
+   821→                      <TableCell className="font-semibold">
+   822→                        <MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" bold inline />
+   823→                      </TableCell>
+   824→                      <TableCell className="text-amber-700">
+   825→                        <MoneyDisplay value={inv.paidAmount} lang={lang} size="sm" inline />
+   826→                      </TableCell>
+   827→                      <TableCell>
+   828→                        <Badge variant="outline" className={serviceStatusColors[inv.status]}>
+   829→                          {serviceStatusLabels[inv.status]}
+   830→                        </Badge>
+   831→                      </TableCell>
+   832→                      <TableCell>
+   833→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   834→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })} title={t('تفاصيل', 'Details')}>
+   835→                            <Eye className="size-4" />
+   836→                          </Button>
+   837→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'preview', invoiceId: inv.id })} title={t('معاينة', 'Preview')}>
+   838→                            <Printer className="size-4" />
+   839→                          </Button>
+   840→                        </div>
+   841→                      </TableCell>
+   842→                    </TableRow>
+   843→                  ))}
+   844→                </TableBody>
+   845→              </Table>
+   846→            </div>
+   847→          )}
+   848→        </CardContent>
+   849→      </Card>
+   850→    </div>
+   851→  )
+   852→}
+   853→

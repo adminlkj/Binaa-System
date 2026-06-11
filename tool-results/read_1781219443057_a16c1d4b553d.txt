@@ -1,0 +1,820 @@
+     1→'use client'
+     2→
+     3→import React from 'react'
+     4→import { useQuery } from '@tanstack/react-query'
+     5→import {
+     6→  Building2, Truck, RefreshCw, AlertTriangle, ArrowLeft,
+     7→  Users, Package, Wrench, Calculator,
+     8→  FileText, Clock, TrendingUp, TrendingDown, Wallet,
+     9→  ArrowRight, ArrowUpDown, CreditCard, Shield,
+    10→  Calendar, DollarSign, Link2,
+    11→} from 'lucide-react'
+    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Skeleton } from '@/components/ui/skeleton'
+    16→import {
+    17→  useAppStore,
+    18→  CONSTRUCTION_WORKFLOW, RENTAL_WORKFLOW,
+    19→} from '@/stores/app-store'
+    20→import type { NavItem } from '@/stores/app-store'
+    21→import { MoneyDisplay } from '@/components/ui/money-display'
+    22→
+    23→// ============ Types ============
+    24→interface RecentProject {
+    25→  id: string
+    26→  code: string
+    27→  name: string
+    28→  status: string
+    29→  contractValue: number
+    30→  client: { name: string }
+    31→  startDate: string
+    32→  endDate: string | null
+    33→}
+    34→
+    35→interface RecentRentalContract {
+    36→  id: string
+    37→  contractNo: string
+    38→  status: string
+    39→  startDate: string
+    40→  endDate: string | null
+    41→  rate: number
+    42→  rateType: string
+    43→  deliveryFees: number
+    44→  totalAmount: number
+    45→  equipment: { id: string; code: string; name: string }
+    46→  client: { id: string; name: string }
+    47→}
+    48→
+    49→interface DashboardData {
+    50→  activeProjects: number
+    51→  totalProjects: number
+    52→  totalContractValue: number
+    53→  activeEmployees: number
+    54→  totalEquipment: number
+    55→  equipmentStatusMap: Record<string, number>
+    56→  equipmentUtilizationRate: number
+    57→  totalRevenue: number
+    58→  totalExpenses: number
+    59→  netProfit: number
+    60→  cashPosition: number
+    61→  outstandingReceivables: number
+    62→  outstandingPayables: number
+    63→  overdueReceivables: number
+    64→  overduePayables: number
+    65→  netVAT: number
+    66→  vatPayable: number
+    67→  vatReceivable: number
+    68→  lowInventoryItems: number
+    69→  constructionProjects: number
+    70→  rentalProjects: number
+    71→  activeConstructionProjects: number
+    72→  activeRentalProjects: number
+    73→  constructionRevenue: number
+    74→  rentalRevenue: number
+    75→  constructionCosts: number
+    76→  rentalCosts: number
+    77→  constructionProfit: number
+    78→  rentalProfit: number
+    79→  rentedEquipment: number
+    80→  inUseEquipment: number
+    81→  availableEquipment: number
+    82→  recentConstructionProjects: RecentProject[]
+    83→  recentRentalContracts: RecentRentalContract[]
+    84→  totalExtracts: number
+    85→  totalExtractsAmount: number
+    86→  totalClientInvoices: number
+    87→  outstandingConstructionCollections: number
+    88→  outstandingRentalCollections: number
+    89→  constructionContractValue: number
+    90→  monthlyData: { month: string; labelAr: string; labelEn: string; revenue: number; expenses: number; profit: number }[]
+    91→  projectProfitability: { id: string; code: string; name: string; status: string; projectType: string; clientName: string; contractValue: number; totalCosts: number; totalRevenue: number; profit: number; margin: number }[]
+    92→  recentTransactions: { id: string; entryNo: string; date: string; description: string; totalDebit: number; totalCredit: number; sourceType: string | null }[]
+    93→  projectStatusDistribution: { status: string; count: number }[]
+    94→  alerts: { type: string; title: string; detail: string; date: string; severity: string }[]
+    95→}
+    96→
+    97→// ============ Helpers ============
+    98→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    99→
+   100→const projectStatusLabels: Record<string, { ar: string; en: string; color: string }> = {
+   101→  PLANNING: { ar: 'تخطيط', en: 'Planning', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+   102→  ACTIVE: { ar: 'نشط', en: 'Active', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+   103→  ON_HOLD: { ar: 'معلق', en: 'On Hold', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+   104→  COMPLETED: { ar: 'مكتمل', en: 'Completed', color: 'bg-teal-100 text-teal-700 border-teal-200' },
+   105→  CANCELLED: { ar: 'ملغي', en: 'Cancelled', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+   106→}
+   107→
+   108→const rentalStatusLabels: Record<string, { ar: string; en: string; color: string }> = {
+   109→  DRAFT: { ar: 'مسودة', en: 'Draft', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+   110→  ACTIVE: { ar: 'نشط', en: 'Active', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+   111→  COMPLETED: { ar: 'مكتمل', en: 'Completed', color: 'bg-teal-100 text-teal-700 border-teal-200' },
+   112→  CANCELLED: { ar: 'ملغي', en: 'Cancelled', color: 'bg-rose-100 text-rose-700 border-rose-200' },
+   113→  PENDING: { ar: 'قيد الانتظار', en: 'Pending', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+   114→}
+   115→
+   116→const equipStatusConfig: Record<string, { ar: string; en: string; dotColor: string; bgColor: string }> = {
+   117→  AVAILABLE: { ar: 'متاحة', en: 'Available', dotColor: 'bg-emerald-500', bgColor: 'bg-emerald-50' },
+   118→  IN_USE: { ar: 'قيد الاستخدام', en: 'In Use', dotColor: 'bg-amber-500', bgColor: 'bg-amber-50' },
+   119→  MAINTENANCE: { ar: 'صيانة', en: 'Maintenance', dotColor: 'bg-rose-500', bgColor: 'bg-rose-50' },
+   120→  OUT_OF_SERVICE: { ar: 'خارج الخدمة', en: 'Out of Service', dotColor: 'bg-gray-400', bgColor: 'bg-gray-50' },
+   121→  RENTED: { ar: 'مؤجرة', en: 'Rented', dotColor: 'bg-purple-500', bgColor: 'bg-purple-50' },
+   122→}
+   123→
+   124→// ============ Sub-Components ============
+   125→
+   126→function HubMetricCard({ title, value, icon: Icon, theme }: {
+   127→  title: string; value: React.ReactNode; icon: React.ElementType; theme: 'emerald' | 'cyan'
+   128→}) {
+   129→  const themeClasses = theme === 'emerald'
+   130→    ? 'bg-emerald-50 border-emerald-100'
+   131→    : 'bg-cyan-50 border-cyan-100'
+   132→  const iconClasses = theme === 'emerald'
+   133→    ? 'bg-emerald-100 text-emerald-600'
+   134→    : 'bg-cyan-100 text-cyan-600'
+   135→
+   136→  return (
+   137→    <Card className={`border ${themeClasses}`}>
+   138→      <CardContent className="p-3">
+   139→        <div className="flex items-center gap-2">
+   140→          <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${iconClasses}`}>
+   141→            <Icon className="size-4" />
+   142→          </div>
+   143→          <div className="min-w-0 flex-1">
+   144→            <p className="text-[11px] font-medium text-muted-foreground leading-tight">{title}</p>
+   145→            <div className="mt-0.5">{value}</div>
+   146→          </div>
+   147→        </div>
+   148→      </CardContent>
+   149→    </Card>
+   150→  )
+   151→}
+   152→
+   153→function WorkflowChain({ steps, theme, lang }: {
+   154→  steps: typeof CONSTRUCTION_WORKFLOW
+   155→  theme: 'emerald' | 'cyan'
+   156→  lang: 'ar' | 'en'
+   157→}) {
+   158→  const activeColor = theme === 'emerald'
+   159→    ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+   160→    : 'bg-cyan-100 text-cyan-700 border-cyan-300'
+   161→  const pendingColor = 'bg-gray-50 text-gray-400 border-gray-200'
+   162→  const arrowColor = theme === 'emerald' ? 'text-emerald-400' : 'text-cyan-400'
+   163→
+   164→  return (
+   165→    <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-thin" dir="ltr">
+   166→      {steps.map((step, i) => (
+   167→        <React.Fragment key={step.step}>
+   168→          <div
+   169→            className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium whitespace-nowrap transition-colors ${activeColor}`}
+   170→          >
+   171→            {lang === 'ar' ? step.label.ar : step.label.en}
+   172→          </div>
+   173→          {i < steps.length - 1 && (
+   174→            <ArrowRight className={`size-3 shrink-0 ${arrowColor}`} />
+   175→          )}
+   176→        </React.Fragment>
+   177→      ))}
+   178→    </div>
+   179→  )
+   180→}
+   181→
+   182→function StatusBadge({ status, type = 'project', lang }: {
+   183→  status: string; type?: 'project' | 'rental'; lang: 'ar' | 'en'
+   184→}) {
+   185→  const labels = type === 'project' ? projectStatusLabels : rentalStatusLabels
+   186→  const cfg = labels[status] || { ar: status, en: status, color: 'bg-gray-100 text-gray-700 border-gray-200' }
+   187→  return (
+   188→    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${cfg.color}`}>
+   189→      {lang === 'ar' ? cfg.ar : cfg.en}
+   190→    </Badge>
+   191→  )
+   192→}
+   193→
+   194→// ============ Construction Hub Panel ============
+   195→function ConstructionHubPanel({ data, lang, onNavigate }: {
+   196→  data: DashboardData; lang: 'ar' | 'en'; onNavigate: (item: NavItem) => void
+   197→}) {
+   198→  return (
+   199→    <Card className="border-emerald-200 overflow-hidden">
+   200→      {/* Hub Header */}
+   201→      <div className="bg-gradient-to-l from-emerald-600 to-emerald-700 px-5 py-4">
+   202→        <div className="flex items-center gap-3">
+   203→          <div className="flex size-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+   204→            <Building2 className="size-6 text-white" />
+   205→          </div>
+   206→          <div className="flex-1">
+   207→            <h2 className="text-lg font-bold text-white">{t('المشاريع التنفيذية', 'Construction Projects', lang)}</h2>
+   208→            <p className="text-xs text-emerald-100">
+   209→              {data.activeConstructionProjects} {t('مشروع نشط', 'active projects', lang)}
+   210→              {data.constructionProjects > 0 && (
+   211→                <span className="opacity-80"> ({t('إجمالي', 'total', lang)}: {data.constructionProjects})</span>
+   212→              )}
+   213→            </p>
+   214→          </div>
+   215→          <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30 text-xs">
+   216→            {t('محور التنفيذ', 'Construction Hub', lang)}
+   217→          </Badge>
+   218→        </div>
+   219→      </div>
+   220→
+   221→      <CardContent className="p-5 space-y-5">
+   222→        {/* Key Metrics */}
+   223→        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+   224→          <HubMetricCard
+   225→            title={t('المشاريع النشطة', 'Active Projects', lang)}
+   226→            value={<span className="text-lg font-bold">{data.activeConstructionProjects}</span>}
+   227→            icon={Building2}
+   228→            theme="emerald"
+   229→          />
+   230→          <HubMetricCard
+   231→            title={t('قيمة العقود', 'Contract Value', lang)}
+   232→            value={<MoneyDisplay value={data.constructionContractValue || 0} lang={lang} size="sm" bold />}
+   233→            icon={DollarSign}
+   234→            theme="emerald"
+   235→          />
+   236→          <HubMetricCard
+   237→            title={t('المستخلصات', 'Extracts', lang)}
+   238→            value={<span className="text-lg font-bold">{data.totalExtracts}</span>}
+   239→            icon={FileText}
+   240→            theme="emerald"
+   241→          />
+   242→          <HubMetricCard
+   243→            title={t('فواتير العملاء', 'Client Invoices', lang)}
+   244→            value={<span className="text-lg font-bold">{data.totalClientInvoices}</span>}
+   245→            icon={CreditCard}
+   246→            theme="emerald"
+   247→          />
+   248→          <HubMetricCard
+   249→            title={t('تحصيلات معلقة', 'Outstanding', lang)}
+   250→            value={<MoneyDisplay value={data.outstandingConstructionCollections || 0} lang={lang} size="sm" bold />}
+   251→            icon={Clock}
+   252→            theme="emerald"
+   253→          />
+   254→          <HubMetricCard
+   255→            title={t('إجمالي الإيرادات', 'Total Revenue', lang)}
+   256→            value={<MoneyDisplay value={data.constructionRevenue || 0} lang={lang} size="sm" bold />}
+   257→            icon={TrendingUp}
+   258→            theme="emerald"
+   259→          />
+   260→        </div>
+   261→
+   262→        {/* Revenue / Costs / Profit Summary */}
+   263→        <div className="grid grid-cols-3 gap-2.5">
+   264→          <div className="rounded-lg bg-emerald-50/60 p-2.5 text-center">
+   265→            <p className="text-[10px] text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
+   266→            <MoneyDisplay value={data.constructionRevenue || 0} lang={lang} size="sm" bold className="text-emerald-700 justify-center" />
+   267→          </div>
+   268→          <div className="rounded-lg bg-rose-50/60 p-2.5 text-center">
+   269→            <p className="text-[10px] text-muted-foreground">{t('التكاليف', 'Costs', lang)}</p>
+   270→            <MoneyDisplay value={data.constructionCosts || 0} lang={lang} size="sm" bold className="text-rose-600 justify-center" />
+   271→          </div>
+   272→          <div className="rounded-lg bg-emerald-50/60 p-2.5 text-center">
+   273→            <p className="text-[10px] text-muted-foreground">{t('الربح', 'Profit', lang)}</p>
+   274→            <MoneyDisplay value={data.constructionProfit || 0} lang={lang} size="sm" bold className={(data.constructionProfit || 0) >= 0 ? 'text-emerald-700 justify-center' : 'text-rose-600 justify-center'} />
+   275→          </div>
+   276→        </div>
+   277→
+   278→        {/* Workflow Chain */}
+   279→        <div>
+   280→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('سير العمل', 'Workflow Chain', lang)}</p>
+   281→          <WorkflowChain steps={CONSTRUCTION_WORKFLOW} theme="emerald" lang={lang} />
+   282→        </div>
+   283→
+   284→        {/* Recent Projects */}
+   285→        <div>
+   286→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('أحدث المشاريع', 'Recent Projects', lang)}</p>
+   287→          {data.recentConstructionProjects && data.recentConstructionProjects.length > 0 ? (
+   288→            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+   289→              {data.recentConstructionProjects.map(p => (
+   290→                <div key={p.id} className="flex items-center gap-2.5 rounded-lg bg-gray-50/80 px-3 py-2 hover:bg-gray-100/80 transition-colors">
+   291→                  <div className="flex size-7 items-center justify-center rounded-md bg-emerald-100">
+   292→                    <Building2 className="size-3.5 text-emerald-600" />
+   293→                  </div>
+   294→                  <div className="min-w-0 flex-1">
+   295→                    <p className="text-xs font-medium truncate">{p.name}</p>
+   296→                    <p className="text-[10px] text-muted-foreground">{p.client?.name || '—'}</p>
+   297→                  </div>
+   298→                  <StatusBadge status={p.status} type="project" lang={lang} />
+   299→                </div>
+   300→              ))}
+   301→            </div>
+   302→          ) : (
+   303→            <div className="rounded-lg border border-dashed border-gray-200 py-6 text-center">
+   304→              <Building2 className="mx-auto size-6 text-gray-300" />
+   305→              <p className="mt-1 text-xs text-muted-foreground">{t('لا توجد مشاريع تنفيذية', 'No construction projects', lang)}</p>
+   306→            </div>
+   307→          )}
+   308→        </div>
+   309→
+   310→        {/* View All Button */}
+   311→        <Button
+   312→          onClick={() => onNavigate('projects')}
+   313→          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+   314→        >
+   315→          {t('عرض جميع المشاريع', 'View All Projects', lang)}
+   316→          <ArrowLeft className="size-4" />
+   317→        </Button>
+   318→      </CardContent>
+   319→    </Card>
+   320→  )
+   321→}
+   322→
+   323→// ============ Rental Hub Panel ============
+   324→function RentalHubPanel({ data, lang, onNavigate }: {
+   325→  data: DashboardData; lang: 'ar' | 'en'; onNavigate: (item: NavItem) => void
+   326→}) {
+   327→  const equipStatusEntries = Object.entries(data.equipmentStatusMap || {})
+   328→
+   329→  return (
+   330→    <Card className="border-cyan-200 overflow-hidden">
+   331→      {/* Hub Header */}
+   332→      <div className="bg-gradient-to-l from-cyan-600 to-cyan-700 px-5 py-4">
+   333→        <div className="flex items-center gap-3">
+   334→          <div className="flex size-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+   335→            <Truck className="size-6 text-white" />
+   336→          </div>
+   337→          <div className="flex-1">
+   338→            <h2 className="text-lg font-bold text-white">{t('تأجير المعدات', 'Equipment Rental', lang)}</h2>
+   339→            <p className="text-xs text-cyan-100">
+   340→              {data.activeRentalProjects} {t('مشروع نشط', 'active projects', lang)}
+   341→              {data.rentalProjects > 0 && (
+   342→                <span className="opacity-80"> ({t('إجمالي', 'total', lang)}: {data.rentalProjects})</span>
+   343→              )}
+   344→            </p>
+   345→          </div>
+   346→          <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30 text-xs">
+   347→            {t('محور التأجير', 'Rental Hub', lang)}
+   348→          </Badge>
+   349→        </div>
+   350→      </div>
+   351→
+   352→      <CardContent className="p-5 space-y-5">
+   353→        {/* Key Metrics */}
+   354→        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+   355→          <HubMetricCard
+   356→            title={t('معدات متاحة', 'Available', lang)}
+   357→            value={<span className="text-lg font-bold">{data.availableEquipment || 0}</span>}
+   358→            icon={Truck}
+   359→            theme="cyan"
+   360→          />
+   361→          <HubMetricCard
+   362→            title={t('معدات مؤجرة', 'Rented', lang)}
+   363→            value={<span className="text-lg font-bold">{(data.rentedEquipment || 0) + (data.inUseEquipment || 0)}</span>}
+   364→            icon={Link2}
+   365→            theme="cyan"
+   366→          />
+   367→          <HubMetricCard
+   368→            title={t('إيرادات التأجير', 'Rental Revenue', lang)}
+   369→            value={<MoneyDisplay value={data.rentalRevenue || 0} lang={lang} size="sm" bold />}
+   370→            icon={TrendingUp}
+   371→            theme="cyan"
+   372→          />
+   373→          <HubMetricCard
+   374→            title={t('تحصيلات معلقة', 'Outstanding', lang)}
+   375→            value={<MoneyDisplay value={data.outstandingRentalCollections || 0} lang={lang} size="sm" bold />}
+   376→            icon={Clock}
+   377→            theme="cyan"
+   378→          />
+   379→        </div>
+   380→
+   381→        {/* Revenue / Costs / Profit Summary */}
+   382→        <div className="grid grid-cols-3 gap-2.5">
+   383→          <div className="rounded-lg bg-cyan-50/60 p-2.5 text-center">
+   384→            <p className="text-[10px] text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
+   385→            <MoneyDisplay value={data.rentalRevenue || 0} lang={lang} size="sm" bold className="text-cyan-700 justify-center" />
+   386→          </div>
+   387→          <div className="rounded-lg bg-rose-50/60 p-2.5 text-center">
+   388→            <p className="text-[10px] text-muted-foreground">{t('التكاليف', 'Costs', lang)}</p>
+   389→            <MoneyDisplay value={data.rentalCosts || 0} lang={lang} size="sm" bold className="text-rose-600 justify-center" />
+   390→          </div>
+   391→          <div className="rounded-lg bg-cyan-50/60 p-2.5 text-center">
+   392→            <p className="text-[10px] text-muted-foreground">{t('الربح', 'Profit', lang)}</p>
+   393→            <MoneyDisplay value={data.rentalProfit || 0} lang={lang} size="sm" bold className={(data.rentalProfit || 0) >= 0 ? 'text-cyan-700 justify-center' : 'text-rose-600 justify-center'} />
+   394→          </div>
+   395→        </div>
+   396→
+   397→        {/* Workflow Chain */}
+   398→        <div>
+   399→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('سير العمل', 'Workflow Chain', lang)}</p>
+   400→          <WorkflowChain steps={RENTAL_WORKFLOW} theme="cyan" lang={lang} />
+   401→        </div>
+   402→
+   403→        {/* Equipment Status Summary */}
+   404→        <div>
+   405→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('حالة المعدات', 'Equipment Status', lang)}</p>
+   406→          {equipStatusEntries.length > 0 ? (
+   407→            <div className="grid grid-cols-2 gap-1.5">
+   408→              {equipStatusEntries.map(([status, count]) => {
+   409→                const cfg = equipStatusConfig[status] || { ar: status, en: status, dotColor: 'bg-gray-400', bgColor: 'bg-gray-50' }
+   410→                return (
+   411→                  <div key={status} className={`flex items-center gap-2 rounded-lg ${cfg.bgColor} px-2.5 py-1.5`}>
+   412→                    <div className={`size-2 rounded-full ${cfg.dotColor}`} />
+   413→                    <span className="text-[11px] flex-1">{lang === 'ar' ? cfg.ar : cfg.en}</span>
+   414→                    <span className="text-xs font-bold">{count}</span>
+   415→                  </div>
+   416→                )
+   417→              })}
+   418→            </div>
+   419→          ) : (
+   420→            <div className="rounded-lg border border-dashed border-gray-200 py-4 text-center">
+   421→              <p className="text-xs text-muted-foreground">{t('لا توجد معدات', 'No equipment', lang)}</p>
+   422→            </div>
+   423→          )}
+   424→        </div>
+   425→
+   426→        {/* Recent Rental Contracts */}
+   427→        <div>
+   428→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('أحدث عقود التأجير', 'Recent Rental Contracts', lang)}</p>
+   429→          {data.recentRentalContracts && data.recentRentalContracts.length > 0 ? (
+   430→            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+   431→              {data.recentRentalContracts.map(c => (
+   432→                <div key={c.id} className="flex items-center gap-2.5 rounded-lg bg-gray-50/80 px-3 py-2 hover:bg-gray-100/80 transition-colors">
+   433→                  <div className="flex size-7 items-center justify-center rounded-md bg-cyan-100">
+   434→                    <Truck className="size-3.5 text-cyan-600" />
+   435→                  </div>
+   436→                  <div className="min-w-0 flex-1">
+   437→                    <p className="text-xs font-medium truncate">{c.equipment?.name || c.contractNo}</p>
+   438→                    <p className="text-[10px] text-muted-foreground">{c.client?.name || '—'} &bull; {c.contractNo}</p>
+   439→                  </div>
+   440→                  <StatusBadge status={c.status} type="rental" lang={lang} />
+   441→                </div>
+   442→              ))}
+   443→            </div>
+   444→          ) : (
+   445→            <div className="rounded-lg border border-dashed border-gray-200 py-6 text-center">
+   446→              <Truck className="mx-auto size-6 text-gray-300" />
+   447→              <p className="mt-1 text-xs text-muted-foreground">{t('لا توجد عقود تأجير', 'No rental contracts', lang)}</p>
+   448→            </div>
+   449→          )}
+   450→        </div>
+   451→
+   452→        {/* View All Button */}
+   453→        <Button
+   454→          onClick={() => onNavigate('equipment')}
+   455→          className="w-full bg-cyan-600 hover:bg-cyan-700 text-white gap-2"
+   456→        >
+   457→          {t('عرض جميع المعدات', 'View All Equipment', lang)}
+   458→          <ArrowLeft className="size-4" />
+   459→        </Button>
+   460→      </CardContent>
+   461→    </Card>
+   462→  )
+   463→}
+   464→
+   465→// ============ Quick Link Card ============
+   466→function QuickLinkCard({ icon: Icon, title, description, color, onClick }: {
+   467→  icon: React.ElementType; title: string; description: string; color: string; onClick: () => void
+   468→}) {
+   469→  return (
+   470→    <Card
+   471→      className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 border-gray-200/60"
+   472→      onClick={onClick}
+   473→    >
+   474→      <CardContent className="p-3.5 flex items-center gap-3">
+   475→        <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${color}`}>
+   476→          <Icon className="size-4 text-white" />
+   477→        </div>
+   478→        <div className="min-w-0 flex-1">
+   479→          <p className="text-xs font-semibold">{title}</p>
+   480→          <p className="text-[10px] text-muted-foreground">{description}</p>
+   481→        </div>
+   482→      </CardContent>
+   483→    </Card>
+   484→  )
+   485→}
+   486→
+   487→// ============ Loading Skeleton ============
+   488→function DashboardSkeleton() {
+   489→  return (
+   490→    <div className="space-y-6">
+   491→      {/* Header Skeleton */}
+   492→      <div className="flex items-center justify-between">
+   493→        <div className="space-y-2">
+   494→          <Skeleton className="h-7 w-48" />
+   495→          <Skeleton className="h-4 w-64" />
+   496→        </div>
+   497→        <Skeleton className="h-9 w-28" />
+   498→      </div>
+   499→      {/* Financial Summary Skeleton */}
+   500→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   501→        {Array.from({ length: 4 }).map((_, i) => (
+   502→          <Card key={i}><CardContent className="p-3"><Skeleton className="h-12 w-full" /></CardContent></Card>
+   503→        ))}
+   504→      </div>
+   505→      {/* Hub Panels Skeleton */}
+   506→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   507→        {[0, 1].map(i => (
+   508→          <Card key={i} className="overflow-hidden">
+   509→            <Skeleton className="h-20 w-full" />
+   510→            <CardContent className="p-5 space-y-4">
+   511→              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+   512→                {Array.from({ length: i === 0 ? 6 : 4 }).map((_, j) => (
+   513→                  <Skeleton key={j} className="h-16 w-full rounded-lg" />
+   514→                ))}
+   515→              </div>
+   516→              <div className="grid grid-cols-3 gap-2.5">
+   517→                {Array.from({ length: 3 }).map((_, j) => (
+   518→                  <Skeleton key={j} className="h-14 w-full rounded-lg" />
+   519→                ))}
+   520→              </div>
+   521→              <Skeleton className="h-8 w-full" />
+   522→              <div className="space-y-2">
+   523→                {Array.from({ length: 3 }).map((_, j) => (
+   524→                  <Skeleton key={j} className="h-10 w-full rounded-lg" />
+   525→                ))}
+   526→              </div>
+   527→              <Skeleton className="h-9 w-full" />
+   528→            </CardContent>
+   529→          </Card>
+   530→        ))}
+   531→      </div>
+   532→      {/* Bottom Section Skeleton */}
+   533→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+   534→        <Skeleton className="h-48 w-full rounded-lg" />
+   535→        <Skeleton className="h-48 w-full rounded-lg" />
+   536→        <Skeleton className="h-48 w-full rounded-lg" />
+   537→      </div>
+   538→    </div>
+   539→  )
+   540→}
+   541→
+   542→function ErrorState({ onRetry, lang }: { onRetry: () => void; lang: 'ar' | 'en' }) {
+   543→  return (
+   544→    <Card className="border-rose-200 bg-rose-50">
+   545→      <CardContent className="flex flex-col items-center gap-4 py-10">
+   546→        <AlertTriangle className="size-10 text-rose-500" />
+   547→        <p className="text-lg font-medium text-rose-700">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data', lang)}</p>
+   548→        <Button variant="outline" onClick={onRetry} className="gap-2">
+   549→          <RefreshCw className="size-4" />
+   550→          {t('إعادة المحاولة', 'Retry', lang)}
+   551→        </Button>
+   552→      </CardContent>
+   553→    </Card>
+   554→  )
+   555→}
+   556→
+   557→// ============ Seed Button ============
+   558→function SeedButton({ onSeedSuccess, lang }: { onSeedSuccess: () => void; lang: 'ar' | 'en' }) {
+   559→  const [isSeeding, setIsSeeding] = React.useState(false)
+   560→  const handleSeed = async () => {
+   561→    setIsSeeding(true)
+   562→    try { await fetch('/api/seed', { method: 'POST' }); onSeedSuccess() } catch { /* ignore */ } finally { setIsSeeding(false) }
+   563→  }
+   564→  return (
+   565→    <Button onClick={handleSeed} disabled={isSeeding} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+   566→      {isSeeding ? <RefreshCw className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+   567→      {isSeeding ? t('جاري التهيئة...', 'Seeding...', lang) : t('تهيئة البيانات التجريبية', 'Seed Demo Data', lang)}
+   568→    </Button>
+   569→  )
+   570→}
+   571→
+   572→// ============ Alerts Section ============
+   573→function AlertsSection({ alerts, lang }: { alerts: DashboardData['alerts']; lang: 'ar' | 'en' }) {
+   574→  if (!alerts || alerts.length === 0) return null
+   575→
+   576→  const iconMap: Record<string, React.ElementType> = {
+   577→    RESIDENCE_EXPIRY: Shield,
+   578→    MAINTENANCE_DUE: Wrench,
+   579→    CONTRACT_EXPIRY: Calendar,
+   580→  }
+   581→
+   582→  return (
+   583→    <Card>
+   584→      <CardHeader className="pb-3">
+   585→        <CardTitle className="flex items-center gap-2 text-sm">
+   586→          <AlertTriangle className="size-4 text-amber-600" />
+   587→          {t('التنبيهات', 'Alerts', lang)}
+   588→        </CardTitle>
+   589→      </CardHeader>
+   590→      <CardContent>
+   591→        <div className="space-y-1.5 max-h-40 overflow-y-auto">
+   592→          {alerts.slice(0, 5).map((alert, i) => {
+   593→            const Icon = iconMap[alert.type] || AlertTriangle
+   594→            const isWarning = alert.severity === 'warning'
+   595→            return (
+   596→              <div key={i} className={`flex items-start gap-2 rounded-lg p-2 text-xs ${isWarning ? 'bg-amber-50' : 'bg-cyan-50'}`}>
+   597→                <Icon className={`size-3.5 mt-0.5 shrink-0 ${isWarning ? 'text-amber-600' : 'text-cyan-600'}`} />
+   598→                <div className="min-w-0 flex-1">
+   599→                  <p className="font-medium truncate">{alert.title}</p>
+   600→                  {alert.detail && <p className="text-muted-foreground truncate">{alert.detail}</p>}
+   601→                </div>
+   602→              </div>
+   603→            )
+   604→          })}
+   605→        </div>
+   606→      </CardContent>
+   607→    </Card>
+   608→  )
+   609→}
+   610→
+   611→// ============ Financial Summary Row ============
+   612→function FinancialSummaryRow({ data, lang }: { data: DashboardData; lang: 'ar' | 'en' }) {
+   613→  return (
+   614→    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   615→      <Card>
+   616→        <CardContent className="p-3">
+   617→          <div className="flex items-center gap-2.5">
+   618→            <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-100">
+   619→              <TrendingUp className="size-4 text-emerald-600" />
+   620→            </div>
+   621→            <div className="min-w-0 flex-1">
+   622→              <p className="text-[11px] text-muted-foreground">{t('إجمالي الإيرادات', 'Total Revenue', lang)}</p>
+   623→              <MoneyDisplay value={data.totalRevenue || 0} lang={lang} size="sm" bold />
+   624→            </div>
+   625→          </div>
+   626→        </CardContent>
+   627→      </Card>
+   628→      <Card>
+   629→        <CardContent className="p-3">
+   630→          <div className="flex items-center gap-2.5">
+   631→            <div className="flex size-8 items-center justify-center rounded-lg bg-rose-100">
+   632→              <TrendingDown className="size-4 text-rose-600" />
+   633→            </div>
+   634→            <div className="min-w-0 flex-1">
+   635→              <p className="text-[11px] text-muted-foreground">{t('إجمالي المصروفات', 'Total Expenses', lang)}</p>
+   636→              <MoneyDisplay value={data.totalExpenses || 0} lang={lang} size="sm" bold />
+   637→            </div>
+   638→          </div>
+   639→        </CardContent>
+   640→      </Card>
+   641→      <Card>
+   642→        <CardContent className="p-3">
+   643→          <div className="flex items-center gap-2.5">
+   644→            <div className={`flex size-8 items-center justify-center rounded-lg ${(data.netProfit || 0) >= 0 ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+   645→              {(data.netProfit || 0) >= 0 ? <TrendingUp className="size-4 text-emerald-600" /> : <TrendingDown className="size-4 text-rose-600" />}
+   646→            </div>
+   647→            <div className="min-w-0 flex-1">
+   648→              <p className="text-[11px] text-muted-foreground">{t('صافي الربح', 'Net Profit', lang)}</p>
+   649→              <MoneyDisplay value={data.netProfit || 0} lang={lang} size="sm" bold />
+   650→            </div>
+   651→          </div>
+   652→        </CardContent>
+   653→      </Card>
+   654→      <Card>
+   655→        <CardContent className="p-3">
+   656→          <div className="flex items-center gap-2.5">
+   657→            <div className="flex size-8 items-center justify-center rounded-lg bg-teal-100">
+   658→              <Wallet className="size-4 text-teal-600" />
+   659→            </div>
+   660→            <div className="min-w-0 flex-1">
+   661→              <p className="text-[11px] text-muted-foreground">{t('الرصيد النقدي', 'Cash Balance', lang)}</p>
+   662→              <MoneyDisplay value={data.cashPosition || 0} lang={lang} size="sm" bold />
+   663→            </div>
+   664→          </div>
+   665→        </CardContent>
+   666→      </Card>
+   667→    </div>
+   668→  )
+   669→}
+   670→
+   671→// ============ Main Dashboard Module ============
+   672→export function DashboardModule() {
+   673→  const { lang, setActiveItem } = useAppStore()
+   674→  const { data: dashboard, isLoading, isError, refetch } = useQuery<DashboardData>({
+   675→    queryKey: ['dashboard'],
+   676→    queryFn: async () => { const res = await fetch('/api/dashboard'); if (!res.ok) throw new Error(); return res.json() },
+   677→    staleTime: 30000,
+   678→  })
+   679→
+   680→  const hasNoData = dashboard && dashboard.totalProjects === 0 && dashboard.totalRevenue === 0
+   681→
+   682→  if (isLoading) return <DashboardSkeleton />
+   683→  if (isError) return <ErrorState onRetry={() => refetch()} lang={lang} />
+   684→
+   685→  // Empty state - no data seeded yet
+   686→  if (hasNoData) {
+   687→    return (
+   688→      <div className="flex min-h-[60vh] items-center justify-center">
+   689→        <Card className="max-w-lg border-emerald-200 bg-emerald-50">
+   690→          <CardHeader className="items-center text-center">
+   691→            <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-100">
+   692→              <Building2 className="size-8 text-emerald-600" />
+   693→            </div>
+   694→            <CardTitle className="mt-4 text-2xl">{t('لا توجد بيانات', 'No Data', lang)}</CardTitle>
+   695→          </CardHeader>
+   696→          <CardContent className="text-center">
+   697→            <p className="text-muted-foreground leading-relaxed">{t('يرجى تهيئة البيانات التجريبية لعرض لوحة التحكم', 'Please seed demo data to view dashboard', lang)}</p>
+   698→            <div className="mt-6"><SeedButton onSeedSuccess={() => refetch()} lang={lang} /></div>
+   699→          </CardContent>
+   700→        </Card>
+   701→      </div>
+   702→    )
+   703→  }
+   704→
+   705→  return (
+   706→    <div className="space-y-6">
+   707→      {/* Header */}
+   708→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   709→        <div>
+   710→          <h1 className="text-2xl font-bold text-gray-900">{t('لوحة التحكم', 'Dashboard', lang)}</h1>
+   711→          <p className="text-sm text-muted-foreground">
+   712→            {t('نظرة شاملة على أنشطة المشاريع التنفيذية وتأجير المعدات', 'Overview of Construction Projects and Equipment Rental activities', lang)}
+   713→          </p>
+   714→        </div>
+   715→        <div className="flex items-center gap-2">
+   716→          <SeedButton onSeedSuccess={() => refetch()} lang={lang} />
+   717→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh', lang)}>
+   718→            <RefreshCw className="size-4" />
+   719→          </Button>
+   720→        </div>
+   721→      </div>
+   722→
+   723→      {/* Financial Summary Row */}
+   724→      <FinancialSummaryRow data={dashboard!} lang={lang} />
+   725→
+   726→      {/* ===== TWO HUB PANELS ===== */}
+   727→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   728→        <ConstructionHubPanel data={dashboard!} lang={lang} onNavigate={setActiveItem} />
+   729→        <RentalHubPanel data={dashboard!} lang={lang} onNavigate={setActiveItem} />
+   730→      </div>
+   731→
+   732→      {/* ===== SHARED BOTTOM SECTION ===== */}
+   733→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+   734→        {/* Quick Links */}
+   735→        <Card className="lg:col-span-1">
+   736→          <CardHeader className="pb-3">
+   737→            <CardTitle className="flex items-center gap-2 text-sm">
+   738→              <Link2 className="size-4 text-gray-500" />
+   739→              {t('روابط سريعة', 'Quick Links', lang)}
+   740→            </CardTitle>
+   741→          </CardHeader>
+   742→          <CardContent className="grid grid-cols-2 gap-2">
+   743→            <QuickLinkCard
+   744→              icon={Users}
+   745→              title={t('الموارد البشرية', 'HR', lang)}
+   746→              description={t('الموظفون والرواتب', 'Employees & Salaries', lang)}
+   747→              color="bg-violet-500"
+   748→              onClick={() => setActiveItem('employees')}
+   749→            />
+   750→            <QuickLinkCard
+   751→              icon={Package}
+   752→              title={t('سلسلة التوريد', 'Supply Chain', lang)}
+   753→              description={t('المشتريات والموردين', 'Purchases & Suppliers', lang)}
+   754→              color="bg-amber-500"
+   755→              onClick={() => setActiveItem('purchase-requests')}
+   756→            />
+   757→            <QuickLinkCard
+   758→              icon={Wrench}
+   759→              title={t('التشغيل', 'Operations', lang)}
+   760→              description={t('تشغيل وصيانة المعدات', 'Equipment Ops & Maintenance', lang)}
+   761→              color="bg-orange-500"
+   762→              onClick={() => setActiveItem('equipment-operations')}
+   763→            />
+   764→            <QuickLinkCard
+   765→              icon={Calculator}
+   766→              title={t('المحاسبة', 'Accounting', lang)}
+   767→              description={t('القيود والتقارير', 'Journal Entries & Reports', lang)}
+   768→              color="bg-teal-500"
+   769→              onClick={() => setActiveItem('accounting')}
+   770→            />
+   771→          </CardContent>
+   772→        </Card>
+   773→
+   774→        {/* Receivables & Payables */}
+   775→        <Card className="lg:col-span-1">
+   776→          <CardHeader className="pb-3">
+   777→            <CardTitle className="flex items-center gap-2 text-sm">
+   778→              <ArrowUpDown className="size-4 text-cyan-600" />
+   779→              {t('الذمم المالية', 'Financial Position', lang)}
+   780→            </CardTitle>
+   781→          </CardHeader>
+   782→          <CardContent className="space-y-3">
+   783→            <div className="rounded-lg bg-cyan-50/60 p-3 space-y-2">
+   784→              <div className="flex items-center gap-2">
+   785→                <ArrowUpDown className="size-4 text-cyan-600" />
+   786→                <span className="text-xs font-semibold text-cyan-800">{t('الذمم المدينة', 'Receivables', lang)}</span>
+   787→              </div>
+   788→              <div className="flex items-center justify-between text-xs">
+   789→                <span className="text-muted-foreground">{t('إجمالي مستحق', 'Total Outstanding', lang)}</span>
+   790→                <MoneyDisplay value={dashboard?.outstandingReceivables || 0} lang={lang} size="sm" bold className="text-cyan-700" />
+   791→              </div>
+   792→              <div className="flex items-center justify-between text-xs">
+   793→                <span className="text-rose-600 font-medium">{t('متأخرة', 'Overdue', lang)}</span>
+   794→                <MoneyDisplay value={dashboard?.overdueReceivables || 0} lang={lang} size="sm" bold className="text-rose-600" />
+   795→              </div>
+   796→            </div>
+   797→            <div className="rounded-lg bg-orange-50/60 p-3 space-y-2">
+   798→              <div className="flex items-center gap-2">
+   799→                <CreditCard className="size-4 text-orange-600" />
+   800→                <span className="text-xs font-semibold text-orange-800">{t('الذمم الدائنة', 'Payables', lang)}</span>
+   801→              </div>
+   802→              <div className="flex items-center justify-between text-xs">
+   803→                <span className="text-muted-foreground">{t('إجمالي مستحق', 'Total Outstanding', lang)}</span>
+   804→                <MoneyDisplay value={dashboard?.outstandingPayables || 0} lang={lang} size="sm" bold className="text-orange-700" />
+   805→              </div>
+   806→              <div className="flex items-center justify-between text-xs">
+   807→                <span className="text-rose-600 font-medium">{t('متأخرة', 'Overdue', lang)}</span>
+   808→                <MoneyDisplay value={dashboard?.overduePayables || 0} lang={lang} size="sm" bold className="text-rose-600" />
+   809→              </div>
+   810→            </div>
+   811→          </CardContent>
+   812→        </Card>
+   813→
+   814→        {/* Alerts */}
+   815→        <AlertsSection alerts={dashboard?.alerts || []} lang={lang} />
+   816→      </div>
+   817→    </div>
+   818→  )
+   819→}
+   820→

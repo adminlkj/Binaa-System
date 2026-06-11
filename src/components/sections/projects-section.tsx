@@ -432,7 +432,7 @@ function ProjectListView() {
     })
   }, [projects, search, statusFilter])
 
-  const totalContractValue = projects.reduce((s, p) => s + p.contractValue, 0)
+  const totalContractValue = projects.reduce((s, p) => s + (p.contractValue ?? 0), 0)
   const activeCount = projects.filter(p => p.status === 'ACTIVE').length
 
   const handleSelectProject = (id: string) => {
@@ -609,8 +609,8 @@ function OverviewTab({ project, completion, invoices, payments, lang }: {
 }) {
   const cs = project.costSheet
   const isProfit = cs.profit >= 0
-  const totalInvoiced = invoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalCollected = payments.reduce((s, p) => s + p.amount, 0)
+  const totalInvoiced = invoices.reduce((s, i) => s + (i.totalAmount ?? 0), 0)
+  const totalCollected = payments.reduce((s, p) => s + (p.amount ?? 0), 0)
   const totalRemaining = totalInvoiced - totalCollected
 
   return (
@@ -679,7 +679,7 @@ function OverviewTab({ project, completion, invoices, payments, lang }: {
                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">{t('المستخلصات', 'Claims', lang)}</span><span className="font-medium">{formatNumber(project.progressClaims.length)}</span></div>
                 <div className="flex justify-between gap-4"><span className="text-muted-foreground">{t('العقود', 'Contracts', lang)}</span><span className="font-medium">{formatNumber(project.contracts.length)}</span></div>
                 <Separator className="my-1" />
-                <div className="flex justify-between gap-4"><span className="text-muted-foreground">{t('هامش الربح', 'Profit Margin', lang)}</span><span className={`font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>{Math.abs(cs.profitMargin).toFixed(2)}%</span></div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">{t('هامش الربح', 'Profit Margin', lang)}</span><span className={`font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>{Math.abs(cs.profitMargin ?? 0).toFixed(2)}%</span></div>
               </div>
             </div>
           </CardContent>
@@ -747,7 +747,7 @@ function ContractsTab({ project, lang }: { project: ProjectDetail; lang: Lang })
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('عدد العقود', 'Total Contracts', lang)}</p><p className="text-2xl font-bold">{project.contracts.length}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('إجمالي القيمة', 'Total Value', lang)}</p><p className="text-lg font-bold text-emerald-700"><MoneyDisplay value={project.contracts.reduce((s, c) => s + c.totalValue, 0)} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('إجمالي القيمة', 'Total Value', lang)}</p><p className="text-lg font-bold text-emerald-700"><MoneyDisplay value={project.contracts.reduce((s, c) => s + (c.totalValue ?? 0), 0)} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('العقود النشطة', 'Active Contracts', lang)}</p><p className="text-2xl font-bold text-emerald-700">{project.contracts.filter(c => c.status === 'ACTIVE').length}</p></CardContent></Card>
       </div>
 
@@ -793,7 +793,7 @@ function ContractsTab({ project, lang }: { project: ProjectDetail; lang: Lang })
 // ============ EXTRACTS TAB ============
 
 function ExtractsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
-  const totalAmount = project.progressClaims.reduce((s, c) => s + c.totalAmount, 0)
+  const totalAmount = project.progressClaims.reduce((s, c) => s + (c.totalAmount ?? 0), 0)
   const invoicedCount = project.progressClaims.filter(c => c.invoiced).length
   const uninvoicedCount = project.progressClaims.filter(c => !c.invoiced && c.status === 'APPROVED').length
 
@@ -860,8 +860,8 @@ function ExtractsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) 
 // ============ INVOICES TAB ============
 
 function InvoicesTab({ invoices, lang }: { invoices: SalesInvoiceItem[]; lang: Lang }) {
-  const totalInvoiced = invoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+  const totalInvoiced = invoices.reduce((s, i) => s + (i.totalAmount ?? 0), 0)
+  const totalPaid = invoices.reduce((s, i) => s + (i.paidAmount ?? 0), 0)
   const totalRemaining = totalInvoiced - totalPaid
 
   return (
@@ -946,7 +946,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value', lang)}</p><p className="text-lg font-bold text-emerald-700"><MoneyDisplay value={cs.contractValue} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('التكاليف الفعلية', 'Actual Costs', lang)}</p><p className="text-lg font-bold text-rose-700"><MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
         <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('الفرق', 'Variance', lang)}</p><p className={`text-lg font-bold ${budgetVariance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}><MoneyDisplay value={budgetVariance} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
-        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('نسبة الفرق', 'Variance %', lang)}</p><p className={`text-lg font-bold ${budgetVariancePct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{budgetVariancePct >= 0 ? '+' : ''}{budgetVariancePct.toFixed(2)}%</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('نسبة الفرق', 'Variance %', lang)}</p><p className={`text-lg font-bold ${budgetVariancePct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{budgetVariancePct >= 0 ? '+' : ''}{(budgetVariancePct ?? 0).toFixed(2)}%</p></CardContent></Card>
       </div>
 
       {/* Project Card */}
@@ -986,7 +986,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
               </div>
               <div className={`text-center rounded-xl px-5 py-3 ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
                 <p className="text-xs font-medium text-gray-500 mb-1">{t('هامش الربح', 'Profit Margin')}</p>
-                <p className={`text-3xl font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>{Math.abs(cs.profitMargin).toFixed(2)}%</p>
+                <p className={`text-3xl font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>{Math.abs(cs.profitMargin ?? 0).toFixed(2)}%</p>
               </div>
             </div>
           </div>
@@ -999,9 +999,9 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
 // ============ COLLECTIONS TAB ============
 
 function CollectionsTab({ payments, lang }: { payments: ClientPaymentItem[]; lang: Lang }) {
-  const totalCollected = payments.reduce((s, p) => s + p.amount, 0)
-  const treasuryTotal = payments.filter(p => p.receivedIn === 'TREASURY').reduce((s, p) => s + p.amount, 0)
-  const bankTotal = payments.filter(p => p.receivedIn === 'BANK').reduce((s, p) => s + p.amount, 0)
+  const totalCollected = payments.reduce((s, p) => s + (p.amount ?? 0), 0)
+  const treasuryTotal = payments.filter(p => p.receivedIn === 'TREASURY').reduce((s, p) => s + (p.amount ?? 0), 0)
+  const bankTotal = payments.filter(p => p.receivedIn === 'BANK').reduce((s, p) => s + (p.amount ?? 0), 0)
 
   return (
     <div className="space-y-4">
@@ -1055,7 +1055,7 @@ function CollectionsTab({ payments, lang }: { payments: ClientPaymentItem[]; lan
 // ============ BOQ TAB ============
 
 function BOQTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
-  const totalBOQ = project.boqItems.reduce((s, i) => s + i.totalPrice, 0)
+  const totalBOQ = project.boqItems.reduce((s, i) => s + (i.totalPrice ?? 0), 0)
 
   return (
     <div className="space-y-4">

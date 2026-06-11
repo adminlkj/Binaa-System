@@ -226,7 +226,7 @@ export function WorkTeamsModule() {
       specialty: team.specialty || '—',
       project: team.project?.name || '—',
       memberCount: team.members?.length || 0,
-      totalCost: team.members?.reduce((s, m) => s + m.employee.basicSalary, 0) || 0,
+      totalCost: team.members?.reduce((s, m) => s + (m.employee?.basicSalary ?? 0), 0) || 0,
     })),
     infoItems: [
       { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
@@ -246,7 +246,7 @@ export function WorkTeamsModule() {
     exportToCSV(filtered.map(team => ({
       code: team.code, name: team.name, specialty: team.specialty || '',
       project: team.project?.name || '', memberCount: team.members?.length || 0,
-      totalCost: team.members?.reduce((s, m) => s + m.employee.basicSalary, 0) || 0,
+      totalCost: team.members?.reduce((s, m) => s + (m.employee?.basicSalary ?? 0), 0) || 0,
     })), `work-teams-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
@@ -290,7 +290,7 @@ export function WorkTeamsModule() {
               </TableRow></TableHeader>
               <TableBody>
                 {filtered.map(team => {
-                  const teamCost = team.members?.reduce((s, m) => s + m.employee.basicSalary, 0) || 0
+                  const teamCost = team.members?.reduce((s, m) => s + (m.employee?.basicSalary ?? 0), 0) || 0
                   return (
                     <React.Fragment key={team.id}>
                       <TableRow className={expandedTeamId === team.id ? 'bg-emerald-50/50' : ''}>

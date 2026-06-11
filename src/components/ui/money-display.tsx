@@ -25,8 +25,8 @@ import { CurrencySymbol } from '@/components/ui/currency-symbol'
  */
 
 export interface MoneyDisplayProps {
-  /** The numeric value to display */
-  value: number
+  /** The numeric value to display (undefined/null treated as 0) */
+  value: number | undefined | null
   /** Display mode: system = with thousand separators, official = no separators (ZATCA) */
   mode?: 'system' | 'official'
   /** Language for display: ar = Arabic (RTL), en = English (LTR) */
@@ -88,13 +88,15 @@ const symbolImageCache = new Map<string, string>()
  * @param mode - 'system' = with thousand separators, 'official' = no separators (ZATCA)
  * @returns Formatted number string with exactly 2 decimal places
  */
-export function formatAmount(value: number, mode: 'system' | 'official' = 'system'): string {
+export function formatAmount(value: number | undefined | null, mode: 'system' | 'official' = 'system'): string {
+  // Handle undefined/null/NaN values gracefully
+  const safeValue = (value === undefined || value === null || isNaN(value)) ? 0 : value
   if (mode === 'official') {
     // ZATCA compliance: no thousand separators
-    return value.toFixed(2)
+    return safeValue.toFixed(2)
   }
   // System mode: with thousand separators
-  return value.toLocaleString('en-US', {
+  return safeValue.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
@@ -108,7 +110,7 @@ export function formatAmount(value: number, mode: 'system' | 'official' = 'syste
  * @returns Formatted currency string
  */
 export function formatMoney(
-  value: number,
+  value: number | undefined | null,
   options?: {
     mode?: 'system' | 'official'
     lang?: 'ar' | 'en'
@@ -262,7 +264,7 @@ export function MoneyDisplay({
   className = '',
   dir,
 }: MoneyDisplayProps) {
-  // Format the number based on mode
+  // Format the number based on mode (safe for undefined/null)
   const formattedAmount = formatAmount(value, mode)
 
   // Determine text direction

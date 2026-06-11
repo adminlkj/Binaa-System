@@ -329,7 +329,7 @@ function ExpenseFormDialog({
                   <span className="font-medium"><MoneyDisplay value={parsedAmount} lang={lang} size="sm" /></span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>{t(lang, `الضريبة (${(parsedVatRate * 100).toFixed(0)}%)`, `VAT (${(parsedVatRate * 100).toFixed(0)}%)`)}</span>
+                  <span>{t(lang, `الضريبة (${((parsedVatRate ?? 0) * 100).toFixed(0)}%)`, `VAT (${((parsedVatRate ?? 0) * 100).toFixed(0)}%)`)}</span>
                   <span className="font-medium"><MoneyDisplay value={autoVat} lang={lang} size="sm" /></span>
                 </div>
                 <Separator />
@@ -417,9 +417,9 @@ export function ExpensesModule() {
       { key: 'projectName', label: t(lang, 'المشروع', 'Project') },
       { key: 'category', label: t(lang, 'الفئة', 'Category'), format: (v) => allCategoryLabels[v as string]?.[lang] || String(v) },
       { key: 'description', label: t(lang, 'الوصف', 'Description') },
-      { key: 'amount', label: t(lang, 'المبلغ', 'Amount'), format: (v) => Number(v).toFixed(2) },
-      { key: 'vatAmount', label: t(lang, 'الضريبة', 'VAT'), format: (v) => v ? Number(v).toFixed(2) : '' },
-      { key: 'totalAmount', label: t(lang, 'الإجمالي', 'Total'), format: (v) => Number(v).toFixed(2) },
+      { key: 'amount', label: t(lang, 'المبلغ', 'Amount'), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'vatAmount', label: t(lang, 'الضريبة', 'VAT'), format: (v) => v ? (Number(v) || 0).toFixed(2) : '' },
+      { key: 'totalAmount', label: t(lang, 'الإجمالي', 'Total'), format: (v) => (Number(v) || 0).toFixed(2) },
       { key: 'payFrom', label: t(lang, 'السداد من', 'Pay From'), format: (v) => payFromLabels[v as string]?.[lang] || String(v) },
       { key: 'date', label: t(lang, 'التاريخ', 'Date') },
       { key: 'reference', label: t(lang, 'المرجع', 'Reference') },

@@ -292,12 +292,14 @@ export function formatAmount(value: number, mode: 'system' | 'official' = 'syste
   return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export function formatNumber(value: number): string {
+export function formatNumber(value: number | undefined | null): string {
+  if (value == null || isNaN(value)) return '0'
   return value.toLocaleString('en-US')
 }
 
-export function formatSAR(value: number, lang: Lang = 'ar'): string {
-  const formatted = value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+export function formatSAR(value: number | undefined | null, lang: Lang = 'ar'): string {
+  const safeValue = value == null || isNaN(value) ? 0 : value
+  const formatted = safeValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return lang === 'ar' ? `${formatted} ﷼` : `SAR ${formatted}`
 }
 

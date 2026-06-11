@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       data: {
         branchId: body.branchId,
         description: body.description,
-        amount: parseFloat(body.amount),
+        amount: parseFloat(body.amount) || 0,
         date: new Date(body.date),
         category: body.category || null,
         reference: body.reference || null,

@@ -171,13 +171,13 @@ function AddPaymentDialog({
   // Selected invoice
   const selectedInvoice = invoices.find(inv => inv.id === invoiceId)
   const remainingBalance = selectedInvoice
-    ? selectedInvoice.totalAmount - selectedInvoice.paidAmount
+    ? (selectedInvoice.totalAmount ?? 0) - (selectedInvoice.paidAmount ?? 0)
     : 0
 
   // Auto-fill amount when invoice is selected
   React.useEffect(() => {
     if (selectedInvoice && remainingBalance > 0) {
-      setAmount(remainingBalance.toFixed(2))
+      setAmount((remainingBalance ?? 0).toFixed(2))
     }
   }, [invoiceId, selectedInvoice, remainingBalance])
 

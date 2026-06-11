@@ -405,12 +405,11 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
     }
     /* ──── CURRENCY SYMBOL IMAGE ──── */
     .ri-currency-img {
-      height: 1.3em;
+      height: 0.9em;
       width: auto;
-      max-width: 2em;
       vertical-align: middle;
-      display: inline;
-      object-fit: contain;
+      display: inline-block;
+      margin: 0 2px;
       mix-blend-mode: multiply;
     }
     .doc-header .ri-currency-img {
@@ -1271,12 +1270,11 @@ function getRentalInvoiceCSS(lang: 'ar' | 'en'): string {
 
     /* ──── CURRENCY SYMBOL IMAGE ──── */
     .ri-currency-img {
-      height: 1.3em;
+      height: 0.9em;
       width: auto;
-      max-width: 2em;
       vertical-align: middle;
-      display: inline;
-      object-fit: contain;
+      display: inline-block;
+      margin: 0 2px;
       /* Remove white/light background from currency symbol images */
       mix-blend-mode: multiply;
     }
@@ -1424,7 +1422,8 @@ function rentalStatusBadge(status: string | undefined | null, lang: 'ar' | 'en')
 // ============ Currency Display ============
 function currencyDisplay(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
   if (settings.currencySymbolImage) {
-    return `<img class="ri-currency-img" src="${settings.currencySymbolImage}" alt="SAR" />`
+    const altText = lang === 'ar' ? 'ر.س' : 'SAR'
+    return `<img class="ri-currency-img" src="${settings.currencySymbolImage}" alt="${altText}" />`
   }
   return lang === 'ar' ? 'ر.س' : 'SAR'
 }
@@ -2350,7 +2349,7 @@ function generateTimesheetBody(data: Record<string, unknown>, settings: PrintOpt
     <div class="totals-section">
       <div class="totals-box">
         <div class="total-row">
-          <span class="label">${lang === 'ar' ? `المجموع الفرعي (${operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'} × ${formatMoneyPrint(hourlyRate)})` : `Subtotal (${operatingHours} hrs × ${formatMoneyPrint(hourlyRate)})`}</span>
+          <span class="label">${lang === 'ar' ? `المجموع الفرعي (${operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'} × ${fmtMoney(hourlyRate, settings, lang)})` : `Subtotal (${operatingHours} hrs × ${fmtMoney(hourlyRate, settings, lang)})`}</span>
           <span class="value">${fmtMoney(subtotal, settings, lang)}</span>
         </div>
         <div class="total-row">

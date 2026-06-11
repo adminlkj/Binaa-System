@@ -51,7 +51,7 @@ export async function PUT(
     }
 
     const updateData: Record<string, unknown> = {}
-    if (body.amount !== undefined) updateData.amount = body.amount
+    if (body.amount !== undefined) updateData.amount = parseFloat(body.amount) || 0
     if (body.date !== undefined) updateData.date = new Date(body.date)
     if (body.paidFrom !== undefined) updateData.paidFrom = body.paidFrom
     if (body.bankAccount !== undefined) updateData.bankAccount = body.bankAccount

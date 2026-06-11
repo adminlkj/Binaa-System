@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       data: {
         supplierId,
         invoiceId: invoiceId || null,
-        amount,
+        amount: parseFloat(amount) || 0,
         date: new Date(date),
         paidFrom: paidFrom || 'TREASURY',
         bankAccount: bankAccount || null,
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
       await initializeChartOfAccounts()
       const journalEntry = await autoEntrySupplierPayment({
         supplierName: supplier.name,
-        amount,
+        amount: parseFloat(amount) || 0,
         date: new Date(date),
         paidFrom: paidFrom === 'BANK' ? 'BANK' : 'TREASURY',
         reference: reference || undefined,
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
         where: { id: invoiceId },
       })
       if (invoice) {
-        const newPaidAmount = invoice.paidAmount + amount
+        const newPaidAmount = invoice.paidAmount + (parseFloat(amount) || 0)
         let newStatus = invoice.status
 
         if (newPaidAmount >= invoice.totalAmount) {

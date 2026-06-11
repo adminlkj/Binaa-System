@@ -226,7 +226,7 @@ function CreateClaimPage({
                 <div className="flex items-center gap-4 flex-wrap">
                   <span><span className="text-muted-foreground">{t(labels.contractValue.ar, labels.contractValue.en)}:</span> <MoneyDisplay value={selectedContract.totalValue} lang={lang} size="sm" inline bold /></span>
                   {existingPercentage > 0 && (
-                    <span><span className="text-muted-foreground">{t('المستخلص سابقاً', 'Previously claimed')}:</span> {existingPercentage.toFixed(1)}%</span>
+                    <span><span className="text-muted-foreground">{t('المستخلص سابقاً', 'Previously claimed')}:</span> {(existingPercentage ?? 0).toFixed(1)}%</span>
                   )}
                 </div>
               </div>
@@ -245,7 +245,7 @@ function CreateClaimPage({
                 <Input type="number" step="0.1" min="0" max="100" value={form.percentage} onChange={e => setForm(f => ({ ...f, percentage: e.target.value }))} placeholder="0" required />
                 {pct > 0 && (
                   <p className={`text-xs ${exceeds100 ? 'text-rose-600 font-medium' : 'text-muted-foreground'}`}>
-                    {t(labels.cumulativePercentage.ar, labels.cumulativePercentage.en)}: {cumulativePercentage.toFixed(1)}%
+                    {t(labels.cumulativePercentage.ar, labels.cumulativePercentage.en)}: {(cumulativePercentage ?? 0).toFixed(1)}%
                     {exceeds100 && ` - ${t(labels.exceedWarning.ar, labels.exceedWarning.en)}`}
                   </p>
                 )}
@@ -265,7 +265,7 @@ function CreateClaimPage({
             <CardContent className="p-4">
               <div className="grid grid-cols-3 gap-4 text-center">
                 <div><p className="text-xs text-muted-foreground">{t('المبلغ', 'Amount')}</p><MoneyDisplay value={val} lang={lang} size="md" bold className="justify-center" /></div>
-                <div><p className="text-xs text-muted-foreground">{t('الضريبة', 'VAT')} ({(rate * 100).toFixed(0)}%)</p><MoneyDisplay value={vatAmt} lang={lang} size="md" bold className="justify-center" /></div>
+                <div><p className="text-xs text-muted-foreground">{t('الضريبة', 'VAT')} ({((rate ?? 0) * 100).toFixed(0)}%)</p><MoneyDisplay value={vatAmt} lang={lang} size="md" bold className="justify-center" /></div>
                 <div><p className="text-xs text-muted-foreground">{t('الإجمالي', 'Total')}</p><MoneyDisplay value={totalAmt} lang={lang} size="lg" bold className="justify-center text-emerald-700" /></div>
               </div>
             </CardContent>
@@ -358,16 +358,16 @@ export function ProgressClaimsModule() {
     const result: Record<string, { contractNo: string; totalValue: number; claimedAmount: number; claimedPercent: string }> = {}
     for (const [key, val] of Object.entries(acc)) {
       const contractValueExVat = val.totalValue > 0 ? val.totalValue / 1.15 : 0
-      const claimedPercent = contractValueExVat > 0 ? ((val.claimedAmount / contractValueExVat) * 100).toFixed(1) : '0'
+      const claimedPercent = contractValueExVat > 0 ? (((val.claimedAmount ?? 0) / contractValueExVat) * 100).toFixed(1) : '0'
       result[key] = { contractNo: val.contractNo, totalValue: val.totalValue, claimedAmount: val.claimedAmount, claimedPercent }
     }
     return result
     // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [claims])
 
-  const totalClaimedAmount = filtered.reduce((s, c) => s + c.totalAmount, 0)
-  const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + c.totalAmount, 0)
-  const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + c.totalAmount, 0)
+  const totalClaimedAmount = filtered.reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+  const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+  const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + (c.totalAmount ?? 0), 0)
 
   // Counters
   const invoicedCount = filtered.filter(c => c.invoiced).length
@@ -430,7 +430,7 @@ export function ProgressClaimsModule() {
           <CardHeader><CardTitle className="text-lg">{t('البيانات المالية', 'Financial Details')}</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             <div className="flex justify-between text-sm"><span>{t('المبلغ قبل الضريبة', 'Amount before VAT')}</span><span className="font-medium"><MoneyDisplay value={claim.amount} lang={lang} size="sm" inline /></span></div>
-            <div className="flex justify-between text-sm"><span>{t(labels.vat.ar, labels.vat.en)} ({(claim.vatRate * 100).toFixed(0)}%)</span><span className="font-medium"><MoneyDisplay value={claim.vatAmount} lang={lang} size="sm" inline /></span></div>
+            <div className="flex justify-between text-sm"><span>{t(labels.vat.ar, labels.vat.en)} ({((claim.vatRate ?? 0) * 100).toFixed(0)}%)</span><span className="font-medium"><MoneyDisplay value={claim.vatAmount} lang={lang} size="sm" inline /></span></div>
             <Separator />
             <div className="flex justify-between text-lg font-bold"><span>{t(labels.total.ar, labels.total.en)}</span><span className="text-emerald-700"><MoneyDisplay value={claim.totalAmount} lang={lang} size="lg" inline bold /></span></div>
           </CardContent>

@@ -43,7 +43,7 @@ interface TimesheetSource {
   id: string; operatingHours: number; month: number; year: number; status: string
   project: { id: string; name: string; code: string; client: { id: string; name: string } }
   equipment: { id: string; name: string; code: string; nameAr: string | null }
-  rental: { id: string; rate: number; deliveryFees: number; deliveryFeesTaxable: boolean }
+  rental: { id: string; hourlyRate: number; deliveryFees: number; deliveryFeesTaxable: boolean }
   contract: { id: string; contractNo: string; hourlyRate: number; paymentTerms: string }
   clientName?: string; clientNameAr?: string
 }
@@ -1045,7 +1045,7 @@ function InvoiceDetailView({
                   </TableRow>
                 )}
                 <TableRow className="bg-gray-50">
-                  <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({(invoice.vatRate * 100).toFixed(0)}%)</TableCell>
+                  <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({((invoice.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
                   <TableCell className="font-semibold"><MoneyDisplay value={invoice.vatAmount} lang={lang} size="sm" inline /></TableCell>
                 </TableRow>
                 <TableRow className="bg-emerald-50">

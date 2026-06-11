@@ -23,20 +23,31 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const workers = parseInt(body.workers)
-    const days = parseFloat(body.days)
-    const dailyRate = parseFloat(body.dailyRate)
-    const totalAmount = workers * days * dailyRate
+    const { projectId, description, workers, days, dailyRate, date } = body
+
+    if (!projectId || !description || !workers || !days || !dailyRate || !date) {
+      return NextResponse.json({ error: 'الحقول المطلوبة: المشروع، الوصف، عدد العمال، الأيام، الأجر اليومي، التاريخ' }, { status: 400 })
+    }
+
+    const workersNum = parseInt(workers)
+    const daysNum = parseFloat(days)
+    const dailyRateNum = parseFloat(dailyRate)
+
+    if (isNaN(workersNum) || isNaN(daysNum) || isNaN(dailyRateNum)) {
+      return NextResponse.json({ error: 'قيم الأرقام غير صالحة' }, { status: 400 })
+    }
+
+    const totalAmount = workersNum * daysNum * dailyRateNum
 
     const laborCost = await db.laborCost.create({
       data: {
-        projectId: body.projectId,
-        description: body.description,
-        workers,
-        days,
-        dailyRate,
+        projectId,
+        description,
+        workers: workersNum,
+        days: daysNum,
+        dailyRate: dailyRateNum,
         totalAmount,
-        date: new Date(body.date),
+        date: new Date(date),
       },
       include: {
         project: { select: { id: true, code: true, name: true } },

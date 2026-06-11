@@ -103,7 +103,7 @@ interface EquipmentTimesheet {
   status: string; notes: string | null
   project: { id: string; code: string; name: string }
   contract: { id: string; contractNo: string; hourlyRate: number }
-  rental: { id: string; rate: number; client: { id: string; name: string } }
+  rental: { id: string; hourlyRate: number; client: { id: string; name: string } }
   invoice: { id: string; invoiceNo: string; totalAmount: number; status: string } | null
 }
 
@@ -938,7 +938,7 @@ function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onB
                   <p className="text-xs text-muted-foreground">{t('الربح', 'Profit')}</p>
                   <MoneyDisplay value={computed.profit} lang={lang} size="xl" bold className={computed.profit >= 0 ? 'text-emerald-700' : 'text-red-700'} />
                   <p className={`text-sm font-semibold mt-1 ${computed.profitMargin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {computed.profitMargin.toFixed(1)}% {t('هامش الربح', 'margin')}
+                    {(computed.profitMargin ?? 0).toFixed(1)}% {t('هامش الربح', 'margin')}
                   </p>
                 </div>
               </div>
@@ -1429,9 +1429,9 @@ export function EquipmentModule() {
       { key: 'type', label: t('النوع', 'Type') },
       { key: 'model', label: t('الموديل', 'Model') },
       { key: 'status', label: t('الحالة', 'Status'), format: (v) => statusConfig[v as string]?.label[lang] || String(v) },
-      { key: 'hourlyRate', label: t('الأجر بالساعة', 'Hourly Rate'), format: (v) => Number(v).toFixed(2) },
-      { key: 'dailyRate', label: t('الأجر اليومي', 'Daily Rate'), format: (v) => Number(v).toFixed(2) },
-      { key: 'monthlyRate', label: t('الأجر الشهري', 'Monthly Rate'), format: (v) => Number(v).toFixed(2) },
+      { key: 'hourlyRate', label: t('الأجر بالساعة', 'Hourly Rate'), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'dailyRate', label: t('الأجر اليومي', 'Daily Rate'), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'monthlyRate', label: t('الأجر الشهري', 'Monthly Rate'), format: (v) => (Number(v) || 0).toFixed(2) },
     ]
     const rows = filtered.map(eq => ({
       code: eq.code, name: eq.name, type: eq.type || '', model: eq.model || '',

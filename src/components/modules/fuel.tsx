@@ -174,8 +174,8 @@ export function FuelModule() {
     return f.equipment.name.toLowerCase().includes(s) || (f.project?.name.toLowerCase().includes(s))
   })
 
-  const totalLiters = filtered.reduce((sum, f) => sum + f.liters, 0)
-  const totalCost = filtered.reduce((sum, f) => sum + f.totalCost, 0)
+  const totalLiters = filtered.reduce((sum, f) => sum + (f.liters ?? 0), 0)
+  const totalCost = filtered.reduce((sum, f) => sum + (f.totalCost ?? 0), 0)
 
   const printData = useMemo(() => ({
     columns: [
@@ -250,7 +250,7 @@ export function FuelModule() {
         <Card className="bg-amber-50 border-amber-200">
           <CardContent className="p-3 text-center">
             <p className="text-xs text-amber-600">{t('إجمالي اللترات', 'Total Liters', lang)}</p>
-            <p className="text-lg font-bold text-amber-700">{totalLiters.toLocaleString('en-US', { maximumFractionDigits: 1 })} {t('لتر', 'L', lang)}</p>
+            <p className="text-lg font-bold text-amber-700">{(totalLiters ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} {t('لتر', 'L', lang)}</p>
           </CardContent>
         </Card>
         <Card className="bg-emerald-50 border-emerald-200">
@@ -282,7 +282,7 @@ export function FuelModule() {
                 {projectFuelCosts.map(p => (
                   <TableRow key={p.name}>
                     <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell>{p.liters.toLocaleString('en-US', { maximumFractionDigits: 1 })} {t('لتر', 'L', lang)}</TableCell>
+                    <TableCell>{(p.liters ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} {t('لتر', 'L', lang)}</TableCell>
                     <TableCell><MoneyDisplay value={p.cost} lang={lang} size="sm" bold /></TableCell>
                   </TableRow>
                 ))}
@@ -338,7 +338,7 @@ export function FuelModule() {
                       ) : '—'}
                     </TableCell>
                     <TableCell>{formatDate(f.date, lang)}</TableCell>
-                    <TableCell dir="ltr" className="text-right">{f.liters.toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
+                    <TableCell dir="ltr" className="text-right">{(f.liters ?? 0).toLocaleString('en-US', { maximumFractionDigits: 1 })}</TableCell>
                     <TableCell><MoneyDisplay value={f.costPerLiter} lang={lang} size="sm" /></TableCell>
                     <TableCell><MoneyDisplay value={f.totalCost} lang={lang} size="sm" bold /></TableCell>
                     <TableCell>

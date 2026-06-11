@@ -439,8 +439,8 @@ export function AttendanceModule() {
                       <TableRow key={s.employee.id}>
                         <TableCell className="font-medium">{s.employee.name}</TableCell>
                         <TableCell><Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">{s.days}</Badge></TableCell>
-                        <TableCell><Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{s.totalWorkHours.toFixed(1)} {t('ساعة', 'hrs', lang)}</Badge></TableCell>
-                        <TableCell><Badge variant="outline" className={s.totalOvertime > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-50'}>{s.totalOvertime > 0 ? `${s.totalOvertime.toFixed(1)} ${t('ساعة', 'hrs', lang)}` : '—'}</Badge></TableCell>
+                        <TableCell><Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{(s.totalWorkHours ?? 0).toFixed(1)} {t('ساعة', 'hrs', lang)}</Badge></TableCell>
+                        <TableCell><Badge variant="outline" className={(s.totalOvertime ?? 0) > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-50'}>{(s.totalOvertime ?? 0) > 0 ? `${(s.totalOvertime ?? 0).toFixed(1)} ${t('ساعة', 'hrs', lang)}` : '—'}</Badge></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

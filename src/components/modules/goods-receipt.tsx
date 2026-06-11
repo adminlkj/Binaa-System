@@ -38,7 +38,7 @@ interface POItem {
 }
 
 interface PurchaseOrderOption {
-  id: string; orderNo: string; supplierId: string; projectId: string | null
+  id: string; orderNo: string; supplierId: string; projectId: string | null; status: string
   supplier: { id: string; name: string; code: string }
   project: { id: string; name: string; code: string } | null
   items: POItem[]
@@ -128,8 +128,8 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
   }, [purchaseOrderId, selectedPO])
 
   const totalReceived = useMemo(() => items.reduce((s, i) => s + (parseFloat(i.quantityReceived) || 0), 0), [items])
-  const totalOrdered = useMemo(() => items.reduce((s, i) => s + i.quantityOrdered, 0), [items])
-  const totalAmount = useMemo(() => items.reduce((s, i) => s + ((parseFloat(i.quantityReceived) || 0) * i.unitPrice), 0), [items])
+  const totalOrdered = useMemo(() => items.reduce((s, i) => s + (i.quantityOrdered ?? 0), 0), [items])
+  const totalAmount = useMemo(() => items.reduce((s, i) => s + ((parseFloat(i.quantityReceived) || 0) * (i.unitPrice ?? 0)), 0), [items])
 
   const updateItem = (idx: number, field: keyof GRItemForm, value: string) => {
     setItems(items.map((item, i) => i === idx ? { ...item, [field]: value } : item))
@@ -209,7 +209,7 @@ function GRCreateView({ onBack }: { onBack: () => void }) {
                 </div>
                 <div className="bg-emerald-50 rounded-lg p-3">
                   <p className="text-xs text-emerald-600">{t('إجمالي أمر الشراء', 'PO Total', lang)}</p>
-                  <p className="text-sm font-medium"><MoneyDisplay value={selectedPO.items.reduce((s, i) => s + i.totalPrice, 0)} mode="system" lang={lang} size="sm" /></p>
+                  <p className="text-sm font-medium"><MoneyDisplay value={selectedPO.items.reduce((s, i) => s + (i.totalPrice ?? 0), 0)} mode="system" lang={lang} size="sm" /></p>
                 </div>
               </div>
             )}
@@ -454,8 +454,8 @@ export function GoodsReceiptModule() {
     onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
-  const totalReceived = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + i.quantityReceived, 0), 0)
-  const totalAmount = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + i.totalPrice, 0), 0)
+  const totalReceived = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + (i.quantityReceived ?? 0), 0), 0)
+  const totalAmount = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + (i.totalPrice ?? 0), 0), 0)
 
   const filtered = receipts.filter(r => {
     const matchSearch = !search || (r.receiptNo || '').toLowerCase().includes(search.toLowerCase()) || (r.supplier?.name || '').toLowerCase().includes(search.toLowerCase())

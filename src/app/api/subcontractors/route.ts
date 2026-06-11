@@ -24,6 +24,10 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
+    if (!body.name) {
+      return NextResponse.json({ error: 'اسم مقاول الباطن مطلوب' }, { status: 400 })
+    }
+
     const lastSub = await db.subcontractor.findFirst({
       orderBy: { code: 'desc' },
       select: { code: true },

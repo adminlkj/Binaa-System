@@ -39,7 +39,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         residenceNumber: body.residenceNumber ?? null,
         residenceExpiry: body.residenceExpiry ? new Date(body.residenceExpiry) : null,
         hireDate: body.hireDate ? new Date(body.hireDate) : null,
-        basicSalary: body.basicSalary !== undefined ? parseFloat(body.basicSalary) : undefined,
+        basicSalary: body.basicSalary !== undefined ? (parseFloat(body.basicSalary) || 0) : undefined,
         status: body.status,
         branchId: body.branchId,
         phone: body.phone ?? null,

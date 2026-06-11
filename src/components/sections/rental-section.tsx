@@ -184,7 +184,7 @@ interface ClientPaymentItem {
   journalEntryId: string | null
   createdAt: string
   client: { id: string; name: string; code: string }
-  invoice: { id: string; invoiceNo: string; totalAmount: number; status: string } | null
+  invoice: { id: string; invoiceNo: string; totalAmount: number; status: string; sourceType?: string; invoiceType?: string } | null
 }
 
 interface RentalInvoiceOption {
@@ -312,13 +312,13 @@ function CollectionsModule() {
   // Filters
   const filtered = payments.filter(p => {
     const matchSearch = !search ||
-      p.client.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.client?.name?.toLowerCase().includes(search.toLowerCase()) ||
       (p.reference?.toLowerCase().includes(search.toLowerCase())) ||
       (p.invoice?.invoiceNo?.toLowerCase().includes(search.toLowerCase()))
     return matchSearch
   })
 
-  const totalCollected = filtered.reduce((s, p) => s + p.amount, 0)
+  const totalCollected = filtered.reduce((s, p) => s + (p.amount ?? 0), 0)
 
   return (
     <ModuleLayout
@@ -394,7 +394,7 @@ function CollectionsModule() {
                 <TableBody>
                   {filtered.map(p => (
                     <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.client.name}</TableCell>
+                      <TableCell className="font-medium">{p.client?.name || '—'}</TableCell>
                       <TableCell>
                         {p.invoice ? (
                           <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-xs">
@@ -471,13 +471,13 @@ function CollectionsModule() {
                 <Select value={formInvoiceId} onValueChange={v => {
                   setFormInvoiceId(v)
                   const inv = rentalInvoices.find(i => i.id === v)
-                  if (inv) setFormAmount((inv.totalAmount - inv.paidAmount).toString())
+                  if (inv) setFormAmount(((inv.totalAmount ?? 0) - (inv.paidAmount ?? 0)).toString())
                 }}>
                   <SelectTrigger><SelectValue placeholder={tl('اختر الفاتورة', 'Select invoice')} /></SelectTrigger>
                   <SelectContent>
                     {rentalInvoices.map(i => (
                       <SelectItem key={i.id} value={i.id}>
-                        {i.invoiceNo} — <MoneyDisplay value={i.totalAmount - i.paidAmount} lang={lang} size="xs" inline showSymbol={false} /> {tl('متبقي', 'remaining')}
+                        {i.invoiceNo} — <MoneyDisplay value={(i.totalAmount ?? 0) - (i.paidAmount ?? 0)} lang={lang} size="xs" inline showSymbol={false} /> {tl('متبقي', 'remaining')}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const basicSalary = parseFloat(body.basicSalary)
+    const basicSalary = parseFloat(body.basicSalary) || 0
     const housingAllowance = body.housingAllowance ? parseFloat(body.housingAllowance) : 0
     const transportAllowance = body.transportAllowance ? parseFloat(body.transportAllowance) : 0
     const otherAllowances = body.otherAllowances ? parseFloat(body.otherAllowances) : 0

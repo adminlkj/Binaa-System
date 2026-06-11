@@ -205,12 +205,12 @@ function ProjectReportsTab({ lang }: { lang: 'ar' | 'en' }) {
       { key: 'code', label: t('الكود', 'Code', lang) },
       { key: 'name', label: t('المشروع', 'Project', lang) },
       { key: 'client', label: t('العميل', 'Client', lang) },
-      { key: 'contractValue', label: t('قيمة العقد', 'Contract', lang), format: v => Number(v).toFixed(2) },
-      { key: 'invoiced', label: t('المفوتر', 'Invoiced', lang), format: v => Number(v).toFixed(2) },
-      { key: 'collected', label: t('المحصل', 'Collected', lang), format: v => Number(v).toFixed(2) },
-      { key: 'totalCosts', label: t('التكاليف', 'Costs', lang), format: v => Number(v).toFixed(2) },
-      { key: 'grossProfit', label: t('الربح', 'Profit', lang), format: v => Number(v).toFixed(2) },
-      { key: 'profitMargin', label: t('الهامش %', 'Margin %', lang), format: v => Number(v).toFixed(1) },
+      { key: 'contractValue', label: t('قيمة العقد', 'Contract', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'invoiced', label: t('المفوتر', 'Invoiced', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'collected', label: t('المحصل', 'Collected', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'totalCosts', label: t('التكاليف', 'Costs', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'grossProfit', label: t('الربح', 'Profit', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'profitMargin', label: t('الهامش %', 'Margin %', lang), format: v => (Number(v) || 0).toFixed(1) },
     ]
     exportToCSV(profitData.projects as Record<string, unknown>[], 'project-profitability', columns)
   }, [profitData, lang])
@@ -563,8 +563,8 @@ function FinancialReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     const columns: CSVColumn[] = [
       { key: 'account.code', label: t('الكود', 'Code', lang) },
       { key: 'account.name', label: t('الحساب', 'Account', lang) },
-      { key: 'netDebit', label: t('مدين', 'Debit', lang), format: v => Number(v).toFixed(2) },
-      { key: 'netCredit', label: t('دائن', 'Credit', lang), format: v => Number(v).toFixed(2) },
+      { key: 'netDebit', label: t('مدين', 'Debit', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'netCredit', label: t('دائن', 'Credit', lang), format: v => (Number(v) || 0).toFixed(2) },
     ]
     exportToCSV(tbData.data as Record<string, unknown>[], 'trial-balance', columns)
   }, [tbData, lang])
@@ -786,9 +786,9 @@ function PurchaseReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     const columns: CSVColumn[] = [
       { key: 'code', label: t('الكود', 'Code', lang) },
       { key: 'name', label: t('الاسم', 'Name', lang) },
-      { key: 'totalPurchased', label: t('المشتريات', 'Purchased', lang), format: v => Number(v).toFixed(2) },
-      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: v => Number(v).toFixed(2) },
-      { key: 'balanceOwed', label: t('الرصيد', 'Balance', lang), format: v => Number(v).toFixed(2) },
+      { key: 'totalPurchased', label: t('المشتريات', 'Purchased', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'balanceOwed', label: t('الرصيد', 'Balance', lang), format: v => (Number(v) || 0).toFixed(2) },
     ]
     exportToCSV(supplierData.suppliers as Record<string, unknown>[], 'supplier-balances', columns)
   }, [supplierData, lang])
@@ -893,10 +893,10 @@ function ClientReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     const columns: CSVColumn[] = [
       { key: 'code', label: t('الكود', 'Code', lang) },
       { key: 'name', label: t('الاسم', 'Name', lang) },
-      { key: 'totalInvoiced', label: t('الفواتير', 'Invoiced', lang), format: v => Number(v).toFixed(2) },
-      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: v => Number(v).toFixed(2) },
-      { key: 'balanceReceivable', label: t('المستحق', 'Receivable', lang), format: v => Number(v).toFixed(2) },
-      { key: 'overdue', label: t('المتأخر', 'Overdue', lang), format: v => Number(v).toFixed(2) },
+      { key: 'totalInvoiced', label: t('الفواتير', 'Invoiced', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'balanceReceivable', label: t('المستحق', 'Receivable', lang), format: v => (Number(v) || 0).toFixed(2) },
+      { key: 'overdue', label: t('المتأخر', 'Overdue', lang), format: v => (Number(v) || 0).toFixed(2) },
     ]
     exportToCSV(clientData.clients as Record<string, unknown>[], 'client-balances', columns)
   }, [clientData, lang])
@@ -1084,7 +1084,7 @@ function TaxReportsTab({ lang }: { lang: 'ar' | 'en' }) {
               {[1, 2, 3, 4].map(q => <SelectItem key={q} value={String(q)}>{lang === 'ar' ? quarterConfig[q].ar : quarterConfig[q].en} ({lang === 'ar' ? quarterConfig[q].monthsAr : quarterConfig[q].monthsEn})</SelectItem>)}
             </SelectContent>
           </Select>
-          <PrintButton type="generic-table" data={vatCalcData?.autoCalc ? { infoItems: [{ label: t('الفترة', 'Period', lang), value: `${selectedYear} - ${selectedQuarter ? (lang === 'ar' ? quarterConfig[selectedQuarter].ar : quarterConfig[selectedQuarter].en) : ''}` }, { label: t('ضريبة المخرجات', 'Output VAT', lang), value: String(vatCalcData.autoCalc.outputVat.toFixed(2)) }, { label: t('ضريبة المدخلات', 'Input VAT', lang), value: String(vatCalcData.autoCalc.inputVat.toFixed(2)) }, { label: t('صافي الضريبة', 'Net VAT', lang), value: String(vatCalcData.autoCalc.netVat.toFixed(2)) }] } as Record<string, unknown> : undefined} size="sm" className="gap-1.5 h-8" />
+          <PrintButton type="generic-table" data={vatCalcData?.autoCalc ? { infoItems: [{ label: t('الفترة', 'Period', lang), value: `${selectedYear} - ${selectedQuarter ? (lang === 'ar' ? quarterConfig[selectedQuarter].ar : quarterConfig[selectedQuarter].en) : ''}` }, { label: t('ضريبة المخرجات', 'Output VAT', lang), value: String((vatCalcData.autoCalc.outputVat ?? 0).toFixed(2)) }, { label: t('ضريبة المدخلات', 'Input VAT', lang), value: String((vatCalcData.autoCalc.inputVat ?? 0).toFixed(2)) }, { label: t('صافي الضريبة', 'Net VAT', lang), value: String((vatCalcData.autoCalc.netVat ?? 0).toFixed(2)) }] } as Record<string, unknown> : undefined} size="sm" className="gap-1.5 h-8" />
         </div>
       </CardContent></Card>
 

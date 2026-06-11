@@ -108,11 +108,11 @@ export function RentalPaymentsModule() {
   }
 
   const filtered = payments.filter(p => {
-    const matchSearch = !search || p.client.name.includes(search) || (p.reference || '').includes(search)
+    const matchSearch = !search || p.client?.name?.includes(search) || (p.reference || '').includes(search)
     return matchSearch
   })
 
-  const totalAmount = filtered.reduce((s, p) => s + p.amount, 0)
+  const totalAmount = filtered.reduce((s, p) => s + (p.amount ?? 0), 0)
 
   return (
     <div className="space-y-6">
@@ -202,7 +202,7 @@ export function RentalPaymentsModule() {
                 <TableBody>
                   {filtered.map(p => (
                     <TableRow key={p.id}>
-                      <TableCell className="font-medium">{p.client.name}</TableCell>
+                      <TableCell className="font-medium">{p.client?.name || '—'}</TableCell>
                       <TableCell>{p.invoice?.invoiceNo || '—'}</TableCell>
                       <TableCell className="font-semibold">
                         <MoneyDisplay value={p.amount} mode="system" lang={lang} bold size="md" />

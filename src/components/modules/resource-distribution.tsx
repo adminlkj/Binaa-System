@@ -243,7 +243,7 @@ function ProjectCostSheet({ project, onBack }: { project: Project; onBack: () =>
                 <TableRow key={i}>
                   <TableCell className="font-medium">{row.label}</TableCell>
                   <TableCell><MoneyDisplay value={row.value} lang={lang} size="sm" /></TableCell>
-                  <TableCell>{costData.totalCost > 0 ? ((row.value / costData.totalCost) * 100).toFixed(1) : '0'}%</TableCell>
+                  <TableCell>{(costData?.totalCost ?? 0) > 0 ? (((row.value ?? 0) / costData.totalCost) * 100).toFixed(1) : '0'}%</TableCell>
                 </TableRow>
               ))}
               <TableRow className="bg-emerald-50 font-bold">

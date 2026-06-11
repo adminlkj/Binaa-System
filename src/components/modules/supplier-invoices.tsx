@@ -35,7 +35,7 @@ type ViewState =
   | { type: 'detail'; id: string }
 
 interface GROption {
-  id: string; receiptNo: string; supplierId: string; purchaseOrderId: string; projectId: string | null
+  id: string; receiptNo: string; supplierId: string; purchaseOrderId: string; projectId: string | null; status: string
   supplier: { id: string; name: string; code: string }
   purchaseOrder: { id: string; orderNo: string }
   project: { id: string; name: string; code: string } | null
@@ -424,7 +424,7 @@ function InvoiceDetailView({ id, onBack }: { id: string; onBack: () => void }) {
                   <TableCell className="font-semibold"><MoneyDisplay value={invoice.subtotal} mode="system" lang={lang} size="sm" /></TableCell>
                 </TableRow>
                 <TableRow className="bg-gray-50">
-                  <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT', lang)} ({(invoice.vatRate * 100).toFixed(0)}%)</TableCell>
+                  <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT', lang)} ({((invoice.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
                   <TableCell className="font-semibold"><MoneyDisplay value={invoice.vatAmount} mode="system" lang={lang} size="sm" /></TableCell>
                 </TableRow>
                 <TableRow className="bg-emerald-50">
@@ -487,9 +487,9 @@ export function SupplierInvoicesModule() {
       { key: 'poNumber', label: t('أمر الشراء', 'PO', lang) },
       { key: 'grNumber', label: t('إيصال الاستلام', 'GR', lang) },
       { key: 'date', label: t('التاريخ', 'Date', lang) },
-      { key: 'subtotal', label: t('المجموع الفرعي', 'Subtotal', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'vatAmount', label: t('الضريبة', 'VAT', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), format: (v) => Number(v).toFixed(2) },
+      { key: 'subtotal', label: t('المجموع الفرعي', 'Subtotal', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'vatAmount', label: t('الضريبة', 'VAT', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), format: (v) => (Number(v) || 0).toFixed(2) },
       { key: 'status', label: t('الحالة', 'Status', lang) },
     ]
     exportToCSV(filtered.map(i => ({

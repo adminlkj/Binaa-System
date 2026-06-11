@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     const advance = await db.employeeAdvance.create({
       data: {
         employeeId: body.employeeId,
-        amount: parseFloat(body.amount),
+        amount: parseFloat(body.amount) || 0,
         date: new Date(body.date),
         settledAmount: 0,
         status: 'PENDING',

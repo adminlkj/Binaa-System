@@ -308,11 +308,11 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
     const rows = [
       [t('الحقل', 'Field', lang), t('القيمة', 'Value', lang)],
       [t('الفترة', 'Period', lang), declaration.period],
-      [t('إجمالي المبيعات', 'Total Sales', lang), declaration.totalSales.toFixed(2)],
-      [t('ضريبة المخرجات', 'Output VAT', lang), declaration.outputVat.toFixed(2)],
-      [t('إجمالي المشتريات', 'Total Purchases', lang), declaration.totalPurchases.toFixed(2)],
-      [t('ضريبة المدخلات', 'Input VAT', lang), declaration.inputVat.toFixed(2)],
-      [t('صافي الضريبة', 'Net VAT', lang), declaration.netVat.toFixed(2)],
+      [t('إجمالي المبيعات', 'Total Sales', lang), (declaration.totalSales ?? 0).toFixed(2)],
+      [t('ضريبة المخرجات', 'Output VAT', lang), (declaration.outputVat ?? 0).toFixed(2)],
+      [t('إجمالي المشتريات', 'Total Purchases', lang), (declaration.totalPurchases ?? 0).toFixed(2)],
+      [t('ضريبة المدخلات', 'Input VAT', lang), (declaration.inputVat ?? 0).toFixed(2)],
+      [t('صافي الضريبة', 'Net VAT', lang), (declaration.netVat ?? 0).toFixed(2)],
     ]
     const csvContent = rows.map(row => row.join(',')).join('\n')
     const BOM = '\uFEFF'

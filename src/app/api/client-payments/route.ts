@@ -21,7 +21,7 @@ export async function GET(request: Request) {
       where,
       include: {
         client: { select: { id: true, name: true, code: true } },
-        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
+        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true, sourceType: true, invoiceType: true } },
       },
       orderBy: { date: 'desc' },
     })
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
       },
       include: {
         client: { select: { id: true, name: true, code: true } },
-        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
+        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true, sourceType: true, invoiceType: true } },
       },
     })
 
@@ -132,7 +132,7 @@ export async function POST(request: Request) {
       where: { id: payment.id },
       include: {
         client: { select: { id: true, name: true, code: true } },
-        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
+        invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true, sourceType: true, invoiceType: true } },
       },
     })
 
