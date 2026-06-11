@@ -151,10 +151,10 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
                 <Link2 className="size-3" />
                 {t('الفاتورة (اختياري)', 'Invoice (optional)', lang)}
               </Label>
-              <Select value={form.invoiceId} onValueChange={v => setForm(f => ({ ...f, invoiceId: v }))}>
+              <Select value={form.invoiceId || 'NONE'} onValueChange={v => setForm(f => ({ ...f, invoiceId: v === 'NONE' ? '' : v }))}>
                 <SelectTrigger><SelectValue placeholder={t('اختر فاتورة غير مدفوعة', 'Select unpaid invoice', lang)} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">{t('بدون فاتورة', 'No invoice', lang)}</SelectItem>
+                  <SelectItem value="NONE">{t('بدون فاتورة', 'No invoice', lang)}</SelectItem>
                   {availableInvoices.map(inv => (
                     <SelectItem key={inv.id} value={inv.id}>
                       {inv.invoiceNo} - {t('متبقي', 'Remaining', lang)}: <MoneyDisplay value={inv.totalAmount - inv.paidAmount} mode="system" lang={lang} size="sm" />

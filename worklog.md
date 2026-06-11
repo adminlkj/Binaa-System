@@ -33,3 +33,26 @@ Stage Summary:
 - Business Flow Engine enforces workflow chains (no skipping)
 - ActivityType added to key entities for automatic classification
 - All supporting modules (HR, Supply Chain, Operations) feed into both hubs
+
+---
+Task ID: 2
+Agent: Main
+Task: Fix Select.Item empty value runtime errors across all modules
+
+Work Log:
+- Identified 8 instances of `<SelectItem value="">` across 6 module files causing Radix UI Select runtime errors
+- Fixed employee-contracts.tsx: Changed filter employee select from value="" to value="ALL" with proper state conversion
+- Fixed attendance.tsx: Changed filter month and year selects from value="" to value="ALL" with proper state conversion
+- Fixed salaries.tsx: Changed filter month and year selects from value="" to value="ALL" with proper state conversion
+- Fixed resource-distribution.tsx: Changed filter project select from value="" to value="ALL" with proper state conversion
+- Fixed equipment-operations.tsx: Changed filter project select from value="" to value="ALL" with proper state conversion
+- Fixed fuel.tsx: Changed filter project select from value="" to value="ALL" with proper state conversion
+- Fixed supplier-payments.tsx: Changed "No invoice" select from value="" to value="NONE" with proper form state conversion
+- Verified all 6 affected modules with Agent Browser: no runtime errors, all selects display correctly
+- Comprehensive console check shows zero errors across all pages
+
+Stage Summary:
+- Root cause: Radix UI Select prohibits empty string as SelectItem value (reserved for clearing selection)
+- Fix pattern: Replace value="" with sentinel values ("ALL" for filters, "NONE" for optional fields)
+- Updated onValueChange handlers to convert sentinel values back to empty string in state
+- All 8 Select.Item empty value errors resolved across 6 files

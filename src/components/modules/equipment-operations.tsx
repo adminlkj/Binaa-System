@@ -289,10 +289,10 @@ export function EquipmentOperationsModule() {
       <Card><CardContent className="p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث بالمعدة أو المشغل أو المشروع...', 'Search by equipment, operator or project...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
-          <Select value={filterProject} onValueChange={setFilterProject}>
+          <Select value={filterProject || 'ALL'} onValueChange={v => setFilterProject(v === 'ALL' ? '' : v)}>
             <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder={t('كل المشاريع', 'All Projects', lang)} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">{t('كل المشاريع', 'All Projects', lang)}</SelectItem>
+              <SelectItem value="ALL">{t('كل المشاريع', 'All Projects', lang)}</SelectItem>
               {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
             </SelectContent>
           </Select>

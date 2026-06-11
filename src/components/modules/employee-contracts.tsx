@@ -289,10 +289,10 @@ export function EmployeeContractsModule() {
       <Card><CardContent className="p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
-          <Select value={filterEmployee} onValueChange={setFilterEmployee}>
+          <Select value={filterEmployee || 'ALL'} onValueChange={v => setFilterEmployee(v === 'ALL' ? '' : v)}>
             <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder={t('كل الموظفين', 'All Employees', lang)} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">{t('كل الموظفين', 'All Employees', lang)}</SelectItem>
+              <SelectItem value="ALL">{t('كل الموظفين', 'All Employees', lang)}</SelectItem>
               {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
             </SelectContent>
           </Select>

@@ -378,17 +378,17 @@ export function SalariesModule() {
       <Card><CardContent className="p-4">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
-          <Select value={filterMonth} onValueChange={setFilterMonth}>
+          <Select value={filterMonth || 'ALL'} onValueChange={v => setFilterMonth(v === 'ALL' ? '' : v)}>
             <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder={t('كل الأشهر', 'All Months', lang)} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">{t('كل الأشهر', 'All Months', lang)}</SelectItem>
+              <SelectItem value="ALL">{t('كل الأشهر', 'All Months', lang)}</SelectItem>
               {monthNames.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m[lang]}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={filterYear} onValueChange={setFilterYear}>
+          <Select value={filterYear || 'ALL'} onValueChange={v => setFilterYear(v === 'ALL' ? '' : v)}>
             <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder={t('كل السنوات', 'All Years', lang)} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="">{t('كل السنوات', 'All Years', lang)}</SelectItem>
+              <SelectItem value="ALL">{t('كل السنوات', 'All Years', lang)}</SelectItem>
               {[2024, 2025, 2026].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
             </SelectContent>
           </Select>
