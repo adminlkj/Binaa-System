@@ -15,11 +15,47 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           orderBy: { date: 'desc' },
         },
         maintenance: { orderBy: { date: 'desc' } },
-        fuelLogs: { orderBy: { date: 'desc' } },
+        fuelLogs: {
+          include: { project: { select: { id: true, code: true, name: true } } },
+          orderBy: { date: 'desc' },
+        },
         rentals: {
+          include: {
+            client: { select: { id: true, code: true, name: true, nameAr: true } },
+            contract: { select: { id: true, contractNo: true, hourlyRate: true, deliveryFees: true, salesOrderNo: true, paymentTerms: true } },
+            deliveryOrders: { orderBy: { deliveryDate: 'desc' } },
+            timesheets: {
+              include: {
+                project: { select: { id: true, code: true, name: true } },
+                invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
+              },
+              orderBy: { year: 'desc' },
+            },
+          },
           orderBy: { createdAt: 'desc' },
         },
-        expenses: {
+        expenses: { orderBy: { date: 'desc' } },
+        deliveryOrders: {
+          include: {
+            client: { select: { id: true, name: true } },
+            rental: { select: { id: true, contract: { select: { contractNo: true } } } },
+          },
+          orderBy: { deliveryDate: 'desc' },
+        },
+        timesheets: {
+          include: {
+            project: { select: { id: true, code: true, name: true } },
+            contract: { select: { id: true, contractNo: true, hourlyRate: true } },
+            rental: { select: { id: true, rate: true, client: { select: { id: true, name: true } } } },
+            invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
+          },
+          orderBy: { year: 'desc' },
+        },
+        operatorLogs: {
+          include: {
+            operator: { select: { id: true, name: true, nameAr: true } },
+            project: { select: { id: true, code: true, name: true } },
+          },
           orderBy: { date: 'desc' },
         },
       },

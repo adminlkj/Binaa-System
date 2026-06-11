@@ -422,6 +422,79 @@ export async function GET() {
       count: s._count.status,
     }))
 
+    // ===== 16. Hub-specific data =====
+    // Recent construction projects (last 5)
+    const recentConstructionProjects = await db.project.findMany({
+      where: { projectType: 'CONSTRUCTION' },
+      select: {
+        id: true, code: true, name: true, status: true, contractValue: true,
+        client: { select: { name: true } },
+        startDate: true, endDate: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    })
+
+    // Recent rental contracts (last 5)
+    const recentRentalContracts = await db.equipmentRental.findMany({
+      select: {
+        id: true, status: true, startDate: true, endDate: true,
+        rate: true, rateType: true, deliveryFees: true, totalAmount: true,
+        contract: { select: { contractNo: true } },
+        equipment: { select: { id: true, code: true, name: true } },
+        client: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    })
+
+    // Total extracts (progress claims) count
+    const totalExtracts = await db.progressClaim.count()
+
+    // Total client invoices count
+    const totalClientInvoices = await db.salesInvoice.count()
+
+    // Outstanding construction collections (unpaid construction invoices)
+    const constructionReceivablesInvoices = await db.salesInvoice.findMany({
+      where: {
+        projectId: { in: constructionProjectIds },
+        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+      },
+      select: { totalAmount: true, paidAmount: true },
+    })
+    const outstandingConstructionCollections = constructionReceivablesInvoices.reduce(
+      (s, i) => s + (i.totalAmount - i.paidAmount), 0
+    )
+
+    // Outstanding rental collections (unpaid rental invoices)
+    const rentalReceivablesInvoices = await db.salesInvoice.findMany({
+      where: {
+        OR: [
+          { sourceType: 'TIMESHEET' },
+          { projectId: { in: rentalProjectIds } },
+        ],
+        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+      },
+      select: { totalAmount: true, paidAmount: true },
+    })
+    const outstandingRentalCollections = rentalReceivablesInvoices.reduce(
+      (s, i) => s + (i.totalAmount - i.paidAmount), 0
+    )
+
+    // Construction contract value (sum of all active construction project contracts)
+    const constructionContractAgg = await db.contract.aggregate({
+      _sum: { totalValue: true },
+      where: { project: { projectType: 'CONSTRUCTION' }, status: 'ACTIVE' },
+    })
+    const constructionContractValue = constructionContractAgg._sum.totalValue || 0
+
+    // Total extracts amount
+    const extractsAgg = await db.progressClaim.aggregate({
+      _sum: { totalAmount: true },
+      where: { status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] } },
+    })
+    const totalExtractsAmount = extractsAgg._sum.totalAmount || 0
+
     return NextResponse.json({
       // KPIs
       activeProjects,
@@ -440,6 +513,8 @@ export async function GET() {
       overdueReceivables,
       overduePayables,
       netVAT,
+      vatPayable: outputVat,
+      vatReceivable: inputVat,
       outputVat,
       inputVat,
       vatDue,
@@ -458,6 +533,33 @@ export async function GET() {
       rentalProfit,
       rentedEquipment,
       inUseEquipment,
+      availableEquipment: equipmentStatusMap['AVAILABLE'] || 0,
+
+      // Hub-specific Data
+      recentConstructionProjects: recentConstructionProjects.map(p => ({
+        ...p,
+        startDate: p.startDate.toISOString(),
+        endDate: p.endDate?.toISOString() || null,
+      })),
+      recentRentalContracts: recentRentalContracts.map(c => ({
+        id: c.id,
+        contractNo: c.contract.contractNo,
+        status: c.status,
+        startDate: c.startDate.toISOString(),
+        endDate: c.endDate?.toISOString() || null,
+        rate: c.rate,
+        rateType: c.rateType,
+        deliveryFees: c.deliveryFees,
+        totalAmount: c.totalAmount,
+        equipment: c.equipment,
+        client: c.client,
+      })),
+      totalExtracts,
+      totalExtractsAmount,
+      totalClientInvoices,
+      outstandingConstructionCollections,
+      outstandingRentalCollections,
+      constructionContractValue,
 
       // Charts & Tables
       monthlyData,

@@ -20,15 +20,94 @@ export async function GET(
         },
         boqItems: { orderBy: { code: 'asc' } },
         progressClaims: {
-          include: { contract: { select: { contractNo: true } } },
+          include: { contract: { select: { contractNo: true, id: true } } },
           orderBy: { date: 'desc' },
         },
-        purchaseOrders: { select: { id: true, totalAmount: true } },
-        expenses: { select: { id: true, amount: true } },
-        laborCosts: { select: { id: true, totalAmount: true } },
-        equipmentCosts: { select: { id: true, amount: true } },
-        equipmentUsages: { select: { id: true, cost: true } },
-        subcontractorInvoices: { select: { id: true, totalAmount: true } },
+        salesInvoices: {
+          include: {
+            client: { select: { id: true, name: true, code: true } },
+            progressClaim: { select: { claimNo: true, id: true } },
+            timesheet: { select: { id: true, operatingHours: true } },
+            clientPayments: { orderBy: { date: 'desc' } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        purchaseOrders: {
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        purchaseInvoices: {
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+            goodsReceipt: { select: { receiptNo: true, id: true } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        expenses: {
+          orderBy: { date: 'desc' },
+        },
+        laborCosts: {
+          orderBy: { date: 'desc' },
+        },
+        equipmentCosts: {
+          orderBy: { date: 'desc' },
+        },
+        equipmentUsages: {
+          include: {
+            equipment: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        subcontractorInvoices: {
+          include: {
+            subcontractor: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        goodsReceipts: {
+          include: {
+            supplier: { select: { id: true, name: true } },
+            purchaseOrder: { select: { orderNo: true } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        timesheets: {
+          include: {
+            equipment: { select: { id: true, name: true, code: true } },
+            rental: { select: { id: true, rateType: true, rate: true } },
+          },
+          orderBy: { year: 'desc' },
+        },
+        workTeams: {
+          include: {
+            members: {
+              include: {
+                employee: { select: { id: true, name: true, code: true } },
+              },
+            },
+          },
+        },
+        fuelLogs: {
+          include: {
+            equipment: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        equipmentOperations: {
+          include: {
+            equipment: { select: { id: true, name: true, code: true } },
+            operator: { select: { id: true, name: true, code: true } },
+          },
+          orderBy: { date: 'desc' },
+        },
+        resourceAllocations: {
+          orderBy: { startDate: 'desc' },
+        },
+        purchaseRequests: {
+          orderBy: { date: 'desc' },
+        },
       },
     })
 
@@ -39,19 +118,28 @@ export async function GET(
     // Compute cost sheet for "كرت المشروع"
     const contractValue = project.contractValue || 0
     const progressClaimsTotal = project.progressClaims.reduce((sum, c) => sum + c.amount, 0)
-    const purchases = project.purchaseOrders.reduce((sum, p) => sum + p.totalAmount, 0)
+    const salesInvoicesTotal = project.salesInvoices.reduce((sum, si) => sum + si.totalAmount, 0)
+    const purchases = project.purchaseInvoices.reduce((sum, p) => sum + p.totalAmount, 0)
     const subcontractors = project.subcontractorInvoices.reduce((sum, s) => sum + s.totalAmount, 0)
     const labor = project.laborCosts.reduce((sum, l) => sum + l.totalAmount, 0)
     const equipment = project.equipmentCosts.reduce((sum, e) => sum + e.amount, 0) +
       project.equipmentUsages.reduce((sum, e) => sum + e.cost, 0)
-    const projectExpenses = project.expenses.reduce((sum, e) => sum + e.amount, 0)
+    const projectExpenses = project.expenses.reduce((sum, e) => sum + e.totalAmount, 0)
     const totalCosts = purchases + subcontractors + labor + equipment + projectExpenses
-    const profit = progressClaimsTotal - totalCosts
-    const profitMargin = progressClaimsTotal > 0 ? ((profit / progressClaimsTotal) * 100) : 0
+    const totalRevenue = progressClaimsTotal + salesInvoicesTotal
+    const profit = totalRevenue - totalCosts
+    const profitMargin = totalRevenue > 0 ? ((profit / totalRevenue) * 100) : 0
+
+    // Service invoices (non-extract based)
+    const serviceInvoicesTotal = project.salesInvoices
+      .filter(si => si.sourceType === 'TIMESHEET')
+      .reduce((sum, si) => sum + si.totalAmount, 0)
 
     const costSheet = {
       contractValue,
       revenue: progressClaimsTotal,
+      serviceInvoices: serviceInvoicesTotal,
+      totalRevenue,
       purchases,
       subcontractors,
       labor,
@@ -62,7 +150,30 @@ export async function GET(
       profitMargin,
     }
 
-    return NextResponse.json({ ...project, costSheet })
+    // Compute workflow chain data
+    const workflowCounts = {
+      clients: project.client ? 1 : 0,
+      projects: 1,
+      contracts: project.contracts.length,
+      boq: project.boqItems.length,
+      workHours: project.equipmentOperations.length + project.timesheets.length,
+      expenses: project.expenses.length,
+      subcontractors: project.subcontractorInvoices.length,
+      purchases: project.purchaseOrders.length + project.purchaseInvoices.length,
+      extracts: project.progressClaims.length,
+      invoice: project.salesInvoices.length,
+      collection: project.salesInvoices.reduce((sum, si) => sum + si.clientPayments.length, 0),
+      accounting: project.salesInvoices.filter(si => si.journalEntryId).length +
+        project.purchaseInvoices.filter(pi => pi.journalEntryId).length +
+        project.expenses.filter(e => e.journalEntryId).length +
+        project.subcontractorInvoices.filter(si => si.journalEntryId).length,
+    }
+
+    return NextResponse.json({
+      ...project,
+      costSheet,
+      workflowCounts,
+    })
   } catch (error) {
     console.error('Error fetching project:', error)
     return NextResponse.json({ error: 'فشل في تحميل المشروع' }, { status: 500 })

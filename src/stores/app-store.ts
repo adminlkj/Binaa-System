@@ -1,34 +1,37 @@
 import { create } from 'zustand'
 
 // ============ NAVIGATION TYPES ============
-// 7 main sidebar groups with sub-items
+// Hub-centric navigation: two main activities + supporting modules
 
 export type NavItem =
   // الرئيسية
   | 'dashboard'
-  // المبيعات
-  | 'sales' | 'extracts' | 'clients' | 'client-payments'
-  // المشتريات
-  | 'purchases' | 'suppliers' | 'subcontractors' | 'supplier-payments'
-  // المشاريع
-  | 'projects' | 'contracts' | 'boq' | 'timesheets'
-  // الموارد
-  | 'equipment' | 'equipment-operations' | 'resource-distribution' | 'employees' | 'salaries' | 'attendance'
-  | 'equipment-maintenance' | 'fuel' | 'work-teams' | 'employee-contracts'
-  // سلسلة التوريد
+  // محور المشاريع التنفيذية (Construction Hub)
+  | 'projects' | 'contracts' | 'boq' | 'extracts' | 'sales' | 'client-payments'
+  // محور تأجير المعدات (Rental Hub)
+  | 'equipment' | 'rental-contracts' | 'delivery-orders' | 'timesheets' | 'rental-invoices' | 'rental-payments'
+  // الموارد البشرية (feed both hubs)
+  | 'employees' | 'employee-contracts' | 'attendance' | 'salaries' | 'work-teams' | 'resource-distribution'
+  // سلسلة التوريد (feed both hubs)
   | 'purchase-requests' | 'purchase-orders' | 'goods-receipt' | 'supplier-invoices' | 'supplier-payments'
-  // المخزون والمحاسبة
-  | 'inventory' | 'accounting' | 'vat'
-  // التقارير والإعدادات
-  | 'reports' | 'settings'
+  // التشغيل والصيانة (equipment-related)
+  | 'equipment-operations' | 'equipment-maintenance' | 'fuel' | 'subcontractors'
+  // المحاسبة والتقارير
+  | 'accounting' | 'vat' | 'reports'
+  // الإعدادات والبيانات الأساسية
+  | 'clients' | 'suppliers' | 'inventory' | 'settings' | 'expenses'
 
-export type NavGroup = 'home' | 'sales' | 'purchases' | 'projects' | 'resources' | 'supply-chain' | 'inventory-accounting' | 'reports-settings'
+export type NavGroup = 'home' | 'construction-hub' | 'rental-hub' | 'hr' | 'supply-chain' | 'operations' | 'accounting-reports' | 'settings-data'
 
 export type Lang = 'ar' | 'en'
+
+export type ActivityType = 'construction' | 'rental' | 'both'
 
 interface NavGroupConfig {
   key: NavGroup
   label: { ar: string; en: string }
+  icon: string // lucide icon name
+  color: string // tailwind color class
   items: NavItem[]
 }
 
@@ -36,217 +39,243 @@ export const navGroups: NavGroupConfig[] = [
   {
     key: 'home',
     label: { ar: 'الرئيسية', en: 'Home' },
+    icon: 'LayoutDashboard',
+    color: 'text-gray-600',
     items: ['dashboard'],
   },
   {
-    key: 'sales',
-    label: { ar: 'المبيعات', en: 'Sales' },
-    items: ['sales', 'extracts', 'clients', 'client-payments'],
+    key: 'construction-hub',
+    label: { ar: 'المشاريع التنفيذية', en: 'Construction Projects' },
+    icon: 'Building2',
+    color: 'text-emerald-600',
+    items: ['projects', 'contracts', 'boq', 'extracts', 'sales', 'client-payments'],
   },
   {
-    key: 'purchases',
-    label: { ar: 'المشتريات', en: 'Purchases' },
-    items: ['purchases', 'suppliers', 'subcontractors', 'supplier-payments'],
+    key: 'rental-hub',
+    label: { ar: 'تأجير المعدات', en: 'Equipment Rental' },
+    icon: 'Truck',
+    color: 'text-cyan-600',
+    items: ['equipment', 'rental-contracts', 'delivery-orders', 'timesheets', 'rental-invoices', 'rental-payments'],
   },
   {
-    key: 'projects',
-    label: { ar: 'المشاريع', en: 'Projects' },
-    items: ['projects', 'contracts', 'boq', 'timesheets'],
-  },
-  {
-    key: 'resources',
-    label: { ar: 'الموارد', en: 'Resources' },
-    items: ['equipment', 'equipment-operations', 'resource-distribution', 'employees', 'salaries', 'attendance', 'equipment-maintenance', 'fuel', 'work-teams', 'employee-contracts'],
+    key: 'hr',
+    label: { ar: 'الموارد البشرية', en: 'Human Resources' },
+    icon: 'Users',
+    color: 'text-violet-600',
+    items: ['employees', 'employee-contracts', 'attendance', 'salaries', 'work-teams', 'resource-distribution'],
   },
   {
     key: 'supply-chain',
     label: { ar: 'سلسلة التوريد', en: 'Supply Chain' },
+    icon: 'Package',
+    color: 'text-amber-600',
     items: ['purchase-requests', 'purchase-orders', 'goods-receipt', 'supplier-invoices', 'supplier-payments'],
   },
   {
-    key: 'inventory-accounting',
-    label: { ar: 'المخزون والمحاسبة', en: 'Inventory & Accounting' },
-    items: ['inventory', 'accounting', 'vat'],
+    key: 'operations',
+    label: { ar: 'التشغيل والصيانة', en: 'Operations & Maintenance' },
+    icon: 'Wrench',
+    color: 'text-orange-600',
+    items: ['equipment-operations', 'equipment-maintenance', 'fuel', 'subcontractors', 'expenses'],
   },
   {
-    key: 'reports-settings',
-    label: { ar: 'التقارير والإعدادات', en: 'Reports & Settings' },
-    items: ['reports', 'settings'],
+    key: 'accounting-reports',
+    label: { ar: 'المحاسبة والتقارير', en: 'Accounting & Reports' },
+    icon: 'Calculator',
+    color: 'text-teal-600',
+    items: ['accounting', 'vat', 'reports'],
+  },
+  {
+    key: 'settings-data',
+    label: { ar: 'الإعدادات والبيانات', en: 'Settings & Data' },
+    icon: 'Settings',
+    color: 'text-gray-500',
+    items: ['clients', 'suppliers', 'inventory', 'settings'],
   },
 ]
 
 export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   // الرئيسية
   'dashboard': { ar: 'لوحة التحكم', en: 'Dashboard' },
-  // المبيعات
-  'sales': { ar: 'المبيعات', en: 'Sales Invoices' },
-  'extracts': { ar: 'المستخلصات', en: 'Extracts' },
-  'clients': { ar: 'العملاء', en: 'Clients' },
-  'client-payments': { ar: 'تحصيلات العملاء', en: 'Client Payments' },
-  // المشتريات
-  'purchases': { ar: 'المشتريات', en: 'Purchase Invoices' },
-  'suppliers': { ar: 'الموردون', en: 'Suppliers' },
-  'subcontractors': { ar: 'مقاولو الباطن', en: 'Subcontractors' },
-  'supplier-payments': { ar: 'سداد الموردين', en: 'Supplier Payments' },
-  // المشاريع
+  // محور المشاريع التنفيذية
   'projects': { ar: 'المشاريع', en: 'Projects' },
   'contracts': { ar: 'العقود', en: 'Contracts' },
   'boq': { ar: 'جدول الكميات BOQ', en: 'Bill of Quantities' },
-  'timesheets': { ar: 'ساعات العمل', en: 'Timesheets' },
-  // الموارد
+  'extracts': { ar: 'المستخلصات', en: 'Extracts' },
+  'sales': { ar: 'فواتير العملاء', en: 'Client Invoices' },
+  'client-payments': { ar: 'التحصيلات', en: 'Collections' },
+  // محور تأجير المعدات
   'equipment': { ar: 'المعدات', en: 'Equipment' },
-  'equipment-operations': { ar: 'التشغيل', en: 'Operations' },
-  'resource-distribution': { ar: 'توزيع الموارد', en: 'Resource Distribution' },
+  'rental-contracts': { ar: 'عقود التأجير', en: 'Rental Contracts' },
+  'delivery-orders': { ar: 'أوامر التوصيل', en: 'Delivery Orders' },
+  'timesheets': { ar: 'ساعات التشغيل', en: 'Timesheets' },
+  'rental-invoices': { ar: 'فواتير التأجير', en: 'Rental Invoices' },
+  'rental-payments': { ar: 'تحصيلات التأجير', en: 'Rental Collections' },
+  // الموارد البشرية
   'employees': { ar: 'الموظفون', en: 'Employees' },
-  'salaries': { ar: 'الرواتب', en: 'Salaries' },
-  'attendance': { ar: 'الحضور والانصراف', en: 'Attendance' },
-  'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
-  'fuel': { ar: 'الوقود', en: 'Fuel' },
-  'work-teams': { ar: 'فرق العمل', en: 'Work Teams' },
   'employee-contracts': { ar: 'عقود الموظفين', en: 'Employee Contracts' },
+  'attendance': { ar: 'الحضور والانصراف', en: 'Attendance' },
+  'salaries': { ar: 'الرواتب', en: 'Salaries' },
+  'work-teams': { ar: 'فرق العمل', en: 'Work Teams' },
+  'resource-distribution': { ar: 'توزيع الموارد', en: 'Resource Distribution' },
   // سلسلة التوريد
   'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
   'purchase-orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },
   'goods-receipt': { ar: 'الاستلام', en: 'Goods Receipt' },
   'supplier-invoices': { ar: 'فواتير الموردين', en: 'Supplier Invoices' },
   'supplier-payments': { ar: 'سداد الموردين', en: 'Supplier Payments' },
-  // المخزون والمحاسبة
-  'inventory': { ar: 'المخزون', en: 'Inventory' },
+  // التشغيل والصيانة
+  'equipment-operations': { ar: 'التشغيل', en: 'Operations' },
+  'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
+  'fuel': { ar: 'الوقود', en: 'Fuel' },
+  'subcontractors': { ar: 'مقاولو الباطن', en: 'Subcontractors' },
+  'expenses': { ar: 'المصروفات', en: 'Expenses' },
+  // المحاسبة والتقارير
   'accounting': { ar: 'المحاسبة', en: 'Accounting' },
   'vat': { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
-  // التقارير والإعدادات
   'reports': { ar: 'التقارير', en: 'Reports' },
+  // الإعدادات
+  'clients': { ar: 'العملاء', en: 'Clients' },
+  'suppliers': { ar: 'الموردون', en: 'Suppliers' },
+  'inventory': { ar: 'المخزون', en: 'Inventory' },
   'settings': { ar: 'الإعدادات', en: 'Settings' },
 }
 
-// Activity type mapping: which nav items primarily serve which business activity
-// CONSTRUCTION = مشاريع تنفيذية, RENTAL = تأجير المعدات, BOTH = مشترك
-export type ActivityType = 'construction' | 'rental' | 'both'
-
+// Activity type mapping
 export const navItemActivity: Record<NavItem, ActivityType> = {
-  // الرئيسية
   'dashboard': 'both',
-  // المبيعات
-  'sales': 'both',
-  'extracts': 'construction',
-  'clients': 'both',
-  'client-payments': 'both',
-  // المشتريات
-  'purchases': 'both',
-  'suppliers': 'both',
-  'subcontractors': 'construction',
-  'supplier-payments': 'both',
-  // المشاريع
-  'projects': 'both',
-  'contracts': 'both',
+  // Construction hub
+  'projects': 'construction',
+  'contracts': 'construction',
   'boq': 'construction',
-  'timesheets': 'rental',
-  // الموارد
+  'extracts': 'construction',
+  'sales': 'construction',
+  'client-payments': 'construction',
+  // Rental hub
   'equipment': 'rental',
-  'equipment-operations': 'rental',
-  'resource-distribution': 'both',
+  'rental-contracts': 'rental',
+  'delivery-orders': 'rental',
+  'timesheets': 'rental',
+  'rental-invoices': 'rental',
+  'rental-payments': 'rental',
+  // HR - feeds both
   'employees': 'both',
-  'salaries': 'both',
-  'attendance': 'both',
-  'equipment-maintenance': 'rental',
-  'fuel': 'rental',
-  'work-teams': 'construction',
   'employee-contracts': 'both',
-  // سلسلة التوريد
+  'attendance': 'both',
+  'salaries': 'both',
+  'work-teams': 'both',
+  'resource-distribution': 'both',
+  // Supply chain - feeds both
   'purchase-requests': 'both',
   'purchase-orders': 'both',
   'goods-receipt': 'both',
   'supplier-invoices': 'both',
   'supplier-payments': 'both',
-  // المخزون والمحاسبة
-  'inventory': 'both',
+  // Operations
+  'equipment-operations': 'rental',
+  'equipment-maintenance': 'rental',
+  'fuel': 'rental',
+  'subcontractors': 'construction',
+  'expenses': 'both',
+  // Accounting
   'accounting': 'both',
   'vat': 'both',
-  // التقارير والإعدادات
   'reports': 'both',
+  // Settings
+  'clients': 'both',
+  'suppliers': 'both',
+  'inventory': 'both',
   'settings': 'both',
 }
 
+// Workflow chain definitions
+export const CONSTRUCTION_WORKFLOW = [
+  { step: 'clients', label: { ar: 'العميل', en: 'Client' }, navItem: 'clients' as NavItem },
+  { step: 'projects', label: { ar: 'المشروع', en: 'Project' }, navItem: 'projects' as NavItem },
+  { step: 'contracts', label: { ar: 'العقد', en: 'Contract' }, navItem: 'contracts' as NavItem },
+  { step: 'boq', label: { ar: 'BOQ', en: 'BOQ' }, navItem: 'boq' as NavItem },
+  { step: 'work-hours', label: { ar: 'ساعات العمل', en: 'Work Hours' }, navItem: 'attendance' as NavItem },
+  { step: 'expenses', label: { ar: 'المصروفات', en: 'Expenses' }, navItem: 'expenses' as NavItem },
+  { step: 'subcontractors', label: { ar: 'مقاولو الباطن', en: 'Subcontractors' }, navItem: 'subcontractors' as NavItem },
+  { step: 'purchases', label: { ar: 'المشتريات', en: 'Purchases' }, navItem: 'purchase-requests' as NavItem },
+  { step: 'extracts', label: { ar: 'المستخلص', en: 'Extract' }, navItem: 'extracts' as NavItem },
+  { step: 'invoice', label: { ar: 'فاتورة العميل', en: 'Client Invoice' }, navItem: 'sales' as NavItem },
+  { step: 'collection', label: { ar: 'التحصيل', en: 'Collection' }, navItem: 'client-payments' as NavItem },
+  { step: 'accounting', label: { ar: 'المحاسبة', en: 'Accounting' }, navItem: 'accounting' as NavItem },
+  { step: 'reports', label: { ar: 'التقارير', en: 'Reports' }, navItem: 'reports' as NavItem },
+]
+
+export const RENTAL_WORKFLOW = [
+  { step: 'clients', label: { ar: 'العميل', en: 'Client' }, navItem: 'clients' as NavItem },
+  { step: 'rental-contract', label: { ar: 'عقد التأجير', en: 'Rental Contract' }, navItem: 'rental-contracts' as NavItem },
+  { step: 'sales-order', label: { ar: 'أمر البيع', en: 'Sales Order' }, navItem: 'rental-contracts' as NavItem },
+  { step: 'delivery', label: { ar: 'أمر التوصيل', en: 'Delivery Order' }, navItem: 'delivery-orders' as NavItem },
+  { step: 'timesheet', label: { ar: 'Time Sheet', en: 'Time Sheet' }, navItem: 'timesheets' as NavItem },
+  { step: 'invoice', label: { ar: 'فاتورة التأجير', en: 'Rental Invoice' }, navItem: 'rental-invoices' as NavItem },
+  { step: 'collection', label: { ar: 'التحصيل', en: 'Collection' }, navItem: 'rental-payments' as NavItem },
+  { step: 'accounting', label: { ar: 'المحاسبة', en: 'Accounting' }, navItem: 'accounting' as NavItem },
+  { step: 'reports', label: { ar: 'التقارير', en: 'Reports' }, navItem: 'reports' as NavItem },
+]
+
+export const PURCHASE_WORKFLOW = [
+  { step: 'request', label: { ar: 'طلب شراء', en: 'Purchase Request' }, navItem: 'purchase-requests' as NavItem },
+  { step: 'order', label: { ar: 'أمر شراء', en: 'Purchase Order' }, navItem: 'purchase-orders' as NavItem },
+  { step: 'receipt', label: { ar: 'استلام', en: 'Goods Receipt' }, navItem: 'goods-receipt' as NavItem },
+  { step: 'invoice', label: { ar: 'فاتورة مورد', en: 'Supplier Invoice' }, navItem: 'supplier-invoices' as NavItem },
+  { step: 'payment', label: { ar: 'سداد', en: 'Payment' }, navItem: 'supplier-payments' as NavItem },
+  { step: 'accounting', label: { ar: 'قيد محاسبي', en: 'Journal Entry' }, navItem: 'accounting' as NavItem },
+]
+
 // Accounting sub-tabs
 export type AccountingTab = 'chart-of-accounts' | 'journal-entries' | 'general-ledger' | 'trial-balance' | 'receivables' | 'payables'
-
-// ============ SUB MODULE KEYS ============
-
-export type SubModuleKey = string
-
-export const subModuleLabels: Record<string, { ar: string; en: string }> = {
-  // Project sub-tabs
-  'project-list': { ar: 'قائمة المشاريع', en: 'Project List' },
-  'project-overview': { ar: 'نظرة عامة', en: 'Overview' },
-  'project-contracts': { ar: 'العقود', en: 'Contracts' },
-  'project-extracts': { ar: 'المستخلصات', en: 'Extracts' },
-  'project-invoices': { ar: 'الفواتير', en: 'Invoices' },
-  'project-costs': { ar: 'التكاليف', en: 'Costs' },
-  'project-collections': { ar: 'التحصيلات', en: 'Collections' },
-  'project-contracting': { ar: 'التعاقد', en: 'Contracting' },
-  'project-planning': { ar: 'التخطيط', en: 'Planning' },
-  'project-execution': { ar: 'التنفيذ', en: 'Execution' },
-  'project-boq': { ar: 'جدول الكميات', en: 'BOQ' },
-  'project-quality': { ar: 'الجودة', en: 'Quality' },
-  'project-safety': { ar: 'السلامة', en: 'Safety' },
-  'project-correspondence': { ar: 'المراسلات', en: 'Correspondence' },
-  'project-documents': { ar: 'الوثائق', en: 'Documents' },
-
-  // Rental sub-tabs
-  'rental-contracts': { ar: 'عقود التأجير', en: 'Rental Contracts' },
-  'rental-delivery-orders': { ar: 'أوامر التسليم', en: 'Delivery Orders' },
-  'rental-timesheets': { ar: 'ساعات العمل', en: 'Timesheets' },
-  'rental-invoices': { ar: 'الفواتير', en: 'Invoices' },
-  'rental-collections': { ar: 'التحصيلات', en: 'Collections' },
-}
 
 // ============ APP STORE ============
 
 interface AppState {
   // Navigation
   activeItem: NavItem
-  activeSubModule: SubModuleKey
   sidebarOpen: boolean
   sidebarCollapsed: boolean
   lang: Lang
   // Project drill-down
   selectedProjectId: string | null
-  // Currency - single source
+  selectedEquipmentId: string | null
+  // Currency
   currencySymbolImage: string | null
   // Number formatting settings
   useThousandSeparatorsSystem: boolean
   useThousandSeparatorsOfficial: boolean
   // Actions
   setActiveItem: (item: NavItem) => void
-  setActiveSubModule: (key: SubModuleKey) => void
   setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setLang: (lang: Lang) => void
   toggleLang: () => void
   selectProject: (projectId: string | null) => void
+  selectEquipment: (equipmentId: string | null) => void
   setCurrencySymbolImage: (url: string | null) => void
   setThousandSeparatorSettings: (system: boolean, official: boolean) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
   activeItem: 'dashboard',
-  activeSubModule: '',
   sidebarOpen: false,
   sidebarCollapsed: false,
   lang: 'ar',
   selectedProjectId: null,
+  selectedEquipmentId: null,
   currencySymbolImage: null,
   useThousandSeparatorsSystem: true,
   useThousandSeparatorsOfficial: false,
   setActiveItem: (item) => set({ activeItem: item }),
-  setActiveSubModule: (key) => set({ activeSubModule: key }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setLang: (lang) => set({ lang }),
   toggleLang: () => set((s) => ({ lang: s.lang === 'ar' ? 'en' : 'ar' })),
-  selectProject: (projectId) => set({ selectedProjectId: projectId }),
+  selectProject: (projectId) => set({ selectedProjectId: projectId, activeItem: 'projects' }),
+  selectEquipment: (equipmentId) => set({ selectedEquipmentId: equipmentId, activeItem: 'equipment' }),
   setCurrencySymbolImage: (url) => set({ currencySymbolImage: url }),
   setThousandSeparatorSettings: (system, official) => set({
     useThousandSeparatorsSystem: system,
@@ -278,6 +307,10 @@ export function formatDate(dateStr: string, lang: Lang = 'ar'): string {
     return date.toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' })
   }
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+}
+
+export function formatPercent(value: number): string {
+  return `${value.toFixed(1)}%`
 }
 
 // Common bilingual text
@@ -318,4 +351,9 @@ export const commonText = {
   debit: { ar: 'مدين', en: 'Debit' },
   credit: { ar: 'دائن', en: 'Credit' },
   balance: { ar: 'الرصيد', en: 'Balance' },
+  revenue: { ar: 'الإيرادات', en: 'Revenue' },
+  cost: { ar: 'التكاليف', en: 'Costs' },
+  profit: { ar: 'الربحية', en: 'Profitability' },
+  projectCard: { ar: 'كرت المشروع', en: 'Project Card' },
+  equipmentCard: { ar: 'كرت المعدة', en: 'Equipment Card' },
 }

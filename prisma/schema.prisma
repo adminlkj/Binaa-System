@@ -139,6 +139,13 @@ enum AccountActivityType {
   BOTH
 }
 
+// Activity type for business flow - every record knows which hub it belongs to
+enum ActivityType {
+  EXECUTION    // مشاريع تنفيذية
+  RENTAL       // تأجير معدات
+  GENERAL      // مشترك / عام
+}
+
 enum VATReturnStatus {
   DRAFT
   FILED
@@ -392,6 +399,8 @@ model Attendance {
 model Salary {
   id              String       @id @default(cuid())
   employeeId      String
+  projectId       String?      // ربط بالمشروع
+  activityType    String       @default("GENERAL") // EXECUTION, RENTAL, GENERAL
   month           Int          // 1-12
   year            Int
   basicSalary     Float
@@ -407,6 +416,7 @@ model Salary {
   updatedAt       DateTime    @updatedAt
 
   employee Employee @relation(fields: [employeeId], references: [id])
+  project  Project? @relation(fields: [projectId], references: [id])
 }
 
 model WorkTeam {
@@ -475,6 +485,7 @@ model Project {
   fuelLogs       EquipmentFuelLog[]
   resourceAllocations ResourceAllocation[]
   equipmentOperations EquipmentOperation[]
+  salaries       Salary[]             // الرواتب المرتبطة بالمشروع
 }
 
 model Contract {
@@ -732,6 +743,8 @@ model PurchaseInvoice {
   purchaseOrderId  String?
   goodsReceiptId   String?          @unique
   projectId        String?
+  equipmentId      String?           // ربط بالمعدة
+  activityType     String        @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
   supplierId       String
   date             DateTime
   dueDate          DateTime
@@ -755,6 +768,7 @@ model PurchaseInvoice {
   goodsReceipt  GoodsReceipt?   @relation(fields: [goodsReceiptId], references: [id])
   supplier      Supplier        @relation(fields: [supplierId], references: [id])
   project       Project?        @relation(fields: [projectId], references: [id])
+  equipment     Equipment?      @relation(fields: [equipmentId], references: [id])
   items         PurchaseInvoiceItem[]
 }
 
@@ -819,7 +833,9 @@ model SubcontractorInvoice {
 model Expense {
   id               String          @id @default(cuid())
   projectId        String?
+  equipmentId      String?         // ربط بالمعدة
   expenseType      ExpenseType     @default(PROJECT)
+  activityType     String          @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
   category         ExpenseCategory
   description      String
   amount           Float
@@ -834,7 +850,8 @@ model Expense {
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
 
-  project Project? @relation(fields: [projectId], references: [id])
+  project   Project?   @relation(fields: [projectId], references: [id])
+  equipment Equipment? @relation(fields: [equipmentId], references: [id])
 }
 
 // ============ LABOR COSTS ============
@@ -888,6 +905,8 @@ model Equipment {
   deliveryOrders EquipmentDeliveryOrder[]
   timesheets     Timesheet[]
   operatorLogs   EquipmentOperation[]
+  purchaseInvoices PurchaseInvoice[]
+  costExpenses   Expense[]          // المصروفات المرتبطة بالمعدة
 }
 
 model EquipmentOperation {
