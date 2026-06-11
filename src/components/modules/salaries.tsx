@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Banknote, Plus, Search, Trash2, RefreshCw, CheckCircle,
-  Printer, Download, BookOpen, Calculator, Eye,
+  Download, BookOpen, Calculator, Eye,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,6 +23,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
@@ -310,6 +311,33 @@ export function SalariesModule() {
   const totalDeductions = filtered.reduce((sum, s) => sum + s.deductions, 0)
   const totalBasic = filtered.reduce((sum, s) => sum + s.basicSalary, 0)
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'employeeName', label: lang === 'ar' ? 'الموظف' : 'Employee' },
+      { key: 'monthYear', label: lang === 'ar' ? 'الشهر/السنة' : 'Month/Year' },
+      { key: 'basicSalary', label: lang === 'ar' ? 'الأساسي' : 'Basic' },
+      { key: 'allowances', label: lang === 'ar' ? 'البدلات' : 'Allowances' },
+      { key: 'overtimeAmount', label: lang === 'ar' ? 'الإضافي' : 'Overtime' },
+      { key: 'deductions', label: lang === 'ar' ? 'الخصومات' : 'Deductions' },
+      { key: 'netSalary', label: lang === 'ar' ? 'الصافي' : 'Net' },
+      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+    ],
+    rows: filtered.map(s => ({
+      employeeName: s.employee.name,
+      monthYear: `${monthNames[s.month - 1]?.[lang] || s.month}/${s.year}`,
+      basicSalary: s.basicSalary,
+      allowances: s.housingAllowance + s.transportAllowance + s.otherAllowances,
+      overtimeAmount: s.overtimeAmount,
+      deductions: s.deductions,
+      netSalary: s.netSalary,
+      status: s.status,
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'إجمالي الرواتب الصافية' : 'Total Net Salaries', value: String(totalNetSalary) },
+    ],
+  }), [filtered, lang, totalNetSalary])
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'employeeName', label: t('الموظف', 'Employee', lang) },
@@ -339,7 +367,7 @@ export function SalariesModule() {
       subtitle={{ ar: 'إدارة الرواتب والمستحقات', en: 'Manage salaries and compensation' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="salary-slip" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('إعداد راتب', 'Prepare Salary', lang)}</Button>

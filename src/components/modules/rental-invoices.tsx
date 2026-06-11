@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  FileText, Plus, Search, RefreshCw, Eye, ArrowRight, Printer, Download, FileSpreadsheet, Trash2,
+  FileText, Plus, Search, RefreshCw, Eye, ArrowRight, Download, FileSpreadsheet, Trash2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
 
 // ============ Arabic/English Month Names ============
@@ -535,11 +536,7 @@ export function RentalInvoicesModule() {
             </div>
             <p className="text-sm text-muted-foreground">{invoice.client.name}</p>
           </div>
-          {/* Print button - future integration with print service */}
-          <Button variant="outline" className="gap-2" onClick={() => window.print()}>
-            <Printer className="size-4" />
-            {t('طباعة', 'Print')}
-          </Button>
+          <PrintButton type="rental-invoice" documentId={invoice.id} />
         </div>
 
         {/* Info Cards */}

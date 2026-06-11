@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Clock, Plus, Search, Trash2, RefreshCw,
-  Printer, Download, Users, CalendarDays,
+  Download, Users, CalendarDays,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
@@ -359,6 +360,29 @@ export function AttendanceModule() {
     return Object.values(summary)
   }, [filtered])
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'employeeName', label: lang === 'ar' ? 'الموظف' : 'Employee' },
+      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+      { key: 'checkIn', label: lang === 'ar' ? 'الحضور' : 'Check In' },
+      { key: 'checkOut', label: lang === 'ar' ? 'الانصراف' : 'Check Out' },
+      { key: 'workHours', label: lang === 'ar' ? 'ساعات العمل' : 'Work Hours' },
+      { key: 'overtimeHours', label: lang === 'ar' ? 'ساعات إضافية' : 'Overtime' },
+    ],
+    rows: filtered.map(r => ({
+      employeeName: r.employee.name,
+      date: r.date,
+      checkIn: r.checkIn || '—',
+      checkOut: r.checkOut || '—',
+      workHours: r.workHours,
+      overtimeHours: r.overtimeHours,
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'عدد السجلات' : 'Records', value: String(filtered.length) },
+    ],
+  }), [filtered, lang])
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'employeeName', label: t('الموظف', 'Employee', lang) },
@@ -381,7 +405,7 @@ export function AttendanceModule() {
       subtitle={{ ar: 'تسجيل ومتابعة حضور الموظفين', en: 'Record and track employee attendance' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="attendance-report" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button variant="outline" className="gap-2" onClick={() => setBulkDialogOpen(true)}>

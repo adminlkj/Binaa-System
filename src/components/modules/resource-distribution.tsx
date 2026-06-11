@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   LayoutGrid, Plus, Search, Trash2, RefreshCw,
-  Printer, Download, Users, Truck, Users2,
+  Download, Users, Truck, Users2,
   ChevronLeft, TrendingUp, TrendingDown, BarChart3,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,6 +23,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
@@ -427,6 +428,27 @@ export function ResourceDistributionModule() {
     return Object.values(groups)
   }, [filtered])
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'projectName', label: lang === 'ar' ? 'المشروع' : 'Project' },
+      { key: 'resourceType', label: lang === 'ar' ? 'نوع المورد' : 'Resource Type' },
+      { key: 'resourceName', label: lang === 'ar' ? 'المورد' : 'Resource' },
+      { key: 'startDate', label: lang === 'ar' ? 'تاريخ البداية' : 'Start Date' },
+      { key: 'endDate', label: lang === 'ar' ? 'تاريخ النهاية' : 'End Date' },
+    ],
+    rows: filtered.map(d => ({
+      projectName: d.project.name,
+      resourceType: resourceTypeConfig[d.resourceType]?.label[lang] || d.resourceType,
+      resourceName: (d.resource as Record<string, unknown>)?.name as string || '—',
+      startDate: d.startDate,
+      endDate: d.endDate || '—',
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'عدد التوزيعات' : 'Distributions', value: String(filtered.length) },
+    ],
+  }), [filtered, lang])
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'projectName', label: t('المشروع', 'Project', lang) },
@@ -461,7 +483,7 @@ export function ResourceDistributionModule() {
       subtitle={{ ar: 'توزيع الموارد على المشاريع وتحسين استخدامها', en: 'Allocate resources to projects and optimize utilization' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="resource-distribution" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('توزيع مورد', 'Allocate Resource', lang)}</Button>

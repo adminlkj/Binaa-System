@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber } from '@/stores/app-store'
+import { PrintButton } from '@/components/shared/print-button'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { InvoicePreview } from '@/components/invoice/invoice-preview'
 import type { InvoiceData, CompanySettings } from '@/components/invoice/invoice-preview'
@@ -711,8 +712,6 @@ export function ServiceInvoicesModule() {
     link.click()
   }
 
-  const handlePrint = () => window.print()
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -721,9 +720,7 @@ export function ServiceInvoicesModule() {
           <p className="text-sm text-muted-foreground">{t('إدارة فواتير الخدمات الاستشارية والفنية', 'Manage consulting and technical service invoices')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={handlePrint} title={t('طباعة', 'Print')}>
-            <Printer className="size-4" />
-          </Button>
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير', 'Export')}>
             <Download className="size-4" />
           </Button>

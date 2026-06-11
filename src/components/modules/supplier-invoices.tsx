@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
-  Printer, Download, AlertCircle, CheckCircle, BookOpen, Link2, X, Trash2,
+  Download, AlertCircle, CheckCircle, BookOpen, Link2, X, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 type ViewState =
@@ -508,7 +509,7 @@ export function SupplierInvoicesModule() {
       subtitle={{ ar: 'إدارة فواتير الموردين ومتابعة السداد', en: 'Manage supplier invoices and payment tracking' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>

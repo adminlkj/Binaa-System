@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Settings, Plus, Search, Trash2, RefreshCw,
-  Printer, Download, BookOpen,
+  Download, BookOpen,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Employee { id: string; code: string; name: string }
@@ -194,6 +195,31 @@ export function EquipmentOperationsModule() {
   const totalCost = filtered.reduce((sum, op) => sum + getOpCost(op), 0)
   const totalHours = filtered.reduce((sum, op) => sum + op.hours, 0)
 
+  const printData = {
+    columns: [
+      { key: 'equipment', label: lang === 'ar' ? 'المعدة' : 'Equipment' },
+      { key: 'operator', label: lang === 'ar' ? 'المشغل' : 'Operator' },
+      { key: 'project', label: lang === 'ar' ? 'المشروع' : 'Project' },
+      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+      { key: 'hours', label: lang === 'ar' ? 'الساعات' : 'Hours' },
+      { key: 'cost', label: lang === 'ar' ? 'التكلفة' : 'Cost' },
+    ],
+    rows: filtered.map(op => ({
+      equipment: op.equipment.name,
+      operator: op.operator.name,
+      project: op.project.name,
+      date: op.date,
+      hours: op.hours,
+      cost: op.hours * (op.equipment.hourlyRate || 0),
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'إجمالي التكلفة' : 'Total Cost', value: String(totalCost) },
+      { label: lang === 'ar' ? 'إجمالي الساعات' : 'Total Hours', value: String(totalHours) },
+      { label: lang === 'ar' ? 'عدد العمليات' : 'Operations', value: String(filtered.length) },
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+    ],
+  }
+
   // Group by project for summary
   const projectCosts = (() => {
     const map: Record<string, { name: string; hours: number; cost: number }> = {}
@@ -231,7 +257,7 @@ export function EquipmentOperationsModule() {
       subtitle={{ ar: 'متابعة عمليات تشغيل المعدات', en: 'Track equipment operations' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="equipment-report" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('تسجيل تشغيل', 'Record Operation', lang)}</Button>

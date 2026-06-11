@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Users, Plus, Search, Pencil, Trash2, RefreshCw,
-  Printer, Download,
+  Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Branch { id: string; name: string; nameAr: string | null }
@@ -218,6 +219,28 @@ export function EmployeesModule() {
     return e.name.toLowerCase().includes(s) || e.code.toLowerCase().includes(s) || (e.nameAr?.toLowerCase().includes(s)) || (e.phone?.includes(s)) || (e.profession?.toLowerCase().includes(s))
   })
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+      { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+      { key: 'nationality', label: lang === 'ar' ? 'الجنسية' : 'Nationality' },
+      { key: 'profession', label: lang === 'ar' ? 'المهنة' : 'Profession' },
+      { key: 'basicSalary', label: lang === 'ar' ? 'الراتب' : 'Salary' },
+      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+    ],
+    rows: filtered.map(e => ({
+      code: e.code,
+      name: e.name,
+      nationality: e.nationality || '',
+      profession: e.profession || '',
+      basicSalary: e.basicSalary,
+      status: statusConfig[e.status]?.label[lang] || e.status,
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+    ],
+  }), [filtered, lang])
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'code', label: t('الكود', 'Code', lang) },
@@ -236,7 +259,7 @@ export function EmployeesModule() {
       subtitle={{ ar: 'إدارة بيانات الموظفين والموارد البشرية', en: 'Manage employee data and human resources' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="generic-table" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingEmployee(null); setDialogOpen(true) }}><Plus className="size-4" />{t('موظف جديد', 'New Employee', lang)}</Button>

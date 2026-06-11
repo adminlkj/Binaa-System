@@ -7,7 +7,7 @@ import {
   PieChart, Truck, Download, CreditCard, Users, Percent,
   RefreshCw, Building2, ArrowLeft, CheckCircle2,
   Clock, Send, Wallet, BookOpen, Activity, Wrench,
-  Printer, DollarSign, Fuel, Settings2, CalendarDays,
+  DollarSign, Fuel, Settings2, CalendarDays,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { useAppStore, formatNumber, formatDate } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { toast } from 'sonner'
 
@@ -119,9 +120,9 @@ interface ProjectCostData {
 }
 
 // ============ Shared Components ============
-function ReportHeader({ title, icon: Icon, lang, onRefresh, onExport, onPrint }: {
+function ReportHeader({ title, icon: Icon, lang, onRefresh, onExport, printType, printData }: {
   title: string; icon: React.ElementType; lang: 'ar' | 'en'
-  onRefresh?: () => void; onExport?: () => void; onPrint?: () => void
+  onRefresh?: () => void; onExport?: () => void; printType?: string; printData?: Record<string, unknown>
 }) {
   return (
     <div className="flex items-center justify-between">
@@ -132,7 +133,7 @@ function ReportHeader({ title, icon: Icon, lang, onRefresh, onExport, onPrint }:
       <div className="flex gap-1.5">
         {onRefresh && <Button variant="outline" size="icon" className="size-8" onClick={onRefresh}><RefreshCw className="size-3.5" /></Button>}
         {onExport && <Button variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={onExport}><Download className="size-3.5" />{t('تصدير', 'Export', lang)}</Button>}
-        {onPrint && <Button variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={onPrint}><Printer className="size-3.5" />{t('طباعة', 'Print', lang)}</Button>}
+        {printType && <PrintButton type={printType as 'generic-table'} data={printData} size="sm" className="gap-1 h-8 text-xs" />}
       </div>
     </div>
   )
@@ -214,8 +215,6 @@ function ProjectReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     exportToCSV(profitData.projects as Record<string, unknown>[], 'project-profitability', columns)
   }, [profitData, lang])
 
-  const handlePrint = useCallback(() => { window.print() }, [])
-
   const statusSummary = React.useMemo(() => {
     if (!profitData?.projects) return { byStatus: {} as Record<string, number>, totalContractValue: 0, count: 0 }
     const byStatus: Record<string, number> = {}
@@ -239,7 +238,7 @@ function ProjectReportsTab({ lang }: { lang: 'ar' | 'en' }) {
         {/* Profitability Tab */}
         <TabsContent value="profitability" className="space-y-4">
           <ReportHeader title={t('تقرير ربحية المشاريع', 'Project Profitability Report', lang)} icon={TrendingUp} lang={lang}
-            onRefresh={() => refetchProfit()} onExport={handleExportProfit} onPrint={handlePrint} />
+            onRefresh={() => refetchProfit()} onExport={handleExportProfit} printType="generic-table" printData={profitData ? { columns: [{ key: 'code', label: t('الكود', 'Code', lang) }, { key: 'name', label: t('المشروع', 'Project', lang) }, { key: 'client', label: t('العميل', 'Client', lang) }, { key: 'contractValue', label: t('قيمة العقد', 'Contract', lang), align: 'amount' }, { key: 'invoiced', label: t('المفوتر', 'Invoiced', lang), align: 'amount' }, { key: 'totalCosts', label: t('التكاليف', 'Costs', lang), align: 'amount' }, { key: 'grossProfit', label: t('الربح', 'Profit', lang), align: 'amount' }, { key: 'profitMargin', label: t('الهامش %', 'Margin %', lang) }], rows: profitData.projects, totals: [{ label: t('إجمالي العقود', 'Total Contracts', lang), value: profitData.totals.contractValue }, { label: t('إجمالي التكاليف', 'Total Costs', lang), value: profitData.totals.totalCosts }, { label: t('إجمالي الربح', 'Total Profit', lang), value: profitData.totals.grossProfit, isGrand: true }] } as Record<string, unknown> : undefined} />
 
           {profitLoading ? <LoadingSkeleton /> : profitData?.projects && profitData.projects.length > 0 ? (
             <>
@@ -359,7 +358,7 @@ function ProjectReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         {/* Status Summary Tab */}
         <TabsContent value="status-summary" className="space-y-4">
-          <ReportHeader title={t('ملخص حالات المشاريع', 'Project Status Summary', lang)} icon={PieChart} lang={lang} onPrint={handlePrint} />
+          <ReportHeader title={t('ملخص حالات المشاريع', 'Project Status Summary', lang)} icon={PieChart} lang={lang} printType="generic-table" printData={statusSummary ? { columns: [{ key: 'status', label: t('الحالة', 'Status', lang) }, { key: 'count', label: t('العدد', 'Count', lang) }], rows: Object.entries(statusSummary.byStatus).map(([status, count]) => ({ status, count })) } as Record<string, unknown> : undefined} />
           {profitData?.projects ? (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -403,8 +402,6 @@ function RentalReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     queryFn: async () => { const res = await fetch('/api/reports?type=equipment-status'); if (!res.ok) throw new Error(); return res.json() },
   })
 
-  const handlePrint = useCallback(() => { window.print() }, [])
-
   return (
     <div className="space-y-4">
       <Tabs value={subTab} onValueChange={setSubTab}>
@@ -416,7 +413,7 @@ function RentalReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         <TabsContent value="utilization" className="space-y-4">
           <ReportHeader title={t('تقرير استخدام المعدات', 'Equipment Utilization Report', lang)} icon={Truck} lang={lang}
-            onRefresh={() => refetchUtil()} onPrint={handlePrint} />
+            onRefresh={() => refetchUtil()} printType="generic-table" printData={utilData ? { columns: [{ key: 'code', label: t('الكود', 'Code', lang) }, { key: 'name', label: t('المعدة', 'Equipment', lang) }, { key: 'totalHoursRented', label: t('الساعات', 'Hours', lang) }, { key: 'revenueGenerated', label: t('الإيرادات', 'Revenue', lang), align: 'amount' }, { key: 'totalCosts', label: t('التكاليف', 'Costs', lang), align: 'amount' }, { key: 'netProfit', label: t('صافي الربح', 'Net Profit', lang), align: 'amount' }], rows: utilData.equipment, totals: [{ label: t('إجمالي الإيرادات', 'Total Revenue', lang), value: utilData.totals.revenueGenerated }, { label: t('إجمالي التكاليف', 'Total Costs', lang), value: utilData.totals.totalCosts }, { label: t('صافي الربح', 'Net Profit', lang), value: utilData.totals.netProfit, isGrand: true }] } as Record<string, unknown> : undefined} />
           {utilLoading ? <LoadingSkeleton /> : utilData?.equipment && utilData.equipment.length > 0 ? (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -459,7 +456,7 @@ function RentalReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         <TabsContent value="revenue-by-client" className="space-y-4">
           <ReportHeader title={t('إيرادات التأجير حسب العميل', 'Rental Revenue by Client', lang)} icon={CreditCard} lang={lang}
-            onRefresh={() => refetchRev()} onPrint={handlePrint} />
+            onRefresh={() => refetchRev()} printType="generic-table" printData={revByClient ? { columns: [{ key: 'code', label: t('الكود', 'Code', lang) }, { key: 'name', label: t('العميل', 'Client', lang) }, { key: 'invoiceCount', label: t('عدد الفواتير', 'Invoices', lang) }, { key: 'revenue', label: t('الإيرادات', 'Revenue', lang), align: 'amount' }], rows: revByClient.clients, totals: [{ label: t('إجمالي الإيرادات', 'Total Revenue', lang), value: revByClient.totalRevenue, isGrand: true }] } as Record<string, unknown> : undefined} />
           {revLoading ? <LoadingSkeleton /> : revByClient?.clients && revByClient.clients.length > 0 ? (
             <>
               <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-4 text-center"><p className="text-xs text-cyan-600">{t('إجمالي إيرادات التأجير', 'Total Rental Revenue', lang)}</p><MoneyDisplay value={revByClient.totalRevenue} lang={lang} size="lg" bold /></CardContent></Card>
@@ -487,7 +484,7 @@ function RentalReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         <TabsContent value="equipment-status" className="space-y-4">
           <ReportHeader title={t('تقرير حالة المعدات', 'Equipment Status Report', lang)} icon={Wrench} lang={lang}
-            onRefresh={() => refetchStatus()} onPrint={handlePrint} />
+            onRefresh={() => refetchStatus()} printType="generic-table" printData={eqStatus ? { columns: [{ key: 'status', label: t('الحالة', 'Status', lang) }, { key: 'count', label: t('العدد', 'Count', lang) }], rows: Object.entries(eqStatus.byStatus).map(([status, count]) => ({ status, count })), infoItems: [{ label: t('إجمالي المعدات', 'Total Equipment', lang), value: String(eqStatus.total) }] } as Record<string, unknown> : undefined} />
           {statusLoading ? <LoadingSkeleton /> : eqStatus ? (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -561,8 +558,6 @@ function FinancialReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     queryFn: async () => { const res = await fetch('/api/reports?type=cash-flow-summary'); if (!res.ok) throw new Error(); return res.json() },
   })
 
-  const handlePrint = useCallback(() => { window.print() }, [])
-
   const handleExportTb = useCallback(() => {
     if (!tbData?.data) return
     const columns: CSVColumn[] = [
@@ -587,7 +582,7 @@ function FinancialReportsTab({ lang }: { lang: 'ar' | 'en' }) {
         {/* Trial Balance */}
         <TabsContent value="trial-balance" className="space-y-4">
           <ReportHeader title={t('ميزان المراجعة', 'Trial Balance', lang)} icon={BookOpen} lang={lang}
-            onRefresh={() => refetchTb()} onExport={handleExportTb} onPrint={handlePrint} />
+            onRefresh={() => refetchTb()} onExport={handleExportTb} printType="generic-table" printData={tbData?.data ? { columns: [{ key: 'account.code', label: t('الكود', 'Code', lang) }, { key: 'account.name', label: t('الحساب', 'Account', lang) }, { key: 'netDebit', label: t('مدين', 'Debit', lang), align: 'amount' }, { key: 'netCredit', label: t('دائن', 'Credit', lang), align: 'amount' }], rows: tbData.data, totals: tbData.totals ? [{ label: t('إجمالي مدين', 'Total Debit', lang), value: tbData.totals.totalDebit }, { label: t('إجمالي دائن', 'Total Credit', lang), value: tbData.totals.totalCredit, isGrand: true }] : undefined } as Record<string, unknown> : undefined} />
           <Card className="bg-gray-50/50"><CardContent className="p-4">
             <div className="flex flex-wrap items-center gap-3">
               <Label className="text-sm">{t('من', 'From', lang)}</Label>
@@ -634,7 +629,7 @@ function FinancialReportsTab({ lang }: { lang: 'ar' | 'en' }) {
         {/* Revenue Summary */}
         <TabsContent value="revenue-summary" className="space-y-4">
           <ReportHeader title={t('ملخص الإيرادات', 'Revenue Summary', lang)} icon={TrendingUp} lang={lang}
-            onRefresh={() => refetchRev()} onPrint={handlePrint} />
+            onRefresh={() => refetchRev()} printType="generic-table" printData={revData ? { columns: [{ key: 'month', label: t('الشهر', 'Month', lang) }, { key: 'construction', label: t('التنفيذية', 'Construction', lang), align: 'amount' }, { key: 'rental', label: t('التأجير', 'Rental', lang), align: 'amount' }], rows: revData.monthly.map((m: { month: string; construction: number; rental: number }) => ({ ...m, total: m.construction + m.rental })), totals: [{ label: t('إجمالي الإيرادات', 'Total Revenue', lang), value: revData.totalRevenue, isGrand: true }] } as Record<string, unknown> : undefined} />
           {revLoading ? <LoadingSkeleton /> : revData ? (
             <>
               <div className="grid grid-cols-3 gap-3">
@@ -676,7 +671,7 @@ function FinancialReportsTab({ lang }: { lang: 'ar' | 'en' }) {
         {/* Expense Summary */}
         <TabsContent value="expense-summary" className="space-y-4">
           <ReportHeader title={t('ملخص المصروفات', 'Expense Summary', lang)} icon={Receipt} lang={lang}
-            onRefresh={() => refetchExp()} onPrint={handlePrint} />
+            onRefresh={() => refetchExp()} printType="generic-table" printData={expData ? { columns: [{ key: 'category', label: t('الفئة', 'Category', lang) }, { key: 'amount', label: t('المبلغ', 'Amount', lang), align: 'amount' }], rows: [...Object.entries(expData.directByCategory).map(([category, amount]) => ({ category, amount, type: t('مباشر', 'Direct', lang) })), ...Object.entries(expData.indirectByCategory).map(([category, amount]) => ({ category, amount, type: t('غير مباشر', 'Indirect', lang) }))], totals: [{ label: t('مباشر', 'Direct', lang), value: expData.totalDirect }, { label: t('غير مباشر', 'Indirect', lang), value: expData.totalIndirect }, { label: t('الإجمالي', 'Total', lang), value: expData.totalExpenses, isGrand: true }] } as Record<string, unknown> : undefined} />
           {expLoading ? <LoadingSkeleton /> : expData ? (
             <>
               <div className="grid grid-cols-3 gap-3">
@@ -723,7 +718,7 @@ function FinancialReportsTab({ lang }: { lang: 'ar' | 'en' }) {
         {/* Cash Flow */}
         <TabsContent value="cash-flow" className="space-y-4">
           <ReportHeader title={t('ملخص التدفق النقدي', 'Cash Flow Summary', lang)} icon={Wallet} lang={lang}
-            onRefresh={() => refetchCf()} onPrint={handlePrint} />
+            onRefresh={() => refetchCf()} printType="generic-table" printData={cfData ? { columns: [{ key: 'month', label: t('الشهر', 'Month', lang) }, { key: 'inflows', label: t('الداخلة', 'Inflows', lang), align: 'amount' }, { key: 'outflows', label: t('الخارجة', 'Outflows', lang), align: 'amount' }, { key: 'net', label: t('صافي التدفق', 'Net Flow', lang), align: 'amount' }], rows: cfData.monthly.map((m: { month: string; inflows: number; outflows: number }) => ({ ...m, net: m.inflows - m.outflows })), totals: [{ label: t('التدفقات الداخلة', 'Total Inflows', lang), value: cfData.totalInflows }, { label: t('التدفقات الخارجة', 'Total Outflows', lang), value: cfData.totalOutflows }, { label: t('صافي التدفق', 'Net Cash Flow', lang), value: cfData.netCashFlow, isGrand: true }] } as Record<string, unknown> : undefined} />
           {cfLoading ? <LoadingSkeleton /> : cfData ? (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -786,8 +781,6 @@ function PurchaseReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     queryFn: async () => { const res = await fetch('/api/reports/supplier-balances'); if (!res.ok) throw new Error(); return res.json() },
   })
 
-  const handlePrint = useCallback(() => { window.print() }, [])
-
   const handleExportSupplier = useCallback(() => {
     if (!supplierData) return
     const columns: CSVColumn[] = [
@@ -810,7 +803,7 @@ function PurchaseReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         <TabsContent value="summary" className="space-y-4">
           <ReportHeader title={t('ملخص المشتريات', 'Purchase Summary', lang)} icon={ShoppingCart} lang={lang}
-            onRefresh={() => refetchPurchase()} onPrint={handlePrint} />
+            onRefresh={() => refetchPurchase()} printType="generic-table" printData={purchaseSummary ? { columns: [{ key: 'name', label: t('المورد', 'Supplier', lang) }, { key: 'invoiceCount', label: t('الفواتير', 'Inv.', lang) }, { key: 'total', label: t('الإجمالي', 'Total', lang), align: 'amount' }], rows: purchaseSummary.bySupplier, totals: [{ label: t('إجمالي المشتريات', 'Total Purchases', lang), value: purchaseSummary.totalPurchases, isGrand: true }] } as Record<string, unknown> : undefined} />
           {purchaseLoading ? <LoadingSkeleton /> : purchaseSummary ? (
             <>
               <Card className="bg-amber-50 border-amber-200"><CardContent className="p-4 text-center"><p className="text-xs text-amber-600">{t('إجمالي المشتريات', 'Total Purchases', lang)}</p><MoneyDisplay value={purchaseSummary.totalPurchases} lang={lang} size="lg" bold className="text-amber-700" /><p className="text-xs text-muted-foreground mt-1">{purchaseSummary.invoiceCount} {t('فاتورة', 'invoices', lang)}</p></CardContent></Card>
@@ -845,7 +838,7 @@ function PurchaseReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         <TabsContent value="supplier-balances" className="space-y-4">
           <ReportHeader title={t('أرصدة الموردين', 'Supplier Balances', lang)} icon={Users} lang={lang}
-            onRefresh={() => refetchSupplier()} onExport={handleExportSupplier} onPrint={handlePrint} />
+            onRefresh={() => refetchSupplier()} onExport={handleExportSupplier} printType="generic-table" printData={supplierData ? { columns: [{ key: 'code', label: t('الكود', 'Code', lang) }, { key: 'name', label: t('المورد', 'Supplier', lang) }, { key: 'totalPurchased', label: t('المشتريات', 'Purchased', lang), align: 'amount' }, { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), align: 'amount' }, { key: 'balanceOwed', label: t('الرصيد', 'Balance', lang), align: 'amount' }, { key: 'overdue', label: t('المتأخر', 'Overdue', lang), align: 'amount' }], rows: supplierData.suppliers, totals: [{ label: t('إجمالي المشتريات', 'Total Purchased', lang), value: supplierData.totals.totalPurchased }, { label: t('إجمالي المدفوع', 'Total Paid', lang), value: supplierData.totals.totalPaid }, { label: t('الرصيد المستحق', 'Balance Owed', lang), value: supplierData.totals.totalBalance, isGrand: true }] } as Record<string, unknown> : undefined} />
           {supplierData?.totals && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('إجمالي المشتريات', 'Purchased', lang)}</p><MoneyDisplay value={supplierData.totals.totalPurchased} lang={lang} size="sm" bold /></CardContent></Card>
@@ -895,8 +888,6 @@ function ClientReportsTab({ lang }: { lang: 'ar' | 'en' }) {
     queryFn: async () => { const res = await fetch('/api/reports/client-balances'); if (!res.ok) throw new Error(); return res.json() },
   })
 
-  const handlePrint = useCallback(() => { window.print() }, [])
-
   const handleExport = useCallback(() => {
     if (!clientData) return
     const columns: CSVColumn[] = [
@@ -920,7 +911,7 @@ function ClientReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         <TabsContent value="balances" className="space-y-4">
           <ReportHeader title={t('أرصدة العملاء', 'Client Balances', lang)} icon={Users} lang={lang}
-            onRefresh={() => refetchClient()} onExport={handleExport} onPrint={handlePrint} />
+            onRefresh={() => refetchClient()} onExport={handleExport} printType="generic-table" printData={clientData ? { columns: [{ key: 'code', label: t('الكود', 'Code', lang) }, { key: 'name', label: t('العميل', 'Client', lang) }, { key: 'totalInvoiced', label: t('الفواتير', 'Invoiced', lang), align: 'amount' }, { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), align: 'amount' }, { key: 'balanceReceivable', label: t('المستحق', 'Receivable', lang), align: 'amount' }, { key: 'overdue', label: t('المتأخر', 'Overdue', lang), align: 'amount' }], rows: clientData.clients, totals: [{ label: t('إجمالي الفواتير', 'Total Invoiced', lang), value: clientData.totals.totalInvoiced }, { label: t('إجمالي المحصل', 'Total Collected', lang), value: clientData.totals.totalPaid }, { label: t('الرصيد المستحق', 'Total Receivable', lang), value: clientData.totals.totalBalance, isGrand: true }] } as Record<string, unknown> : undefined} />
           {clientData?.totals && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي الفواتير', 'Invoiced', lang)}</p><MoneyDisplay value={clientData.totals.totalInvoiced} lang={lang} size="sm" bold /></CardContent></Card>
@@ -957,7 +948,7 @@ function ClientReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
         <TabsContent value="aging" className="space-y-4">
           <ReportHeader title={t('تقرير تقادم المقبوضات', 'Receivables Aging Report', lang)} icon={Clock} lang={lang}
-            onRefresh={() => refetchClient()} onExport={handleExport} onPrint={handlePrint} />
+            onRefresh={() => refetchClient()} onExport={handleExport} printType="generic-table" printData={clientData ? { columns: [{ key: 'name', label: t('العميل', 'Client', lang) }, { key: 'balanceReceivable', label: t('الرصيد', 'Balance', lang), align: 'amount' }, { key: 'aging0to30', label: t('0-30 يوم', '0-30d', lang), align: 'amount' }, { key: 'aging31to60', label: t('31-60 يوم', '31-60d', lang), align: 'amount' }, { key: 'aging61to90', label: t('61-90 يوم', '61-90d', lang), align: 'amount' }, { key: 'aging90plus', label: t('+90 يوم', '90+d', lang), align: 'amount' }], rows: clientData.clients.filter((c: { balanceReceivable: number }) => c.balanceReceivable > 0).map((c: { name: string; balanceReceivable: number; aging: { '0to30': number; '31to60': number; '61to90': number; '90plus': number } }) => ({ name: c.name, balanceReceivable: c.balanceReceivable, aging0to30: c.aging['0to30'], aging31to60: c.aging['31to60'], aging61to90: c.aging['61to90'], aging90plus: c.aging['90plus'] })) } as Record<string, unknown> : undefined} />
           {clientData?.totals && (
             <div className="grid grid-cols-4 gap-3">
               <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3 text-center"><p className="text-xs text-teal-600">{t('حالي (0-30)', 'Current (0-30)', lang)}</p><MoneyDisplay value={clientData.totals.totalAging0to30} lang={lang} size="sm" bold /></CardContent></Card>
@@ -1093,7 +1084,7 @@ function TaxReportsTab({ lang }: { lang: 'ar' | 'en' }) {
               {[1, 2, 3, 4].map(q => <SelectItem key={q} value={String(q)}>{lang === 'ar' ? quarterConfig[q].ar : quarterConfig[q].en} ({lang === 'ar' ? quarterConfig[q].monthsAr : quarterConfig[q].monthsEn})</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => window.print()}><Printer className="size-3.5" />{t('طباعة', 'Print', lang)}</Button>
+          <PrintButton type="generic-table" data={vatCalcData?.autoCalc ? { infoItems: [{ label: t('الفترة', 'Period', lang), value: `${selectedYear} - ${selectedQuarter ? (lang === 'ar' ? quarterConfig[selectedQuarter].ar : quarterConfig[selectedQuarter].en) : ''}` }, { label: t('ضريبة المخرجات', 'Output VAT', lang), value: String(vatCalcData.autoCalc.outputVat.toFixed(2)) }, { label: t('ضريبة المدخلات', 'Input VAT', lang), value: String(vatCalcData.autoCalc.inputVat.toFixed(2)) }, { label: t('صافي الضريبة', 'Net VAT', lang), value: String(vatCalcData.autoCalc.netVat.toFixed(2)) }] } as Record<string, unknown> : undefined} size="sm" className="gap-1.5 h-8" />
         </div>
       </CardContent></Card>
 

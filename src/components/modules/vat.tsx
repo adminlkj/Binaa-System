@@ -4,7 +4,7 @@ import React, { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Percent, RefreshCw, FileText, CheckCircle2, CalendarDays,
-  Printer, Download, Eye, PlusCircle, Clock,
+  Download, Eye, PlusCircle, Clock,
   Send, Receipt, ShoppingBag, FileCheck, AlertTriangle, Wallet,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,6 +26,7 @@ import { Input } from '@/components/ui/input'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { toast } from 'sonner'
 
 // ============ Types ============
@@ -335,7 +336,7 @@ function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit,
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <StatusBadge status={declaration.status} lang={lang} />
-          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()}><Printer className="size-4" />{t('طباعة', 'Print', lang)}</Button>
+          <PrintButton type="tax-declaration" documentId={declaration.id} size="sm" className="gap-1.5" />
           <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportCSV}><Download className="size-4" />{t('تصدير CSV', 'Export CSV', lang)}</Button>
           {isDraft && (
             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 gap-1.5" onClick={() => onSubmit(declaration.id)} disabled={isSubmitting}>

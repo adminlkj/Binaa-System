@@ -738,21 +738,22 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch }: {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
+  const safeEntries = Array.isArray(entries) ? entries : []
   const filteredEntries = useMemo(() => {
-    let filtered = entries
+    let filtered = safeEntries
     if (statusFilter !== 'all') filtered = filtered.filter(e => e.status === statusFilter)
     if (sourceFilter !== 'all') filtered = filtered.filter(e => e.sourceType === sourceFilter)
     if (dateFrom) filtered = filtered.filter(e => new Date(e.date) >= new Date(dateFrom))
     if (dateTo) filtered = filtered.filter(e => new Date(e.date) <= new Date(dateTo + 'T23:59:59'))
     return filtered
-  }, [entries, statusFilter, sourceFilter, dateFrom, dateTo])
+  }, [safeEntries, statusFilter, sourceFilter, dateFrom, dateTo])
 
   // Extract unique source types
   const sourceTypes = useMemo(() => {
     const types = new Set<string>()
-    entries.forEach(e => { if (e.sourceType) types.add(e.sourceType) })
+    safeEntries.forEach(e => { if (e.sourceType) types.add(e.sourceType) })
     return Array.from(types).sort()
-  }, [entries])
+  }, [safeEntries])
 
   if (selectedEntry) {
     return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} />
@@ -1046,12 +1047,13 @@ function TrialBalanceTab() {
     },
   })
 
+  const safeTrialBalance = Array.isArray(trialBalance) ? trialBalance : []
   const totals = useMemo(() => ({
-    netDebit: trialBalance.reduce((s, i) => s + i.netDebit, 0),
-    netCredit: trialBalance.reduce((s, i) => s + i.netCredit, 0),
-    totalDebit: trialBalance.reduce((s, i) => s + i.totalDebit, 0),
-    totalCredit: trialBalance.reduce((s, i) => s + i.totalCredit, 0),
-  }), [trialBalance])
+    netDebit: safeTrialBalance.reduce((s, i) => s + i.netDebit, 0),
+    netCredit: safeTrialBalance.reduce((s, i) => s + i.netCredit, 0),
+    totalDebit: safeTrialBalance.reduce((s, i) => s + i.totalDebit, 0),
+    totalCredit: safeTrialBalance.reduce((s, i) => s + i.totalCredit, 0),
+  }), [safeTrialBalance])
 
   const isBalanced = Math.abs(totals.netDebit - totals.netCredit) < 0.01
 
@@ -1077,7 +1079,7 @@ function TrialBalanceTab() {
       </Card>
 
       {/* Balance Status */}
-      {trialBalance.length > 0 && (
+      {safeTrialBalance.length > 0 && (
         <Card className={isBalanced ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}>
           <CardContent className="p-3 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -1105,7 +1107,7 @@ function TrialBalanceTab() {
           <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
           <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
         </div>
-      ) : trialBalance.length === 0 ? (
+      ) : safeTrialBalance.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10">
           <Scale className="size-12 text-gray-300" />
           <p className="text-muted-foreground">{t('لا توجد أرصدة', 'No balances found', lang)}</p>
@@ -1125,7 +1127,7 @@ function TrialBalanceTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {trialBalance.map((item, idx) => (
+                  {safeTrialBalance.map((item, idx) => (
                     <TableRow key={idx}>
                       <TableCell className="font-mono text-sm">{item.account.code}</TableCell>
                       <TableCell className="font-medium">

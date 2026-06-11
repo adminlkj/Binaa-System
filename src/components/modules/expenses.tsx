@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Receipt, Plus, Search, RefreshCw, TrendingUp,
-  Building2, Briefcase, Printer, Download, Landmark, Wallet, Banknote,
+  Building2, Briefcase, Download, Landmark, Wallet, Banknote,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { StatusBadge } from '@/components/shared/module-layout'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
@@ -437,6 +438,29 @@ export function ExpensesModule() {
     exportToCSV(rows, `expenses-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'projectName', label: lang === 'ar' ? 'المشروع' : 'Project' },
+      { key: 'category', label: lang === 'ar' ? 'الفئة' : 'Category' },
+      { key: 'description', label: lang === 'ar' ? 'الوصف' : 'Description' },
+      { key: 'amount', label: lang === 'ar' ? 'المبلغ' : 'Amount' },
+      { key: 'totalAmount', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
+      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+    ],
+    rows: filtered.map(exp => ({
+      projectName: exp.project?.name || (lang === 'ar' ? 'عام' : 'General'),
+      category: allCategoryLabels[exp.category]?.[lang] || exp.category,
+      description: exp.description,
+      amount: exp.amount,
+      totalAmount: exp.totalAmount,
+      date: formatDate(exp.date, lang),
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'إجمالي المصروفات' : 'Total Expenses', value: String(totalExpenses) },
+    ],
+  }), [filtered, lang, totalExpenses])
+
   const PayFromBadge = ({ value }: { value: string }) => {
     const config = payFromLabels[value]
     if (!config) return <span>{value}</span>
@@ -455,9 +479,7 @@ export function ExpensesModule() {
       subtitle={{ ar: 'إدارة المصروفات العامة ومشاريع', en: 'Manage general and project expenses' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()} title={t(lang, 'طباعة', 'Print')}>
-            <Printer className="size-4" />
-          </Button>
+          <PrintButton type="expense-report" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport} title={t(lang, 'تصدير CSV', 'Export CSV')}>
             <Download className="size-4" />
           </Button>

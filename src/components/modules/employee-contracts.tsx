@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, Pencil, Trash2, RefreshCw,
-  Printer, Download, Calculator, CheckCircle, Clock,
+  Download, Calculator, CheckCircle, Clock,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
@@ -23,6 +23,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
@@ -223,6 +224,29 @@ export function EmployeeContractsModule() {
   const expiredCount = contracts.filter(c => getContractStatus(c.startDate, c.endDate).label.en === 'Expired').length
   const totalCompAll = contracts.reduce((sum, c) => sum + c.totalCompensation, 0)
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'employeeName', label: lang === 'ar' ? 'الموظف' : 'Employee' },
+      { key: 'startDate', label: lang === 'ar' ? 'تاريخ البداية' : 'Start Date' },
+      { key: 'endDate', label: lang === 'ar' ? 'تاريخ النهاية' : 'End Date' },
+      { key: 'basicSalary', label: lang === 'ar' ? 'الراتب الأساسي' : 'Basic Salary' },
+      { key: 'totalCompensation', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
+      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+    ],
+    rows: filtered.map(c => ({
+      employeeName: c.employee.name,
+      startDate: c.startDate,
+      endDate: c.endDate || '—',
+      basicSalary: c.basicSalary,
+      totalCompensation: c.totalCompensation,
+      status: getContractStatus(c.startDate, c.endDate).label[lang],
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'عقود نشطة' : 'Active Contracts', value: String(activeCount) },
+    ],
+  }), [filtered, lang, activeCount])
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'employeeName', label: t('الموظف', 'Employee', lang) },
@@ -250,7 +274,7 @@ export function EmployeeContractsModule() {
       subtitle={{ ar: 'إدارة عقود الموظفين والبدلات', en: 'Manage employee contracts and allowances' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="generic-table" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingContract(null); setDialogOpen(true) }}><Plus className="size-4" />{t('عقد جديد', 'New Contract', lang)}</Button>

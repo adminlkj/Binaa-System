@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileCheck, Plus, Search, Trash2, RefreshCw,
-  Printer, Download, CheckCircle, XCircle, Eye, ArrowRight, ShoppingCart,
+  Download, CheckCircle, XCircle, Eye, ArrowRight, ShoppingCart,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,6 +28,7 @@ import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Project { id: string; code: string; name: string; projectType?: string }
@@ -479,7 +480,7 @@ export function PurchaseRequestsModule() {
       subtitle={{ ar: 'إدارة طلبات الشراء والاعتمادات', en: 'Manage purchase requests and approvals' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}><Plus className="size-4" />{t('طلب جديد', 'New Request', lang)}</Button>

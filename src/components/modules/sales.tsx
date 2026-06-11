@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  FileText, Plus, Search, RefreshCw, Eye, ArrowRight, Printer,
+  FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
   Send, CheckCircle, Trash2, ArrowLeft, Building2, HardHat,
   ChevronLeft, ChevronRight, Clock,
 } from 'lucide-react'
@@ -29,6 +29,7 @@ import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface ProgressClaimSource {
@@ -874,10 +875,7 @@ function InvoiceDetailView({
           </div>
           <p className="text-sm text-muted-foreground">{invoice.client.name}</p>
         </div>
-        <Button variant="outline" className="gap-2" onClick={() => window.print()}>
-          <Printer className="size-4" />
-          {t(labels.print.ar, labels.print.en)}
-        </Button>
+        <PrintButton type="service-invoice" documentId={invoice.id} />
       </div>
 
       {/* Info Cards */}

@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Users2, Plus, Search, Pencil, Trash2, RefreshCw,
-  Printer, Download, UserPlus, Banknote,
+  Download, UserPlus, Banknote,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
@@ -210,6 +211,29 @@ export function WorkTeamsModule() {
     return team.name.toLowerCase().includes(s) || team.code.toLowerCase().includes(s) || (team.specialty?.toLowerCase().includes(s))
   })
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+      { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+      { key: 'specialty', label: lang === 'ar' ? 'التخصص' : 'Specialty' },
+      { key: 'project', label: lang === 'ar' ? 'المشروع' : 'Project' },
+      { key: 'memberCount', label: lang === 'ar' ? 'عدد الأعضاء' : 'Members' },
+      { key: 'totalCost', label: lang === 'ar' ? 'تكلفة الفريق' : 'Team Cost' },
+    ],
+    rows: filtered.map(team => ({
+      code: team.code,
+      name: team.name,
+      specialty: team.specialty || '—',
+      project: team.project?.name || '—',
+      memberCount: team.members?.length || 0,
+      totalCost: team.members?.reduce((s, m) => s + m.employee.basicSalary, 0) || 0,
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'عدد الفرق' : 'Teams', value: String(filtered.length) },
+    ],
+  }), [filtered, lang])
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'code', label: t('الكود', 'Code', lang) },
@@ -232,7 +256,7 @@ export function WorkTeamsModule() {
       subtitle={{ ar: 'إدارة فرق العمل وتشكيلها', en: 'Manage and organize work teams' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="work-team-report" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingTeam(null); setDialogOpen(true) }}><Plus className="size-4" />{t('فريق جديد', 'New Team', lang)}</Button>

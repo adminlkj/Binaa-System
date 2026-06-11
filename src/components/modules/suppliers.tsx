@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Truck, Plus, Search, Pencil, Trash2, RefreshCw, ToggleLeft, ToggleRight,
-  Printer, Download,
+  Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,6 +22,7 @@ import { useAppStore, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { PrintButton } from '@/components/shared/print-button'
 
 interface SupplierItem {
   id: string; code: string; name: string; nameAr: string | null
@@ -121,6 +122,28 @@ export function SuppliersModule() {
 
   const filtered = suppliers.filter(s => { if (!search) return true; const q = search.toLowerCase(); return s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q) || (s.contactPerson?.toLowerCase().includes(q)) || (s.phone?.includes(q)) })
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+      { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+      { key: 'contactPerson', label: lang === 'ar' ? 'جهة الاتصال' : 'Contact' },
+      { key: 'phone', label: lang === 'ar' ? 'الهاتف' : 'Phone' },
+      { key: 'taxNumber', label: lang === 'ar' ? 'الرقم الضريبي' : 'Tax No' },
+      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+    ],
+    rows: filtered.map(s => ({
+      code: s.code,
+      name: s.name,
+      contactPerson: s.contactPerson || '',
+      phone: s.phone || '',
+      taxNumber: s.taxNumber || '',
+      status: s.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'غير نشط' : 'Inactive'),
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+    ],
+  }), [filtered, lang])
+
   const handleExport = () => {
     const columns: CSVColumn[] = [{ key: 'code', label: t('الكود', 'Code', lang) }, { key: 'name', label: t('الاسم', 'Name', lang) }, { key: 'contactPerson', label: t('جهة الاتصال', 'Contact', lang) }, { key: 'phone', label: t('الهاتف', 'Phone', lang) }, { key: 'taxNumber', label: t('الرقم الضريبي', 'Tax No', lang) }]
     exportToCSV(filtered.map(s => ({ code: s.code, name: s.name, contactPerson: s.contactPerson || '', phone: s.phone || '', taxNumber: s.taxNumber || '' })), `suppliers-${new Date().toISOString().slice(0, 10)}`, columns)
@@ -132,7 +155,7 @@ export function SuppliersModule() {
       subtitle={{ ar: 'إدارة بيانات الموردين والبائعين', en: 'Manage supplier and vendor data' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="generic-table" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingSupplier(null); setDialogOpen(true) }}><Plus className="size-4" />{t('مورد جديد', 'New Supplier', lang)}</Button>

@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ShoppingCart, Plus, Search, RefreshCw, Eye, ArrowRight, X,
-  Printer, Download, CheckCircle, Clock, AlertCircle, Link2, Package, Trash2,
+  Download, CheckCircle, Clock, AlertCircle, Link2, Package, Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,6 +25,7 @@ import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 type ViewState =
@@ -386,9 +387,7 @@ function PODetailView({ id, onBack }: { id: string; onBack: () => void }) {
         {order.status === 'DRAFT' && (
           <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => { if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate() }}><Trash2 className="size-4" /></Button>
         )}
-        <Button variant="outline" className="gap-2" onClick={() => window.print()}>
-          <Printer className="size-4" /> {t('طباعة', 'Print', lang)}
-        </Button>
+        <PrintButton type="purchase-order" documentId={order.id} />
       </div>
 
       {/* Info Cards */}
@@ -626,7 +625,7 @@ export function PurchaseOrdersModule() {
       subtitle={{ ar: 'إدارة أوامر شراء المواد والخدمات', en: 'Manage purchase orders for materials and services' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>

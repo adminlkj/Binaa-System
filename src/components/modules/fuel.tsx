@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Fuel as FuelIcon, Plus, Search, Trash2, RefreshCw,
-  Printer, Download, BookOpen, MapPin,
+  Download, BookOpen, MapPin,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Equipment { id: string; code: string; name: string; nameAr: string | null }
@@ -176,6 +177,31 @@ export function FuelModule() {
   const totalLiters = filtered.reduce((sum, f) => sum + f.liters, 0)
   const totalCost = filtered.reduce((sum, f) => sum + f.totalCost, 0)
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'equipment', label: lang === 'ar' ? 'المعدة' : 'Equipment' },
+      { key: 'project', label: lang === 'ar' ? 'المشروع' : 'Project' },
+      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+      { key: 'liters', label: lang === 'ar' ? 'اللترات' : 'Liters' },
+      { key: 'costPerLiter', label: lang === 'ar' ? 'سعر اللتر' : 'Cost/L' },
+      { key: 'totalCost', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
+    ],
+    rows: filtered.map(f => ({
+      equipment: f.equipment.name,
+      project: f.project?.name || '',
+      date: f.date,
+      liters: f.liters,
+      costPerLiter: f.costPerLiter,
+      totalCost: f.totalCost,
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'إجمالي اللترات' : 'Total Liters', value: String(totalLiters) },
+      { label: lang === 'ar' ? 'إجمالي التكلفة' : 'Total Cost', value: String(totalCost) },
+      { label: lang === 'ar' ? 'عدد السجلات' : 'Records', value: String(filtered.length) },
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+    ],
+  }), [filtered, lang, totalLiters, totalCost])
+
   // Fuel cost per project
   const projectFuelCosts = (() => {
     const map: Record<string, { name: string; liters: number; cost: number }> = {}
@@ -212,7 +238,7 @@ export function FuelModule() {
       subtitle={{ ar: 'تتبع استهلاك الوقود للمعدات', en: 'Track equipment fuel consumption' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="fuel-report" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('سجل وقود', 'Add Fuel Log', lang)}</Button>

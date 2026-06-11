@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Truck, Plus, Search, RefreshCw, Wrench, Fuel, Clock,
   ArrowRight, DollarSign, Calendar, Shield, FileText, Receipt,
-  Printer, Download, ChevronLeft, ChevronRight, Eye,
+  Download, ChevronLeft, ChevronRight, Eye,
   TrendingUp, TrendingDown, BarChart3, Link2, Users,
   ArrowLeftRight, CheckCircle2, Circle, AlertCircle,
 } from 'lucide-react'
@@ -29,6 +29,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatSAR, formatNumber, formatDate, RENTAL_WORKFLOW } from '@/stores/app-store'
 import type { NavItem } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Supplier {
@@ -1396,6 +1397,31 @@ export function EquipmentModule() {
   const inUse = equipment.filter(e => e.status === 'IN_USE').length
   const maintenanceCount = equipment.filter(e => e.status === 'MAINTENANCE').length
 
+  const printData = {
+    columns: [
+      { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+      { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+      { key: 'type', label: lang === 'ar' ? 'النوع' : 'Type' },
+      { key: 'model', label: lang === 'ar' ? 'الموديل' : 'Model' },
+      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+      { key: 'hourlyRate', label: lang === 'ar' ? 'الأجر/ساعة' : 'Hourly Rate' },
+    ],
+    rows: filtered.map(eq => ({
+      code: eq.code,
+      name: eq.name,
+      type: eq.type || '',
+      model: eq.model || '',
+      status: statusConfig[eq.status]?.label[lang] || eq.status,
+      hourlyRate: eq.hourlyRate,
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'الإجمالي' : 'Total', value: String(total) },
+      { label: lang === 'ar' ? 'متاحة' : 'Available', value: String(available) },
+      { label: lang === 'ar' ? 'مؤجرة' : 'Rented', value: String(rented) },
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+    ],
+  }
+
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'code', label: t('الكود', 'Code') },
@@ -1427,7 +1453,7 @@ export function EquipmentModule() {
           <p className="text-sm text-muted-foreground">{t('كرت المعدة - مركز نشاط التأجير', 'Equipment Card - Center of Rental Activity')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()} title={t('طباعة', 'Print')}><Printer className="size-4" /></Button>
+          <PrintButton type="equipment-report" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير CSV', 'Export CSV')}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>

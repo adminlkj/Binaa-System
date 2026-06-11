@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CreditCard, Plus, Search, Trash2, RefreshCw, ArrowRight, BookOpen,
-  Printer, Download, AlertCircle, Link2, DollarSign, Calendar,
+  Download, AlertCircle, Link2, DollarSign, Calendar,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,6 +24,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
@@ -308,13 +309,36 @@ export function SupplierPaymentsModule() {
     })), `supplier-payments-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'supplierName', label: lang === 'ar' ? 'المورد' : 'Supplier' },
+      { key: 'amount', label: lang === 'ar' ? 'المبلغ' : 'Amount' },
+      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+      { key: 'paidFrom', label: lang === 'ar' ? 'السداد من' : 'Paid From' },
+      { key: 'paymentMethod', label: lang === 'ar' ? 'طريقة الدفع' : 'Method' },
+      { key: 'reference', label: lang === 'ar' ? 'المرجع' : 'Reference' },
+    ],
+    rows: filtered.map(p => ({
+      supplierName: p.supplier.name,
+      amount: p.amount,
+      date: formatDate(p.date, lang),
+      paidFrom: p.paidFrom || '—',
+      paymentMethod: p.paymentMethod || '—',
+      reference: p.reference || '—',
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'إجمالي المدفوعات' : 'Total Payments', value: String(totalPayments) },
+    ],
+  }), [filtered, lang, totalPayments])
+
   return (
     <ModuleLayout
       title={{ ar: 'سداد الموردين', en: 'Supplier Payments' }}
       subtitle={{ ar: 'تسجيل ومتابعة مدفوعات الموردين', en: 'Record and track supplier payments' }}
       actions={
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => window.print()}><Printer className="size-4" /></Button>
+          <PrintButton type="supplier-payment" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('سداد جديد', 'New Payment', lang)}</Button>

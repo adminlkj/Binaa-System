@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  FileCheck, Plus, Search, RefreshCw, Eye, ArrowRight, Printer,
+  FileCheck, Plus, Search, RefreshCw, Eye, ArrowRight,
   Download, Truck, CheckCircle2, RotateCcw, XCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { useAppStore, formatDate as storeFormatDate } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface EquipmentOption { id: string; code: string; name: string; nameAr?: string | null; hourlyRate: number; dailyRate: number; monthlyRate: number }
@@ -308,10 +309,7 @@ export function DeliveryOrdersModule() {
             </div>
             <p className="text-sm text-muted-foreground">{order.client.name} — {order.equipment.name}</p>
           </div>
-          <Button variant="outline" className="gap-2" onClick={() => window.print()}>
-            <Printer className="size-4" />
-            {t('طباعة', 'Print')}
-          </Button>
+          <PrintButton type="delivery-order" documentId={order.id} />
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -476,8 +474,6 @@ export function DeliveryOrdersModule() {
     link.click()
   }
 
-  const handlePrint = () => window.print()
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -486,9 +482,7 @@ export function DeliveryOrdersModule() {
           <p className="text-sm text-muted-foreground">{t('إدارة أوامر توصيل المعدات للمواقع', 'Manage equipment delivery orders to sites')}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={handlePrint} title={t('طباعة', 'Print')}>
-            <Printer className="size-4" />
-          </Button>
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير', 'Export')}>
             <Download className="size-4" />
           </Button>
