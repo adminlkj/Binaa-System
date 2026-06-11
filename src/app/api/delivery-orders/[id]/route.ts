@@ -152,12 +152,8 @@ export async function DELETE(
       )
     }
 
-    // Set equipment back to AVAILABLE if it was set to IN_USE
-    await db.equipment.update({
-      where: { id: existing.equipmentId },
-      data: { status: 'AVAILABLE' },
-    })
-
+    // Only reset equipment status if it was changed by this order (DELIVERED state)
+    // PENDING orders never changed equipment status, so no need to revert
     await db.equipmentDeliveryOrder.delete({ where: { id } })
 
     return NextResponse.json({ success: true, message: 'تم حذف أمر التوصيل بنجاح' })

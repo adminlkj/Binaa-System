@@ -108,12 +108,14 @@ export async function POST(request: Request) {
     const rental = await db.equipmentRental.findUnique({
       where: { id: rentalId },
       select: {
-        rate: true,
-        rateType: true,
+        hourlyRate: true,
+        pricingType: true,
         status: true,
         equipmentId: true,
         projectId: true,
         clientId: true,
+        deliveryFees: true,
+        deliveryFeesTaxable: true,
       },
     })
 

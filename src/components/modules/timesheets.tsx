@@ -107,6 +107,7 @@ const labels = {
   noActiveContracts: { ar: 'لا توجد عقود نشطة', en: 'No active contracts' },
   cannotModifyInvoiced: { ar: 'لا يمكن تعديل سجل مفوتر', en: 'Cannot modify invoiced timesheet' },
   billingPreview: { ar: 'معاينة الفاتورة', en: 'Billing Preview' },
+  subtotal: { ar: 'المجموع الفرعي', en: 'Subtotal' },
   deliveryFees: { ar: 'رسوم النقل', en: 'Delivery Fees' },
   vat: { ar: 'الضريبة (15%)', en: 'VAT (15%)' },
   totalWithVat: { ar: 'الإجمالي مع الضريبة', en: 'Total with VAT' },
@@ -317,7 +318,7 @@ function CreateTimesheetPage({
                     <span className="font-medium">{formatNumber(hours)} {t('ساعة', 'hours')}</span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span>{t(labels.subtotal || 'المجموع الفرعي', labels.subtotal || 'Subtotal')}</span>
+                    <span>{t(labels.subtotal.ar, labels.subtotal.en)}</span>
                     <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" inline /></span>
                   </div>
                   <div className="flex justify-between text-sm">

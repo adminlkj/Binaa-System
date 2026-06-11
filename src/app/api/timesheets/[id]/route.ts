@@ -1,6 +1,9 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
+// Legacy timesheet [id] route - fixed to use correct schema fields
+// Previously referenced 'entries' and 'TimesheetEntry' which don't exist
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -12,12 +15,17 @@ export async function GET(
       include: {
         contract: {
           select: {
-            id: true, contractNo: true, value: true, vatRate: true, startDate: true, endDate: true, status: true,
+            id: true, contractNo: true, hourlyRate: true, deliveryFees: true,
+            deliveryFeesTaxable: true, paymentTerms: true, salesOrderNo: true,
+            startDate: true, endDate: true, status: true,
             project: { select: { id: true, name: true, nameAr: true, code: true, client: { select: { id: true, name: true, nameAr: true } } } },
           },
         },
         project: { select: { id: true, name: true, nameAr: true, code: true, client: { select: { id: true, name: true, nameAr: true } } } },
-        entries: { orderBy: { createdAt: 'asc' } },
+        equipment: { select: { id: true, code: true, name: true, nameAr: true } },
+        rental: {
+          select: { id: true, hourlyRate: true, pricingType: true, status: true, clientId: true },
+        },
       },
     })
 
@@ -39,48 +47,40 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { status, notes, entries } = body
+    const { status, notes, operatingHours, month, year } = body
 
-    // Check timesheet exists
     const existing = await db.timesheet.findUnique({ where: { id } })
     if (!existing) {
       return NextResponse.json({ error: 'سجل ساعات العمل غير موجود' }, { status: 404 })
     }
 
-    // If entries are provided, replace them
-    if (entries !== undefined) {
-      // Delete old entries
-      await db.timesheetEntry.deleteMany({ where: { timesheetId: id } })
-
-      // Create new entries
-      const processedEntries = entries.map((entry: { description: string; hours: number; rate: number }) => ({
-        timesheetId: id,
-        description: entry.description,
-        hours: parseFloat(String(entry.hours)) || 0,
-        rate: parseFloat(String(entry.rate)) || 0,
-        totalAmount: (parseFloat(String(entry.hours)) || 0) * (parseFloat(String(entry.rate)) || 0),
-      }))
-
-      await db.timesheetEntry.createMany({ data: processedEntries })
+    // PREVENT MODIFICATIONS WHEN INVOICED
+    if (existing.status === 'INVOICED') {
+      return NextResponse.json(
+        { error: 'لا يمكن تعديل تايم شيت تم إصدار فاتورة له' },
+        { status: 403 }
+      )
     }
 
-    // Update timesheet fields
     const updateData: Record<string, unknown> = {}
     if (status !== undefined) updateData.status = status
     if (notes !== undefined) updateData.notes = notes
+    if (operatingHours !== undefined) updateData.operatingHours = parseFloat(operatingHours) || 0
+    if (month !== undefined) updateData.month = parseInt(month)
+    if (year !== undefined) updateData.year = parseInt(year)
 
     const timesheet = await db.timesheet.update({
       where: { id },
       data: updateData,
       include: {
         contract: {
-          select: {
-            id: true, contractNo: true, value: true, vatRate: true,
-            project: { select: { id: true, name: true, nameAr: true, code: true, client: { select: { id: true, name: true, nameAr: true } } } },
-          },
+          select: { id: true, contractNo: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true, paymentTerms: true },
         },
-        project: { select: { id: true, name: true, nameAr: true, code: true, client: { select: { id: true, name: true, nameAr: true } } } },
-        entries: { orderBy: { createdAt: 'asc' } },
+        project: { select: { id: true, name: true, nameAr: true, code: true } },
+        equipment: { select: { id: true, code: true, name: true, nameAr: true } },
+        rental: {
+          select: { id: true, hourlyRate: true, pricingType: true },
+        },
       },
     })
 
@@ -103,7 +103,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'سجل ساعات العمل غير موجود' }, { status: 404 })
     }
 
-    // Entries will be cascade deleted
+    if (existing.status !== 'DRAFT') {
+      return NextResponse.json(
+        { error: 'لا يمكن حذف تايم شيت إلا في حالة المسودة' },
+        { status: 403 }
+      )
+    }
+
     await db.timesheet.delete({ where: { id } })
 
     return NextResponse.json({ success: true })

@@ -33,3 +33,28 @@ Stage Summary:
 - ✅ إضافة وظيفة حذف أوامر التوصيل
 - ✅ إصلاح حالة المعدة (IN_USE فقط عند DELIVERED وليس PENDING)
 - ✅ تم التحقق بالمتصفح - جميع الصفحات تعمل بدون أخطاء
+
+---
+Task ID: 1
+Agent: main
+Task: إصلاح مشاكل إنشاء الساعات (Time Sheets) وأوامر التوصيل (Delivery Orders)
+
+Work Log:
+- Read and analyzed timesheets component, delivery-orders component, API routes, and Prisma schema
+- Found critical bug: timesheets POST route used `rate` and `rateType` fields that don't exist in EquipmentRental model (should be `hourlyRate` and `pricingType`)
+- Found React rendering bug: `t(labels.subtotal || 'المجموع الفرعي', ...)` passed an object `{ar, en}` instead of a string to the `t()` function, causing "Objects are not valid as a React child" error
+- Fixed the field name mismatch in `/api/equipment/timesheets/route.ts` POST handler (rate→hourlyRate, rateType→pricingType)
+- Added missing `subtotal` label in timesheets labels object
+- Fixed `t()` function call to use `labels.subtotal.ar` and `labels.subtotal.en` instead of the whole object
+- Fixed delivery order DELETE route that unconditionally reset equipment status to AVAILABLE even for PENDING orders
+- Rewrote legacy `/api/timesheets/` routes that referenced non-existent `entries` and `TimesheetEntry` models
+- Verified timesheet creation works via API (curl test: successful)
+- Verified delivery order creation works via API (curl test: successful)
+- Verified timesheet creation works in browser (agent-browser: form fills correctly, billing preview shows, creation succeeds)
+- Ran lint: 0 errors, 1 warning (unrelated)
+
+Stage Summary:
+- Root cause of timesheet creation failure: Prisma field name mismatch (rate/rateType vs hourlyRate/pricingType) + React child rendering error
+- Root cause of delivery order issues: DELETE route incorrectly modifying equipment status
+- Both modules now work correctly for creation, listing, and deletion
+- Legacy timesheets API routes cleaned up

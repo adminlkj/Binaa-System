@@ -1,28 +1,38 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
+// Legacy timesheets route - delegates to /api/equipment/timesheets
+// This route previously referenced 'entries' and 'TimesheetEntry' which don't exist in the schema
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const contractId = searchParams.get('contractId')
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
-    const month = searchParams.get('month')
     const year = searchParams.get('year')
 
     const where: Record<string, unknown> = {}
     if (contractId) where.contractId = contractId
     if (projectId) where.projectId = projectId
     if (status) where.status = status
-    if (month) where.month = parseInt(month)
     if (year) where.year = parseInt(year)
 
     const timesheets = await db.timesheet.findMany({
       where,
       include: {
-        contract: { select: { id: true, contractNo: true, value: true, vatRate: true, project: { select: { id: true, name: true, nameAr: true, code: true } } } },
+        contract: {
+          select: {
+            id: true, contractNo: true, hourlyRate: true, deliveryFees: true,
+            deliveryFeesTaxable: true, paymentTerms: true,
+            project: { select: { id: true, name: true, nameAr: true, code: true } },
+          },
+        },
         project: { select: { id: true, name: true, nameAr: true, code: true } },
-        entries: { orderBy: { createdAt: 'asc' } },
+        equipment: { select: { id: true, code: true, name: true, nameAr: true } },
+        rental: {
+          select: { id: true, hourlyRate: true, pricingType: true, status: true, clientId: true },
+        },
       },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     })
@@ -37,46 +47,66 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { contractId, projectId, month, year, notes, entries } = body
+    const { rentalId, contractId, month, year, operatingHours, notes } = body
 
-    if (!contractId || !projectId || !month || !year || !entries?.length) {
-      return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة: العقد، المشروع، الشهر، السنة، والبنود مطلوبة' }, { status: 400 })
+    if (!rentalId || !contractId || !month || !year || operatingHours === undefined) {
+      return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
     }
 
-    // Validate contract exists
+    // Get rental details
+    const rental = await db.equipmentRental.findUnique({
+      where: { id: rentalId },
+      select: {
+        hourlyRate: true,
+        pricingType: true,
+        status: true,
+        equipmentId: true,
+        projectId: true,
+        clientId: true,
+      },
+    })
+
+    if (!rental) {
+      return NextResponse.json({ error: 'عقد الإيجار غير موجود' }, { status: 404 })
+    }
+
+    // Get contract for project info
     const contract = await db.contract.findUnique({
       where: { id: contractId },
-      include: { project: { select: { id: true } } },
+      select: { projectId: true, status: true },
     })
 
     if (!contract) {
       return NextResponse.json({ error: 'العقد غير موجود' }, { status: 404 })
     }
 
-    // Auto-calculate totalAmount for each entry
-    const processedEntries = entries.map((entry: { description: string; hours: number; rate: number }) => ({
-      description: entry.description,
-      hours: parseFloat(String(entry.hours)) || 0,
-      rate: parseFloat(String(entry.rate)) || 0,
-      totalAmount: (parseFloat(String(entry.hours)) || 0) * (parseFloat(String(entry.rate)) || 0),
-    }))
+    const oh = parseFloat(operatingHours) || 0
 
     const timesheet = await db.timesheet.create({
       data: {
+        rentalId,
         contractId,
-        projectId,
-        month: parseInt(String(month)),
-        year: parseInt(String(year)),
+        projectId: rental.projectId || contract.projectId,
+        equipmentId: rental.equipmentId,
+        month: parseInt(month),
+        year: parseInt(year),
+        operatingHours: oh,
         status: 'DRAFT',
         notes: notes || null,
-        entries: {
-          create: processedEntries,
-        },
       },
       include: {
-        contract: { select: { id: true, contractNo: true, value: true, vatRate: true } },
-        project: { select: { id: true, name: true, nameAr: true, code: true } },
-        entries: true,
+        contract: {
+          select: { id: true, contractNo: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true, paymentTerms: true },
+        },
+        equipment: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
+        rental: {
+          select: { id: true, hourlyRate: true, pricingType: true },
+        },
+        project: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
       },
     })
 
