@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins, Users,
+  Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins,
   Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon, Hash,
   Upload, X, Loader2,
 } from 'lucide-react'
@@ -32,7 +32,6 @@ interface Branch { id: string; code: string; name: string; address: string | nul
 interface Warehouse { id: string; code: string; name: string; branchId: string; isActive: boolean; branch: { id: string; code: string; name: string } }
 interface CostCenter { id: string; code: string; name: string; parentId: string | null; parent: { id: string; code: string; name: string } | null; children: { id: string; code: string; name: string }[] }
 interface Currency { id: string; code: string; name: string; symbol: string; rate: number; isActive: boolean }
-interface Employee { id: string; code: string; name: string; position: string | null; branchId: string; phone: string | null; email: string | null; isActive: boolean; branch: { id: string; code: string; name: string } }
 
 interface CompanySettings {
   id?: string
@@ -87,21 +86,28 @@ function ImageUploadField({
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [error, setError] = useState<string | null>(null)
+
   const uploadFile = useCallback(async (file: File) => {
     if (file.size > 5 * 1024 * 1024) {
-      alert(lang === 'ar' ? 'حجم الملف يتجاوز 5 ميجابايت' : 'File size exceeds 5MB')
+      setError(lang === 'ar' ? 'حجم الملف يتجاوز 5 ميجابايت' : 'File size exceeds 5MB')
       return
     }
     setUploading(true)
+    setError(null)
     try {
       const formData = new FormData()
       formData.append('file', file)
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
-      if (!res.ok) throw new Error('Upload failed')
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error || 'Upload failed')
+      }
       const data = await res.json()
       onChange(data.url)
-    } catch {
-      alert(lang === 'ar' ? 'فشل في رفع الملف' : 'Failed to upload file')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      setError(lang === 'ar' ? `فشل في رفع الملف: ${msg}` : `Failed to upload file: ${msg}`)
     } finally {
       setUploading(false)
     }
@@ -109,8 +115,12 @@ function ImageUploadField({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) uploadFile(file)
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (file) {
+      setError(null)
+      uploadFile(file)
+    }
+    // Reset input so same file can be re-selected
+    setTimeout(() => { if (fileInputRef.current) fileInputRef.current.value = '' }, 100)
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -134,18 +144,17 @@ function ImageUploadField({
     <div className="space-y-2">
       <Label>{displayLabel}</Label>
       {value ? (
-        <div className={`relative rounded-lg border bg-white p-2 ${previewHeight} flex items-center justify-center group`}>
+        <div className={`relative rounded-lg border bg-white p-2 ${previewHeight} flex items-center justify-center group overflow-hidden`}>
           <img
             src={value}
             alt={displayLabel}
             className="max-h-20 max-w-full object-contain"
-            onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
           />
           <Button
             variant="destructive"
             size="icon"
-            className="absolute top-1 left-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={() => onChange(null)}
+            className="absolute top-1 left-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+            onClick={() => { setError(null); onChange(null) }}
             type="button"
           >
             <X className="size-3" />
@@ -188,7 +197,10 @@ function ImageUploadField({
         onChange={handleFileChange}
         className="hidden"
       />
-      {displayHint && (
+      {error && (
+        <p className="text-xs text-red-600">{error}</p>
+      )}
+      {displayHint && !error && (
         <p className="text-xs text-muted-foreground">{displayHint}</p>
       )}
     </div>
@@ -315,7 +327,7 @@ function CompanySettingsTab() {
     saveMutation.mutate(form)
   }
 
-  const updateField = (field: keyof CompanySettings, value: string | number) => {
+  const updateField = (field: keyof CompanySettings, value: string | number | null) => {
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
@@ -988,11 +1000,6 @@ export function SettingsModule() {
     queryFn: async () => { const r = await fetch('/api/currencies'); if (!r.ok) return []; return r.json() },
   })
 
-  const { data: employees = [], isLoading: loadingEmployees } = useQuery<Employee[]>({
-    queryKey: ['employees-full'],
-    queryFn: async () => { const r = await fetch('/api/employees'); if (!r.ok) return []; return r.json() },
-  })
-
   const refetchAll = () => { refetchBranches(); refetchWarehouses(); refetchCC() }
 
   return (
@@ -1008,13 +1015,12 @@ export function SettingsModule() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-6 w-full max-w-2xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
           <TabsTrigger value="company" className="gap-1 text-xs"><Settings className="size-3" /> {lang === 'ar' ? 'بيانات الشركة' : 'Company'}</TabsTrigger>
           <TabsTrigger value="branches" className="gap-1 text-xs"><Building2 className="size-3" /> {lang === 'ar' ? 'الفروع' : 'Branches'}</TabsTrigger>
           <TabsTrigger value="warehouses" className="gap-1 text-xs"><Warehouse className="size-3" /> {lang === 'ar' ? 'المستودعات' : 'Warehouses'}</TabsTrigger>
           <TabsTrigger value="cost-centers" className="gap-1 text-xs"><Target className="size-3" /> {lang === 'ar' ? 'التكلفة' : 'Cost Ctrs'}</TabsTrigger>
           <TabsTrigger value="currencies" className="gap-1 text-xs"><Coins className="size-3" /> {lang === 'ar' ? 'العملات' : 'Currencies'}</TabsTrigger>
-          <TabsTrigger value="employees" className="gap-1 text-xs"><Users className="size-3" /> {lang === 'ar' ? 'الموظفين' : 'Employees'}</TabsTrigger>
         </TabsList>
 
         {/* Company Settings Tab */}
@@ -1165,44 +1171,6 @@ export function SettingsModule() {
                           <TableCell>
                             <Badge className={c.isActive ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>
                               {c.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'غير نشط' : 'Inactive')}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
-        {/* Employees Tab */}
-        <TabsContent value="employees" className="space-y-3">
-          {loadingEmployees ? <TableSkeleton /> : (
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الكود' : 'Code'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الاسم' : 'Name'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'المنصب' : 'Position'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الفرع' : 'Branch'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الحالة' : 'Status'}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {employees.map(emp => (
-                        <TableRow key={emp.id}>
-                          <TableCell className="font-mono">{emp.code}</TableCell>
-                          <TableCell className="font-medium">{emp.name}</TableCell>
-                          <TableCell className="text-muted-foreground">{emp.position || '—'}</TableCell>
-                          <TableCell className="text-muted-foreground">{emp.branch?.name || '—'}</TableCell>
-                          <TableCell>
-                            <Badge className={emp.isActive ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>
-                              {emp.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'غير نشط' : 'Inactive')}
                             </Badge>
                           </TableCell>
                         </TableRow>
