@@ -261,6 +261,26 @@ export function PrintButton({
         }
       }
 
+      // 4.5 Pre-process currency symbol image to remove background (for print templates)
+      let processedCurrencySymbolImage = settings.currencySymbolImage || null
+      if (processedCurrencySymbolImage && !processedCurrencySymbolImage.endsWith('.svg')) {
+        try {
+          const bgRes = await fetch('/api/remove-bg', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageUrl: processedCurrencySymbolImage }),
+          })
+          if (bgRes.ok) {
+            const bgData = await bgRes.json()
+            if (bgData.dataUrl) {
+              processedCurrencySymbolImage = bgData.dataUrl
+            }
+          }
+        } catch {
+          // Background removal failed, use original image (CSS mix-blend-mode will help)
+        }
+      }
+
       // 5. Generate print HTML using the professional print service
       const { generatePrintHTML } = await import('@/lib/print-service')
       const html = generatePrintHTML({
@@ -279,7 +299,7 @@ export function PrintButton({
           headerImage: settings.headerImage || null,
           footerImage: settings.footerImage || null,
           stamp: settings.stamp || null,
-          currencySymbolImage: settings.currencySymbolImage || null,
+          currencySymbolImage: processedCurrencySymbolImage,
           currencySymbol: settings.currencySymbol || null,
           currencySymbolAr: settings.currencySymbolAr || null,
           currencySymbolEn: settings.currencySymbolEn || null,

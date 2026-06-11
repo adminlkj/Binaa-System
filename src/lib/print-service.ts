@@ -403,6 +403,19 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
       direction: ltr;
       font-weight: 500;
     }
+    /* ──── CURRENCY SYMBOL IMAGE ──── */
+    .ri-currency-img {
+      height: 1.3em;
+      width: auto;
+      max-width: 2em;
+      vertical-align: middle;
+      display: inline;
+      object-fit: contain;
+      mix-blend-mode: multiply;
+    }
+    .doc-header .ri-currency-img {
+      mix-blend-mode: screen;
+    }
     .doc-table tbody td.row-num {
       text-align: center;
       color: #9ca3af;
@@ -1258,10 +1271,19 @@ function getRentalInvoiceCSS(lang: 'ar' | 'en'): string {
 
     /* ──── CURRENCY SYMBOL IMAGE ──── */
     .ri-currency-img {
-      height: 14px;
+      height: 1.3em;
       width: auto;
+      max-width: 2em;
       vertical-align: middle;
       display: inline;
+      object-fit: contain;
+      /* Remove white/light background from currency symbol images */
+      mix-blend-mode: multiply;
+    }
+    /* For dark backgrounds (footer, headers), use screen blend instead */
+    .ri-footer .ri-currency-img,
+    .ri-header .ri-currency-img {
+      mix-blend-mode: screen;
     }
 
     /* ──── WATERMARK ──── */
@@ -1407,11 +1429,25 @@ function currencyDisplay(settings: PrintOptions['settings'], lang: 'ar' | 'en'):
   return lang === 'ar' ? 'ر.س' : 'SAR'
 }
 
+/**
+ * Format a money value with currency symbol for print templates.
+ * Uses currency symbol image if available, otherwise text.
+ * This should be used for ALL amount displays in print templates.
+ */
+function fmtMoney(value: number, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const formatted = formatMoneyPrint(value)
+  const symbol = currencyDisplay(settings, lang)
+  // Arabic: number then symbol (RTL) | English: symbol then number
+  if (lang === 'ar') {
+    return `${formatted} ${symbol}`
+  }
+  return `${symbol} ${formatted}`
+}
+
 // ============ Rental Invoice Body Generator ============
 function generateRentalInvoiceBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
   const items = (data.items as Array<Record<string, unknown>>) || []
   const currency = getCurrencySymbol(settings, lang)
-  const currencyHtml = currencyDisplay(settings, lang)
   const totalAmount = Number(data.totalAmount) || 0
   const subtotal = Number(data.subtotal) || 0
   const vatAmount = Number(data.vatAmount) || 0
@@ -1501,8 +1537,8 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
       <td>${item.description || ''}</td>
       <td style="text-align:center;">${item.quantity || 0}</td>
       <td>${(item.unit as string) || (lang === 'ar' ? 'ساعة' : 'hr')}</td>
-      <td class="amount-cell">${formatMoneyPrint(Number(item.unitPrice) || 0)}</td>
-      <td class="amount-cell">${formatMoneyPrint(Number(item.totalPrice) || 0)}</td>
+      <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+      <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
     </tr>
   `).join('')
 
@@ -1528,26 +1564,26 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
       <div class="ri-totals-box">
         <div class="ri-total-row">
           <span class="label">${lang === 'ar' ? 'المجموع الفرعي / Subtotal' : 'Subtotal'}</span>
-          <span class="value">${formatMoneyPrint(subtotal)} ${currency}</span>
+          <span class="value">${fmtMoney(subtotal, settings, lang)}</span>
         </div>
         ${includeDelivery ? `
         <div class="ri-total-row">
           <span class="label">${lang === 'ar' ? 'رسوم النقل / Delivery Fees' : 'Delivery Fees'}</span>
-          <span class="value">${formatMoneyPrint(deliveryFees)} ${currency}</span>
+          <span class="value">${fmtMoney(deliveryFees, settings, lang)}</span>
         </div>
         ${deliveryFeesTaxable && deliveryVat > 0 ? `
         <div class="ri-total-row">
           <span class="label">${lang === 'ar' ? 'ضريبة رسوم النقل / Delivery VAT' : 'Delivery VAT'}</span>
-          <span class="value">${formatMoneyPrint(deliveryVat)} ${currency}</span>
+          <span class="value">${fmtMoney(deliveryVat, settings, lang)}</span>
         </div>
         ` : ''}` : ''}
         <div class="ri-total-row">
           <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة ${vatRate * 100}% / VAT ${vatRate * 100}%` : `VAT ${vatRate * 100}%`}</span>
-          <span class="value">${formatMoneyPrint(vatAmount)} ${currency}</span>
+          <span class="value">${fmtMoney(vatAmount, settings, lang)}</span>
         </div>
         <div class="ri-total-row grand">
           <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة / Grand Total' : 'Grand Total incl. VAT'}</span>
-          <span class="value">${formatMoneyPrint(totalAmount)} ${currencyHtml}</span>
+          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -1586,8 +1622,8 @@ function generateRentalInvoiceBody(data: Record<string, unknown>, settings: Prin
         <div>${lang === 'ar' ? 'اسم البائع' : 'Seller'}: ${sellerName}</div>
         <div>${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}: ${vatNumber}</div>
         <div>${lang === 'ar' ? 'تاريخ الفاتورة' : 'Invoice Date'}: ${invoiceDate}</div>
-        <div>${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Total incl. VAT'}: ${totalStr} ${currency}</div>
-        <div>${lang === 'ar' ? 'مبلغ الضريبة' : 'VAT Amount'}: ${vatTotalStr} ${currency}</div>
+        <div>${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Total incl. VAT'}: ${fmtMoney(totalAmount, settings, lang)}</div>
+        <div>${lang === 'ar' ? 'مبلغ الضريبة' : 'VAT Amount'}: ${fmtMoney(vatAmount, settings, lang)}</div>
       </div>
     </div>
     ${!qrDataUrl ? `
@@ -1706,7 +1742,7 @@ function generateInvoiceBody(data: Record<string, unknown>, settings: PrintOptio
         </div>` : ''}
         ${data.hourlyRate != null ? `<div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'سعر الساعة' : 'Hourly Rate'}</div>
-          <div class="info-value">${formatMoneyPrint(Number(data.hourlyRate) || 0)} ${currency}</div>
+          <div class="info-value">${fmtMoney(Number(data.hourlyRate) || 0, settings, lang)}</div>
         </div>` : ''}
         ${data.deliveryMonth ? `<div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'فترة الإيجار' : 'Rental Period'}</div>
@@ -1773,8 +1809,8 @@ function generateInvoiceBody(data: Record<string, unknown>, settings: PrintOptio
             <td class="row-num">${i + 1}</td>
             <td>${item.description || ''}</td>
             <td>${item.quantity || 0}</td>
-            <td class="amount-cell">${formatMoneyPrint(Number(item.unitPrice) || 0)}</td>
-            <td class="amount-cell">${formatMoneyPrint(Number(item.totalPrice) || 0)}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1784,21 +1820,21 @@ function generateInvoiceBody(data: Record<string, unknown>, settings: PrintOptio
       <div class="totals-box">
         <div class="total-row">
           <span class="label">${lang === 'ar' ? 'المجموع الفرعي' : 'Subtotal'}</span>
-          <span class="value">${formatMoneyPrint(Number(data.subtotal) || 0)}</span>
+          <span class="value">${fmtMoney(Number(data.subtotal) || 0, settings, lang)}</span>
         </div>
         <div class="total-row">
           <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة (${(settings.defaultVatRate * 100).toFixed(0)}%)` : `VAT (${(settings.defaultVatRate * 100).toFixed(0)}%)`}</span>
-          <span class="value">${formatMoneyPrint(Number(data.vatAmount) || 0)}</span>
+          <span class="value">${fmtMoney(Number(data.vatAmount) || 0, settings, lang)}</span>
         </div>
         ${data.includeDelivery && Number(data.deliveryAmount) > 0 ? `
         <div class="total-row">
           <span class="label">${lang === 'ar' ? 'رسوم النقل' : 'Delivery Fees'}</span>
-          <span class="value">${formatMoneyPrint(Number(data.deliveryAmount) || 0)}</span>
+          <span class="value">${fmtMoney(Number(data.deliveryAmount) || 0, settings, lang)}</span>
         </div>
         ` : ''}
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
-          <span class="value">${formatMoneyPrint(totalAmount)} ${currency}</span>
+          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -1848,15 +1884,15 @@ function generateExtractBody(data: Record<string, unknown>, settings: PrintOptio
       <tbody>
         <tr>
           <td>${lang === 'ar' ? 'قيمة العقد' : 'Contract Value'}</td>
-          <td class="amount-cell">${formatMoneyPrint(Number(data.contractValue) || 0)}</td>
+          <td class="amount-cell">${fmtMoney(Number(data.contractValue) || 0, settings, lang)}</td>
         </tr>
         <tr>
           <td>${lang === 'ar' ? 'قيمة المستخلص' : 'Claim Amount'}</td>
-          <td class="amount-cell">${formatMoneyPrint(Number(data.amount) || 0)}</td>
+          <td class="amount-cell">${fmtMoney(Number(data.amount) || 0, settings, lang)}</td>
         </tr>
         <tr>
           <td>${lang === 'ar' ? `ضريبة القيمة المضافة (${(settings.defaultVatRate * 100).toFixed(0)}%)` : `VAT (${(settings.defaultVatRate * 100).toFixed(0)}%)`}</td>
-          <td class="amount-cell">${formatMoneyPrint(Number(data.vatAmount) || 0)}</td>
+          <td class="amount-cell">${fmtMoney(Number(data.vatAmount) || 0, settings, lang)}</td>
         </tr>
       </tbody>
     </table>
@@ -1865,7 +1901,7 @@ function generateExtractBody(data: Record<string, unknown>, settings: PrintOptio
       <div class="totals-box">
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
-          <span class="value">${formatMoneyPrint(totalAmount)} ${currency}</span>
+          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -1921,8 +1957,8 @@ function generateSupplierInvoiceBody(data: Record<string, unknown>, settings: Pr
             <td class="row-num">${i + 1}</td>
             <td>${item.description || ''}</td>
             <td>${item.quantity || 0}</td>
-            <td class="amount-cell">${formatMoneyPrint(Number(item.unitPrice) || 0)}</td>
-            <td class="amount-cell">${formatMoneyPrint(Number(item.totalPrice) || 0)}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1932,15 +1968,15 @@ function generateSupplierInvoiceBody(data: Record<string, unknown>, settings: Pr
       <div class="totals-box">
         <div class="total-row">
           <span class="label">${lang === 'ar' ? 'المجموع الفرعي' : 'Subtotal'}</span>
-          <span class="value">${formatMoneyPrint(Number(data.subtotal) || 0)}</span>
+          <span class="value">${fmtMoney(Number(data.subtotal) || 0, settings, lang)}</span>
         </div>
         <div class="total-row">
           <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة (${(settings.defaultVatRate * 100).toFixed(0)}%)` : `VAT (${(settings.defaultVatRate * 100).toFixed(0)}%)`}</span>
-          <span class="value">${formatMoneyPrint(Number(data.vatAmount) || 0)}</span>
+          <span class="value">${fmtMoney(Number(data.vatAmount) || 0, settings, lang)}</span>
         </div>
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
-          <span class="value">${formatMoneyPrint(totalAmount)} ${currency}</span>
+          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -2002,8 +2038,8 @@ function generatePurchaseOrderBody(data: Record<string, unknown>, settings: Prin
             <td class="row-num">${i + 1}</td>
             <td>${item.description || ''}</td>
             <td>${item.quantity || 0}</td>
-            <td class="amount-cell">${formatMoneyPrint(Number(item.unitPrice) || 0)}</td>
-            <td class="amount-cell">${formatMoneyPrint(Number(item.totalPrice) || 0)}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -2013,7 +2049,7 @@ function generatePurchaseOrderBody(data: Record<string, unknown>, settings: Prin
       <div class="totals-box">
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'الإجمالي' : 'Total'}</span>
-          <span class="value">${formatMoneyPrint(Number(data.totalAmount) || 0)} ${currency}</span>
+          <span class="value">${fmtMoney(Number(data.totalAmount) || 0, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -2045,19 +2081,19 @@ function generateTaxDeclarationBody(data: Record<string, unknown>, settings: Pri
       <tbody>
         <tr>
           <td>${lang === 'ar' ? 'إجمالي المبيعات' : 'Total Sales'}</td>
-          <td class="amount-cell">${formatMoneyPrint(Number(data.totalSales) || 0)}</td>
+          <td class="amount-cell">${fmtMoney(Number(data.totalSales) || 0, settings, lang)}</td>
         </tr>
         <tr>
           <td>${lang === 'ar' ? 'ضريبة المخرجات' : 'Output VAT'}</td>
-          <td class="amount-cell">${formatMoneyPrint(Number(data.outputVat) || 0)}</td>
+          <td class="amount-cell">${fmtMoney(Number(data.outputVat) || 0, settings, lang)}</td>
         </tr>
         <tr>
           <td>${lang === 'ar' ? 'إجمالي المشتريات' : 'Total Purchases'}</td>
-          <td class="amount-cell">${formatMoneyPrint(Number(data.totalPurchases) || 0)}</td>
+          <td class="amount-cell">${fmtMoney(Number(data.totalPurchases) || 0, settings, lang)}</td>
         </tr>
         <tr>
           <td>${lang === 'ar' ? 'ضريبة المدخلات' : 'Input VAT'}</td>
-          <td class="amount-cell">${formatMoneyPrint(Number(data.inputVat) || 0)}</td>
+          <td class="amount-cell">${fmtMoney(Number(data.inputVat) || 0, settings, lang)}</td>
         </tr>
       </tbody>
     </table>
@@ -2065,7 +2101,7 @@ function generateTaxDeclarationBody(data: Record<string, unknown>, settings: Pri
       <div class="totals-box">
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'صافي الضريبة المستحقة' : 'Net VAT Payable'}</span>
-          <span class="value">${formatMoneyPrint(Number(data.netVat) || 0)} ${currency}</span>
+          <span class="value">${fmtMoney(Number(data.netVat) || 0, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -2077,7 +2113,6 @@ function generateTaxDeclarationBody(data: Record<string, unknown>, settings: Pri
 function generateGenericTableBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
   const columns = (data.columns as Array<{ key: string; label: string; align?: string }>) || []
   const rows = (data.rows as Array<Record<string, unknown>>) || []
-  const currency = getCurrencySymbol(settings, lang)
 
   return `
     ${data.infoItems ? `
@@ -2105,7 +2140,7 @@ function generateGenericTableBody(data: Record<string, unknown>, settings: Print
             ${columns.map(col => {
               const val = row[col.key]
               const isAmount = col.align === 'amount'
-              return `<td class="${isAmount ? 'amount-cell' : ''}">${isAmount ? formatMoneyPrint(Number(val) || 0) : (val ?? '')}</td>`
+              return `<td class="${isAmount ? 'amount-cell' : ''}">${isAmount ? fmtMoney(Number(val) || 0, settings, lang) : (val ?? '')}</td>`
             }).join('')}
           </tr>
         `).join('')}
@@ -2118,7 +2153,7 @@ function generateGenericTableBody(data: Record<string, unknown>, settings: Print
         ${(data.totals as Array<{ label: string; value: number; isGrand?: boolean }>).map(t => `
           <div class="total-row ${t.isGrand ? 'grand' : ''}">
             <span class="label">${t.label}</span>
-            <span class="value">${formatMoneyPrint(t.value)} ${currency}</span>
+            <span class="value">${fmtMoney(t.value, settings, lang)}</span>
           </div>
         `).join('')}
       </div>
@@ -2129,7 +2164,6 @@ function generateGenericTableBody(data: Record<string, unknown>, settings: Print
 
 // ============ Payment Voucher Body ============
 function generatePaymentVoucherBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
-  const currency = getCurrencySymbol(settings, lang)
   const totalAmount = Number(data.amount) || Number(data.totalAmount) || 0
   const isClient = data.clientName !== undefined && data.clientName !== null
 
@@ -2163,7 +2197,7 @@ function generatePaymentVoucherBody(data: Record<string, unknown>, settings: Pri
       <div class="totals-box">
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'المبلغ' : 'Amount'}</span>
-          <span class="value">${formatMoneyPrint(totalAmount)} ${currency}</span>
+          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -2202,13 +2236,13 @@ function generateSalarySlipBody(data: Record<string, unknown>, settings: PrintOp
         </tr>
       </thead>
       <tbody>
-        <tr><td>${lang === 'ar' ? 'الراتب الأساسي' : 'Basic Salary'}</td><td class="amount-cell">${formatMoneyPrint(Number(data.basicSalary) || 0)}</td></tr>
-        <tr><td>${lang === 'ar' ? 'بدل سكن' : 'Housing Allowance'}</td><td class="amount-cell">${formatMoneyPrint(Number(data.housingAllowance) || 0)}</td></tr>
-        <tr><td>${lang === 'ar' ? 'بدل نقل' : 'Transport Allowance'}</td><td class="amount-cell">${formatMoneyPrint(Number(data.transportAllowance) || 0)}</td></tr>
-        <tr><td>${lang === 'ar' ? 'الإجمالي قبل الخصومات' : 'Gross Salary'}</td><td class="amount-cell">${formatMoneyPrint(Number(data.grossSalary) || 0)}</td></tr>
-        <tr><td>${lang === 'ar' ? 'خصم تأمينات' : 'GOSI Deduction'}</td><td class="amount-cell">${formatMoneyPrint(Number(data.gosiDeduction) || 0)}</td></tr>
-        <tr><td>${lang === 'ar' ? 'سلف' : 'Advance'}</td><td class="amount-cell">${formatMoneyPrint(Number(data.advance) || 0)}</td></tr>
-        <tr><td>${lang === 'ar' ? 'خصومات أخرى' : 'Other Deductions'}</td><td class="amount-cell">${formatMoneyPrint(Number(data.otherDeductions) || 0)}</td></tr>
+        <tr><td>${lang === 'ar' ? 'الراتب الأساسي' : 'Basic Salary'}</td><td class="amount-cell">${fmtMoney(Number(data.basicSalary) || 0, settings, lang)}</td></tr>
+        <tr><td>${lang === 'ar' ? 'بدل سكن' : 'Housing Allowance'}</td><td class="amount-cell">${fmtMoney(Number(data.housingAllowance) || 0, settings, lang)}</td></tr>
+        <tr><td>${lang === 'ar' ? 'بدل نقل' : 'Transport Allowance'}</td><td class="amount-cell">${fmtMoney(Number(data.transportAllowance) || 0, settings, lang)}</td></tr>
+        <tr><td>${lang === 'ar' ? 'الإجمالي قبل الخصومات' : 'Gross Salary'}</td><td class="amount-cell">${fmtMoney(Number(data.grossSalary) || 0, settings, lang)}</td></tr>
+        <tr><td>${lang === 'ar' ? 'خصم تأمينات' : 'GOSI Deduction'}</td><td class="amount-cell">${fmtMoney(Number(data.gosiDeduction) || 0, settings, lang)}</td></tr>
+        <tr><td>${lang === 'ar' ? 'سلف' : 'Advance'}</td><td class="amount-cell">${fmtMoney(Number(data.advance) || 0, settings, lang)}</td></tr>
+        <tr><td>${lang === 'ar' ? 'خصومات أخرى' : 'Other Deductions'}</td><td class="amount-cell">${fmtMoney(Number(data.otherDeductions) || 0, settings, lang)}</td></tr>
       </tbody>
     </table>
 
@@ -2216,7 +2250,7 @@ function generateSalarySlipBody(data: Record<string, unknown>, settings: PrintOp
       <div class="totals-box">
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'صافي الراتب' : 'Net Salary'}</span>
-          <span class="value">${formatMoneyPrint(Number(data.netSalary) || 0)} ${currency}</span>
+          <span class="value">${fmtMoney(Number(data.netSalary) || 0, settings, lang)}</span>
         </div>
       </div>
     </div>
@@ -2228,7 +2262,6 @@ function generateSalarySlipBody(data: Record<string, unknown>, settings: PrintOp
 
 // ============ Timesheet Body ============
 function generateTimesheetBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
-  const currency = getCurrencySymbol(settings, lang)
   const operatingHours = Number(data.operatingHours) || 0
   const hourlyRate = Number(data.hourlyRate) || 0
   const subtotal = Number(data.subtotal) || (operatingHours * hourlyRate)
@@ -2301,7 +2334,7 @@ function generateTimesheetBody(data: Record<string, unknown>, settings: PrintOpt
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'سعر الساعة' : 'Hourly Rate'}</div>
-          <div class="info-value">${formatMoneyPrint(hourlyRate)} ${currency}</div>
+          <div class="info-value">${fmtMoney(hourlyRate, settings, lang)}</div>
         </div>
         ${data.salesOrderNo ? `<div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'رقم طلب البيع' : 'Sales Order'}</div>
@@ -2318,23 +2351,23 @@ function generateTimesheetBody(data: Record<string, unknown>, settings: PrintOpt
       <div class="totals-box">
         <div class="total-row">
           <span class="label">${lang === 'ar' ? `المجموع الفرعي (${operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'} × ${formatMoneyPrint(hourlyRate)})` : `Subtotal (${operatingHours} hrs × ${formatMoneyPrint(hourlyRate)})`}</span>
-          <span class="value">${formatMoneyPrint(subtotal)} ${currency}</span>
+          <span class="value">${fmtMoney(subtotal, settings, lang)}</span>
         </div>
         <div class="total-row">
           <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة (${(vatRate * 100).toFixed(0)}%)` : `VAT (${(vatRate * 100).toFixed(0)}%)`}</span>
-          <span class="value">${formatMoneyPrint(vatAmount)} ${currency}</span>
+          <span class="value">${fmtMoney(vatAmount, settings, lang)}</span>
         </div>
         ${deliveryFees > 0 ? `<div class="total-row">
           <span class="label">${lang === 'ar' ? 'رسوم النقل' : 'Delivery Fees'}</span>
-          <span class="value">${formatMoneyPrint(deliveryFees)} ${currency}</span>
+          <span class="value">${fmtMoney(deliveryFees, settings, lang)}</span>
         </div>
         ${deliveryFeesTaxable && deliveryVat > 0 ? `<div class="total-row">
           <span class="label">${lang === 'ar' ? 'ضريبة رسوم النقل' : 'Delivery VAT'}</span>
-          <span class="value">${formatMoneyPrint(deliveryVat)} ${currency}</span>
+          <span class="value">${fmtMoney(deliveryVat, settings, lang)}</span>
         </div>` : ''}` : ''}
         <div class="total-row grand">
           <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
-          <span class="value">${formatMoneyPrint(totalAmount)} ${currency}</span>
+          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
         </div>
       </div>
     </div>

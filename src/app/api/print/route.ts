@@ -5,6 +5,8 @@ import {
   type PrintOptions,
 } from '@/lib/print-service'
 import { db } from '@/lib/db'
+import path from 'path'
+import fs from 'fs/promises'
 
 /**
  * GET /api/print?type=<type>&id=<id>&format=<html|json>
@@ -45,19 +47,49 @@ export async function GET(request: NextRequest) {
 
     // Get company settings
     const settings = await db.companySetting.findFirst()
+
+    // Process currency symbol image to remove background (for print templates)
+    let processedCurrencySymbolImage = settings?.currencySymbolImage || null
+    if (processedCurrencySymbolImage && !processedCurrencySymbolImage.endsWith('.svg')) {
+      try {
+        const bgRes = await fetch(new URL('/api/remove-bg', request.url), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl: processedCurrencySymbolImage }),
+        })
+        if (bgRes.ok) {
+          const bgData = await bgRes.json()
+          if (bgData.dataUrl) {
+            processedCurrencySymbolImage = bgData.dataUrl
+          }
+        }
+      } catch {
+        // Background removal failed, use original image (CSS mix-blend-mode will help)
+      }
+    }
+
     const printSettings: PrintOptions['settings'] = {
       nameAr: settings?.nameAr || 'بِنَاء',
       nameEn: settings?.nameEn || 'Binaa',
       taxNumber: settings?.taxNumber || null,
+      commercialReg: settings?.commercialReg || null,
       address: settings?.address || null,
       phone: settings?.phone || null,
       email: settings?.email || null,
+      website: settings?.website || null,
       logoUrl: settings?.logoUrl || null,
       headerImage: settings?.headerImage || null,
       footerImage: settings?.footerImage || null,
       stamp: settings?.stamp || null,
-      currencySymbolImage: settings?.currencySymbolImage || null,
+      currencySymbolImage: processedCurrencySymbolImage,
+      currencySymbol: settings?.currencySymbol || null,
+      currencySymbolAr: settings?.currencySymbolAr || null,
+      currencySymbolEn: settings?.currencySymbolEn || null,
       defaultVatRate: settings?.defaultVatRate || 0.15,
+      bankName: settings?.bankName || null,
+      bankIban: settings?.bankIban || null,
+      bankAccountName: settings?.bankAccountName || null,
+      invoiceTerms: settings?.invoiceTerms || null,
     }
 
     // Fetch document data based on type
@@ -158,6 +190,33 @@ export async function GET(request: NextRequest) {
           inputVat: vatReturn.inputVat,
           netVat: vatReturn.netVat,
         }
+      }
+    }
+
+    // For invoice types, generate QR code server-side (ZATCA compliance)
+    if ((type === 'rental-invoice' || type === 'service-invoice') && printSettings.taxNumber) {
+      try {
+        const sellerName = printSettings.nameAr || ''
+        const vatNumber = printSettings.taxNumber
+        const invoiceDate = data.date
+          ? new Date(data.date as string).toISOString().split('T')[0]
+          : ''
+        const totalAmount = Number(data.totalAmount) || 0
+        const vatAmount = Number(data.vatAmount) || 0
+        const totalStr = totalAmount.toFixed(2)
+        const vatTotalStr = vatAmount.toFixed(2)
+
+        const qrRes = await fetch(
+          `${request.nextUrl.origin}/api/generate-qr?seller=${encodeURIComponent(sellerName)}&vat=${encodeURIComponent(vatNumber)}&date=${encodeURIComponent(invoiceDate)}&total=${encodeURIComponent(totalStr)}&vatTotal=${encodeURIComponent(vatTotalStr)}`
+        )
+        if (qrRes.ok) {
+          const qrData = await qrRes.json()
+          if (qrData.qrDataUrl) {
+            data.qrDataUrl = qrData.qrDataUrl
+          }
+        }
+      } catch {
+        // QR generation failed, will fall back to client-side approach in template
       }
     }
 
