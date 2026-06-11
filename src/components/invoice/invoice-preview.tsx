@@ -98,6 +98,10 @@ interface InvoiceData {
   includeDelivery?: boolean
   deliveryAmount?: number
   includeVat?: boolean
+  salesOrderNo?: string | null
+  equipmentName?: string | null
+  operatingHours?: number | null
+  hourlyRate?: number | null
   client: ClientInfo
   project?: ProjectInfo | null
   contract?: ContractInfo | null
@@ -449,6 +453,12 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                     <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.contractNo}</span>
                   </div>
                 )}
+                {invoice.salesOrderNo && (
+                  <div className="flex gap-2">
+                    <span className="text-gray-500">رقم طلب البيع:</span>
+                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.salesOrderNo}</span>
+                  </div>
+                )}
                 {invoice.contractType && (
                   <div className="flex gap-2">
                     <span className="text-gray-500">نوع العقد:</span>
@@ -467,6 +477,59 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   <div className="flex gap-2">
                     <span className="text-gray-500">شهر التسليم:</span>
                     <span className="font-semibold text-gray-800">{fmtDeliveryMonth(invoice.deliveryMonth)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== STEP 5B: Rental Equipment Data (for rental invoices) ===== */}
+        {invoice.invoiceType === 'RENTAL' && (invoice.equipmentName || invoice.operatingHours || invoice.hourlyRate) && (
+          <div className="px-8 py-4 border-b border-gray-200">
+            <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50/30">
+              <div className="bg-amber-100 px-5 py-2 border-b border-amber-200">
+                <h4 className="font-bold text-amber-800 text-sm">بيانات المعدة والإيجار / Equipment & Rental Data</h4>
+              </div>
+              <div className="px-5 py-3 grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
+                {invoice.equipmentName && (
+                  <div className="flex gap-2">
+                    <span className="text-amber-600">المعدة:</span>
+                    <span className="font-semibold text-gray-800">{invoice.equipmentName}</span>
+                  </div>
+                )}
+                {invoice.operatingHours != null && (
+                  <div className="flex gap-2">
+                    <span className="text-amber-600">ساعات التشغيل:</span>
+                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+                      {invoice.operatingHours % 1 === 0 ? invoice.operatingHours.toFixed(0) : invoice.operatingHours.toFixed(2)} ساعة
+                    </span>
+                  </div>
+                )}
+                {invoice.hourlyRate != null && (
+                  <div className="flex gap-2">
+                    <span className="text-amber-600">سعر الساعة:</span>
+                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+                      {fmt(invoice.hourlyRate)} <CurrencySymbol symbol={symbolAr} size="xs" />
+                    </span>
+                  </div>
+                )}
+                {invoice.deliveryMonth && (
+                  <div className="flex gap-2">
+                    <span className="text-amber-600">فترة الإيجار:</span>
+                    <span className="font-semibold text-gray-800">{fmtDeliveryMonth(invoice.deliveryMonth)}</span>
+                  </div>
+                )}
+                {invoice.contractNo && (
+                  <div className="flex gap-2">
+                    <span className="text-amber-600">رقم العقد:</span>
+                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.contractNo}</span>
+                  </div>
+                )}
+                {invoice.salesOrderNo && (
+                  <div className="flex gap-2">
+                    <span className="text-amber-600">رقم طلب البيع:</span>
+                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.salesOrderNo}</span>
                   </div>
                 )}
               </div>

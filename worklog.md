@@ -3,58 +3,52 @@
 ---
 Task ID: 1
 Agent: Main Agent
-Task: إصلاح مشاكل إنشاء الساعات وأوامر التوصيل
+Task: Fix rental invoice creation and all field name mismatches
 
 Work Log:
-- فحص ملفات الواجهة الأمامية: timesheets.tsx, delivery-orders.tsx
-- فحص مسارات API: equipment/timesheets, delivery-orders
-- فحص مخطط قاعدة البيانات Prisma لمعرفة النماذج الصحيحة
-- اكتشاف أن `[id]/route.ts` للساعات يستخدم `db.equipmentTimesheet` غير الموجود
-- اكتشاف أن `generate-invoice/route.ts` يستخدم `db.equipmentTimesheet` غير الموجود
-- اكتشاف أن الواجهة الأمامية ترسل `contractId` خاطئ (معرف EquipmentRental بدلاً من Contract)
-- اكتشاف أن حقول `rate` و `rateType` غير موجودة في نموذج EquipmentRental (الصحيح: `hourlyRate`, `pricingType`)
-- اكتشاف أن أوامر التوصيل لا تربط بعقود التأجير
-- إصلاح مسار `[id]/route.ts` للساعات - استخدام `db.timesheet` وإضافة PUT/DELETE
-- إصلاح مسار `generate-invoice/route.ts` - استخدام `db.timesheet` وحقول صحيحة
-- إصلاح مسار `timesheets/route.ts` - استبدال `rate` و `rateType` بـ `hourlyRate` و `pricingType`
-- إصلاح الواجهة الأمامية `timesheets.tsx` - إصلاح `contractId`، عرض العقد، حساب السعر
-- إعادة كتابة `delivery-orders.tsx` - إضافة ربط بعقود التأجير، خيار بدون مشروع، حذف
-- إنشاء مسار `[id]/route.ts` لأوامر التوصيل - GET/PATCH/DELETE
-- إصلاح مسار `delivery-orders/route.ts` - إزالة `rate`/`rateType`، إصلاح حالة المعدة
-- التحقق من عمل جميع الإصلاحات بالمتصفح
+- Identified root cause: `EquipmentRental` model uses `hourlyRate` not `rate`, `pricingType` not `rateType`, `paymentDuration` not `paymentTerms`
+- Fixed `GET /api/sales-invoices` route (3 occurrences of `rate: true` → `hourlyRate: true`)
+- Fixed `POST /api/sales-invoices` createInvoiceFromTimesheet (rental select + hourlyRate calculation)
+- Fixed `GET /api/sales-invoices/[id]` route (timesheet rental select)
+- Fixed `PATCH /api/sales-invoices` route (timesheet rental select)
+- Fixed `GET /api/projects/[id]/route.ts` (rental select)
+- Fixed `GET /api/reports/route.ts` (rental select + calculation)
+- Fixed `GET /api/equipment/[id]/route.ts` (rental select)
+- Fixed frontend `rental-invoices.tsx`: Added `sourceType: 'TIMESHEET'` to mutation, fixed `rental?.rate` → `rental?.hourlyRate`, `rental?.client?.id` → `rental?.clientId`, improved error handling
+- Fixed frontend `equipment.tsx`: `ts.rental?.rate` → `ts.rental?.hourlyRate`
+- Fixed frontend `sales.tsx`: 2 occurrences of `rental?.rate` → `rental?.hourlyRate`
 
 Stage Summary:
-- ✅ إصلاح جميع أخطاء API في الساعات وأوامر التوصيل
-- ✅ إصلاح حقول `rate`/`rateType` → `hourlyRate`/`pricingType` في جميع الملفات
-- ✅ إصلاح `contractId` الخاطئ في إنشاء الساعات
-- ✅ إضافة معالجات PUT/DELETE لمسارات API الفردية
-- ✅ إضافة ربط أوامر التوصيل بعقود التأجير
-- ✅ إضافة خيار "بدون مشروع" في القوائم المنسدلة
-- ✅ إضافة وظيفة حذف أوامر التوصيل
-- ✅ إصلاح حالة المعدة (IN_USE فقط عند DELIVERED وليس PENDING)
-- ✅ تم التحقق بالمتصفح - جميع الصفحات تعمل بدون أخطاء
+- Rental invoice creation now works via `POST /api/sales-invoices` with `sourceType: 'TIMESHEET'`
+- All field name mismatches between frontend and Prisma schema are fixed
+- Invoice RNT-2026-0001 created successfully: 230hrs × 934.62 = 214,961.54 + 3,000 delivery + 32,694.23 VAT = 250,655.77 SAR
 
 ---
-Task ID: 1
-Agent: main
-Task: إصلاح مشاكل إنشاء الساعات (Time Sheets) وأوامر التوصيل (Delivery Orders)
+Task ID: 2
+Agent: Main Agent
+Task: Fix delivery orders equipment status handling
 
 Work Log:
-- Read and analyzed timesheets component, delivery-orders component, API routes, and Prisma schema
-- Found critical bug: timesheets POST route used `rate` and `rateType` fields that don't exist in EquipmentRental model (should be `hourlyRate` and `pricingType`)
-- Found React rendering bug: `t(labels.subtotal || 'المجموع الفرعي', ...)` passed an object `{ar, en}` instead of a string to the `t()` function, causing "Objects are not valid as a React child" error
-- Fixed the field name mismatch in `/api/equipment/timesheets/route.ts` POST handler (rate→hourlyRate, rateType→pricingType)
-- Added missing `subtotal` label in timesheets labels object
-- Fixed `t()` function call to use `labels.subtotal.ar` and `labels.subtotal.en` instead of the whole object
-- Fixed delivery order DELETE route that unconditionally reset equipment status to AVAILABLE even for PENDING orders
-- Rewrote legacy `/api/timesheets/` routes that referenced non-existent `entries` and `TimesheetEntry` models
-- Verified timesheet creation works via API (curl test: successful)
-- Verified delivery order creation works via API (curl test: successful)
-- Verified timesheet creation works in browser (agent-browser: form fills correctly, billing preview shows, creation succeeds)
-- Ran lint: 0 errors, 1 warning (unrelated)
+- Fixed DELIVERED→CANCELLED not reverting equipment status from IN_USE to AVAILABLE
+- Updated both `/api/delivery-orders/route.ts` and `/api/delivery-orders/[id]/route.ts`
 
 Stage Summary:
-- Root cause of timesheet creation failure: Prisma field name mismatch (rate/rateType vs hourlyRate/pricingType) + React child rendering error
-- Root cause of delivery order issues: DELETE route incorrectly modifying equipment status
-- Both modules now work correctly for creation, listing, and deletion
-- Legacy timesheets API routes cleaned up
+- Equipment status properly reverts when a DELIVERED order is cancelled
+- PENDING→CANCELLED still works correctly (no status change needed)
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Professional rental invoice design
+
+Work Log:
+- Added rental-specific fields to InvoiceData interface: equipmentName, operatingHours, hourlyRate, salesOrderNo
+- Added dedicated "Equipment & Rental Data" section in InvoicePreview for RENTAL invoice type
+- Enhanced print service with rental equipment section (styled with amber theme)
+- Added CSS for `.rental-equipment-section` in print service
+- Updated Project & Contract Data section to include salesOrderNo
+
+Stage Summary:
+- Rental invoices now display equipment name, operating hours, hourly rate, rental period, contract no, sales order no
+- Print service generates professional rental invoice with dedicated equipment data section
+- Invoice preview shows amber-themed rental data panel for RENTAL invoices

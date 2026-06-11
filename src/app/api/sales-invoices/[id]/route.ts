@@ -15,7 +15,7 @@ const sourceIncludes = {
       id: true, operatingHours: true, month: true, year: true, status: true,
       project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
       equipment: { select: { id: true, name: true, code: true, nameAr: true } },
-      rental: { select: { id: true, rate: true, deliveryFees: true, deliveryFeesTaxable: true } },
+      rental: { select: { id: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true } },
       contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
     },
   },

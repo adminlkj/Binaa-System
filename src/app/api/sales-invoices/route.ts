@@ -29,7 +29,7 @@ export async function GET(request: Request) {
             id: true, operatingHours: true, month: true, year: true, status: true,
             project: { select: { id: true, name: true, code: true, projectType: true, client: { select: { id: true, name: true } } } },
             equipment: { select: { id: true, name: true, code: true, nameAr: true } },
-            rental: { select: { id: true, rate: true, deliveryFees: true, deliveryFeesTaxable: true } },
+            rental: { select: { id: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true } },
             contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
           },
         },
@@ -267,14 +267,14 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
       contract: {
         include: {
           rental: {
-            select: { id: true, rate: true, rateType: true, deliveryFees: true, deliveryFeesTaxable: true, clientId: true, status: true, salesOrderNo: true, paymentTerms: true },
+            select: { id: true, hourlyRate: true, pricingType: true, deliveryFees: true, deliveryFeesTaxable: true, clientId: true, status: true, salesOrderNo: true, paymentDuration: true },
           },
         },
       },
       equipment: { select: { id: true, code: true, name: true, nameAr: true } },
       project: { select: { id: true, name: true, code: true, clientId: true } },
       rental: {
-        select: { id: true, rate: true, rateType: true, deliveryFees: true, deliveryFeesTaxable: true, clientId: true, status: true, salesOrderNo: true, paymentTerms: true },
+        select: { id: true, hourlyRate: true, pricingType: true, deliveryFees: true, deliveryFeesTaxable: true, clientId: true, status: true, salesOrderNo: true, paymentDuration: true },
       },
     },
   })
@@ -301,7 +301,7 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
 
   // 4. Calculate: subtotal = operatingHours × hourlyRate (from contract)
   const rental = timesheet.rental || timesheet.contract.rental
-  const hourlyRate = timesheet.contract.hourlyRate || (rental?.rate || 0)
+  const hourlyRate = rental?.hourlyRate || timesheet.contract.hourlyRate || 0
   const operatingHours = timesheet.operatingHours
   const subtotal = Math.round(operatingHours * hourlyRate * 100) / 100
 
@@ -414,7 +414,7 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
       deliveryFeesTaxable,
       includeVat: true,
       deliveryMonth: `${timesheet.year}-${String(timesheet.month).padStart(2, '0')}`,
-      paymentTerms: rental?.paymentTerms || timesheet.contract.paymentTerms || null,
+      paymentTerms: rental?.paymentDuration || timesheet.contract.paymentTerms || null,
       notes: (notes as string) || `فاتورة تأجير معدات - عقد ${timesheet.contract.contractNo} - ${monthLabel}`,
       items: {
         create: invoiceItems,
@@ -742,7 +742,7 @@ export async function PUT(request: Request) {
             id: true, operatingHours: true, month: true, year: true, status: true,
             project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
             equipment: { select: { id: true, name: true, code: true, nameAr: true } },
-            rental: { select: { id: true, rate: true, deliveryFees: true, deliveryFeesTaxable: true } },
+            rental: { select: { id: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true } },
             contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
           },
         },

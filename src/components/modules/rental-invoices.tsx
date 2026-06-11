@@ -47,6 +47,8 @@ interface TimesheetOption {
   operatingHours: number
   status: string
   notes: string | null
+  clientName?: string
+  clientNameAr?: string
   contract: {
     id: string; contractNo: string; hourlyRate: number; deliveryFees: number
     deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentTerms: string | null
@@ -55,7 +57,7 @@ interface TimesheetOption {
   }
   project: { id: string; name: string; nameAr: string | null; code: string }
   equipment: { id: string; name: string; nameAr: string | null; code: string }
-  rental: { id: string; rate: number; client: { id: string; name: string; nameAr: string | null } }
+  rental: { id: string; hourlyRate: number; clientId: string; deliveryFees: number; deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentDuration: string | null }
   invoice: { id: string; invoiceNo: string } | null
 }
 
@@ -161,18 +163,18 @@ function CreateRentalInvoicePage({
   // RULE: Rate is read-only (from contract)
   const contract = selectedTimesheet?.contract
   const rental = selectedTimesheet?.rental
-  const hourlyRate = rental?.rate || contract?.hourlyRate || 0
+  const hourlyRate = rental?.hourlyRate || contract?.hourlyRate || 0
   const operatingHours = selectedTimesheet?.operatingHours || 0
-  const deliveryFees = contract?.deliveryFees || 0
-  const deliveryFeesTaxable = contract?.deliveryFeesTaxable ?? true
-  const clientId = rental?.client?.id || ''
-  const clientName = rental?.client?.name || ''
+  const deliveryFees = rental?.deliveryFees || contract?.deliveryFees || 0
+  const deliveryFeesTaxable = rental?.deliveryFeesTaxable ?? contract?.deliveryFeesTaxable ?? true
+  const clientId = rental?.clientId || contract?.clientId || ''
+  const clientName = selectedTimesheet?.clientName || selectedTimesheet?.clientNameAr || ''
   const projectId = selectedTimesheet?.projectId || ''
   const projectName = selectedTimesheet?.project?.name || ''
-  const equipmentName = selectedTimesheet?.equipment?.name || ''
+  const equipmentName = selectedTimesheet?.equipment?.nameAr || selectedTimesheet?.equipment?.name || ''
   const contractNo = contract?.contractNo || ''
-  const salesOrderNo = contract?.salesOrderNo || ''
-  const paymentTerms = contract?.paymentTerms || '30 days'
+  const salesOrderNo = rental?.salesOrderNo || contract?.salesOrderNo || ''
+  const paymentTerms = rental?.paymentDuration || contract?.paymentTerms || '30 days'
 
   // RULE: System auto-calculates: hours × rate = subtotal
   const subtotal = operatingHours * hourlyRate
@@ -189,7 +191,13 @@ function CreateRentalInvoicePage({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+      }).then(async r => {
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}))
+          throw new Error((err as { error?: string }).error || 'فشل في إنشاء الفاتورة')
+        }
+        return r.json()
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
       queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
@@ -210,33 +218,11 @@ function CreateRentalInvoicePage({
     // Also, timesheet status should be updated to INVOICED
     // This is handled via POST /api/journal-entries with sourceType: SALES_INVOICE
     createMutation.mutate({
-      clientId,
-      projectId: projectId || null,
-      contractId: contract?.id || null,
+      sourceType: 'TIMESHEET',
+      timesheetId,
       date,
       dueDate,
       notes,
-      paymentTerms,
-      invoiceType: 'RENTAL',
-      discountRate: 0,
-      discountAmount: 0,
-      timesheetId, // RULE: After invoice creation, timesheet status = INVOICED
-      deliveryMonth: selectedTimesheet ? formatMonthYear(selectedTimesheet.month, selectedTimesheet.year, 'ar') : null,
-      includeDelivery: deliveryFees > 0,
-      deliveryAmount: deliveryFees,
-      deliveryFeesTaxable,
-      contractNo,
-      salesOrderNo,
-      equipmentName,
-      operatingHours,
-      hourlyRate,
-      items: [{
-        description: `${t('إيجار', 'Rental')} ${equipmentName} - ${selectedTimesheet ? formatMonthYear(selectedTimesheet.month, selectedTimesheet.year, lang) : ''}`,
-        quantity: operatingHours,
-        unit: t('ساعة', 'hour'),
-        unitPrice: hourlyRate,
-        itemType: 'RENTAL',
-      }],
     })
   }
 
@@ -420,8 +406,11 @@ function CreateRentalInvoicePage({
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-3">
+          {createMutation.isError && (
+            <p className="text-sm text-rose-600">{(createMutation.error as Error)?.message || t('فشل في إنشاء الفاتورة', 'Failed to create invoice')}</p>
+          )}
           <Button type="button" variant="outline" onClick={onBack}>{commonText.cancel[lang]}</Button>
-          <Button type="submit" disabled={createMutation.isPending || !timesheetId || !date || !dueDate} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+          <Button type="submit" disabled={createMutation.isPending || !timesheetId || !date || !dueDate || !clientId} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
             {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء فاتورة الإيجار', 'Create Rental Invoice')}
           </Button>
         </div>

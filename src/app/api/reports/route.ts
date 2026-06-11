@@ -428,14 +428,14 @@ export async function GET(request: Request) {
             maintenance: { select: { cost: true } },
             fuelLogs: { select: { totalCost: true } },
             usages: { select: { cost: true } },
-            rentals: { select: { rate: true, rateType: true, deliveryFees: true } },
+            rentals: { select: { hourlyRate: true, pricingType: true, deliveryFees: true } },
           },
           orderBy: { code: 'asc' },
         })
         const equipmentUtilization = equipment.map(eq => {
           const totalHoursRented = eq.operatorLogs.reduce((s, o) => s + o.hours, 0)
           const revenueGenerated = eq.rentals.reduce((s, r) => {
-            const rate = r.rate || eq.hourlyRate
+            const rate = r.hourlyRate || eq.hourlyRate
             return s + (rate * totalHoursRented) + (r.deliveryFees || 0)
           }, 0)
           const maintenanceCosts = eq.maintenance.reduce((s, m) => s + m.cost, 0)

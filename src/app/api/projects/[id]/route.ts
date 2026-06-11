@@ -76,7 +76,7 @@ export async function GET(
         timesheets: {
           include: {
             equipment: { select: { id: true, name: true, code: true } },
-            rental: { select: { id: true, rateType: true, rate: true } },
+            rental: { select: { id: true, pricingType: true, hourlyRate: true } },
           },
           orderBy: { year: 'desc' },
         },

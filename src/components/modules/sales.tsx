@@ -253,7 +253,7 @@ function CreateInvoiceFlow({
   const extractTotal = selectedClaim?.totalAmount || 0
 
   // Auto-calculations for TIMESHEET source
-  const tsHourlyRate = selectedTimesheet?.rental?.rate || selectedTimesheet?.contract?.hourlyRate || 0
+  const tsHourlyRate = selectedTimesheet?.rental?.hourlyRate || selectedTimesheet?.contract?.hourlyRate || 0
   const tsOperatingHours = selectedTimesheet?.operatingHours || 0
   const tsDeliveryFees = selectedTimesheet?.rental?.deliveryFees || 0
   const tsDeliveryFeesTaxable = selectedTimesheet?.rental?.deliveryFeesTaxable ?? true
@@ -924,7 +924,7 @@ function InvoiceDetailView({
               </div>
               <div>
                 <span className="text-muted-foreground">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}:</span>
-                <MoneyDisplay value={invoice.hourlyRate ?? invoice.timesheet.rental?.rate ?? 0} lang={lang} size="sm" inline />
+                <MoneyDisplay value={invoice.hourlyRate ?? invoice.timesheet?.rental?.hourlyRate ?? 0} lang={lang} size="sm" inline />
               </div>
               <div>
                 <span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span>

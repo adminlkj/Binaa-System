@@ -153,9 +153,15 @@ export async function PATCH(request: Request) {
         where: { id: order.equipmentId },
         data: { status: 'AVAILABLE' },
       })
-    } else if (status === 'CANCELLED' && existing.status === 'PENDING') {
-      // Only revert if it was PENDING (not DELIVERED then cancelled)
-      // Equipment shouldn't have been set to IN_USE for PENDING orders
+    } else if (status === 'CANCELLED') {
+      if (existing.status === 'DELIVERED') {
+        // Was IN_USE, revert to AVAILABLE
+        await db.equipment.update({
+          where: { id: order.equipmentId },
+          data: { status: 'AVAILABLE' },
+        })
+      }
+      // PENDING → CANCELLED: equipment was never changed, no revert needed
     }
 
     return NextResponse.json(order)

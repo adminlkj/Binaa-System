@@ -1235,7 +1235,7 @@ function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onB
                           <TableCell className="font-medium">{formatMonthYear(ts.month, ts.year, lang)}</TableCell>
                           <TableCell>{ts.project?.name || '—'}</TableCell>
                           <TableCell>{formatNumber(ts.operatingHours)}</TableCell>
-                          <TableCell><MoneyDisplay value={ts.contract?.hourlyRate || ts.rental?.rate || 0} lang={lang} size="sm" inline /></TableCell>
+                          <TableCell><MoneyDisplay value={ts.contract?.hourlyRate || ts.rental?.hourlyRate || 0} lang={lang} size="sm" inline /></TableCell>
                           <TableCell><Badge className={`${timesheetStatusLabels[ts.status] ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'} border-0`}>{timesheetStatusLabels[ts.status]?.[lang] || ts.status}</Badge></TableCell>
                           <TableCell>{ts.invoice ? <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">{ts.invoice.invoiceNo}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                         </TableRow>

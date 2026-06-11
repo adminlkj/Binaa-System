@@ -304,6 +304,29 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
       font-weight: 600;
       color: #1a1a1a;
     }
+    /* ──── RENTAL EQUIPMENT SECTION ──── */
+    .rental-equipment-section {
+      border: 1px solid #fbbf24;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 12px 0;
+      background: #fffbeb;
+    }
+    .rental-equipment-section .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #92400e;
+      margin-bottom: 8px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #fbbf24;
+    }
+    .rental-equipment-section .info-grid {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    .rental-equipment-section .info-item {
+      border-right-color: #f59e0b;
+      background: #fefce8;
+    }
     /* ──── PARTIES SECTION ──── */
     .parties-section {
       display: grid;
@@ -764,6 +787,36 @@ function generateInvoiceBody(data: Record<string, unknown>, settings: PrintOptio
   const items = (data.items as Array<Record<string, unknown>>) || []
   const currency = getCurrencySymbol(settings, lang)
   const totalAmount = Number(data.totalAmount) || 0
+  const isRental = data.invoiceType === 'RENTAL'
+
+  // Rental-specific info section
+  const rentalSection = isRental && (data.equipmentName || data.operatingHours || data.hourlyRate) ? `
+    <div class="rental-equipment-section">
+      <div class="section-title">${lang === 'ar' ? '⚙️ بيانات المعدة والإيجار / Equipment & Rental Data' : '⚙️ Equipment & Rental Data'}</div>
+      <div class="info-grid">
+        ${data.equipmentName ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</div>
+          <div class="info-value">${data.equipmentName}</div>
+        </div>` : ''}
+        ${data.operatingHours != null ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'ساعات التشغيل' : 'Operating Hours'}</div>
+          <div class="info-value">${data.operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'}</div>
+        </div>` : ''}
+        ${data.hourlyRate != null ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'سعر الساعة' : 'Hourly Rate'}</div>
+          <div class="info-value">${formatMoneyPrint(Number(data.hourlyRate) || 0)} ${currency}</div>
+        </div>` : ''}
+        ${data.deliveryMonth ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'فترة الإيجار' : 'Rental Period'}</div>
+          <div class="info-value">${data.deliveryMonth}</div>
+        </div>` : ''}
+        ${data.salesOrderNo ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'رقم طلب البيع' : 'Sales Order No'}</div>
+          <div class="info-value">${data.salesOrderNo}</div>
+        </div>` : ''}
+      </div>
+    </div>
+  ` : ''
 
   return `
     <div class="parties-section">
@@ -799,6 +852,8 @@ function generateInvoiceBody(data: Record<string, unknown>, settings: PrintOptio
         <div class="info-value">${statusBadge(data.status as string, lang)}</div>
       </div>
     </div>
+
+    ${rentalSection}
 
     <table class="doc-table">
       <thead>

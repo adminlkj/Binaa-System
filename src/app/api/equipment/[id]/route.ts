@@ -46,7 +46,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
           include: {
             project: { select: { id: true, code: true, name: true } },
             contract: { select: { id: true, contractNo: true, hourlyRate: true } },
-            rental: { select: { id: true, rate: true, client: { select: { id: true, name: true } } } },
+            rental: { select: { id: true, hourlyRate: true, client: { select: { id: true, name: true } } } },
             invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true } },
           },
           orderBy: { year: 'desc' },
