@@ -21,6 +21,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
+import { PrintButton } from '@/components/shared/print-button'
 
 interface ClientPayment {
   id: string
@@ -125,6 +126,7 @@ export function RentalPaymentsModule() {
           <p className="text-sm text-muted-foreground">{t('تحصيلات فواتير التأجير', 'Collections for rental invoices')}</p>
         </div>
         <div className="flex items-center gap-2">
+          <PrintButton type="rental-payment" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>

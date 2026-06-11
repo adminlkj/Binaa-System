@@ -23,9 +23,11 @@ enum ProjectStatus {
 
 enum ContractStatus {
   DRAFT
+  UNDER_REVIEW
   ACTIVE
   EXPIRED
   TERMINATED
+  CANCELLED
 }
 
 enum InvoiceStatus {
@@ -283,6 +285,7 @@ model Client {
   updatedAt     DateTime @updatedAt
 
   projects      Project[]
+  contracts     Contract[]
   salesInvoices SalesInvoice[]
   rentalContracts EquipmentRental[]
   deliveryOrders EquipmentDeliveryOrder[]
@@ -479,6 +482,7 @@ model Project {
   equipmentUsages EquipmentUsage[]
   subcontractorInvoices SubcontractorInvoice[]
   timesheets     Timesheet[]
+  rentalContracts EquipmentRental[]
   workTeams      WorkTeam[]
   goodsReceipts  GoodsReceipt[]
   purchaseInvoices PurchaseInvoice[]
@@ -501,7 +505,7 @@ model Contract {
   endDate         DateTime?
   status          ContractStatus @default(DRAFT)
   description     String?
-  contractType    String?
+  contractType    String?        // PROJECT, RENTAL, SERVICE
   clientId        String?
   equipmentId     String?
   hourlyRate      Float?
@@ -510,10 +514,27 @@ model Contract {
   paymentTerms    String?
   salesOrderNo    String?
   journalEntryId  String?
+  // ─── Project Contract Fields ───
+  quotationNo     String?        // رقم عرض السعر
+  loaNo           String?        // رقم أمر الترسية
+  purchaseOrderNo String?        // رقم أمر الشراء PO
+  projectDuration String?        // مدة المشروع
+  warrantyPeriod  String?        // مدة الضمان
+  maintenancePeriod String?      // مدة الصيانة
+  billingMethod   String?        // PROGRESS_CLAIMS, MILESTONES
+  firstClaimNo    String?        // رقم أول مستخلص
+  advancePaymentPercent Float?   @default(0) // نسبة الدفعة المقدمة
+  retentionPercent Float?        @default(0) // نسبة الاحتجاز
+  projectManager  String?        // مدير المشروع
+  projectEngineer String?        // مهندس المشروع
+  projectLocation String?        // الموقع
+  projectCity     String?        // المدينة
+  projectType     String?        // RESIDENTIAL, COMMERCIAL, GOVERNMENT, INFRASTRUCTURE, MAINTENANCE_OPS
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   project        Project        @relation(fields: [projectId], references: [id])
+  client         Client?        @relation(fields: [clientId], references: [id])
   progressClaims ProgressClaim[]
   salesInvoices  SalesInvoice[]
   timesheets     Timesheet[]
@@ -989,21 +1010,44 @@ model EquipmentRental {
   projectId       String?
   startDate       DateTime
   endDate         DateTime?
-  rateType        String     @default("HOURLY")
-  rate            Float
+  // ─── Pricing ───
+  pricingType     String     @default("HOURLY") // HOURLY, DAILY, MONTHLY, LUMP_SUM
+  referenceRate   Float      @default(0)  // القيمة الشهرية المرجعية
+  referenceHours  Float      @default(0)  // ساعات التسعير المرجعية
+  hourlyRate      Float      @default(0)  // محسوب تلقائياً
+  dailyRate       Float      @default(0)  // السعر اليومي
+  monthlyRate     Float      @default(0)  // السعر الشهري
+  lumpSumAmount   Float      @default(0)  // المبلغ المقطوع
+  // ─── Work Location ───
+  workCity        String?    // مدينة المشروع
+  workLocation    String?    // موقع العمل
+  siteSupervisor  String?    // اسم المسؤول بالموقع
+  siteSupervisorPhone String? // جوال المسؤول
+  // ─── Delivery & Transport ───
+  deliveryFeesType String?   @default("NONE") // NONE, FIXED, ONE_WAY, ROUND_TRIP, BY_DISTANCE
   deliveryFees    Float      @default(0)
   deliveryFeesTaxable Boolean @default(true)
-  totalAmount     Float      @default(0)
-  status          String     @default("ACTIVE")
-  paymentTerms    String?
-  salesOrderNo    String?
+  // ─── Operation & Responsibilities ───
+  operationMode   String     @default("WITHOUT_DRIVER") // WITHOUT_DRIVER, WITH_DRIVER, WITH_CREW
+  fuelResponsibility String? @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  insuranceResponsibility String? @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  // ─── Reference Documents ───
+  salesOrderNo    String?    // رقم طلب البيع (تلقائي)
+  purchaseOrderNo String?    // رقم طلب شراء العميل
+  quotationNo     String?    // رقم عرض السعر
+  // ─── Status & Terms ───
+  status          String     @default("DRAFT") // DRAFT, UNDER_REVIEW, ACTIVE, EXPIRED, CANCELLED
+  paymentDuration String?    // مدة السداد بالأيام
+  additionalTerms String?    // شروط إضافية
   notes           String?
+  totalAmount     Float      @default(0)
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
   contract       Contract       @relation(fields: [contractId], references: [id])
   equipment      Equipment      @relation(fields: [equipmentId], references: [id])
   client         Client         @relation(fields: [clientId], references: [id])
+  project        Project?       @relation(fields: [projectId], references: [id])
   deliveryOrders EquipmentDeliveryOrder[]
   timesheets     Timesheet[]
 }

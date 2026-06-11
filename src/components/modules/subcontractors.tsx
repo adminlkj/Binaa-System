@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useAppStore, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 
 interface SubcontractorItem {
   id: string; code: string; name: string; nameAr: string | null
@@ -157,6 +158,7 @@ export function SubcontractorsModule() {
       subtitle={{ ar: 'إدارة مقاولي الباطن والتخصصات', en: 'Manage subcontractors and specialties' }}
       actions={
         <div className="flex items-center gap-2">
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingSub(null); setDialogOpen(true) }}><Plus className="size-4" />{t('مقاول جديد', 'New Subcontractor', lang)}</Button>
         </div>

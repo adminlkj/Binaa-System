@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
 
 // ============ Arabic/English Month Names ============
@@ -575,6 +576,7 @@ export function TimesheetsModule() {
       subtitle={labels.subtitle}
       actions={
         <>
+          <PrintButton type="timesheet-report" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
@@ -688,6 +690,7 @@ export function TimesheetsModule() {
                         <TableCell><StatusBadge status={ts.status} lang={lang} /></TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                            <PrintButton type="timesheet-report" documentId={ts.id} size="icon" />
                             <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', timesheetId: ts.id })} title={t('عرض', 'View')}>
                               <Eye className="size-4" />
                             </Button>

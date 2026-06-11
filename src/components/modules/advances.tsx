@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
@@ -243,6 +244,7 @@ export function AdvancesModule() {
       subtitle={{ ar: 'إدارة سلف الموظفين', en: 'Manage employee advances' }}
       actions={
         <div className="flex items-center gap-2">
+          <PrintButton type="advance-voucher" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>

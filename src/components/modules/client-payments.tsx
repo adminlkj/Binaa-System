@@ -29,6 +29,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
 
 // ============ Types ============
@@ -558,6 +559,7 @@ export function ClientPaymentsModule() {
       subtitle={labels.subtitle}
       actions={
         <>
+          <PrintButton type="client-payment" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={tt('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
@@ -698,6 +700,7 @@ export function ClientPaymentsModule() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          <PrintButton type="client-payment" documentId={p.id} size="icon" />
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetailPayment(p)} title={tt('عرض', 'View')}>
                             <Eye className="size-4" />
                           </Button>

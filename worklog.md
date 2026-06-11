@@ -1,90 +1,25 @@
 ---
-Task ID: 2
-Agent: main
-Task: Fix accounting.tsx runtime errors (trialBalance.reduce and entries.forEach)
+Task ID: 1
+Agent: Main Orchestrator
+Task: فحص شامل لنظام بِنَاء ERP
 
 Work Log:
-- Added `safeTrialBalance = Array.isArray(trialBalance) ? trialBalance : []` safeguard
-- Added `safeEntries = Array.isArray(entries) ? entries : []` safeguard
-- Replaced all direct uses of trialBalance/entries with safe versions in useMemo and JSX
+- قراءة جميع ملفات المشروع (37 موديول، 72 API route، 42 Prisma model)
+- تحليل المحرك المحاسبي (accounting/engine.ts) - 24 دالة قيد تلقائي
+- تحليل محرك تدفق الأعمال (business-flow/engine.ts) - 3 سلاسل عمل
+- تحليل خدمة الطباعة الموحدة (print-service.ts) - 27 نوع مستند
+- فحص جميع مكونات الوحدات الـ37
+- فحص APIs عبر curl
+- اكتشاف وإصلاح 5 أخطاء حرجة + إضافة أزرار طباعة مفقودة
 
 Stage Summary:
-- Fixed `trialBalance.reduce is not a function` error
-- Fixed `entries.forEach is not a function` error
-- Both now have defensive array checks before calling array methods
-
----
-Task ID: 3
-Agent: main
-Task: Create professional unified print template with company header, footer, currency
-
-Work Log:
-- Completely rewrote /src/lib/print-service.ts with professional A4 template
-- Added gradient header with company logo, name, details, VAT number, address
-- Added professional footer with company info and system branding
-- Added amount-in-words section (Arabic + English)
-- Added bank info section
-- Added stamp and signature sections
-- Added status badges for documents
-- Added 27 document types (up from 6)
-- Added currency symbol display (SAR/ر.س) throughout
-- Added professional styling with green gradient theme, rounded corners, shadows
-
-Stage Summary:
-- Professional print template created with full company branding
-- Supports 27 document types
-- Includes header (logo + company info + tax + address), footer, currency, amount in words
-- RTL/LTR support with Cairo font
-
----
-Task ID: 4-a
-Agent: full-stack-developer (subagent)
-Task: Replace window.print() in batch 1 (clients, suppliers, employees, equipment, equipment-maintenance, equipment-operations, fuel)
-
-Work Log:
-- Replaced window.print() in all 7 files with PrintButton component
-- Added printData objects with columns/rows for generic-table types
-- Removed Printer import where no longer needed
-
-Stage Summary:
-- 7 files updated, 0 window.print() remaining in batch 1
-
----
-Task ID: 4-b
-Agent: full-stack-developer (subagent)
-Task: Replace window.print() in batch 2 (attendance, salaries, work-teams, employee-contracts, resource-distribution, expenses, supplier-payments)
-
-Work Log:
-- Replaced window.print() in all 7 files with PrintButton component
-- Added printData objects with appropriate columns/rows
-- Added useMemo for printData construction
-
-Stage Summary:
-- 7 files updated, 0 window.print() remaining in batch 2
-
----
-Task ID: 4-c
-Agent: full-stack-developer (subagent)
-Task: Replace window.print() in batch 3 (purchase-requests, purchase-orders, supplier-invoices, goods-receipt, delivery-orders, rental-invoices, service-invoices)
-
-Work Log:
-- Replaced 9 window.print() occurrences across 7 files
-- Detail views use specific document types with documentId
-- List views use generic-table type
-
-Stage Summary:
-- 7 files updated, 0 window.print() remaining in batch 3
-
----
-Task ID: 4-d
-Agent: full-stack-developer (subagent)
-Task: Replace window.print() in batch 4 (sales, vat, reports)
-
-Work Log:
-- Replaced 15 window.print() occurrences across 3 files
-- Refactored ReportHeader from callback to declarative pattern
-- Added printData for all report types
-
-Stage Summary:
-- 3 files updated, 0 window.print() remaining in batch 4
-- Total: ALL window.print() calls eliminated from modules directory
+- Bug#1 CRITICAL: إصلاح حساب معدات بالأجل يخصم ضريبة مخرجات (3110) بدل الدائنين (3210) ✅
+- Bug#2 CRITICAL: إصلاح فلاتر التاريخ في Trial Balance و General Ledger (spread overwrite) ✅
+- Bug#3 MEDIUM: إصلاح Dashboard إيرادات مكررة (فواتير + مستخلصات مفوترة) ✅
+- Bug#4 MEDIUM: إصلاح contracts.tsx PrintButton type='extract' → type ديناميكي ✅
+- Bug#5 MEDIUM: إصلاح تكلفة الصيانة = 0 في ربحية المشروع ✅
+- Bug#6 MEDIUM: إصلاح تكلفة التشغيل = 0 في ربحية المعدات ✅
+- Bug#7 MEDIUM: إصلاح purchases = materials (ازدواجية) في ربحية المشروع ✅
+- إضافة PrintButton لـ 11 شاشة كانت تفتقر للطباعة ✅
+- Lint: صفر أخطاء ✅
+- Trial Balance: متوازن (مدين = دائن = 47,437.50) ✅

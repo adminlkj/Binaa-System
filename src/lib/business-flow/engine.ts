@@ -1181,8 +1181,12 @@ export async function calculateProjectProfitability(projectId: string): Promise<
     project.fuelLogs.reduce((sum, fl) => sum + fl.totalCost, 0)
   )
 
-  // Maintenance costs (from equipment maintenance linked to this project)
-  const maintenance = 0 // No direct project link on maintenance; routed through equipment costs
+  // Maintenance costs (from expenses categorized as MAINTENANCE and linked to this project)
+  const maintenance = round2(
+    project.expenses
+      .filter((e) => e.category === 'MAINTENANCE')
+      .reduce((sum, e) => sum + e.amount, 0)
+  )
 
   const expenses = round2(
     project.expenses
@@ -1190,7 +1194,11 @@ export async function calculateProjectProfitability(projectId: string): Promise<
       .reduce((sum, e) => sum + e.amount, 0)
   )
 
-  const purchases = round2(materials) // Same as materials for project context
+  const purchases = round2(
+    project.purchaseInvoices
+      .filter((pi) => pi.status !== 'CANCELLED')
+      .reduce((sum, pi) => sum + pi.subtotal, 0)
+  )
 
   const other = round2(
     project.expenses
@@ -1282,7 +1290,7 @@ export async function calculateEquipmentProfitability(equipmentId: string): Prom
   )
 
   const operations = round2(
-    equipment.operatorLogs.reduce((sum, op) => sum + 0, 0) // operator cost tracked via salaries
+    equipment.operatorLogs.reduce((sum, op) => sum + op.hours, 0) * (equipment.hourlyRate || 0) // estimated operator cost
   )
 
   // Simple depreciation estimate (purchasePrice / useful life years * months active)

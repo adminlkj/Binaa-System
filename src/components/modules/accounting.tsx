@@ -26,6 +26,7 @@ import {
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Account {
@@ -803,6 +804,7 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch }: {
                 {t('مسح الفلاتر', 'Clear Filters', lang)}
               </Button>
             )}
+            <PrintButton type="journal-entry" size="sm" />
           </div>
         </CardContent>
       </Card>
@@ -1074,6 +1076,7 @@ function TrialBalanceTab() {
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="size-4" />
             </Button>
+            <PrintButton type="trial-balance" size="sm" />
           </div>
         </CardContent>
       </Card>

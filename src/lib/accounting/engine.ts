@@ -781,7 +781,7 @@ export async function autoEntryEquipmentCost(data: {
     'FUEL': '7230',       // Equipment Fuel
     'OTHER': '7300',      // Rental Project Costs
   }
-  const creditAccountCode = data.payFrom === 'AP' ? '3110' : '1110'
+  const creditAccountCode = data.payFrom === 'AP' ? '3210' : '1110'
 
   return createJournalEntry({
     entryNo: `JE-EQC-${Date.now()}`,
@@ -1251,11 +1251,17 @@ export async function autoEntryVATPayment(data: {
 // ============ TRIAL BALANCE ============
 
 export async function getTrialBalance(dateFrom?: Date, dateTo?: Date) {
+  const dateFilter: { date?: { gte?: Date; lte?: Date } } = {}
+  if (dateFrom || dateTo) {
+    dateFilter.date = {
+      ...(dateFrom && { gte: dateFrom }),
+      ...(dateTo && { lte: dateTo }),
+    }
+  }
   const entries = await db.journalEntry.findMany({
     where: {
       status: 'POSTED',
-      ...(dateFrom && { date: { gte: dateFrom } }),
-      ...(dateTo && { date: { lte: dateTo } }),
+      ...dateFilter,
     },
     include: {
       lines: {
@@ -1347,13 +1353,19 @@ export async function getGeneralLedger(accountCode: string, dateFrom?: Date, dat
   const account = await getAccountByCode(accountCode)
   if (!account) return []
 
+  const glDateFilter: { date?: { gte?: Date; lte?: Date } } = {}
+  if (dateFrom || dateTo) {
+    glDateFilter.date = {
+      ...(dateFrom && { gte: dateFrom }),
+      ...(dateTo && { lte: dateTo }),
+    }
+  }
   const lines = await db.journalLine.findMany({
     where: {
       accountId: account.id,
       journalEntry: {
         status: 'POSTED',
-        ...(dateFrom && { date: { gte: dateFrom } }),
-        ...(dateTo && { date: { lte: dateTo } }),
+        ...glDateFilter,
       },
     },
     include: { journalEntry: true },

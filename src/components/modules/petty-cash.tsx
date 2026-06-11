@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate } from '@/stores/app-store'
@@ -198,6 +199,7 @@ export function PettyCashModule() {
       subtitle={{ ar: 'إدارة المصروفات النثرية', en: 'Manage petty cash expenses' }}
       actions={
         <div className="flex items-center gap-2">
+          <PrintButton type="petty-cash-voucher" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>

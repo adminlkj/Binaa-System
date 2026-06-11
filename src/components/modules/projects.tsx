@@ -31,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, CONSTRUCTION_WORKFLOW } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Client { id: string; code: string; name: string }
@@ -1737,6 +1738,7 @@ export function ProjectsModule() {
           <p className="text-sm text-muted-foreground">{t('إدارة ومتابعة مشاريع المقاولات', 'Manage and track construction projects')}</p>
         </div>
         <div className="flex items-center gap-2">
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>

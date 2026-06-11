@@ -25,6 +25,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatSAR, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
 
 // ============ Types ============
@@ -538,6 +539,7 @@ export function ProgressClaimsModule() {
       subtitle={labels.subtitle}
       actions={
         <>
+          <PrintButton type="extract" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
@@ -677,6 +679,7 @@ export function ProgressClaimsModule() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          <PrintButton type="extract" documentId={c.id} size="icon" />
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', claimId: c.id })} title={t('عرض', 'View')}>
                             <Eye className="size-4" />
                           </Button>

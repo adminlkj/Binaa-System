@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
 interface Branch { id: string; code: string; name: string }
@@ -434,6 +435,7 @@ export function InventoryModule() {
       subtitle={{ ar: 'إدارة المنتجات والخدمات والمستودعات', en: 'Manage products, services & warehouses' }}
       actions={
         <div className="flex items-center gap-2">
+          <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetchItems()} title={t('تحديث', 'Refresh', lang)}><RefreshCw className="size-4" /></Button>
           {activeTab === 'items' && (
             <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => {/* dialog handled in ItemsTab */}}>

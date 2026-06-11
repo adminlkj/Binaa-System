@@ -56,7 +56,8 @@ export async function GET() {
         const startDate = new Date(m.year, m.month - 1, 1)
         const endDate = new Date(m.year, m.month, 1)
 
-        // Revenue: sales invoices + progress claims
+        // Revenue: sales invoices only (invoices from progress claims are already in sales invoices,
+        // so we avoid double-counting by not adding progress claim amounts separately)
         const salesAgg = await db.salesInvoice.aggregate({
           _sum: { subtotal: true },
           where: {
@@ -64,11 +65,13 @@ export async function GET() {
             status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] },
           },
         })
+        // Uninvoiced approved progress claims (revenue earned but not yet billed)
         const claimsAgg = await db.progressClaim.aggregate({
           _sum: { amount: true },
           where: {
             date: { gte: startDate, lt: endDate },
-            status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] },
+            status: { in: ['APPROVED', 'SUBMITTED'] },
+            invoiced: false,
           },
         })
         const revenue = (salesAgg._sum.subtotal || 0) + (claimsAgg._sum.amount || 0)
@@ -439,7 +442,7 @@ export async function GET() {
     const recentRentalContracts = await db.equipmentRental.findMany({
       select: {
         id: true, status: true, startDate: true, endDate: true,
-        rate: true, rateType: true, deliveryFees: true, totalAmount: true,
+        referenceRate: true, pricingType: true, hourlyRate: true, deliveryFees: true, totalAmount: true,
         contract: { select: { contractNo: true } },
         equipment: { select: { id: true, code: true, name: true } },
         client: { select: { id: true, name: true } },
@@ -547,8 +550,8 @@ export async function GET() {
         status: c.status,
         startDate: c.startDate.toISOString(),
         endDate: c.endDate?.toISOString() || null,
-        rate: c.rate,
-        rateType: c.rateType,
+        rate: c.referenceRate,
+        rateType: c.pricingType,
         deliveryFees: c.deliveryFees,
         totalAmount: c.totalAmount,
         equipment: c.equipment,
