@@ -26,6 +26,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
 
 // ============ Types ============
@@ -55,8 +57,9 @@ interface SalesInvoice {
   date: string; dueDate: string; subtotal: number; vatRate: number; vatAmount: number; totalAmount: number
   paidAmount: number; status: string; notes: string | null
   progressClaimId: string | null; timesheetId: string | null
+  journalEntryId: string | null
   client: { id: string; name: string; code: string }
-  project: { id: string; name: string; code: string } | null
+  project: { id: string; name: string; code: string; projectType?: string } | null
   contract: { id: string; contractNo: string } | null
   items: SalesInvoiceItem[]
   timesheet?: TimesheetSource | null
@@ -68,6 +71,8 @@ interface SalesInvoice {
   deliveryAmount?: number
   deliveryFeesTaxable?: boolean
   deliveryMonth?: string | null
+  contractPeriodStart?: string | null
+  contractPeriodEnd?: string | null
 }
 
 // ============ Arabic/English Month Names ============
@@ -933,11 +938,23 @@ function InvoiceDetailView({
       </Card>
 
       {/* Rental-specific info */}
-      {isTimesheet && (invoice.includeDelivery || invoice.deliveryMonth) && (
+      {isTimesheet && (
         <Card>
           <CardHeader className="pb-3"><CardTitle className="text-lg">{t(labels.rentalInfo.ar, labels.rentalInfo.en)}</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+              {(invoice.operatingHours ?? 0) > 0 && (
+                <div>
+                  <span className="text-muted-foreground">{t(labels.operatingHours.ar, labels.operatingHours.en)}:</span>
+                  <p className="font-medium">{formatNumber(invoice.operatingHours ?? 0)} {t('ساعة', 'hrs')}</p>
+                </div>
+              )}
+              {(invoice.hourlyRate ?? 0) > 0 && (
+                <div>
+                  <span className="text-muted-foreground">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}:</span>
+                  <p className="font-medium"><MoneyDisplay value={invoice.hourlyRate ?? 0} lang={lang} size="sm" inline /></p>
+                </div>
+              )}
               {invoice.deliveryMonth && (
                 <div>
                   <span className="text-muted-foreground">{t('شهر التسليم', 'Delivery Month')}:</span>
@@ -947,9 +964,48 @@ function InvoiceDetailView({
               {invoice.includeDelivery && (invoice.deliveryAmount ?? 0) > 0 && (
                 <div>
                   <span className="text-muted-foreground">{t(labels.deliveryFees.ar, labels.deliveryFees.en)}:</span>
-                  <MoneyDisplay value={invoice.deliveryAmount ?? 0} lang={lang} size="sm" inline />
+                  <p className="font-medium">
+                    <MoneyDisplay value={invoice.deliveryAmount ?? 0} lang={lang} size="sm" inline />
+                    {invoice.deliveryFeesTaxable && (
+                      <Badge variant="outline" className="ms-1 text-xs bg-emerald-100 text-emerald-700">{t('خاضعة للضريبة', 'Taxable')}</Badge>
+                    )}
+                  </p>
                 </div>
               )}
+              {invoice.contractPeriodStart && invoice.contractPeriodEnd && (
+                <div>
+                  <span className="text-muted-foreground">{t('فترة العقد', 'Contract Period')}:</span>
+                  <p className="font-medium">{formatDate(invoice.contractPeriodStart, lang)} - {formatDate(invoice.contractPeriodEnd, lang)}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Construction-specific info - revenue account 6110 */}
+      {isExtract && invoice.progressClaim && (
+        <Card className="border-teal-200 bg-teal-50/30">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Building2 className="size-4 text-teal-600" />
+              <span className="text-sm font-semibold text-teal-800">{t('مشروع إنشائي', 'Construction Project')}</span>
+              <Badge variant="outline" className="text-xs border-teal-300 text-teal-700 bg-white">6110</Badge>
+              <span className="text-xs text-teal-600">{t('إيرادات مستخلصات', 'Progress Claims Revenue')}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Rental revenue info - account 6210 */}
+      {isTimesheet && (
+        <Card className="border-purple-200 bg-purple-50/30">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="size-4 text-purple-600" />
+              <span className="text-sm font-semibold text-purple-800">{t('تأجير معدات', 'Equipment Rental')}</span>
+              <Badge variant="outline" className="text-xs border-purple-300 text-purple-700 bg-white">6210</Badge>
+              <span className="text-xs text-purple-600">{t('إيرادات تأجير معدات', 'Equipment Rental Revenue')}</span>
             </div>
           </CardContent>
         </Card>
@@ -1022,6 +1078,9 @@ function InvoiceDetailView({
         </Card>
       )}
 
+      {/* Accounting Entry */}
+      <AccountingEntryDisplay journalEntryId={invoice.journalEntryId} lang={lang} />
+
       {/* Status Workflow Actions */}
       <Card className="border-emerald-200 bg-emerald-50/50">
         <CardContent className="p-4">
@@ -1067,6 +1126,7 @@ export function SalesModule() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [sourceTypeFilter, setSourceTypeFilter] = useState<string>('all')
+  const [projectTypeFilter, setProjectTypeFilter] = useState<string>('all')
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   // Fetch all sales invoices
@@ -1096,7 +1156,9 @@ export function SalesModule() {
       (inv.project?.name?.toLowerCase().includes(search.toLowerCase()))
     const matchStatus = statusFilter === 'all' || inv.status === statusFilter
     const matchSource = sourceTypeFilter === 'all' || inv.sourceType === sourceTypeFilter
-    return matchSearch && matchStatus && matchSource
+    const invProjectType = inv.sourceType === 'EXTRACT' ? 'CONSTRUCTION' : inv.sourceType === 'TIMESHEET' ? 'EQUIPMENT_RENTAL' : 'ALL'
+    const matchProjectType = projectTypeFilter === 'all' || invProjectType === projectTypeFilter
+    return matchSearch && matchStatus && matchSource && matchProjectType
   })
 
   const totalSales = invoices.reduce((s, i) => s + i.totalAmount, 0)
@@ -1198,6 +1260,14 @@ export function SalesModule() {
                 <SelectItem value="TIMESHEET">{t('تايم شيت', 'Timesheets')}</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={projectTypeFilter} onValueChange={setProjectTypeFilter}>
+              <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder={t('كل الأنشطة', 'All Activities')} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t('كل الأنشطة', 'All Activities')}</SelectItem>
+                <SelectItem value="CONSTRUCTION">{t('مشاريع إنشائية', 'Construction')}</SelectItem>
+                <SelectItem value="EQUIPMENT_RENTAL">{t('تأجير معدات', 'Equipment Rental')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -1241,7 +1311,12 @@ export function SalesModule() {
                   {filtered.map(inv => (
                     <TableRow key={inv.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })}>
                       <TableCell className="font-medium font-mono">{inv.invoiceNo}</TableCell>
-                      <TableCell><SourceTypeBadge sourceType={inv.sourceType} lang={lang} /></TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <SourceTypeBadge sourceType={inv.sourceType} lang={lang} />
+                          <ProjectTypeBadge projectType={inv.sourceType === 'EXTRACT' ? 'CONSTRUCTION' : inv.sourceType === 'TIMESHEET' ? 'EQUIPMENT_RENTAL' : ''} lang={lang} />
+                        </div>
+                      </TableCell>
                       <TableCell>{inv.client.name}</TableCell>
                       <TableCell>{inv.project?.name || '—'}</TableCell>
                       <TableCell>{formatDate(inv.date, lang)}</TableCell>

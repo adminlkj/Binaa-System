@@ -608,3 +608,349 @@ Stage Summary:
 - Construction-specific: Cost of Contracts (7100), Retention (1220/3500), Site Establishment (7140), Temporary Works (7150), Permits (7160), Testing (7170), Project Overhead (7180)
 - Rental-specific: Equipment Rental Revenue (6210), Delivery Fees (6220/7240), Rental Equipment Depreciation (7250), Spare Parts (1330), Equipment Maintenance Provision (3730)
 - All APIs verified working: Accounts (152), Trial Balance (4 items), Journal Entries (3 entries)
+
+---
+Task ID: 5
+Agent: Client Payments + Construction Workflow Developer
+Task: Build Client Payments Frontend Module + Fix Construction Workflow
+
+Work Log:
+- Created client-payments module at /src/components/modules/client-payments.tsx with:
+  - List all client payments with date, client name, amount, receivedIn (TREASURY/BANK), reference
+  - Add new payment dialog: select client, select unpaid invoice, auto-fill amount from balance
+  - Payment detail dialog showing accounting entry link (journalEntryId)
+  - Delete payment (with reversal of journal entry)
+  - Summary cards: Total Payments, Treasury, Bank
+  - Filters: Client, Search, Received In
+- Created client-payments API routes:
+  - POST /api/client-payments: Create payment with auto accounting entry (autoEntryClientPayment) and invoice paidAmount/status update
+  - GET /api/client-payments: List with optional filters (clientId, invoiceId, receivedIn, projectId)
+  - GET /api/client-payments/[id]: Get single payment with relations
+  - DELETE /api/client-payments/[id]: Delete with journal entry reversal and invoice paidAmount reversal
+- Rebuilt projects section (/src/components/sections/projects-section.tsx) with construction workflow:
+  - Contract → Extract (مستخلص) → Sales Invoice → Collection
+  - 8 tabs: Overview, Contracts, Extracts, Invoices, Costs, Collections, BOQ, Documents
+  - Overview tab: Financial summary + workflow visual (4-step cycle with counts)
+  - Invoices tab: Sales invoices with remaining balance, status badges, JE indicators
+  - Collections tab: Client payments for project's invoices with receivedIn badges
+  - Each tab shows accounting entries linked to each transaction
+- Enhanced progress-claims module (/src/components/modules/progress-claims.tsx):
+  - Added invoiced flag display in table and detail view
+  - Added "Create Invoice" button for APPROVED uninvoiced claims
+  - Shows linked sales invoice if invoiced (invoice number, amount, status)
+  - Shows accounting entry for each extract (journalEntryId)
+  - Added invoiced/uninvoiced count summary cards
+- Updated app-store (/src/stores/app-store.ts):
+  - Added SubModuleKey type, subModuleLabels record
+  - Added activeSubModule state and setActiveSubModule action
+- Updated page.tsx: ClientPaymentsModule instead of PlaceholderModule for 'client-payments'
+
+Stage Summary:
+- Client Payments module fully functional with CRUD, accounting integration, invoice linking
+- Construction workflow properly implemented: Contract → Extract → Invoice → Collection
+- Projects section rebuilt with 8 workflow tabs including Invoices and Collections
+- Progress Claims enhanced with invoiced flag, Create Invoice button, linked invoice display
+- All lint checks pass (only pre-existing take-screenshots.mjs error)
+- Dev server running without errors, client-payments API returning 200
+
+---
+Task ID: 4
+Agent: Rental Section Rebuilder
+Task: Fix Equipment Expenses API + Rebuild Rental Section
+
+Work Log:
+
+### Part 1: Fix Equipment Expenses API
+
+- Added `journalEntryId String?` field to EquipmentExpense model in Prisma schema
+- Ran `bun run db:push` to sync schema with database, Prisma Client regenerated
+- Updated `/src/app/api/equipment/expenses/route.ts`:
+  - Added import for `autoEntryEquipmentCost` from `@/lib/accounting/engine`
+  - Created `mapCategoryToCostType()` function mapping ExpenseCategory to costType:
+    - MAINTENANCE → 'MAINTENANCE', FUEL → 'FUEL', TRANSPORT/DELIVERY → 'OTHER', Others → 'OTHER'
+  - POST handler now creates the expense, then calls autoEntryEquipmentCost with:
+    - equipmentName from the created expense's equipment relation
+    - costType mapped from category
+    - payFrom from request body (CASH or AP)
+    - costCenterId from request body
+  - Stores the returned journalEntryId on the EquipmentExpense record
+  - Re-fetches the expense to include journalEntryId in response
+  - Accounting errors are caught and logged but don't fail the expense creation
+
+### Part 2: Rebuild Rental Section
+
+- Updated sub-module labels in app-store:
+  - Added 5 rental sub-tab labels: rental-contracts, rental-delivery-orders, rental-timesheets, rental-invoices, rental-collections
+
+- Rebuilt `/src/components/sections/rental-section.tsx` with complete rental workflow:
+  - **5-tab layout**: Contract → Delivery Order → Timesheet → Invoice → Collection
+
+  - **AccountingEntryDisplay component**:
+    - Expandable section that fetches and shows journal entry lines
+    - Shows account code, name (bilingual), debit/credit amounts
+    - Used in Collections tab for viewing payment entries
+
+  - **AccountingInfoBanner component**:
+    - Shows at the top of each tab explaining the accounting impact
+    - Expandable with debit/credit account details
+    - Contracts: DR Clients Receivable (1210) / CR Rental Revenue (6210)
+    - Delivery Orders: No direct entry (recorded upon invoicing)
+    - Timesheets: No direct entry (recorded upon invoicing)
+    - Invoices: DR Clients Receivable (1210) / CR Rental Revenue (6210) + VAT Payable (3200)
+    - Collections: DR Treasury/Bank (1110/1120) / CR Clients Receivable (1210)
+
+  - **CollectionsModule component** (new):
+    - Fetches client payments linked to rental invoices (filters from all client-payments by matching rental invoice IDs)
+    - Summary card with total collected amount and payment count
+    - Table: Client, Invoice badge, Amount, Date, Received In, Reference, Actions
+    - Create Collection dialog with client selector, rental invoice selector (filtered by client, excluding PAID/CANCELLED), auto-fill remaining amount, accounting entry preview
+    - View accounting entry dialog for each payment
+    - Delete confirmation dialog
+    - Full bilingual support
+
+  - **Tab content integration**:
+    - rental-contracts → ContractsModule (existing)
+    - rental-delivery-orders → DeliveryOrdersModule (existing)
+    - rental-timesheets → TimesheetsModule (existing)
+    - rental-invoices → RentalInvoicesModule (existing)
+    - rental-collections → CollectionsModule (new)
+
+Stage Summary:
+- Equipment Expense API now creates auto accounting entries via autoEntryEquipmentCost
+- EquipmentExpense model stores journalEntryId for audit trail
+- Rental Section rebuilt with 5-tab complete workflow: Contract → Delivery Order → Timesheet → Invoice → Collection
+- Each tab shows accounting impact via expandable AccountingInfoBanner
+- New CollectionsModule provides full CRUD for rental invoice collections with accounting entry preview
+- All labels bilingual using t(ar, en, lang) pattern
+- Lint passes with only pre-existing errors
+
+---
+Task ID: 2
+Agent: Client Payments API Developer
+Task: Create Client Payments API Route and Fix VAT Route Bug
+
+Work Log:
+
+### 1. Created `/src/app/api/client-payments/route.ts`
+- **GET**: Lists all client payments with client info and optional filters (`clientId`, `dateFrom`, `dateTo`)
+  - Includes `client` (id, name, code) and `invoice` (id, invoiceNo, totalAmount, status) relations
+  - Supports date range filtering (dateFrom, dateTo)
+  - Ordered by date descending
+- **POST**: Creates a new client payment that:
+  - Validates required fields (clientId, amount, date)
+  - Validates client exists in database
+  - Validates invoice belongs to client (if invoiceId provided)
+  - Creates `ClientPayment` record
+  - Calls `autoEntryClientPayment` from `@/lib/accounting/engine`
+  - Stores `journalEntryId` on the payment record
+  - Updates related sales invoice `paidAmount` and status (`PARTIALLY_PAID` or `PAID`)
+  - Returns created record with `journalEntryId`
+
+### 2. Created `/src/app/api/client-payments/[id]/route.ts`
+- **GET**: Fetches single client payment by ID with client and invoice info
+- **PATCH**: Updates client payment fields (amount, date, receivedIn, reference, notes, invoiceId)
+  - Blocks modification of posted payments (those with journalEntryId)
+- **DELETE**: Deletes client payment
+  - Blocks deletion of posted payments (those with journalEntryId)
+  - Reverses invoice paidAmount and status on delete (sets to DRAFT or PARTIALLY_PAID)
+
+### 3. Fixed VAT Route Bug
+- Fixed invalid Prisma syntax in `/src/app/api/vat/route.ts`:
+  - Line 104 (GET breakdown): Changed `vatAmount: { not: null, gt: 0 }` → `vatAmount: { gt: 0 }`
+  - Line 249 (POST calculation): Changed `vatAmount: { not: null, gt: 0 }` → `vatAmount: { gt: 0 }`
+- The `{ not: null, gt: 0 }` syntax is invalid in Prisma — since `vatAmount` has a default of 0, `{ gt: 0 }` is the correct filter
+
+### 4. Updated Prisma Schema
+- Added `client Client @relation(fields: [clientId], references: [id])` to `ClientPayment` model
+- Added `invoice SalesInvoice? @relation(fields: [invoiceId], references: [id])` to `ClientPayment` model
+- Added `clientPayments ClientPayment[]` to `Client` model
+- Added `clientPayments ClientPayment[]` to `SalesInvoice` model
+- Ran `bun run db:push` to sync database
+
+### Verification
+- `GET /api/client-payments` → 200 (returns `[]`)
+- `GET /api/client-payments/nonexistent` → 404 (returns `{"error":"تحصيل العميل غير موجود"}`)
+- `GET /api/client-payments?clientId=test` → 200 (returns `[]` with filter applied)
+- `GET /api/vat` → 200 (returns `[]`)
+- ESLint passes (only pre-existing `take-screenshots.mjs` error)
+
+Stage Summary:
+- Client Payments API fully functional with GET, POST, PATCH, DELETE
+- Accounting integration via `autoEntryClientPayment` with journalEntryId storage
+- Sales invoice paidAmount and status auto-updated on payment creation/deletion
+- VAT route Prisma syntax bug fixed (2 occurrences of invalid `{ not: null, gt: 0 }`)
+- Prisma schema updated with proper relations for ClientPayment → Client and ClientPayment → SalesInvoice
+
+---
+Task ID: 7
+Agent: Sales & Accounting Entry Developer
+Task: Enhance Sales Invoices Module + Add Accounting Entry Display to Key Transaction Screens
+
+Work Log:
+- Created `/src/app/api/journal-entries/[id]/route.ts` - New API endpoint for fetching a single journal entry with lines and account details
+- Created `/src/components/shared/accounting-entry-display.tsx` - Reusable AccountingEntryDisplay component:
+  - Props: `journalEntryId` (string | null | undefined), `lang` ('ar' | 'en')
+  - Fetches journal entry from `/api/journal-entries/{id}` when expanded
+  - Expandable/collapsible with BookOpen button (teal accent)
+  - Shows entry number, date, description, source type badge, status badge (POSTED/DRAFT/CANCELLED)
+  - Shows table of lines: Account Code (monospace badge), Account Name (bilingual), Debit (emerald), Credit (rose)
+  - Shows total debit/credit with "Balanced" / "Unbalanced" badge
+  - Shows 24 source type labels in Arabic/English (SALES_INVOICE, RENTAL_INVOICE, EXPENSE, PETTY_CASH, EMPLOYEE_ADVANCE, etc.)
+  - Distinctive styling: bordered card with teal/emerald accent
+
+- Enhanced Sales Invoices module (`/src/components/modules/sales.tsx`):
+  - Added `journalEntryId` and `contractPeriodStart`/`contractPeriodEnd` to SalesInvoice interface
+  - Added `projectType` to project type in SalesInvoice interface
+  - Imported `ProjectTypeBadge` and `AccountingEntryDisplay` components
+  - Added ProjectTypeBadge next to SourceTypeBadge in table rows (CONSTRUCTION for EXTRACT, EQUIPMENT_RENTAL for TIMESHEET)
+  - Added project type filter (Construction / Equipment Rental / All) alongside source type and status filters
+  - Enhanced rental-specific info section: shows operating hours, hourly rate, delivery month, delivery fees with taxable badge, contract period dates
+  - Added Construction-specific info card with account 6110 (Progress Claims Revenue)
+  - Added Rental revenue info card with account 6210 (Equipment Rental Revenue)
+  - Added AccountingEntryDisplay in InvoiceDetailView for each invoice
+  - Revenue account badges (6110 / 6210) shown in detail view based on invoice source type
+
+- Updated sales-invoices API route (`/src/app/api/sales-invoices/route.ts`):
+  - Added `projectType: true` to all project select clauses (GET, nested in timesheet and progressClaim)
+  - Ensures frontend receives projectType for ProjectTypeBadge display
+
+- Integrated AccountingEntryDisplay into expenses module (`/src/components/modules/expenses.tsx`):
+  - Added `journalEntryId` to Expense interface
+  - Imported AccountingEntryDisplay
+  - Added "القيد المحاسبي" / "Accounting" column to both project and admin expense tables
+  - Each row shows expandable accounting entry linked to the expense
+
+- Integrated AccountingEntryDisplay into petty-cash module (`/src/components/modules/petty-cash.tsx`):
+  - Added `journalEntryId` to PettyCashEntry interface
+  - Imported AccountingEntryDisplay
+  - Added "القيد المحاسبي" / "Accounting" column to petty cash table
+  - Each row shows expandable accounting entry linked to the entry
+
+- Updated petty-cash API route (`/src/app/api/petty-cash/route.ts`):
+  - POST now stores `journalEntryId` back on the PettyCash record after creating accounting entry
+  - Re-fetches to include journalEntryId in response
+
+- Integrated AccountingEntryDisplay into advances module (`/src/components/modules/advances.tsx`):
+  - Added `journalEntryId` to Advance interface
+  - Imported AccountingEntryDisplay
+  - Added "القيد المحاسبي" / "Accounting" column to advances table
+  - Each row shows expandable accounting entry linked to the advance
+
+- Updated advances API route (`/src/app/api/advances/route.ts`):
+  - POST now stores `journalEntryId` back on the EmployeeAdvance record after creating accounting entry
+  - Re-fetches to include journalEntryId in response
+
+- Integrated AccountingEntryDisplay into supplier-invoices module (`/src/components/modules/supplier-invoices.tsx`):
+  - Imported AccountingEntryDisplay
+  - Added "القيد المحاسبي" / "Accounting" column to invoices list table
+  - Each row shows expandable accounting entry linked to the invoice
+  - Existing BookOpen indicator badge preserved alongside new expandable component
+
+- ESLint passes with zero new errors (only pre-existing take-screenshots.mjs error)
+- TypeScript check: no new errors introduced in modified files
+
+Stage Summary:
+- Created journal-entries/[id] API endpoint for fetching single entries
+- Created reusable AccountingEntryDisplay component with expandable journal entry view (teal accent, bilingual, balanced badge)
+- Enhanced Sales Invoices: ProjectTypeBadge, rental fields (hours, rate, delivery, contract period), revenue account badges (6110/6210), project type filter, accounting entry display
+- Added accounting entry display to 5 key transaction screens: sales invoices, expenses, petty cash, advances, supplier invoices
+- Updated petty-cash and advances API routes to store journalEntryId after creating accounting entries
+- All amounts use MoneyDisplay component, all labels use bilingual t() pattern
+
+---
+Task ID: 9
+Agent: Reports Section Rebuilder
+Task: Fix and Enhance Reports Section - Rebuild with 6 comprehensive report tabs
+
+Work Log:
+- Read worklog.md and understood prior agent work (accounting engine, chart of accounts, activity awareness, etc.)
+- Read existing reports-section.tsx (6 tabs: activity, project costs, supplier/client balances, VAT, trial balance, cash flow)
+- Read existing reports.tsx module (~1299 lines with 7 tab components)
+- Explored all available API endpoints: /api/reports, /api/trial-balance, /api/financial-summary, /api/vat, /api/reports/client-balances, /api/reports/supplier-balances, /api/reports/project-costs
+- Checked Prisma schema for Equipment (has operatorLogs, maintenance, fuelLogs, rentals, usages; no category field, uses type), EquipmentRental (has rate, rateType, deliveryFees; no hourlyRate), Salary (no date field, uses month/year), InventoryItem (no unitPrice, uses purchasePrice)
+
+- Added 8 new report types to /api/reports/route.ts:
+  1. `project-profitability` - All projects with Contract Value, Invoiced, Collected, Costs, Gross Profit, Profit Margin %, cost breakdown by category
+  2. `equipment-utilization` - Per-equipment: total hours, revenue, maintenance/fuel/operation costs, net profit
+  3. `rental-revenue-by-client` - Rental revenue grouped by client from TIMESHEET sales invoices
+  4. `equipment-status` - Equipment count by status and by type with nested status breakdown
+  5. `purchase-summary` - Purchase invoices grouped by supplier and by project
+  6. `revenue-summary` - Construction vs Rental revenue with monthly breakdown
+  7. `expense-summary` - Direct vs Indirect costs with category breakdown
+  8. `cash-flow-summary` - Cash inflows (client payments) vs outflows (supplier payments, salaries) with monthly breakdown
+
+- Fixed TypeScript errors in reports route:
+  - Changed `operations` to `operatorLogs` (correct Equipment relation name)
+  - Changed `hourlyRate` to `rate` in EquipmentRental select
+  - Changed `category` to `type` for Equipment model
+  - Fixed Salary query to use `month`/`year` instead of non-existent `date` field
+  - Fixed `unitPrice` to `purchasePrice` for InventoryItem model
+
+- Rebuilt reports-section.tsx with 6 new tabs:
+  1. تقارير المشاريع (report-projects) - Building2 icon
+  2. تقارير التأجير (report-rental) - Truck icon
+  3. التقارير المالية (report-finance) - Wallet icon
+  4. تقارير المشتريات (report-purchases) - ShoppingCart icon
+  5. تقارير العملاء (report-clients) - Users icon
+  6. تقارير الضريبة (report-tax) - Percent icon
+
+- Rebuilt reports.tsx module (~1000 lines) with 6 comprehensive tab components:
+  1. ProjectReportsTab - 3 sub-tabs: Profitability (table with all projects), Cost Breakdown (per-project detail), Status Summary
+  2. RentalReportsTab - 3 sub-tabs: Equipment Utilization, Revenue by Client, Equipment Status
+  3. FinancialReportsTab - 4 sub-tabs: Trial Balance (with date range filter), Revenue Summary, Expense Summary, Cash Flow Summary
+  4. PurchaseReportsTab - 2 sub-tabs: Purchase Summary (by supplier/project), Supplier Balances (with aging)
+  5. ClientReportsTab - 2 sub-tabs: Client Balances, Aging Report (with color-coded aging buckets)
+  6. TaxReportsTab - VAT quarter selector, auto-calc, create/file/pay workflow, filed returns history
+
+- Shared components created: ReportHeader, EmptyState, LoadingSkeleton, ProjectTypeBadge
+- All reports are READ-ONLY (no CRUD)
+- Summary cards at top of each report with color coding
+- MoneyDisplay used for all amounts
+- Bilingual labels throughout (t(ar, en, lang) pattern)
+- Export/Print buttons on each report
+- Color coding for positive/negative values (emerald for profit, rose for loss)
+- Empty data handled gracefully with EmptyState component
+- Responsive design with overflow-x-auto tables and max-h-96 scrolling
+- All TypeScript errors fixed (zero new errors)
+- ESLint passes (only pre-existing take-screenshots.mjs error)
+
+Stage Summary:
+- Reports section completely rebuilt from 7 basic tabs to 6 comprehensive report categories with 19 sub-reports
+- 8 new API report types added covering project profitability, equipment utilization, rental revenue, purchase summaries, revenue/expense summaries, and cash flow
+- Each report tab has nested sub-tabs for drill-down analysis
+- Full bilingual support (Arabic/English) with proper color theming
+- Construction vs Rental breakdown shown where applicable (Revenue Summary, Purchase Summary)
+- All reports support export (CSV) and print functionality
+- Data flows from the accounting engine (trial balance, VAT) and both business activities (construction projects + equipment rental)
+---
+Task ID: Main Session
+Agent: Main Coordinator
+Task: Comprehensive development and review of Accounting Engine, Construction & Rental workflows, Client Payments, Reports, and accounting entry integration
+
+Work Log:
+- Analyzed full project state: 37 Prisma models, 22 auto-entry functions, 50+ API routes, 25+ frontend modules
+- Identified missing Client Payments API route and Equipment Expenses accounting integration
+- Identified gaps in rental workflow, construction workflow, and accounting entry display
+- Launched 5 parallel subagents to build all missing functionality:
+  1. Created Client Payments API (GET/POST + [id] GET/PATCH/DELETE) with autoEntryClientPayment
+  2. Fixed VAT route Prisma syntax errors (2 occurrences)
+  3. Added journalEntryId to EquipmentExpense model and accounting integration
+  4. Rebuilt Rental Section with 5-tab workflow (Contracts → Delivery → Timesheet → Invoice → Collection)
+  5. Built Client Payments frontend module with client/invoice selection and accounting entry preview
+  6. Rebuilt Projects Section with Construction workflow (Overview → Contracts → Extracts → Invoices → Costs → Collections)
+  7. Enhanced Progress Claims with invoiced flag and Create Invoice button
+  8. Created AccountingEntryDisplay shared component for showing journal entries on any transaction
+  9. Integrated AccountingEntryDisplay into 5 key screens (Sales, Expenses, Petty Cash, Advances, Supplier Invoices)
+  10. Rebuilt Reports Section with 6 tabs and 19 sub-reports covering Projects, Rental, Financial, Purchases, Clients, Tax
+  11. Added 8 new API report types (project-profitability, equipment-utilization, rental-revenue-by-client, etc.)
+
+Stage Summary:
+- Client Payments: Full API + Frontend with accounting integration
+- Equipment Expenses: Now creates journal entries automatically
+- Rental Workflow: Complete 5-step flow with accounting entry display
+- Construction Workflow: Complete 6-tab project detail with financial summary
+- Accounting Entry Display: Reusable component integrated into all transaction screens
+- Reports: 19 sub-reports across 6 categories with Construction/Rental split
+- VAT Route: Fixed critical Prisma syntax errors
+- Chart of Accounts: Already comprehensive (90+ accounts) with Construction/Rental/Both tagging
+- Server: Running on port 3000, Dashboard API verified working (3 projects, all Construction)

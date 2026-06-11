@@ -3,7 +3,8 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  TrendingUp, Plus, Search, RefreshCw, Eye, ArrowRight, Send, CheckCircle, Trash2,
+  TrendingUp, Plus, Search, RefreshCw, Eye, ArrowRight, Send, CheckCircle2, Trash2,
+  FileText, CreditCard, Link2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,19 +25,21 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
-import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+import { useAppStore, formatSAR, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
 
 // ============ Types ============
 interface ProjectSummary { id: string; name: string; code: string; nameAr?: string | null }
 interface ContractSummary { id: string; contractNo: string; totalValue: number; value: number }
+interface SalesInvoiceSummary { id: string; invoiceNo: string; status: string; totalAmount: number }
 
 interface ClaimItem {
   id: string; claimNo: string; date: string; percentage: number
   amount: number; vatRate: number; vatAmount: number; totalAmount: number
   status: string; approvedDate: string | null; notes: string | null
-  projectId: string; contractId: string
+  projectId: string; contractId: string; invoiced: boolean; journalEntryId: string | null
   project: ProjectSummary
   contract: ContractSummary
+  salesInvoice?: SalesInvoiceSummary | null
 }
 
 interface ClaimFormData {
@@ -77,6 +80,11 @@ const labels = {
   approve: { ar: 'اعتماد', en: 'Approve' },
   exceedWarning: { ar: 'تحذير: النسبة التراكمية تتجاوز 100%', en: 'Warning: Cumulative percentage exceeds 100%' },
   cumulativePercentage: { ar: 'النسبة التراكمية', en: 'Cumulative %' },
+  invoiced: { ar: 'مفوتر', en: 'Invoiced' },
+  notInvoiced: { ar: 'غير مفوتر', en: 'Not Invoiced' },
+  createInvoice: { ar: 'إنشاء فاتورة', en: 'Create Invoice' },
+  linkedInvoice: { ar: 'الفاتورة المرتبطة', en: 'Linked Invoice' },
+  accountingEntry: { ar: 'القيد المحاسبي', en: 'Accounting Entry' },
 }
 
 const defaultForm: ClaimFormData = {
@@ -114,7 +122,6 @@ function CreateClaimPage({
 
   const [form, setForm] = useState<ClaimFormData>(defaultForm)
 
-  // Fetch contracts when project is selected
   const { data: projectContracts = [] } = useQuery<ContractSummary[]>({
     queryKey: ['contracts-for-project', form.projectId],
     queryFn: async () => {
@@ -129,14 +136,11 @@ function CreateClaimPage({
     enabled: !!form.projectId,
   })
 
-  // Auto-calculate amount when percentage or contract changes
   const selectedContract = projectContracts.find(c => c.id === form.contractId)
   const pct = parseFloat(form.percentage) || 0
-  // Amount = Contract Value (excl. VAT) × percentage
   const contractValueExVat = selectedContract ? selectedContract.value || (selectedContract.totalValue / 1.15) : 0
   const autoAmount = contractValueExVat > 0 ? Math.round(contractValueExVat * pct / 100 * 100) / 100 : 0
 
-  // RULE: Cannot exceed 100% total completion
   const existingClaimsForContract = existingClaims.filter(c => c.contractId === form.contractId)
   const existingPercentage = existingClaimsForContract.reduce((s, c) => s + c.percentage, 0)
   const cumulativePercentage = existingPercentage + pct
@@ -174,12 +178,6 @@ function CreateClaimPage({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (exceeds100) return
-    // Accounting Integration: When claim is approved,
-    // the accounting engine should create journal entries:
-    // Debit: Accounts Receivable
-    // Credit: Progress Revenue
-    // Credit: Output VAT
-    // This is handled via POST /api/journal-entries with sourceType: PROGRESS_CLAIM
     createMutation.mutate(form)
   }
 
@@ -196,11 +194,8 @@ function CreateClaimPage({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Contract Selection */}
         <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">{t('بيانات العقد', 'Contract Information')}</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-4"><CardTitle className="text-lg">{t('بيانات العقد', 'Contract Information')}</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -238,21 +233,12 @@ function CreateClaimPage({
           </CardContent>
         </Card>
 
-        {/* Claim Details */}
         <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg">{t('بيانات المستخلص', 'Claim Details')}</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-4"><CardTitle className="text-lg">{t('بيانات المستخلص', 'Claim Details')}</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>{t(labels.claimNo.ar, labels.claimNo.en)} *</Label>
-                <Input value={form.claimNo} onChange={e => setForm(f => ({ ...f, claimNo: e.target.value }))} placeholder="CLM-001-01" required />
-              </div>
-              <div className="space-y-2">
-                <Label>{t(labels.date.ar, labels.date.en)} *</Label>
-                <Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required />
-              </div>
+              <div className="space-y-2"><Label>{t(labels.claimNo.ar, labels.claimNo.en)} *</Label><Input value={form.claimNo} onChange={e => setForm(f => ({ ...f, claimNo: e.target.value }))} placeholder="CLM-001-01" required /></div>
+              <div className="space-y-2"><Label>{t(labels.date.ar, labels.date.en)} *</Label><Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></div>
               <div className="space-y-2">
                 <Label>{t(labels.percentage.ar, labels.percentage.en)} (%) *</Label>
                 <Input type="number" step="0.1" min="0" max="100" value={form.percentage} onChange={e => setForm(f => ({ ...f, percentage: e.target.value }))} placeholder="0" required />
@@ -263,57 +249,28 @@ function CreateClaimPage({
                   </p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label>{t(labels.amount.ar, labels.amount.en)} (قبل الضريبة) *</Label>
-                <Input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" required />
-              </div>
-              <div className="space-y-2">
-                <Label>{t('نسبة الضريبة', 'VAT Rate')}</Label>
-                <Input type="number" step="0.01" value={form.vatRate} onChange={e => setForm(f => ({ ...f, vatRate: e.target.value }))} />
-              </div>
-              <div className="space-y-2 sm:col-span-2">
-                <Label>{t('ملاحظات', 'Notes')}</Label>
-                <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder={t('ملاحظات', 'Notes')} rows={2} />
-              </div>
+              <div className="space-y-2"><Label>{t(labels.amount.ar, labels.amount.en)} (قبل الضريبة) *</Label><Input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" required /></div>
+              <div className="space-y-2"><Label>{t('نسبة الضريبة', 'VAT Rate')}</Label><Input type="number" step="0.01" value={form.vatRate} onChange={e => setForm(f => ({ ...f, vatRate: e.target.value }))} /></div>
+              <div className="space-y-2 sm:col-span-2"><Label>{t('ملاحظات', 'Notes')}</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder={t('ملاحظات', 'Notes')} rows={2} /></div>
             </div>
-
-            {/* RULE: Cannot exceed 100% total completion */}
             {exceeds100 && (
-              <Card className="bg-rose-50 border-rose-200">
-                <CardContent className="p-4">
-                  <p className="text-rose-700 font-medium">{t(labels.exceedWarning.ar, labels.exceedWarning.en)}</p>
-                  <p className="text-sm text-rose-600 mt-1">
-                    {t('النسبة التراكمية ستكون', 'Cumulative percentage will be')} {cumulativePercentage.toFixed(1)}%
-                  </p>
-                </CardContent>
-              </Card>
+              <Card className="bg-rose-50 border-rose-200"><CardContent className="p-4"><p className="text-rose-700 font-medium">{t(labels.exceedWarning.ar, labels.exceedWarning.en)}</p></CardContent></Card>
             )}
           </CardContent>
         </Card>
 
-        {/* VAT Preview */}
         {val > 0 && (
           <Card className="bg-emerald-50 border-emerald-200">
             <CardContent className="p-4">
               <div className="grid grid-cols-3 gap-4 text-center">
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('المبلغ', 'Amount')}</p>
-                  <MoneyDisplay value={val} lang={lang} size="md" bold className="justify-center" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('الضريبة', 'VAT')} ({(rate * 100).toFixed(0)}%)</p>
-                  <MoneyDisplay value={vatAmt} lang={lang} size="md" bold className="justify-center" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{t('الإجمالي', 'Total')}</p>
-                  <MoneyDisplay value={totalAmt} lang={lang} size="lg" bold className="justify-center text-emerald-700" />
-                </div>
+                <div><p className="text-xs text-muted-foreground">{t('المبلغ', 'Amount')}</p><MoneyDisplay value={val} lang={lang} size="md" bold className="justify-center" /></div>
+                <div><p className="text-xs text-muted-foreground">{t('الضريبة', 'VAT')} ({(rate * 100).toFixed(0)}%)</p><MoneyDisplay value={vatAmt} lang={lang} size="md" bold className="justify-center" /></div>
+                <div><p className="text-xs text-muted-foreground">{t('الإجمالي', 'Total')}</p><MoneyDisplay value={totalAmt} lang={lang} size="lg" bold className="justify-center text-emerald-700" /></div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Actions */}
         <div className="flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={onBack}>{commonText.cancel[lang]}</Button>
           <Button type="submit" disabled={createMutation.isPending || exceeds100 || !form.projectId || !form.contractId || !form.claimNo || !form.date || !form.percentage} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
@@ -327,7 +284,7 @@ function CreateClaimPage({
 
 // ============ Main Progress Claims Module ============
 export function ProgressClaimsModule() {
-  const { lang } = useAppStore()
+  const { lang, setActiveItem } = useAppStore()
   const queryClient = useQueryClient()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
@@ -411,6 +368,10 @@ export function ProgressClaimsModule() {
   const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + c.totalAmount, 0)
   const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + c.totalAmount, 0)
 
+  // Counters
+  const invoicedCount = filtered.filter(c => c.invoiced).length
+  const uninvoicedApprovedCount = filtered.filter(c => !c.invoiced && c.status === 'APPROVED').length
+
   // ============ CREATE VIEW ============
   if (viewState.type === 'create') {
     return (
@@ -444,6 +405,12 @@ export function ProgressClaimsModule() {
             <div className="flex items-center gap-3">
               <h2 className="text-xl font-bold">{claim.claimNo}</h2>
               <StatusBadge status={claim.status} lang={lang} />
+              {claim.invoiced && (
+                <Badge className="bg-sky-100 text-sky-700 border-sky-200">
+                  <FileText className="size-3 ml-1" />
+                  {t(labels.invoiced.ar, labels.invoiced.en)}
+                </Badge>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">{claim.project.name} - {claim.contract.contractNo}</p>
           </div>
@@ -461,38 +428,78 @@ export function ProgressClaimsModule() {
         <Card>
           <CardHeader><CardTitle className="text-lg">{t('البيانات المالية', 'Financial Details')}</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span>{t('المبلغ قبل الضريبة', 'Amount before VAT')}</span>
-              <span className="font-medium"><MoneyDisplay value={claim.amount} lang={lang} size="sm" inline /></span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span>{t(labels.vat.ar, labels.vat.en)} ({(claim.vatRate * 100).toFixed(0)}%)</span>
-              <span className="font-medium"><MoneyDisplay value={claim.vatAmount} lang={lang} size="sm" inline /></span>
-            </div>
+            <div className="flex justify-between text-sm"><span>{t('المبلغ قبل الضريبة', 'Amount before VAT')}</span><span className="font-medium"><MoneyDisplay value={claim.amount} lang={lang} size="sm" inline /></span></div>
+            <div className="flex justify-between text-sm"><span>{t(labels.vat.ar, labels.vat.en)} ({(claim.vatRate * 100).toFixed(0)}%)</span><span className="font-medium"><MoneyDisplay value={claim.vatAmount} lang={lang} size="sm" inline /></span></div>
             <Separator />
-            <div className="flex justify-between text-lg font-bold">
-              <span>{t(labels.total.ar, labels.total.en)}</span>
-              <span className="text-emerald-700"><MoneyDisplay value={claim.totalAmount} lang={lang} size="lg" inline bold /></span>
-            </div>
+            <div className="flex justify-between text-lg font-bold"><span>{t(labels.total.ar, labels.total.en)}</span><span className="text-emerald-700"><MoneyDisplay value={claim.totalAmount} lang={lang} size="lg" inline bold /></span></div>
           </CardContent>
         </Card>
 
         {claim.notes && (
-          <Card>
+          <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground mb-1">{t('ملاحظات', 'Notes')}</p><p className="text-sm">{claim.notes}</p></CardContent></Card>
+        )}
+
+        {/* Linked Sales Invoice */}
+        {claim.invoiced && claim.salesInvoice ? (
+          <Card className="border-sky-200 bg-sky-50/50">
             <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground mb-1">{t('ملاحظات', 'Notes')}</p>
-              <p className="text-sm">{claim.notes}</p>
+              <div className="flex items-center gap-2 mb-2">
+                <Link2 className="size-4 text-sky-600" />
+                <span className="text-sm font-semibold text-sky-700">{t(labels.linkedInvoice.ar, labels.linkedInvoice.en)}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <FileText className="size-5 text-sky-500" />
+                <div>
+                  <p className="font-medium">{claim.salesInvoice.invoiceNo}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <MoneyDisplay value={claim.salesInvoice.totalAmount} lang={lang} size="sm" inline />
+                    <StatusBadge status={claim.salesInvoice.status} lang={lang} />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {/* Create Invoice Button for APPROVED uninvoiced claims */}
+        {!claim.invoiced && claim.status === 'APPROVED' && (
+          <Card className="border-emerald-200 bg-emerald-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-700">{t(labels.notInvoiced.ar, labels.notInvoiced.en)}</p>
+                  <p className="text-xs text-muted-foreground">{t('يمكنك إنشاء فاتورة مبيعات من هذا المستخلص', 'You can create a sales invoice from this claim', lang)}</p>
+                </div>
+                <Button
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                  onClick={() => {
+                    // Navigate to sales module with extract pre-fill
+                    setActiveItem('sales')
+                  }}
+                >
+                  <FileText className="size-4" />
+                  {t(labels.createInvoice.ar, labels.createInvoice.en)}
+                </Button>
+              </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Status Workflow */}
-        {/* Accounting Integration: When claim is approved/paid,
-            the accounting engine should create journal entries:
-            - On SUBMITTED: no accounting entry
-            - On APPROVED: Debit Accounts Receivable, Credit Progress Revenue + Output VAT
-            - On PAID: Debit Cash/Bank, Credit Accounts Receivable
-            This is handled via POST /api/journal-entries with sourceType: PROGRESS_CLAIM */}
+        {/* Accounting Entry */}
+        {claim.journalEntryId && (
+          <Card className="border-sky-200 bg-sky-50/30">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 text-sky-700 mb-1">
+                <CreditCard className="size-4" />
+                <span className="text-sm font-semibold">{t(labels.accountingEntry.ar, labels.accountingEntry.en)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('تم إنشاء قيد محاسبي تلقائي', 'Auto journal entry created', lang)}</p>
+              <p className="text-xs font-mono mt-0.5">{claim.journalEntryId}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Status Workflow Actions */}
         <Card className="border-emerald-200 bg-emerald-50/50">
           <CardContent className="p-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -504,17 +511,17 @@ export function ProgressClaimsModule() {
               )}
               {claim.status === 'SUBMITTED' && (
                 <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => statusMutation.mutate({ id: claim.id, status: 'APPROVED' })} disabled={statusMutation.isPending}>
-                  <CheckCircle className="size-4" /> {t(labels.approve.ar, labels.approve.en)}
+                  <CheckCircle2 className="size-4" /> {t(labels.approve.ar, labels.approve.en)}
                 </Button>
               )}
               {(claim.status === 'APPROVED' || claim.status === 'PARTIALLY_PAID') && (
                 <Button className="gap-2 bg-teal-600 hover:bg-teal-700" onClick={() => statusMutation.mutate({ id: claim.id, status: 'PAID' })} disabled={statusMutation.isPending}>
-                  <CheckCircle className="size-4" /> {t('تأكيد الدفع', 'Mark Paid')}
+                  <CheckCircle2 className="size-4" /> {t('تأكيد الدفع', 'Mark Paid')}
                 </Button>
               )}
               {claim.status === 'PAID' && (
                 <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-sm px-3 py-1">
-                  <CheckCircle className="size-4 ml-1" /> {t('مدفوع', 'Paid')}
+                  <CheckCircle2 className="size-4 ml-1" /> {t('مدفوع', 'Paid')}
                 </Badge>
               )}
             </div>
@@ -542,43 +549,25 @@ export function ProgressClaimsModule() {
     >
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Card className="bg-emerald-50 border-emerald-200">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">{t(labels.totalClaimed.ar, labels.totalClaimed.en)}</p>
-            <MoneyDisplay value={totalClaimedAmount} lang={lang} size="xl" bold className="text-emerald-700" />
-          </CardContent>
-        </Card>
-        <Card className="bg-teal-50 border-teal-200">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">{t(labels.collected.ar, labels.collected.en)}</p>
-            <MoneyDisplay value={paidAmount} lang={lang} size="xl" bold className="text-teal-700" />
-          </CardContent>
-        </Card>
-        <Card className="bg-amber-50 border-amber-200">
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">{t(labels.pending.ar, labels.pending.en)}</p>
-            <MoneyDisplay value={pendingAmount} lang={lang} size="xl" bold className="text-amber-700" />
-          </CardContent>
-        </Card>
+        <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.totalClaimed.ar, labels.totalClaimed.en)}</p><MoneyDisplay value={totalClaimedAmount} lang={lang} size="xl" bold className="text-emerald-700" /></CardContent></Card>
+        <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.collected.ar, labels.collected.en)}</p><MoneyDisplay value={paidAmount} lang={lang} size="xl" bold className="text-teal-700" /></CardContent></Card>
+        <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.pending.ar, labels.pending.en)}</p><MoneyDisplay value={pendingAmount} lang={lang} size="xl" bold className="text-amber-700" /></CardContent></Card>
+      </div>
+
+      {/* Invoice Status Summary */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="border-sky-200 bg-sky-50/30"><CardContent className="p-3 flex items-center gap-3"><FileText className="size-5 text-sky-500" /><div><p className="text-xs text-muted-foreground">{t(labels.invoiced.ar, labels.invoiced.en)}</p><p className="text-lg font-bold text-sky-700">{invoicedCount}</p></div></CardContent></Card>
+        <Card className="border-amber-200 bg-amber-50/30"><CardContent className="p-3 flex items-center gap-3"><TrendingUp className="size-5 text-amber-500" /><div><p className="text-xs text-muted-foreground">{t('معتمد غير مفوتر', 'Approved Uninvoiced', lang)}</p><p className="text-lg font-bold text-amber-700">{uninvoicedApprovedCount}</p></div></CardContent></Card>
       </div>
 
       {/* Contract Running Totals */}
       {Object.keys(contractTotals).length > 0 && (
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg">{t(labels.contractRunningTotals.ar, labels.contractRunningTotals.en)}</CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-lg">{t(labels.contractRunningTotals.ar, labels.contractRunningTotals.en)}</CardTitle></CardHeader>
           <CardContent className="px-0 pb-2">
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('رقم العقد', 'Contract No.')}</TableHead>
-                    <TableHead className="text-right">{t(labels.contractValue.ar, labels.contractValue.en)}</TableHead>
-                    <TableHead className="text-right">{t(labels.claimedAmount.ar, labels.claimedAmount.en)}</TableHead>
-                    <TableHead className="text-right">{t(labels.completion.ar, labels.completion.en)}</TableHead>
-                  </TableRow>
-                </TableHeader>
+                <TableHeader><TableRow><TableHead className="text-right">{t('رقم العقد', 'Contract No.')}</TableHead><TableHead className="text-right">{t(labels.contractValue.ar, labels.contractValue.en)}</TableHead><TableHead className="text-right">{t(labels.claimedAmount.ar, labels.claimedAmount.en)}</TableHead><TableHead className="text-right">{t(labels.completion.ar, labels.completion.en)}</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {Object.values(contractTotals).map(ct => (
                     <TableRow key={ct.contractNo}>
@@ -587,12 +576,7 @@ export function ProgressClaimsModule() {
                       <TableCell><MoneyDisplay value={ct.claimedAmount} lang={lang} size="sm" inline /></TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
-                          <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]">
-                            <div
-                              className={`rounded-full h-2 transition-all ${parseFloat(ct.claimedPercent) > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`}
-                              style={{ width: `${Math.min(parseFloat(ct.claimedPercent), 100)}%` }}
-                            />
-                          </div>
+                          <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]"><div className={`rounded-full h-2 transition-all ${parseFloat(ct.claimedPercent) > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(parseFloat(ct.claimedPercent), 100)}%` }} /></div>
                           <span className="text-sm font-medium">{ct.claimedPercent}%</span>
                         </div>
                       </TableCell>
@@ -610,14 +594,10 @@ export function ProgressClaimsModule() {
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-              <SelectTrigger className="w-full sm:w-64">
-                <SelectValue placeholder={t(labels.allProjects.ar, labels.allProjects.en)} />
-              </SelectTrigger>
+              <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder={t(labels.allProjects.ar, labels.allProjects.en)} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t(labels.allProjects.ar, labels.allProjects.en)}</SelectItem>
-                {projects.map(p => (
-                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                ))}
+                {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="relative flex-1">
@@ -669,9 +649,9 @@ export function ProgressClaimsModule() {
                     <TableHead className="text-right">{t(labels.date.ar, labels.date.en)}</TableHead>
                     <TableHead className="text-right">{t(labels.percentage.ar, labels.percentage.en)}</TableHead>
                     <TableHead className="text-right">{t(labels.amount.ar, labels.amount.en)}</TableHead>
-                    <TableHead className="text-right">{t(labels.vat.ar, labels.vat.en)}</TableHead>
                     <TableHead className="text-right">{t(labels.total.ar, labels.total.en)}</TableHead>
                     <TableHead className="text-right">{t(labels.status.ar, labels.status.en)}</TableHead>
+                    <TableHead className="text-right">{t('مفوتر؟', 'Invoiced?', lang)}</TableHead>
                     <TableHead className="text-right">{t(labels.actions.ar, labels.actions.en)}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -684,9 +664,17 @@ export function ProgressClaimsModule() {
                       <TableCell>{formatDate(c.date, lang)}</TableCell>
                       <TableCell>{c.percentage}%</TableCell>
                       <TableCell><MoneyDisplay value={c.amount} lang={lang} size="sm" inline /></TableCell>
-                      <TableCell><MoneyDisplay value={c.vatAmount} lang={lang} size="sm" inline /></TableCell>
                       <TableCell className="font-semibold"><MoneyDisplay value={c.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
                       <TableCell><StatusBadge status={c.status} lang={lang} /></TableCell>
+                      <TableCell>
+                        {c.invoiced ? (
+                          <Badge className="bg-sky-100 text-sky-700 border-sky-200 text-[10px]">{t(labels.invoiced.ar, labels.invoiced.en)}</Badge>
+                        ) : c.status === 'APPROVED' ? (
+                          <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">{t(labels.notInvoiced.ar, labels.notInvoiced.en)}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', claimId: c.id })} title={t('عرض', 'View')}>

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
 
@@ -28,7 +29,7 @@ interface Employee { id: string; code: string; name: string; position: string | 
 
 interface Advance {
   id: string; employeeId: string; amount: number; date: string
-  settledAmount: number; status: string; description: string | null
+  settledAmount: number; status: string; description: string | null; journalEntryId: string | null
   employee: Employee
 }
 
@@ -339,6 +340,7 @@ export function AdvancesModule() {
                     <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الحالة', 'Status')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الإجراءات', 'Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -352,6 +354,9 @@ export function AdvancesModule() {
                       <TableCell>{formatDate(a.date, lang)}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{a.description || '—'}</TableCell>
                       <TableCell><AdvanceStatusBadge status={a.status} lang={lang} /></TableCell>
+                      <TableCell>
+                        <AccountingEntryDisplay journalEntryId={a.journalEntryId} lang={lang} />
+                      </TableCell>
                       <TableCell>
                         {a.status !== 'SETTLED' && a.status !== 'CANCELLED' && (
                           <Button size="sm" variant="outline" className="gap-1 text-emerald-600 hover:text-emerald-700"

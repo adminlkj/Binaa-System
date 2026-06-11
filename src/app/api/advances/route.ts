@@ -38,16 +38,32 @@ export async function POST(request: Request) {
     // Auto-create accounting journal entry
     try {
       await initializeChartOfAccounts()
-      await autoEntryEmployeeAdvance({
+      const journalEntry = await autoEntryEmployeeAdvance({
         employeeName: advance.employee.name,
         amount: advance.amount,
         date: advance.date,
       })
+
+      // Store journalEntryId on the advance
+      if (journalEntry) {
+        await db.employeeAdvance.update({
+          where: { id: advance.id },
+          data: { journalEntryId: journalEntry.id },
+        })
+      }
     } catch (accountingError) {
       console.error('Accounting entry failed for employee advance:', accountingError)
     }
 
-    return NextResponse.json(advance, { status: 201 })
+    // Re-fetch to include journalEntryId
+    const updatedAdvance = await db.employeeAdvance.findUnique({
+      where: { id: advance.id },
+      include: {
+        employee: { select: { id: true, code: true, name: true, position: true } },
+      },
+    })
+
+    return NextResponse.json(updatedAdvance, { status: 201 })
   } catch (error) {
     console.error('Error creating advance:', error)
     return NextResponse.json({ error: 'فشل في إنشاء السلفة' }, { status: 500 })

@@ -42,17 +42,33 @@ export async function POST(request: Request) {
     // Auto-create accounting journal entry
     try {
       await initializeChartOfAccounts()
-      await autoEntryPettyCash({
+      const journalEntry = await autoEntryPettyCash({
         description: pettyCash.description,
         amount: pettyCash.amount,
         category: pettyCash.category || 'OTHER',
         date: pettyCash.date,
       })
+
+      // Store journalEntryId on the petty cash entry
+      if (journalEntry) {
+        await db.pettyCash.update({
+          where: { id: pettyCash.id },
+          data: { journalEntryId: journalEntry.id },
+        })
+      }
     } catch (accountingError) {
       console.error('Accounting entry failed for petty cash:', accountingError)
     }
 
-    return NextResponse.json(pettyCash, { status: 201 })
+    // Re-fetch to include journalEntryId
+    const updatedPettyCash = await db.pettyCash.findUnique({
+      where: { id: pettyCash.id },
+      include: {
+        branch: { select: { id: true, code: true, name: true } },
+      },
+    })
+
+    return NextResponse.json(updatedPettyCash, { status: 201 })
   } catch (error) {
     console.error('Error creating petty cash:', error)
     return NextResponse.json({ error: 'فشل في إنشاء السلفة' }, { status: 500 })

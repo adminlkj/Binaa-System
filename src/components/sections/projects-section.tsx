@@ -1,15 +1,15 @@
 'use client'
 
 import React, { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Building2, Search, ArrowRight, RefreshCw, Plus,
-  Eye, FileText, ClipboardList, TrendingUp, Calculator,
-  HardHat, ShieldCheck, AlertTriangle, Mail, Receipt,
-  DollarSign, FolderOpen, CalendarDays, MapPin, Users,
-  BarChart3, Target, Clock, CheckCircle2, XCircle, Pause,
-  Layers, Activity, Camera, FileQuestion, Send,
-  ShieldAlert, FileCheck, FileSpreadsheet, FolderArchive,
+  Eye, FileText, TrendingUp, Calculator,
+  Receipt, DollarSign, MapPin,
+  BarChart3, Target, CreditCard,
+  Landmark, Building, Send, CheckCircle2, Trash2,
+  ShieldCheck, ShieldAlert, Mail, FolderOpen, ClipboardList, HardHat,
+  Layers, Activity,
 } from 'lucide-react'
 import {
   useAppStore,
@@ -34,15 +34,48 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { MoneyDisplay } from '@/components/ui/money-display'
+import { StatusBadge } from '@/components/shared/module-layout'
 
 // ============ Types ============
 
 interface ClientSummary { id: string; name: string; code: string }
 interface BranchSummary { id: string; name: string; code: string }
-interface ContractSummary { id: string; contractNo: string; totalValue: number; status: string }
+interface ContractSummary { id: string; contractNo: string; totalValue: number; status: string; startDate?: string; endDate?: string }
+
+interface ProgressClaimItem {
+  id: string; claimNo: string; date: string; percentage: number; amount: number
+  vatAmount: number; totalAmount: number; status: string; invoiced: boolean
+  contract: { contractNo: string }
+  salesInvoice?: { id: string; invoiceNo: string } | null
+}
+
+interface SalesInvoiceItem {
+  id: string; invoiceNo: string; date: string; dueDate: string
+  subtotal: number; vatAmount: number; totalAmount: number
+  paidAmount: number; status: string; sourceType: string
+  progressClaimId: string | null
+  progressClaim?: { claimNo: string } | null
+  journalEntryId: string | null
+}
+
+interface ClientPaymentItem {
+  id: string; amount: number; date: string; receivedIn: string
+  reference: string | null; journalEntryId: string | null
+  invoice?: { invoiceNo: string } | null
+}
+
+interface CostSheet {
+  contractValue: number; revenue: number; purchases: number; subcontractors: number
+  labor: number; equipment: number; expenses: number
+  totalCosts: number; profit: number; profitMargin: number
+}
+
+interface BOQItem {
+  id: string; code: string; description: string; unit: string
+  quantity: number; unitPrice: number; totalPrice: number; category: string | null
+}
 
 interface ProjectListItem {
   id: string
@@ -54,28 +87,12 @@ interface ProjectListItem {
   endDate: string | null
   contractValue: number
   status: string
+  projectType: string | null
   description: string | null
   client: ClientSummary
   branch: BranchSummary
   contracts: ContractSummary[]
   _count: { boqItems: number; progressClaims: number }
-}
-
-interface BOQItem {
-  id: string; code: string; description: string; unit: string
-  quantity: number; unitPrice: number; totalPrice: number; category: string | null
-}
-
-interface ProgressClaimItem {
-  id: string; claimNo: string; date: string; percentage: number; amount: number
-  vatAmount: number; totalAmount: number; status: string
-  contract: { contractNo: string }
-}
-
-interface CostSheet {
-  contractValue: number; revenue: number; purchases: number; subcontractors: number
-  labor: number; equipment: number; expenses: number
-  totalCosts: number; profit: number; profitMargin: number
 }
 
 interface ProjectDetail {
@@ -88,6 +105,7 @@ interface ProjectDetail {
   endDate: string | null
   contractValue: number
   status: string
+  projectType: string | null
   description: string | null
   client: ClientSummary
   branch: BranchSummary
@@ -155,19 +173,44 @@ const claimStatusColors: Record<string, string> = {
   REJECTED: 'bg-rose-100 text-rose-700 border-rose-200',
 }
 
-// Project detail tabs definition
-const projectSubTabs: { key: SubModuleKey; icon: React.ElementType }[] = [
-  { key: 'project-overview', icon: Eye },
-  { key: 'project-contracting', icon: FileText },
-  { key: 'project-planning', icon: ClipboardList },
-  { key: 'project-execution', icon: HardHat },
-  { key: 'project-boq', icon: Layers },
-  { key: 'project-quality', icon: ShieldCheck },
-  { key: 'project-safety', icon: ShieldAlert },
-  { key: 'project-correspondence', icon: Mail },
-  { key: 'project-extracts', icon: Receipt },
-  { key: 'project-costs', icon: DollarSign },
-  { key: 'project-documents', icon: FolderOpen },
+const invoiceStatusLabels: Record<string, { ar: string; en: string }> = {
+  DRAFT: { ar: 'مسودة', en: 'Draft' },
+  SENT: { ar: 'مُرسل', en: 'Sent' },
+  PARTIALLY_PAID: { ar: 'مدفوع جزئياً', en: 'Partially Paid' },
+  PAID: { ar: 'مدفوع', en: 'Paid' },
+  CANCELLED: { ar: 'ملغي', en: 'Cancelled' },
+  OVERDUE: { ar: 'متأخر', en: 'Overdue' },
+}
+
+const invoiceStatusColors: Record<string, string> = {
+  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
+  SENT: 'bg-sky-100 text-sky-700 border-sky-200',
+  PARTIALLY_PAID: 'bg-amber-100 text-amber-700 border-amber-200',
+  PAID: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  CANCELLED: 'bg-rose-100 text-rose-700 border-rose-200',
+  OVERDUE: 'bg-red-100 text-red-700 border-red-200',
+}
+
+const receivedInLabels: Record<string, { ar: string; en: string }> = {
+  TREASURY: { ar: 'الخزينة', en: 'Treasury' },
+  BANK: { ar: 'البنك', en: 'Bank' },
+}
+
+const receivedInColors: Record<string, string> = {
+  TREASURY: 'bg-amber-100 text-amber-700 border-amber-200',
+  BANK: 'bg-sky-100 text-sky-700 border-sky-200',
+}
+
+// Project detail tabs definition - Construction Workflow
+const projectSubTabs: { key: SubModuleKey; icon: React.ElementType; label?: { ar: string; en: string } }[] = [
+  { key: 'project-overview', icon: Eye, label: { ar: 'نظرة عامة', en: 'Overview' } },
+  { key: 'project-contracts', icon: FileText, label: { ar: 'العقود', en: 'Contracts' } },
+  { key: 'project-extracts', icon: Receipt, label: { ar: 'المستخلصات', en: 'Extracts' } },
+  { key: 'project-invoices', icon: FileText, label: { ar: 'الفواتير', en: 'Invoices' } },
+  { key: 'project-costs', icon: DollarSign, label: { ar: 'التكاليف', en: 'Costs' } },
+  { key: 'project-collections', icon: CreditCard, label: { ar: 'التحصيلات', en: 'Collections' } },
+  { key: 'project-boq', icon: Layers, label: { ar: 'BOQ', en: 'BOQ' } },
+  { key: 'project-documents', icon: FolderOpen, label: { ar: 'الوثائق', en: 'Documents' } },
 ]
 
 // ============ Helpers ============
@@ -234,14 +277,6 @@ function ProjectListSkeleton() {
           <Skeleton className="h-10 w-32 rounded-md" />
         </div>
       </div>
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex gap-3">
-            <Skeleton className="h-10 flex-1" />
-            <Skeleton className="h-10 w-40" />
-          </div>
-        </CardContent>
-      </Card>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <ProjectCardSkeleton key={i} />
@@ -262,7 +297,7 @@ function DetailSkeleton() {
         </div>
       </div>
       <div className="flex gap-2 overflow-hidden">
-        {Array.from({ length: 11 }).map((_, i) => (
+        {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-10 w-24 rounded-md shrink-0" />
         ))}
       </div>
@@ -281,7 +316,7 @@ function ErrorState({ onRetry, lang }: { onRetry: () => void; lang: Lang }) {
   return (
     <Card className="border-rose-200 bg-rose-50">
       <CardContent className="flex flex-col items-center gap-4 py-10">
-        <AlertTriangle className="size-10 text-rose-500" />
+        <ShieldAlert className="size-10 text-rose-500" />
         <p className="text-lg font-medium text-rose-700">
           {t('حدث خطأ أثناء تحميل البيانات', 'An error occurred while loading data', lang)}
         </p>
@@ -289,37 +324,6 @@ function ErrorState({ onRetry, lang }: { onRetry: () => void; lang: Lang }) {
           <RefreshCw className="size-4" />
           {t(commonText.retry.ar, commonText.retry.en, lang)}
         </Button>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ============ Tab Placeholder ============
-
-function TabPlaceholder({
-  icon: Icon,
-  title,
-  description,
-  lang,
-}: {
-  icon: React.ElementType
-  title: { ar: string; en: string }
-  description: { ar: string; en: string }
-  lang: Lang
-}) {
-  return (
-    <Card className="border-dashed border-2 border-gray-200 bg-gray-50/50">
-      <CardContent className="flex flex-col items-center gap-4 py-16">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-gray-100">
-          <Icon className="size-8 text-gray-400" />
-        </div>
-        <div className="text-center space-y-2">
-          <h3 className="text-lg font-semibold text-gray-700">{title[lang]}</h3>
-          <p className="text-sm text-muted-foreground max-w-md">{description[lang]}</p>
-        </div>
-        <Badge variant="outline" className="text-gray-500 border-gray-300">
-          {t('قريباً', 'Coming Soon', lang)}
-        </Badge>
       </CardContent>
     </Card>
   )
@@ -347,7 +351,6 @@ function ProjectCard({
     >
       <CardContent className="p-5">
         <div className="space-y-3">
-          {/* Header: Name + Status */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <h3 className="font-bold text-gray-900 truncate group-hover:text-emerald-700 transition-colors">
@@ -362,7 +365,6 @@ function ProjectCard({
             </Badge>
           </div>
 
-          {/* Location */}
           {project.location && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <MapPin className="size-3 shrink-0" />
@@ -370,28 +372,21 @@ function ProjectCard({
             </div>
           )}
 
-          {/* Contract Value */}
           <div className="flex items-center justify-between">
-            <span className="text-xs text-muted-foreground">
-              {t('قيمة العقد', 'Contract Value', lang)}
-            </span>
+            <span className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value', lang)}</span>
             <span className="text-sm font-bold text-emerald-700">
               <MoneyDisplay value={project.contractValue} mode="system" lang={lang} bold size="sm" />
             </span>
           </div>
 
-          {/* Progress Bar */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">
-                {t('نسبة الإنجاز', 'Completion', lang)}
-              </span>
+              <span className="text-muted-foreground">{t('نسبة الإنجاز', 'Completion', lang)}</span>
               <span className="font-semibold text-gray-700">{completion}%</span>
             </div>
             <Progress value={completion} className={`h-2 ${progressColor}`} />
           </div>
 
-          {/* Footer Stats */}
           <div className="flex items-center gap-3 pt-1 border-t border-gray-100">
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <FileText className="size-3" />
@@ -437,10 +432,8 @@ function ProjectListView() {
     })
   }, [projects, search, statusFilter])
 
-  // Stats
   const totalContractValue = projects.reduce((s, p) => s + p.contractValue, 0)
   const activeCount = projects.filter(p => p.status === 'ACTIVE').length
-  const completedCount = projects.filter(p => p.status === 'COMPLETED').length
 
   const handleSelectProject = (id: string) => {
     selectProject(id)
@@ -452,137 +445,56 @@ function ProjectListView() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            {t('المشاريع', 'Projects', lang)}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {t('إدارة ومتابعة مشاريع المقاولات', 'Manage and track construction projects', lang)}
-          </p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('المشاريع', 'Projects', lang)}</h1>
+          <p className="text-sm text-muted-foreground">{t('إدارة ومتابعة مشاريع المقاولات', 'Manage and track construction projects', lang)}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => refetch()} title={t(commonText.refresh.ar, commonText.refresh.en, lang)}>
+          <Button variant="outline" size="icon" onClick={() => refetch()}>
             <RefreshCw className="size-4" />
           </Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700">
-            <Plus className="size-4" />
-            {t('مشروع جديد', 'New Project', lang)}
+            <Plus className="size-4" />{t('مشروع جديد', 'New Project', lang)}
           </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-100">
-                <Building2 className="size-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t('إجمالي المشاريع', 'Total Projects', lang)}</p>
-                <p className="text-xl font-bold">{formatNumber(projects.length)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-teal-100">
-                <Activity className="size-5 text-teal-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t('المشاريع النشطة', 'Active Projects', lang)}</p>
-                <p className="text-xl font-bold">{formatNumber(activeCount)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-amber-100">
-                <DollarSign className="size-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">{t('إجمالي العقود', 'Total Contracts', lang)}</p>
-                <p className="text-lg font-bold">
-                  <MoneyDisplay value={totalContractValue} mode="system" lang={lang} bold size="sm" />
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-emerald-100"><Building2 className="size-5 text-emerald-600" /></div><div><p className="text-xs text-muted-foreground">{t('إجمالي المشاريع', 'Total Projects', lang)}</p><p className="text-xl font-bold">{formatNumber(projects.length)}</p></div></div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-teal-100"><Activity className="size-5 text-teal-600" /></div><div><p className="text-xs text-muted-foreground">{t('المشاريع النشطة', 'Active Projects', lang)}</p><p className="text-xl font-bold">{formatNumber(activeCount)}</p></div></div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-amber-100"><DollarSign className="size-5 text-amber-600" /></div><div><p className="text-xs text-muted-foreground">{t('إجمالي العقود', 'Total Contracts', lang)}</p><p className="text-lg font-bold"><MoneyDisplay value={totalContractValue} mode="system" lang={lang} bold size="sm" /></p></div></div></CardContent></Card>
       </div>
 
-      {/* Search / Filter */}
       <Card>
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                placeholder={t('بحث بالاسم أو الكود أو العميل...', 'Search by name, code or client...', lang)}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pr-9"
-              />
+              <Input placeholder={t('بحث بالاسم أو الكود أو العميل...', 'Search by name, code or client...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-40">
-                <SelectValue placeholder={t('كل الحالات', 'All Statuses', lang)} />
-              </SelectTrigger>
+              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t('كل الحالات', 'All Statuses', lang)} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t('كل الحالات', 'All Statuses', lang)}</SelectItem>
-                <SelectItem value="PLANNING">{statusLabels.PLANNING[lang]}</SelectItem>
-                <SelectItem value="ACTIVE">{statusLabels.ACTIVE[lang]}</SelectItem>
-                <SelectItem value="ON_HOLD">{statusLabels.ON_HOLD[lang]}</SelectItem>
-                <SelectItem value="COMPLETED">{statusLabels.COMPLETED[lang]}</SelectItem>
-                <SelectItem value="CANCELLED">{statusLabels.CANCELLED[lang]}</SelectItem>
+                {Object.entries(statusLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v[lang]}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
         </CardContent>
       </Card>
 
-      {/* Projects Grid */}
       {filtered.length === 0 ? (
         <Card className="border-dashed border-2">
           <CardContent className="flex flex-col items-center gap-4 py-16">
-            <div className="flex size-16 items-center justify-center rounded-2xl bg-gray-100">
-              <Building2 className="size-8 text-gray-400" />
-            </div>
-            <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-700">
-                {t('لا توجد مشاريع', 'No Projects Found', lang)}
-              </h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                {search || statusFilter !== 'all'
-                  ? t('لا توجد نتائج مطابقة للبحث', 'No results match your search', lang)
-                  : t('ابدأ بإنشاء مشروع جديد', 'Start by creating a new project', lang)}
-              </p>
-            </div>
-            {!search && statusFilter === 'all' && (
-              <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700">
-                <Plus className="size-4" />
-                {t('مشروع جديد', 'New Project', lang)}
-              </Button>
-            )}
+            <Building2 className="size-8 text-gray-400" />
+            <p className="text-lg font-semibold text-gray-700">{t('لا توجد مشاريع', 'No Projects Found', lang)}</p>
+            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700"><Plus className="size-4" />{t('مشروع جديد', 'New Project', lang)}</Button>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(project => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              lang={lang}
-              onClick={() => handleSelectProject(project.id)}
-            />
-          ))}
+          {filtered.map(project => <ProjectCard key={project.id} project={project} lang={lang} onClick={() => handleSelectProject(project.id)} />)}
         </div>
       )}
     </div>
@@ -605,6 +517,28 @@ function ProjectDetailView() {
     staleTime: 30000,
   })
 
+  // Fetch sales invoices for this project
+  const { data: invoices = [] } = useQuery<SalesInvoiceItem[]>({
+    queryKey: ['project-invoices', selectedProjectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/sales-invoices?projectId=${selectedProjectId}`)
+      if (!res.ok) return []
+      return res.json()
+    },
+    enabled: !!selectedProjectId && activeSubModule === 'project-invoices',
+  })
+
+  // Fetch client payments for this project's invoices
+  const { data: payments = [] } = useQuery<ClientPaymentItem[]>({
+    queryKey: ['project-payments', selectedProjectId],
+    queryFn: async () => {
+      const res = await fetch(`/api/client-payments?projectId=${selectedProjectId}`)
+      if (!res.ok) return []
+      return res.json()
+    },
+    enabled: !!selectedProjectId && activeSubModule === 'project-collections',
+  })
+
   const handleBack = () => {
     selectProject(null)
     setActiveSubModule('project-list')
@@ -616,99 +550,31 @@ function ProjectDetailView() {
   const completion = getActualCompletion(project.costSheet)
   const statusLabel = statusLabels[project.status]?.[lang] || project.status
 
-  // Tab content rendering
   const renderTabContent = () => {
     switch (activeSubModule) {
       case 'project-overview':
-        return <OverviewTab project={project} completion={completion} lang={lang} />
-      case 'project-contracting':
-        return <ContractingTab project={project} lang={lang} />
-      case 'project-planning':
-        return (
-          <TabPlaceholder
-            icon={ClipboardList}
-            title={{ ar: 'التخطيط', en: 'Planning' }}
-            description={{
-              ar: 'هيكل تقسيم العمل (WBS)، الأنشطة، الجدول الزمني، ونسب الإنجاز المخططة والفعلية',
-              en: 'Work Breakdown Structure (WBS), activities, schedule, and planned vs actual completion percentages',
-            }}
-            lang={lang}
-          />
-        )
-      case 'project-execution':
-        return (
-          <TabPlaceholder
-            icon={HardHat}
-            title={{ ar: 'التنفيذ', en: 'Execution' }}
-            description={{
-              ar: 'التقارير اليومية، سجل الموقع، الصور، والمطبات والعقبات',
-              en: 'Daily reports, site diary, photos, obstacles and issues tracking',
-            }}
-            lang={lang}
-          />
-        )
-      case 'project-boq':
-        return <BOQTab project={project} lang={lang} />
-      case 'project-quality':
-        return (
-          <TabPlaceholder
-            icon={ShieldCheck}
-            title={{ ar: 'الجودة', en: 'Quality' }}
-            description={{
-              ar: 'خطط فحص واختبار (ITP)، تقارير عدم المطابقة (NCR)، وطلبات الفحص',
-              en: 'Inspection and Test Plans (ITP), Non-Conformance Reports (NCR), and inspection requests',
-            }}
-            lang={lang}
-          />
-        )
-      case 'project-safety':
-        return (
-          <TabPlaceholder
-            icon={ShieldAlert}
-            title={{ ar: 'السلامة', en: 'Safety' }}
-            description={{
-              ar: 'الحوادث، تصاريح العمل، تقييم المخاطر، وتقارير السلامة',
-              en: 'Incidents, work permits, risk assessments, and safety reports',
-            }}
-            lang={lang}
-          />
-        )
-      case 'project-correspondence':
-        return (
-          <TabPlaceholder
-            icon={Mail}
-            title={{ ar: 'المراسلات', en: 'Correspondence' }}
-            description={{
-              ar: 'طلبات المعلومات (RFI)، التسليمات (Submittals)، الإحالات (Transmittals)، والخطابات الرسمية',
-              en: 'Requests for Information (RFI), Submittals, Transmittals, and official letters',
-            }}
-            lang={lang}
-          />
-        )
+        return <OverviewTab project={project} completion={completion} invoices={invoices} payments={payments} lang={lang} />
+      case 'project-contracts':
+        return <ContractsTab project={project} lang={lang} />
       case 'project-extracts':
         return <ExtractsTab project={project} lang={lang} />
+      case 'project-invoices':
+        return <InvoicesTab invoices={invoices} lang={lang} />
       case 'project-costs':
         return <CostsTab project={project} lang={lang} />
+      case 'project-collections':
+        return <CollectionsTab payments={payments} lang={lang} />
+      case 'project-boq':
+        return <BOQTab project={project} lang={lang} />
       case 'project-documents':
-        return (
-          <TabPlaceholder
-            icon={FolderOpen}
-            title={{ ar: 'الوثائق', en: 'Documents' }}
-            description={{
-              ar: 'المخططات، العقود، الملفات والمستندات المرتبطة بالمشروع',
-              en: 'Drawings, contracts, files and documents associated with the project',
-            }}
-            lang={lang}
-          />
-        )
+        return <DocumentsPlaceholder lang={lang} />
       default:
-        return <OverviewTab project={project} completion={completion} lang={lang} />
+        return <OverviewTab project={project} completion={completion} invoices={invoices} payments={payments} lang={lang} />
     }
   }
 
   return (
     <div className="space-y-0">
-      {/* Project Header with Back Button */}
       <div className="flex items-center gap-3 mb-4">
         <Button variant="outline" size="icon" onClick={handleBack} className="shrink-0">
           <ArrowRight className="size-4" />
@@ -716,18 +582,14 @@ function ProjectDetailView() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
             <h2 className="text-xl font-bold text-gray-900 truncate">{project.name}</h2>
-            <Badge variant="outline" className={statusColors[project.status]}>
-              {statusLabel}
-            </Badge>
+            <Badge variant="outline" className={statusColors[project.status]}>{statusLabel}</Badge>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {project.code} — {project.client.name}
-            {project.location && ` — ${project.location}`}
+            {project.code} — {project.client.name}{project.location && ` — ${project.location}`}
           </p>
         </div>
       </div>
 
-      {/* Section Layout with Tabs */}
       <SectionLayout
         title={{ ar: project.name, en: project.name }}
         subtitle={{ ar: project.description || project.code, en: project.description || project.code }}
@@ -742,185 +604,104 @@ function ProjectDetailView() {
 
 // ============ OVERVIEW TAB ============
 
-function OverviewTab({ project, completion, lang }: { project: ProjectDetail; completion: number; lang: Lang }) {
+function OverviewTab({ project, completion, invoices, payments, lang }: {
+  project: ProjectDetail; completion: number; invoices: SalesInvoiceItem[]; payments: ClientPaymentItem[]; lang: Lang
+}) {
   const cs = project.costSheet
   const isProfit = cs.profit >= 0
+  const totalInvoiced = invoices.reduce((s, i) => s + i.totalAmount, 0)
+  const totalCollected = payments.reduce((s, p) => s + p.amount, 0)
+  const totalRemaining = totalInvoiced - totalCollected
 
   return (
     <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-100">
-                <FileText className="size-5 text-emerald-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value', lang)}</p>
-                <p className="text-sm font-bold text-emerald-700">
-                  <MoneyDisplay value={cs.contractValue} mode="system" lang={lang} bold size="sm" />
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-teal-100">
-                <TrendingUp className="size-5 text-teal-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
-                <p className="text-sm font-bold text-teal-700">
-                  <MoneyDisplay value={cs.revenue} mode="system" lang={lang} bold size="sm" />
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-rose-100">
-                <DollarSign className="size-5 text-rose-600" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">{t('إجمالي التكاليف', 'Total Costs', lang)}</p>
-                <p className="text-sm font-bold text-rose-700">
-                  <MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="sm" />
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="overflow-hidden">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className={`flex size-10 items-center justify-center rounded-xl ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                <Calculator className={`size-5 ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">{t('الربح', 'Profit', lang)}</p>
-                <p className={`text-sm font-bold ${isProfit ? 'text-emerald-700' : 'text-rose-700'}`}>
-                  <MoneyDisplay value={cs.profit} mode="system" lang={lang} bold size="sm" />
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Financial Summary KPI Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        {[
+          { label: t('قيمة العقد', 'Contract', lang), value: cs.contractValue, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+          { label: t('المفوتر', 'Invoiced', lang), value: totalInvoiced, color: 'text-sky-700', bg: 'bg-sky-100' },
+          { label: t('المحصل', 'Collected', lang), value: totalCollected, color: 'text-teal-700', bg: 'bg-teal-100' },
+          { label: t('المتبقي', 'Remaining', lang), value: Math.max(totalRemaining, 0), color: 'text-amber-700', bg: 'bg-amber-100' },
+          { label: t('التكاليف', 'Costs', lang), value: cs.totalCosts, color: 'text-rose-700', bg: 'bg-rose-100' },
+          { label: t('الربح', 'Profit', lang), value: cs.profit, color: isProfit ? 'text-emerald-700' : 'text-rose-700', bg: isProfit ? 'bg-emerald-100' : 'bg-rose-100' },
+        ].map(kpi => (
+          <Card key={kpi.label} className="overflow-hidden">
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground">{kpi.label}</p>
+              <p className={`text-sm font-bold ${kpi.color}`}>
+                <MoneyDisplay value={kpi.value} mode="system" lang={lang} bold size="sm" />
+              </p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      {/* Completion & Timeline Row */}
+      {/* Workflow Visual: Contract → Extract → Invoice → Collection */}
+      <Card className="border-emerald-200 bg-gradient-to-l from-emerald-50 to-teal-50">
+        <CardContent className="p-4">
+          <p className="text-xs font-semibold text-emerald-700 mb-3">{t('دورة العمل: عقد ← مستخلص ← فاتورة ← تحصيل', 'Workflow: Contract → Extract → Invoice → Collection', lang)}</p>
+          <div className="flex items-center justify-between gap-2 overflow-x-auto">
+            {[
+              { label: t('العقود', 'Contracts', lang), count: project.contracts.length, icon: FileText, color: 'text-emerald-600' },
+              { label: t('المستخلصات', 'Extracts', lang), count: project.progressClaims.length, icon: Receipt, color: 'text-sky-600' },
+              { label: t('الفواتير', 'Invoices', lang), count: invoices.length, icon: FileText, color: 'text-purple-600' },
+              { label: t('التحصيلات', 'Collections', lang), count: payments.length, icon: CreditCard, color: 'text-teal-600' },
+            ].map((step, idx) => (
+              <React.Fragment key={step.label}>
+                <div className="flex flex-col items-center gap-1 min-w-[70px]">
+                  <div className={`flex size-10 items-center justify-center rounded-full bg-white shadow-sm ${step.color}`}>
+                    <step.icon className="size-5" />
+                  </div>
+                  <span className="text-xs font-medium text-gray-700">{step.count}</span>
+                  <span className="text-[10px] text-muted-foreground">{step.label}</span>
+                </div>
+                {idx < 3 && <ArrowRight className="size-4 text-emerald-400 shrink-0" />}
+              </React.Fragment>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Completion & Project Info Row */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {/* Completion Card */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Target className="size-4 text-emerald-600" />
-              {t('نسبة الإنجاز', 'Completion Percentage', lang)}
-            </CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Target className="size-4 text-emerald-600" />{t('نسبة الإنجاز', 'Completion', lang)}</CardTitle></CardHeader>
           <CardContent>
             <div className="flex items-center gap-6">
               <div className="relative flex size-28 shrink-0 items-center justify-center">
                 <svg className="size-28 -rotate-90" viewBox="0 0 36 36">
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke="#e5e7eb"
-                    strokeWidth="2.5"
-                  />
-                  <path
-                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-                    fill="none"
-                    stroke={completion >= 100 ? '#14b8a6' : '#10b981'}
-                    strokeWidth="2.5"
-                    strokeDasharray={`${completion}, 100`}
-                    strokeLinecap="round"
-                  />
+                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e5e7eb" strokeWidth="2.5" />
+                  <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={completion >= 100 ? '#14b8a6' : '#10b981'} strokeWidth="2.5" strokeDasharray={`${completion}, 100`} strokeLinecap="round" />
                 </svg>
                 <span className="absolute text-2xl font-bold text-gray-800">{completion}%</span>
               </div>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">{t('المستخلصات', 'Claims', lang)}</span>
-                  <span className="font-medium">{formatNumber(project.progressClaims.length)}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">{t('بنود BOQ', 'BOQ Items', lang)}</span>
-                  <span className="font-medium">{formatNumber(project.boqItems.length)}</span>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">{t('العقود', 'Contracts', lang)}</span>
-                  <span className="font-medium">{formatNumber(project.contracts.length)}</span>
-                </div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">{t('المستخلصات', 'Claims', lang)}</span><span className="font-medium">{formatNumber(project.progressClaims.length)}</span></div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">{t('العقود', 'Contracts', lang)}</span><span className="font-medium">{formatNumber(project.contracts.length)}</span></div>
                 <Separator className="my-1" />
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted-foreground">{t('هامش الربح', 'Profit Margin', lang)}</span>
-                  <span className={`font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {Math.abs(cs.profitMargin).toFixed(2)}%
-                  </span>
-                </div>
+                <div className="flex justify-between gap-4"><span className="text-muted-foreground">{t('هامش الربح', 'Profit Margin', lang)}</span><span className={`font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>{Math.abs(cs.profitMargin).toFixed(2)}%</span></div>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Project Info Card */}
         <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Building2 className="size-4 text-emerald-600" />
-              {t('معلومات المشروع', 'Project Information', lang)}
-            </CardTitle>
-          </CardHeader>
+          <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Building2 className="size-4 text-emerald-600" />{t('معلومات المشروع', 'Project Information', lang)}</CardTitle></CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">{t('كود المشروع', 'Project Code', lang)}</p>
-                <p className="font-medium">{project.code}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">{t('العميل', 'Client', lang)}</p>
-                <p className="font-medium">{project.client.name}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">{t('الفرع', 'Branch', lang)}</p>
-                <p className="font-medium">{project.branch.name}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">{t('الموقع', 'Location', lang)}</p>
-                <p className="font-medium">{project.location || '—'}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">{t('تاريخ البدء', 'Start Date', lang)}</p>
-                <p className="font-medium">{formatDate(project.startDate, lang)}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground">{t('تاريخ الانتهاء', 'End Date', lang)}</p>
-                <p className="font-medium">{project.endDate ? formatDate(project.endDate, lang) : '—'}</p>
-              </div>
-              {project.description && (
-                <div className="col-span-2 space-y-1">
-                  <p className="text-xs text-muted-foreground">{t('الوصف', 'Description', lang)}</p>
-                  <p className="font-medium text-gray-700">{project.description}</p>
-                </div>
-              )}
+              <div><p className="text-xs text-muted-foreground">{t('الكود', 'Code', lang)}</p><p className="font-medium">{project.code}</p></div>
+              <div><p className="text-xs text-muted-foreground">{t('العميل', 'Client', lang)}</p><p className="font-medium">{project.client.name}</p></div>
+              <div><p className="text-xs text-muted-foreground">{t('الموقع', 'Location', lang)}</p><p className="font-medium">{project.location || '—'}</p></div>
+              <div><p className="text-xs text-muted-foreground">{t('تاريخ البدء', 'Start Date', lang)}</p><p className="font-medium">{formatDate(project.startDate, lang)}</p></div>
+              {project.description && <div className="col-span-2"><p className="text-xs text-muted-foreground">{t('الوصف', 'Description', lang)}</p><p className="font-medium text-gray-700">{project.description}</p></div>}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Cost Breakdown Summary */}
+      {/* Cost Breakdown */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <BarChart3 className="size-4 text-emerald-600" />
-            {t('ملخص التكاليف', 'Cost Summary', lang)}
-          </CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><BarChart3 className="size-4 text-emerald-600" />{t('ملخص التكاليف', 'Cost Summary', lang)}</CardTitle></CardHeader>
         <CardContent>
           <div className="space-y-3">
             {[
@@ -937,9 +718,7 @@ function OverviewTab({ project, completion, lang }: { project: ProjectDetail; co
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{item.label}</span>
                     <div className="flex items-center gap-2">
-                      <span className="font-medium">
-                        <MoneyDisplay value={item.value} mode="system" lang={lang} size="sm" />
-                      </span>
+                      <span className="font-medium"><MoneyDisplay value={item.value} mode="system" lang={lang} size="sm" /></span>
                       <span className="text-xs text-muted-foreground">({pct}%)</span>
                     </div>
                   </div>
@@ -952,9 +731,7 @@ function OverviewTab({ project, completion, lang }: { project: ProjectDetail; co
             <Separator />
             <div className="flex items-center justify-between text-sm font-bold">
               <span>{t('إجمالي التكاليف', 'Total Costs', lang)}</span>
-              <span className="text-rose-700">
-                <MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="md" />
-              </span>
+              <span className="text-rose-700"><MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="md" /></span>
             </div>
           </div>
         </CardContent>
@@ -963,20 +740,19 @@ function OverviewTab({ project, completion, lang }: { project: ProjectDetail; co
   )
 }
 
-// ============ CONTRACTING TAB ============
+// ============ CONTRACTS TAB ============
 
-function ContractingTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
+function ContractsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
   return (
-    <div className="space-y-6">
-      {/* Contracts */}
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('عدد العقود', 'Total Contracts', lang)}</p><p className="text-2xl font-bold">{project.contracts.length}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('إجمالي القيمة', 'Total Value', lang)}</p><p className="text-lg font-bold text-emerald-700"><MoneyDisplay value={project.contracts.reduce((s, c) => s + c.totalValue, 0)} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('العقود النشطة', 'Active Contracts', lang)}</p><p className="text-2xl font-bold text-emerald-700">{project.contracts.filter(c => c.status === 'ACTIVE').length}</p></CardContent></Card>
+      </div>
+
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileText className="size-4 text-emerald-600" />
-            {t('العقود', 'Contracts', lang)}
-            <Badge variant="secondary" className="mr-2">{project.contracts.length}</Badge>
-          </CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><FileText className="size-4 text-emerald-600" />{t('العقود', 'Contracts', lang)}</CardTitle></CardHeader>
         <CardContent className="px-0 pb-2">
           {project.contracts.length > 0 ? (
             <div className="overflow-x-auto">
@@ -985,7 +761,7 @@ function ContractingTab({ project, lang }: { project: ProjectDetail; lang: Lang 
                   <TableRow>
                     <TableHead className="text-right">{t('رقم العقد', 'Contract No.', lang)}</TableHead>
                     <TableHead className="text-right">{t('القيمة', 'Value', lang)}</TableHead>
-                    <TableHead className="text-right">{t('ضريبة القيمة المضافة', 'VAT', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
                     <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
                     <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
                     <TableHead className="text-right">{t('المستخلصات', 'Claims', lang)}</TableHead>
@@ -998,13 +774,74 @@ function ContractingTab({ project, lang }: { project: ProjectDetail; lang: Lang 
                       <TableCell>{formatSAR(c.totalValue / 1.15, lang)}</TableCell>
                       <TableCell>{formatSAR(c.totalValue - c.totalValue / 1.15, lang)}</TableCell>
                       <TableCell className="font-semibold">{formatSAR(c.totalValue, lang)}</TableCell>
+                      <TableCell><Badge variant="outline" className={contractStatusColors[c.status]}>{contractStatusLabels[c.status]?.[lang] || c.status}</Badge></TableCell>
+                      <TableCell><Badge variant="secondary">{c.progressClaims?.length || 0}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-8"><FileText className="size-8 text-gray-300" /><p className="text-sm text-muted-foreground">{t('لا توجد عقود', 'No contracts', lang)}</p></div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+// ============ EXTRACTS TAB ============
+
+function ExtractsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
+  const totalAmount = project.progressClaims.reduce((s, c) => s + c.totalAmount, 0)
+  const invoicedCount = project.progressClaims.filter(c => c.invoiced).length
+  const uninvoicedCount = project.progressClaims.filter(c => !c.invoiced && c.status === 'APPROVED').length
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('عدد المستخلصات', 'Total Claims', lang)}</p><p className="text-2xl font-bold">{project.progressClaims.length}</p></CardContent></Card>
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('إجمالي المبلغ', 'Total Amount', lang)}</p><p className="text-lg font-bold text-emerald-700"><MoneyDisplay value={totalAmount} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('مفوتر', 'Invoiced', lang)}</p><p className="text-2xl font-bold text-sky-700">{invoicedCount}</p></CardContent></Card>
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('غير مفوتر', 'Uninvoiced', lang)}</p><p className="text-2xl font-bold text-amber-700">{uninvoicedCount}</p></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Receipt className="size-4 text-emerald-600" />{t('مستخلصات المشروع', 'Project Extracts', lang)}</CardTitle></CardHeader>
+        <CardContent className="px-0 pb-2">
+          {project.progressClaims.length > 0 ? (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right">{t('رقم المستخلص', 'Claim No.', lang)}</TableHead>
+                    <TableHead className="text-right">{t('العقد', 'Contract', lang)}</TableHead>
+                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+                    <TableHead className="text-right">{t('النسبة', '%', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+                    <TableHead className="text-right">{t('مفوتر؟', 'Invoiced?', lang)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {project.progressClaims.map(cl => (
+                    <TableRow key={cl.id}>
+                      <TableCell className="font-medium">{cl.claimNo}</TableCell>
+                      <TableCell>{cl.contract.contractNo}</TableCell>
+                      <TableCell>{formatDate(cl.date, lang)}</TableCell>
+                      <TableCell>{cl.percentage}%</TableCell>
+                      <TableCell><MoneyDisplay value={cl.amount} lang={lang} size="sm" inline /></TableCell>
+                      <TableCell className="font-semibold"><MoneyDisplay value={cl.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
+                      <TableCell><Badge variant="outline" className={claimStatusColors[cl.status]}>{claimStatusLabels[cl.status]?.[lang] || cl.status}</Badge></TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={contractStatusColors[c.status]}>
-                          {contractStatusLabels[c.status]?.[lang] || c.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">{c.progressClaims?.length || 0}</Badge>
+                        {cl.invoiced ? (
+                          <Badge className="bg-sky-100 text-sky-700 border-sky-200">{t('نعم', 'Yes', lang)}</Badge>
+                        ) : cl.status === 'APPROVED' ? (
+                          <Badge className="bg-amber-100 text-amber-700 border-amber-200">{t('لا', 'No', lang)}</Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1012,33 +849,203 @@ function ContractingTab({ project, lang }: { project: ProjectDetail; lang: Lang 
               </Table>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-2 py-8">
-              <FileText className="size-8 text-gray-300" />
-              <p className="text-sm text-muted-foreground">{t('لا توجد عقود لهذا المشروع', 'No contracts for this project', lang)}</p>
-            </div>
+            <div className="flex flex-col items-center gap-2 py-8"><Receipt className="size-8 text-gray-300" /><p className="text-sm text-muted-foreground">{t('لا توجد مستخلصات', 'No claims', lang)}</p></div>
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
 
-      {/* Change Orders - Placeholder */}
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center gap-3 py-10">
-          <FileQuestion className="size-8 text-gray-400" />
-          <div className="text-center">
-            <p className="font-medium text-gray-600">{t('أوامر التغيير', 'Change Orders', lang)}</p>
-            <p className="text-xs text-muted-foreground">{t('لم يتم تسجيل أوامر تغيير بعد', 'No change orders recorded yet', lang)}</p>
-          </div>
+// ============ INVOICES TAB ============
+
+function InvoicesTab({ invoices, lang }: { invoices: SalesInvoiceItem[]; lang: Lang }) {
+  const totalInvoiced = invoices.reduce((s, i) => s + i.totalAmount, 0)
+  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+  const totalRemaining = totalInvoiced - totalPaid
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('إجمالي الفواتير', 'Total Invoiced', lang)}</p><MoneyDisplay value={totalInvoiced} lang={lang} size="xl" bold className="text-emerald-700" /></CardContent></Card>
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('المحصل', 'Collected', lang)}</p><MoneyDisplay value={totalPaid} lang={lang} size="xl" bold className="text-teal-700" /></CardContent></Card>
+        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('المتبقي', 'Remaining', lang)}</p><MoneyDisplay value={Math.max(totalRemaining, 0)} lang={lang} size="xl" bold className="text-amber-700" /></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><FileText className="size-4 text-emerald-600" />{t('فواتير المبيعات', 'Sales Invoices', lang)}</CardTitle></CardHeader>
+        <CardContent className="px-0 pb-2">
+          {invoices.length > 0 ? (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No.', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المستخلص', 'Extract', lang)}</TableHead>
+                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المدفوع', 'Paid', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المتبقي', 'Remaining', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+                    <TableHead className="text-right">{t('قيد', 'JE', lang)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map(inv => {
+                    const remaining = inv.totalAmount - inv.paidAmount
+                    return (
+                      <TableRow key={inv.id}>
+                        <TableCell className="font-medium">{inv.invoiceNo}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">{inv.progressClaim?.claimNo || '—'}</TableCell>
+                        <TableCell>{formatDate(inv.date, lang)}</TableCell>
+                        <TableCell className="font-semibold"><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
+                        <TableCell><MoneyDisplay value={inv.paidAmount} lang={lang} size="sm" inline /></TableCell>
+                        <TableCell className={remaining > 0 ? 'text-amber-700 font-medium' : 'text-emerald-700'}>
+                          <MoneyDisplay value={remaining} lang={lang} size="sm" inline bold />
+                        </TableCell>
+                        <TableCell><Badge variant="outline" className={invoiceStatusColors[inv.status] || ''}>{invoiceStatusLabels[inv.status]?.[lang] || inv.status}</Badge></TableCell>
+                        <TableCell>
+                          {inv.journalEntryId ? (
+                            <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">JE</Badge>
+                          ) : <span className="text-xs text-muted-foreground">—</span>}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-8"><FileText className="size-8 text-gray-300" /><p className="text-sm text-muted-foreground">{t('لا توجد فواتير', 'No invoices', lang)}</p></div>
+          )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
 
-      {/* Warranties - Placeholder */}
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center gap-3 py-10">
-          <ShieldCheck className="size-8 text-gray-400" />
-          <div className="text-center">
-            <p className="font-medium text-gray-600">{t('الضمانات', 'Warranties', lang)}</p>
-            <p className="text-xs text-muted-foreground">{t('لم يتم تسجيل ضمانات بعد', 'No warranties recorded yet', lang)}</p>
+// ============ COSTS TAB ============
+
+function CostsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
+  const cs = project.costSheet
+  const isProfit = cs.profit >= 0
+  const budgetVariance = cs.contractValue - cs.totalCosts
+  const budgetVariancePct = cs.contractValue > 0 ? ((budgetVariance / cs.contractValue) * 100) : 0
+
+  const costRows = [
+    { label: t('المشتريات', 'Purchases', lang), value: cs.purchases, color: 'text-rose-600' },
+    { label: t('مصروفات المشروع', 'Project Expenses', lang), value: cs.expenses, color: 'text-rose-600' },
+    { label: t('مقاولو الباطن', 'Subcontractors', lang), value: cs.subcontractors, color: 'text-orange-600' },
+    { label: t('تكاليف العمالة', 'Labor Costs', lang), value: cs.labor, color: 'text-amber-600' },
+    { label: t('تكاليف المعدات', 'Equipment Costs', lang), value: cs.equipment, color: 'text-cyan-600' },
+  ]
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value', lang)}</p><p className="text-lg font-bold text-emerald-700"><MoneyDisplay value={cs.contractValue} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('التكاليف الفعلية', 'Actual Costs', lang)}</p><p className="text-lg font-bold text-rose-700"><MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('الفرق', 'Variance', lang)}</p><p className={`text-lg font-bold ${budgetVariance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}><MoneyDisplay value={budgetVariance} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('نسبة الفرق', 'Variance %', lang)}</p><p className={`text-lg font-bold ${budgetVariancePct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{budgetVariancePct >= 0 ? '+' : ''}{budgetVariancePct.toFixed(2)}%</p></CardContent></Card>
+      </div>
+
+      {/* Project Card */}
+      <div className="border rounded-lg overflow-hidden">
+        <div className="bg-gradient-to-l from-emerald-700 to-emerald-800 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-white/20"><Calculator className="size-5 text-white" /></div>
+            <div><h3 className="text-lg font-bold text-white">{t('كرت المشروع', 'Project Card')}</h3><p className="text-sm text-emerald-200">{project.name}</p></div>
           </div>
+        </div>
+        <div className="border-x border-b border-gray-200">
+          <div className="px-6 pt-4 pb-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-3">{t('الإيرادات', 'Revenue')}</p>
+            <div className="flex items-center justify-between py-2.5"><span className="text-sm font-medium text-gray-700">{t('قيمة العقد', 'Contract Value')}</span><span className="text-emerald-700"><MoneyDisplay value={cs.contractValue} mode="system" lang={lang} bold size="md" /></span></div>
+            <div className="flex items-center justify-between py-2.5 border-t border-dashed border-gray-100"><span className="text-sm font-medium text-gray-700">{t('المستخلصات', 'Progress Claims')}</span><span className="text-emerald-600"><MoneyDisplay value={cs.revenue} mode="system" lang={lang} bold size="md" /></span></div>
+          </div>
+          <div className="mx-6 border-t-2 border-emerald-200" />
+          <div className="px-6 pt-3 pb-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-rose-600 mb-3">{t('التكاليف', 'Costs')}</p>
+            {costRows.map((row, idx) => (
+              <div key={idx} className={`flex items-center justify-between py-2.5 ${idx < costRows.length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
+                <span className="text-sm font-medium text-gray-700">{row.label}</span>
+                <span className={row.color}><MoneyDisplay value={row.value} mode="system" lang={lang} bold size="md" /></span>
+              </div>
+            ))}
+          </div>
+          <div className="mx-6 border-t-2 border-rose-200" />
+          <div className="px-6 py-3 bg-rose-50/50">
+            <div className="flex items-center justify-between"><span className="text-sm font-bold text-gray-800">{t('إجمالي التكلفة', 'Total Cost')}</span><span className="text-rose-700"><MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="lg" /></span></div>
+          </div>
+          <div className="mx-6 border-t-2 border-gray-200" />
+          <div className={`px-6 py-4 ${isProfit ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`flex size-10 items-center justify-center rounded-full ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}><TrendingUp className={`size-5 ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`} /></div>
+                <div><p className="text-sm font-bold text-gray-800">{t('الربح', 'Profit')}</p><span className={isProfit ? 'text-emerald-600' : 'text-rose-600'}><MoneyDisplay value={cs.profit} mode="system" lang={lang} bold size="xl" /></span></div>
+              </div>
+              <div className={`text-center rounded-xl px-5 py-3 ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                <p className="text-xs font-medium text-gray-500 mb-1">{t('هامش الربح', 'Profit Margin')}</p>
+                <p className={`text-3xl font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>{Math.abs(cs.profitMargin).toFixed(2)}%</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============ COLLECTIONS TAB ============
+
+function CollectionsTab({ payments, lang }: { payments: ClientPaymentItem[]; lang: Lang }) {
+  const totalCollected = payments.reduce((s, p) => s + p.amount, 0)
+  const treasuryTotal = payments.filter(p => p.receivedIn === 'TREASURY').reduce((s, p) => s + p.amount, 0)
+  const bankTotal = payments.filter(p => p.receivedIn === 'BANK').reduce((s, p) => s + p.amount, 0)
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('إجمالي التحصيلات', 'Total Collected', lang)}</p><MoneyDisplay value={totalCollected} lang={lang} size="xl" bold className="text-emerald-700" /></CardContent></Card>
+        <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('الخزينة', 'Treasury', lang)}</p><MoneyDisplay value={treasuryTotal} lang={lang} size="xl" bold className="text-amber-700" /></CardContent></Card>
+        <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t('البنك', 'Bank', lang)}</p><MoneyDisplay value={bankTotal} lang={lang} size="xl" bold className="text-sky-700" /></CardContent></Card>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><CreditCard className="size-4 text-emerald-600" />{t('تحصيلات المشروع', 'Project Collections', lang)}</CardTitle></CardHeader>
+        <CardContent className="px-0 pb-2">
+          {payments.length > 0 ? (
+            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الفاتورة', 'Invoice', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead>
+                    <TableHead className="text-right">{t('التحصيل في', 'Received In', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المرجع', 'Reference', lang)}</TableHead>
+                    <TableHead className="text-right">{t('قيد', 'JE', lang)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.map(p => (
+                    <TableRow key={p.id}>
+                      <TableCell>{formatDate(p.date, lang)}</TableCell>
+                      <TableCell className="font-medium">{p.invoice?.invoiceNo || '—'}</TableCell>
+                      <TableCell className="font-semibold"><MoneyDisplay value={p.amount} lang={lang} size="sm" inline bold /></TableCell>
+                      <TableCell><Badge variant="outline" className={`text-[10px] ${receivedInColors[p.receivedIn] || ''}`}>{receivedInLabels[p.receivedIn]?.[lang] || p.receivedIn}</Badge></TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{p.reference || '—'}</TableCell>
+                      <TableCell>
+                        {p.journalEntryId ? <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">JE</Badge> : <span className="text-xs text-muted-foreground">—</span>}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-2 py-8"><CreditCard className="size-8 text-gray-300" /><p className="text-sm text-muted-foreground">{t('لا توجد تحصيلات', 'No collections', lang)}</p></div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -1052,54 +1059,19 @@ function BOQTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('عدد البنود', 'Total Items', lang)}</p>
-            <p className="text-2xl font-bold">{formatNumber(project.boqItems.length)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('إجمالي BOQ', 'BOQ Total', lang)}</p>
-            <p className="text-lg font-bold text-emerald-700">
-              <MoneyDisplay value={totalBOQ} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value', lang)}</p>
-            <p className="text-lg font-bold text-teal-700">
-              <MoneyDisplay value={project.contractValue} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('عدد البنود', 'Total Items', lang)}</p><p className="text-2xl font-bold">{formatNumber(project.boqItems.length)}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('إجمالي BOQ', 'BOQ Total', lang)}</p><p className="text-lg font-bold text-emerald-700"><MoneyDisplay value={totalBOQ} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
+        <Card><CardContent className="p-4"><p className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value', lang)}</p><p className="text-lg font-bold text-teal-700"><MoneyDisplay value={project.contractValue} mode="system" lang={lang} bold size="sm" /></p></CardContent></Card>
       </div>
 
-      {/* BOQ Table */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Layers className="size-4 text-emerald-600" />
-            {t('جدول الكميات', 'Bill of Quantities', lang)}
-          </CardTitle>
-        </CardHeader>
+        <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Layers className="size-4 text-emerald-600" />{t('جدول الكميات', 'Bill of Quantities', lang)}</CardTitle></CardHeader>
         <CardContent className="px-0 pb-2">
           {project.boqItems.length > 0 ? (
             <div className="overflow-x-auto max-h-96 overflow-y-auto">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الوحدة', 'Unit', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الكمية', 'Qty', lang)}</TableHead>
-                    <TableHead className="text-right">{t('سعر الوحدة', 'Unit Price', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
-                  </TableRow>
-                </TableHeader>
+                <TableHeader><TableRow><TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead><TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead><TableHead className="text-right">{t('الوحدة', 'Unit', lang)}</TableHead><TableHead className="text-right">{t('الكمية', 'Qty', lang)}</TableHead><TableHead className="text-right">{t('سعر الوحدة', 'Unit Price', lang)}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead></TableRow></TableHeader>
                 <TableBody>
                   {(() => {
                     let currentCategory = ''
@@ -1107,39 +1079,18 @@ function BOQTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
                     project.boqItems.forEach((item, idx) => {
                       if (item.category && item.category !== currentCategory) {
                         currentCategory = item.category
-                        rows.push(
-                          <TableRow key={`cat-${idx}`} className="bg-emerald-50">
-                            <TableCell colSpan={6} className="font-bold text-emerald-700">{currentCategory}</TableCell>
-                          </TableRow>
-                        )
+                        rows.push(<TableRow key={`cat-${idx}`} className="bg-emerald-50"><TableCell colSpan={6} className="font-bold text-emerald-700">{currentCategory}</TableCell></TableRow>)
                       }
-                      rows.push(
-                        <TableRow key={item.id}>
-                          <TableCell className="font-medium">{item.code}</TableCell>
-                          <TableCell>{item.description}</TableCell>
-                          <TableCell>{item.unit}</TableCell>
-                          <TableCell>{formatNumber(item.quantity)}</TableCell>
-                          <TableCell>{formatSAR(item.unitPrice, lang)}</TableCell>
-                          <TableCell className="font-semibold">{formatSAR(item.totalPrice, lang)}</TableCell>
-                        </TableRow>
-                      )
+                      rows.push(<TableRow key={item.id}><TableCell className="font-medium">{item.code}</TableCell><TableCell>{item.description}</TableCell><TableCell>{item.unit}</TableCell><TableCell>{formatNumber(item.quantity)}</TableCell><TableCell>{formatSAR(item.unitPrice, lang)}</TableCell><TableCell className="font-semibold">{formatSAR(item.totalPrice, lang)}</TableCell></TableRow>)
                     })
-                    rows.push(
-                      <TableRow key="total" className="bg-gray-50 font-bold">
-                        <TableCell colSpan={5} className="text-left">{t('الإجمالي', 'Total', lang)}</TableCell>
-                        <TableCell>{formatSAR(totalBOQ, lang)}</TableCell>
-                      </TableRow>
-                    )
+                    rows.push(<TableRow key="total" className="bg-gray-50 font-bold"><TableCell colSpan={5} className="text-left">{t('الإجمالي', 'Total', lang)}</TableCell><TableCell>{formatSAR(totalBOQ, lang)}</TableCell></TableRow>)
                     return rows
                   })()}
                 </TableBody>
               </Table>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-2 py-8">
-              <Layers className="size-8 text-gray-300" />
-              <p className="text-sm text-muted-foreground">{t('لا توجد بنود في جدول الكميات', 'No BOQ items', lang)}</p>
-            </div>
+            <div className="flex flex-col items-center gap-2 py-8"><Layers className="size-8 text-gray-300" /><p className="text-sm text-muted-foreground">{t('لا توجد بنود', 'No BOQ items', lang)}</p></div>
           )}
         </CardContent>
       </Card>
@@ -1147,268 +1098,20 @@ function BOQTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
   )
 }
 
-// ============ EXTRACTS TAB ============
+// ============ DOCUMENTS PLACEHOLDER ============
 
-function ExtractsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
-  const totalClaimsAmount = project.progressClaims.reduce((s, c) => s + c.totalAmount, 0)
-  const paidClaims = project.progressClaims.filter(c => c.status === 'PAID')
-  const paidAmount = paidClaims.reduce((s, c) => s + c.totalAmount, 0)
-  const pendingClaims = project.progressClaims.filter(c => ['DRAFT', 'SUBMITTED', 'APPROVED', 'PARTIALLY_PAID'].includes(c.status))
-  const pendingAmount = pendingClaims.reduce((s, c) => s + c.totalAmount, 0)
-
+function DocumentsPlaceholder({ lang }: { lang: Lang }) {
   return (
-    <div className="space-y-4">
-      {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('عدد المستخلصات', 'Total Claims', lang)}</p>
-            <p className="text-2xl font-bold">{formatNumber(project.progressClaims.length)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('إجمالي المستخلصات', 'Total Amount', lang)}</p>
-            <p className="text-lg font-bold text-emerald-700">
-              <MoneyDisplay value={totalClaimsAmount} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('المحصل', 'Collected', lang)}</p>
-            <p className="text-lg font-bold text-teal-700">
-              <MoneyDisplay value={paidAmount} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('المعلق', 'Pending', lang)}</p>
-            <p className="text-lg font-bold text-amber-700">
-              <MoneyDisplay value={pendingAmount} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Claims Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Receipt className="size-4 text-emerald-600" />
-            {t('مستخلصات العميل', 'Client Extracts', lang)}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-0 pb-2">
-          {project.progressClaims.length > 0 ? (
-            <div className="overflow-x-auto max-h-96 overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('رقم المستخلص', 'Claim No.', lang)}</TableHead>
-                    <TableHead className="text-right">{t('العقد', 'Contract', lang)}</TableHead>
-                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                    <TableHead className="text-right">{t('النسبة', '%', lang)}</TableHead>
-                    <TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الإجمالي مع الضريبة', 'Total incl. VAT', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {project.progressClaims.map(cl => (
-                    <TableRow key={cl.id}>
-                      <TableCell className="font-medium">{cl.claimNo}</TableCell>
-                      <TableCell>{cl.contract.contractNo}</TableCell>
-                      <TableCell>{formatDate(cl.date, lang)}</TableCell>
-                      <TableCell>{cl.percentage}%</TableCell>
-                      <TableCell>{formatSAR(cl.amount, lang)}</TableCell>
-                      <TableCell className="font-semibold">{formatSAR(cl.totalAmount, lang)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={claimStatusColors[cl.status]}>
-                          {claimStatusLabels[cl.status]?.[lang] || cl.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  <TableRow className="bg-gray-50 font-bold">
-                    <TableCell colSpan={4}>{t('الإجمالي', 'Total', lang)}</TableCell>
-                    <TableCell>{formatSAR(project.progressClaims.reduce((s, c) => s + c.amount, 0), lang)}</TableCell>
-                    <TableCell>{formatSAR(totalClaimsAmount, lang)}</TableCell>
-                    <TableCell />
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-2 py-8">
-              <Receipt className="size-8 text-gray-300" />
-              <p className="text-sm text-muted-foreground">{t('لا توجد مستخلصات', 'No claims', lang)}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Contractor Extracts - Placeholder */}
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center gap-3 py-10">
-          <Send className="size-8 text-gray-400" />
-          <div className="text-center">
-            <p className="font-medium text-gray-600">{t('مستخلصات المقاولين', 'Contractor Extracts', lang)}</p>
-            <p className="text-xs text-muted-foreground">{t('إدارة مستخلصات المقاولين من الباطن', 'Manage subcontractor extracts and payments', lang)}</p>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// ============ COSTS TAB ============
-
-function CostsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
-  const cs = project.costSheet
-  const isProfit = cs.profit >= 0
-
-  const costRows = [
-    { label: t('المشتريات', 'Purchases', lang), value: cs.purchases, color: 'text-rose-600', bg: 'bg-rose-50/50' },
-    { label: t('مصروفات المشروع', 'Project Expenses', lang), value: cs.expenses, color: 'text-rose-600', bg: 'bg-rose-50/30' },
-    { label: t('مقاولو الباطن', 'Subcontractors', lang), value: cs.subcontractors, color: 'text-orange-600', bg: 'bg-orange-50/30' },
-    { label: t('تكاليف العمالة', 'Labor Costs', lang), value: cs.labor, color: 'text-amber-600', bg: 'bg-amber-50/30' },
-    { label: t('تكاليف المعدات', 'Equipment Costs', lang), value: cs.equipment, color: 'text-cyan-600', bg: 'bg-cyan-50/30' },
-  ]
-
-  // Budget variance calculations
-  const budgetVariance = cs.contractValue - cs.totalCosts
-  const budgetVariancePct = cs.contractValue > 0 ? ((budgetVariance / cs.contractValue) * 100) : 0
-
-  return (
-    <div className="space-y-6">
-      {/* Budget vs Actual Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('قيمة العقد (الموازنة)', 'Contract Value (Budget)', lang)}</p>
-            <p className="text-lg font-bold text-emerald-700">
-              <MoneyDisplay value={cs.contractValue} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('التكاليف الفعلية', 'Actual Costs', lang)}</p>
-            <p className="text-lg font-bold text-rose-700">
-              <MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('الفرق', 'Variance', lang)}</p>
-            <p className={`text-lg font-bold ${budgetVariance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-              <MoneyDisplay value={budgetVariance} mode="system" lang={lang} bold size="sm" />
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">{t('نسبة الفرق', 'Variance %', lang)}</p>
-            <p className={`text-lg font-bold ${budgetVariancePct >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-              {budgetVariancePct >= 0 ? '+' : ''}{budgetVariancePct.toFixed(2)}%
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Cost Breakdown Card */}
-      <div className="border rounded-lg overflow-hidden">
-        {/* Header */}
-        <div className="bg-gradient-to-l from-emerald-700 to-emerald-800 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-10 items-center justify-center rounded-lg bg-white/20">
-              <Calculator className="size-5 text-white" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white">{t('كرت المشروع', 'Project Card')}</h3>
-              <p className="text-sm text-emerald-200">{project.name}</p>
-            </div>
-          </div>
+    <Card className="border-dashed border-2 border-gray-200 bg-gray-50/50">
+      <CardContent className="flex flex-col items-center gap-4 py-16">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-gray-100"><FolderOpen className="size-8 text-gray-400" /></div>
+        <div className="text-center space-y-2">
+          <h3 className="text-lg font-semibold text-gray-700">{t('الوثائق', 'Documents', lang)}</h3>
+          <p className="text-sm text-muted-foreground max-w-md">{t('المخططات، العقود، الملفات والمستندات المرتبطة بالمشروع', 'Drawings, contracts, files and documents associated with the project', lang)}</p>
         </div>
-
-        {/* Body */}
-        <div className="border-x border-b border-gray-200">
-          {/* Revenue Section */}
-          <div className="px-6 pt-4 pb-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-3">
-              {t('الإيرادات', 'Revenue')}
-            </p>
-            <div className="flex items-center justify-between py-2.5">
-              <span className="text-sm font-medium text-gray-700">{t('قيمة العقد', 'Contract Value')}</span>
-              <span className="text-emerald-700">
-                <MoneyDisplay value={cs.contractValue} mode="system" lang={lang} bold size="md" />
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2.5 border-t border-dashed border-gray-100">
-              <span className="text-sm font-medium text-gray-700">{t('المستخلصات الصادرة', 'Progress Claims Issued')}</span>
-              <span className="text-emerald-600">
-                <MoneyDisplay value={cs.revenue} mode="system" lang={lang} bold size="md" />
-              </span>
-            </div>
-          </div>
-
-          <div className="mx-6 border-t-2 border-emerald-200" />
-
-          {/* Costs Section */}
-          <div className="px-6 pt-3 pb-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-rose-600 mb-3">
-              {t('التكاليف', 'Costs')}
-            </p>
-            {costRows.map((row, idx) => (
-              <div key={idx} className={`flex items-center justify-between py-2.5 ${idx < costRows.length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
-                <span className="text-sm font-medium text-gray-700">{row.label}</span>
-                <span className={row.color}>
-                  <MoneyDisplay value={row.value} mode="system" lang={lang} bold size="md" />
-                </span>
-              </div>
-            ))}
-          </div>
-
-          <div className="mx-6 border-t-2 border-rose-200" />
-          <div className="px-6 py-3 bg-rose-50/50">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-gray-800">{t('إجمالي التكلفة', 'Total Cost')}</span>
-              <span className="text-rose-700">
-                <MoneyDisplay value={cs.totalCosts} mode="system" lang={lang} bold size="lg" />
-              </span>
-            </div>
-          </div>
-
-          <div className="mx-6 border-t-2 border-gray-200" />
-
-          {/* Profit Section */}
-          <div className={`px-6 py-4 ${isProfit ? 'bg-emerald-50' : 'bg-rose-50'}`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`flex size-10 items-center justify-center rounded-full ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                  <TrendingUp className={`size-5 ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-800">{t('الربح', 'Profit')}</p>
-                  <span className={isProfit ? 'text-emerald-600' : 'text-rose-600'}>
-                    <MoneyDisplay value={cs.profit} mode="system" lang={lang} bold size="xl" />
-                  </span>
-                </div>
-              </div>
-              <div className={`text-center rounded-xl px-5 py-3 ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                <p className="text-xs font-medium text-gray-500 mb-1">{t('هامش الربح', 'Profit Margin')}</p>
-                <p className={`text-3xl font-bold ${isProfit ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {Math.abs(cs.profitMargin).toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+        <Badge variant="outline" className="text-gray-500 border-gray-300">{t('قريباً', 'Coming Soon', lang)}</Badge>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -1417,11 +1120,9 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: Lang }) {
 export function ProjectsSection() {
   const { activeSubModule, selectedProjectId } = useAppStore()
 
-  // Show project list when no project is selected or activeSubModule is project-list
   if (!selectedProjectId || activeSubModule === 'project-list') {
     return <ProjectListView />
   }
 
-  // Show project detail when a project is selected
   return <ProjectDetailView />
 }

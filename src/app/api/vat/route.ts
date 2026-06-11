@@ -101,7 +101,7 @@ export async function GET(request: Request) {
       const expenses = await db.expense.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
-          vatAmount: { not: null, gt: 0 },
+          vatAmount: { gt: 0 },
         },
         select: {
           id: true,
@@ -246,7 +246,7 @@ export async function POST(request: Request) {
     const expenses = await db.expense.findMany({
       where: {
         date: { gte: startDate, lte: endDate },
-        vatAmount: { not: null, gt: 0 },
+        vatAmount: { gt: 0 },
       },
       select: { id: true, amount: true, vatAmount: true },
     })

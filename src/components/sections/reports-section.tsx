@@ -2,7 +2,7 @@
 
 import React from 'react'
 import {
-  Building2, Wallet, Wrench, ShoppingCart, Package, Users,
+  Building2, Wallet, Truck, ShoppingCart, Users, Percent,
 } from 'lucide-react'
 import {
   useAppStore,
@@ -14,44 +14,24 @@ import { ReportsModule } from '@/components/modules/reports'
 
 // ============ Tab Definitions ============
 
-const reportsTabs: { key: SubModuleKey; icon: React.ElementType }[] = [
-  { key: 'report-projects', icon: Building2 },
-  { key: 'report-finance', icon: Wallet },
-  { key: 'report-equipment', icon: Wrench },
-  { key: 'report-purchases', icon: ShoppingCart },
-  { key: 'report-inventory', icon: Package },
-  { key: 'report-hr', icon: Users },
+const reportsTabs: { key: SubModuleKey; icon: React.ElementType; label: { ar: string; en: string } }[] = [
+  { key: 'report-projects', icon: Building2, label: { ar: 'تقارير المشاريع', en: 'Project Reports' } },
+  { key: 'report-rental', icon: Truck, label: { ar: 'تقارير التأجير', en: 'Rental Reports' } },
+  { key: 'report-finance', icon: Wallet, label: { ar: 'التقارير المالية', en: 'Financial Reports' } },
+  { key: 'report-purchases', icon: ShoppingCart, label: { ar: 'تقارير المشتريات', en: 'Purchase Reports' } },
+  { key: 'report-clients', icon: Users, label: { ar: 'تقارير العملاء', en: 'Client Reports' } },
+  { key: 'report-tax', icon: Percent, label: { ar: 'تقارير الضريبة', en: 'Tax Reports' } },
 ]
-
-// ============ Report Type Mapping ============
-// Maps SubModuleKey to the corresponding report type used in ReportsModule
-
-const reportTypeMap: Record<string, string> = {
-  'report-projects': 'projects',
-  'report-finance': 'finance',
-  'report-equipment': 'equipment',
-  'report-purchases': 'purchases',
-  'report-inventory': 'inventory',
-  'report-hr': 'hr',
-}
 
 // ============ Main Component ============
 
 export function ReportsSection() {
-  const { activeSubModule, lang } = useAppStore()
-
-  // For now, all report tabs render the same ReportsModule
-  // The ReportsModule itself handles different report types internally
-  // The reportTypeMap can be used for future deep-linking into specific reports
-  void reportTypeMap // suppress unused warning - will be used for deep linking
-  void lang // used via store
-
   return (
     <SectionLayout
       title={{ ar: 'التقارير', en: 'Reports' }}
       subtitle={{
-        ar: 'تقارير شاملة للمشاريع والمالية والمعدات والمشتريات والمخزون والموارد البشرية',
-        en: 'Comprehensive reports for projects, finance, equipment, purchases, inventory, and HR',
+        ar: 'تقارير شاملة للمشاريع والتأجير والمالية والمشتريات والعملاء والضريبة',
+        en: 'Comprehensive reports for projects, rental, finance, purchases, clients, and tax',
       }}
       tabs={reportsTabs}
       showPrintExport={false}

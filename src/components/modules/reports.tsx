@@ -1,20 +1,18 @@
 'use client'
 
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   BarChart3, FileText, Receipt, TrendingUp, ShoppingCart,
-  Package, Scale, PieChart, Eye, ArrowRight, Truck,
-  Printer, Download, CreditCard, Users, Percent,
+  PieChart, Truck, Download, CreditCard, Users, Percent,
   RefreshCw, Building2, ArrowLeft, CheckCircle2,
-  Clock, Send, AlertTriangle, Wallet, BookOpen,
-  Activity,
+  Clock, Send, Wallet, BookOpen, Activity, Wrench,
+  Printer, DollarSign, Fuel, Settings2, CalendarDays,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Progress } from '@/components/ui/progress'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -35,14 +33,56 @@ import { toast } from 'sonner'
 
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
 
-// ============ Types ============
-interface ProjectCostData {
-  project: { id: string; code: string; name: string; nameAr: string | null; status: string; clientName: string; contractValue: number }
-  costs: {
-    materials: number; equipmentOperations: number; equipmentMaintenance: number; equipmentFuel: number
-    subcontractors: number; labor: number; salaries: number; projectExpenses: number; equipmentCosts: number; equipmentUsages: number
-  }
-  totalCost: number; contractValue: number; grossProfit: number; profitMargin: number; inputVat: number
+// ============ Shared Types ============
+interface ProjectProfitability {
+  projects: {
+    id: string; code: string; name: string; nameAr: string | null; status: string; projectType: string | null
+    client: string; contractValue: number; invoiced: number; collected: number
+    materialCosts: number; subcontractorCosts: number; laborCosts: number; equipmentCosts: number; projectExpenses: number
+    totalCosts: number; grossProfit: number; profitMargin: number
+  }[]
+  totals: { contractValue: number; invoiced: number; collected: number; totalCosts: number; grossProfit: number; profitMargin: number }
+}
+
+interface EquipmentUtilization {
+  equipment: {
+    id: string; code: string; name: string; nameAr: string | null; status: string; type: string | null
+    totalHoursRented: number; revenueGenerated: number; maintenanceCosts: number; fuelCosts: number; operationCosts: number; totalCosts: number; netProfit: number
+  }[]
+  totals: { totalHoursRented: number; revenueGenerated: number; maintenanceCosts: number; fuelCosts: number; totalCosts: number; netProfit: number }
+}
+
+interface RentalRevenueByClient {
+  clients: { id: string; code: string; name: string; nameAr: string | null; revenue: number; invoiceCount: number }[]
+  totalRevenue: number
+}
+
+interface EquipmentStatusReport {
+  byStatus: Record<string, number>
+  byCategory: Record<string, { count: number; byStatus: Record<string, number> }> // mapped from type field
+  total: number
+}
+
+interface PurchaseSummary {
+  bySupplier: { id: string; code: string; name: string; total: number; invoiceCount: number }[]
+  byProject: { id: string; code: string; name: string; projectType: string; total: number; invoiceCount: number }[]
+  totalPurchases: number; invoiceCount: number
+}
+
+interface RevenueSummary {
+  totalConstructionRevenue: number; totalRentalRevenue: number; totalRevenue: number
+  monthly: { month: string; construction: number; rental: number }[]
+}
+
+interface ExpenseSummary {
+  totalDirect: number; totalIndirect: number; totalExpenses: number
+  directByCategory: Record<string, number>; indirectByCategory: Record<string, number>
+}
+
+interface CashFlowSummary {
+  totalInflows: number; totalOutflows: number; netCashFlow: number
+  clientPaymentsTotal: number; supplierPaymentsTotal: number; salaryPaymentsTotal: number
+  monthly: { month: string; inflows: number; outflows: number }[]
 }
 
 interface SupplierBalanceData {
@@ -69,726 +109,897 @@ interface VATDeclaration {
   status: string; filedDate: string | null; paymentDate: string | null; paymentReference: string | null
 }
 
-// ============ Activity Summary Types ============
-interface ActivitySummaryData {
-  construction: {
-    projectCount: number
-    activeProjectCount: number
-    totalContractValue: number
-    totalRevenue: number
-    totalCosts: number
-    profit: number
-    profitMargin: number
-    materialCosts: number
-    laborCosts: number
-    subcontractorCosts: number
-    equipmentCosts: number
-    projectExpenses: number
+interface ProjectCostData {
+  project: { id: string; code: string; name: string; nameAr: string | null; status: string; clientName: string; contractValue: number }
+  costs: {
+    materials: number; equipmentOperations: number; equipmentMaintenance: number; equipmentFuel: number
+    subcontractors: number; labor: number; salaries: number; projectExpenses: number; equipmentCosts: number; equipmentUsages: number
   }
-  rental: {
-    projectCount: number
-    activeProjectCount: number
-    totalRentalRevenue: number
-    totalRentalCosts: number
-    profit: number
-    profitMargin: number
-    maintenanceCosts: number
-    fuelCosts: number
-    operationCosts: number
-    rentalExpenses: number
-    rentedEquipmentCount: number
-  }
+  totalCost: number; contractValue: number; grossProfit: number; profitMargin: number; inputVat: number
 }
 
-// ============ Cost Row Component ============
-function CostRow({ label, value, lang, color }: { label: string; value: number; lang: 'ar' | 'en'; color?: string }) {
-  const pctOfTotal = value
+// ============ Shared Components ============
+function ReportHeader({ title, icon: Icon, lang, onRefresh, onExport, onPrint }: {
+  title: string; icon: React.ElementType; lang: 'ar' | 'en'
+  onRefresh?: () => void; onExport?: () => void; onPrint?: () => void
+}) {
   return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-gray-50">
-      <span className="text-sm text-gray-700">{label}</span>
-      <MoneyDisplay value={value} lang={lang} size="sm" bold inline showSymbol={false} className={color || ''} />
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <Icon className="size-5 text-emerald-600" />
+        <h3 className="font-semibold text-base">{title}</h3>
+      </div>
+      <div className="flex gap-1.5">
+        {onRefresh && <Button variant="outline" size="icon" className="size-8" onClick={onRefresh}><RefreshCw className="size-3.5" /></Button>}
+        {onExport && <Button variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={onExport}><Download className="size-3.5" />{t('تصدير', 'Export', lang)}</Button>}
+        {onPrint && <Button variant="outline" size="sm" className="gap-1 h-8 text-xs" onClick={onPrint}><Printer className="size-3.5" />{t('طباعة', 'Print', lang)}</Button>}
+      </div>
     </div>
   )
 }
 
-// ============ 0. Activity Summary Tab ============
-function ActivitySummaryTab({ lang }: { lang: 'ar' | 'en' }) {
-  const { data, isLoading, refetch } = useQuery<ActivitySummaryData>({
-    queryKey: ['activity-summary'],
-    queryFn: async () => {
-      const res = await fetch('/api/reports?type=activity-summary')
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
+function EmptyState({ icon: Icon, message }: { icon: React.ElementType; message: string }) {
+  return (
+    <Card className="border-dashed">
+      <CardContent className="flex flex-col items-center gap-3 py-12">
+        <Icon className="size-12 text-gray-300" />
+        <p className="text-muted-foreground text-sm">{message}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function LoadingSkeleton({ count = 5 }: { count?: number }) {
+  return <div className="space-y-2">{Array.from({ length: count }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}</div>
+}
+
+function ProjectTypeBadge({ projectType, lang }: { projectType: string | null; lang: 'ar' | 'en' }) {
+  if (!projectType) return null
+  const isConstruction = projectType === 'CONSTRUCTION'
+  return (
+    <Badge className={`${isConstruction ? 'bg-emerald-100 text-emerald-700' : 'bg-cyan-100 text-cyan-700'} border-0 text-xs`}>
+      {isConstruction ? t('تنفيذي', 'Const.', lang) : t('تأجير', 'Rental', lang)}
+    </Badge>
+  )
+}
+
+const statusLabels: Record<string, { ar: string; en: string; color: string }> = {
+  AVAILABLE: { ar: 'متاح', en: 'Available', color: 'bg-emerald-100 text-emerald-700' },
+  IN_USE: { ar: 'قيد الاستخدام', en: 'In Use', color: 'bg-amber-100 text-amber-700' },
+  MAINTENANCE: { ar: 'صيانة', en: 'Maintenance', color: 'bg-rose-100 text-rose-700' },
+  RENTED: { ar: 'مؤجر', en: 'Rented', color: 'bg-cyan-100 text-cyan-700' },
+}
+
+// ========================================================
+// TAB 1: PROJECT REPORTS
+// ========================================================
+function ProjectReportsTab({ lang }: { lang: 'ar' | 'en' }) {
+  const [subTab, setSubTab] = useState('profitability')
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+
+  // Project Profitability
+  const { data: profitData, isLoading: profitLoading, refetch: refetchProfit } = useQuery<ProjectProfitability>({
+    queryKey: ['report-project-profitability'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=project-profitability'); if (!res.ok) throw new Error(); return res.json() },
   })
 
-  const handleExport = useCallback(() => {
-    if (!data) return
-    const rows = [
-      { metric: t('عدد المشاريع', 'Project Count', lang), construction: data.construction.projectCount, rental: data.rental.projectCount },
-      { metric: t('المشاريع النشطة', 'Active Projects', lang), construction: data.construction.activeProjectCount, rental: data.rental.activeProjectCount },
-      { metric: t('إجمالي قيمة العقود', 'Total Contract Value', lang), construction: data.construction.totalContractValue, rental: 0 },
-      { metric: t('الإيرادات', 'Revenue', lang), construction: data.construction.totalRevenue, rental: data.rental.totalRentalRevenue },
-      { metric: t('التكاليف', 'Costs', lang), construction: data.construction.totalCosts, rental: data.rental.totalRentalCosts },
-      { metric: t('الربح', 'Profit', lang), construction: data.construction.profit, rental: data.rental.profit },
-      { metric: t('هامش الربح %', 'Profit Margin %', lang), construction: Math.round(data.construction.profitMargin), rental: Math.round(data.rental.profitMargin) },
-    ]
-    const columns: CSVColumn[] = [
-      { key: 'metric', label: t('المؤشر', 'Metric', lang) },
-      { key: 'construction', label: t('التنفيذية', 'Construction', lang) },
-      { key: 'rental', label: t('تأجير المعدات', 'Equipment Rental', lang) },
-    ]
-    exportToCSV(rows as Record<string, unknown>[], 'activity-summary', columns)
-  }, [data, lang])
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {Array.from({ length: 2 }).map((_, i) => <div key={i} className="h-48 animate-pulse rounded-lg bg-gray-100" />)}
-        </div>
-        <div className="h-64 animate-pulse rounded-lg bg-gray-100" />
-      </div>
-    )
-  }
-
-  const c = data?.construction
-  const r = data?.rental
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExport}><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
-      </div>
-
-      {/* Side-by-side Activity Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Construction Card */}
-        <Card className="border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 to-white">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center size-12 rounded-xl bg-emerald-100">
-                <Building2 className="size-6 text-emerald-700" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-emerald-900">{t('مشاريع تنفيذية', 'Construction Projects', lang)}</h3>
-                <p className="text-sm text-emerald-600">{c ? `${c.projectCount} ${t('مشروع', 'projects', lang)} • ${c.activeProjectCount} ${t('نشط', 'active', lang)}` : '-'}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white/70 rounded-lg p-3 border border-emerald-200">
-                <p className="text-xs text-emerald-600">{t('قيمة العقود', 'Contract Value', lang)}</p>
-                <MoneyDisplay value={c?.totalContractValue || 0} lang={lang} size="md" bold className="text-emerald-800" />
-              </div>
-              <div className="bg-white/70 rounded-lg p-3 border border-emerald-200">
-                <p className="text-xs text-emerald-600">{t('الإيرادات', 'Revenue', lang)}</p>
-                <MoneyDisplay value={c?.totalRevenue || 0} lang={lang} size="md" bold className="text-emerald-800" />
-              </div>
-              <div className="bg-white/70 rounded-lg p-3 border border-emerald-200">
-                <p className="text-xs text-emerald-600">{t('التكاليف', 'Costs', lang)}</p>
-                <MoneyDisplay value={c?.totalCosts || 0} lang={lang} size="md" bold className="text-rose-700" />
-              </div>
-              <div className={`${(c?.profit || 0) >= 0 ? 'bg-emerald-100/70' : 'bg-rose-50/70'} rounded-lg p-3 border ${(c?.profit || 0) >= 0 ? 'border-emerald-300' : 'border-rose-200'}`}>
-                <p className="text-xs ${(c?.profit || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}">{t('الربح', 'Profit', lang)}</p>
-                <MoneyDisplay value={c?.profit || 0} lang={lang} size="md" bold className={(c?.profit || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
-                <p className="text-xs mt-0.5 text-muted-foreground">{formatNumber(Math.round(c?.profitMargin || 0))}% {t('هامش', 'margin', lang)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Rental Card */}
-        <Card className="border-2 border-cyan-300 bg-gradient-to-br from-cyan-50 to-white">
-          <CardContent className="p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="flex items-center justify-center size-12 rounded-xl bg-cyan-100">
-                <Truck className="size-6 text-cyan-700" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-cyan-900">{t('تأجير المعدات', 'Equipment Rental', lang)}</h3>
-                <p className="text-sm text-cyan-600">{r ? `${r.projectCount} ${t('مشروع', 'projects', lang)} • ${r.activeProjectCount} ${t('نشط', 'active', lang)} • ${r.rentedEquipmentCount} ${t('معدات', 'equipment', lang)}` : '-'}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white/70 rounded-lg p-3 border border-cyan-200">
-                <p className="text-xs text-cyan-600">{t('إيرادات التأجير', 'Rental Revenue', lang)}</p>
-                <MoneyDisplay value={r?.totalRentalRevenue || 0} lang={lang} size="md" bold className="text-cyan-800" />
-              </div>
-              <div className="bg-white/70 rounded-lg p-3 border border-cyan-200">
-                <p className="text-xs text-cyan-600">{t('المعدات المؤجرة', 'Rented Equipment', lang)}</p>
-                <p className="text-xl font-bold text-cyan-800">{r?.rentedEquipmentCount || 0}</p>
-              </div>
-              <div className="bg-white/70 rounded-lg p-3 border border-cyan-200">
-                <p className="text-xs text-cyan-600">{t('التكاليف', 'Costs', lang)}</p>
-                <MoneyDisplay value={r?.totalRentalCosts || 0} lang={lang} size="md" bold className="text-rose-700" />
-              </div>
-              <div className={`${(r?.profit || 0) >= 0 ? 'bg-cyan-100/70' : 'bg-rose-50/70'} rounded-lg p-3 border ${(r?.profit || 0) >= 0 ? 'border-cyan-300' : 'border-rose-200'}`}>
-                <p className="text-xs ${(r?.profit || 0) >= 0 ? 'text-cyan-600' : 'text-rose-600'}">{t('الربح', 'Profit', lang)}</p>
-                <MoneyDisplay value={r?.profit || 0} lang={lang} size="md" bold className={(r?.profit || 0) >= 0 ? 'text-cyan-700' : 'text-rose-700'} />
-                <p className="text-xs mt-0.5 text-muted-foreground">{formatNumber(Math.round(r?.profitMargin || 0))}% {t('هامش', 'margin', lang)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Comparison Table */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Activity className="size-5 text-emerald-600" />
-            {t('مقارنة الأنشطة', 'Activity Comparison', lang)}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-right">{t('المؤشر', 'Metric', lang)}</TableHead>
-                  <TableHead className="text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <Building2 className="size-4 text-emerald-600" />
-                      {t('التنفيذية', 'Construction', lang)}
-                    </div>
-                  </TableHead>
-                  <TableHead className="text-center">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <Truck className="size-4 text-cyan-600" />
-                      {t('تأجير المعدات', 'Rental', lang)}
-                    </div>
-                  </TableHead>
-                  <TableHead className="text-center">{t('الفرق', 'Difference', lang)}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell className="font-medium">{t('عدد المشاريع', 'Project Count', lang)}</TableCell>
-                  <TableCell className="text-center">{c?.projectCount || 0}</TableCell>
-                  <TableCell className="text-center">{r?.projectCount || 0}</TableCell>
-                  <TableCell className="text-center text-muted-foreground">{(c?.projectCount || 0) - (r?.projectCount || 0)}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">{t('المشاريع النشطة', 'Active Projects', lang)}</TableCell>
-                  <TableCell className="text-center">{c?.activeProjectCount || 0}</TableCell>
-                  <TableCell className="text-center">{r?.activeProjectCount || 0}</TableCell>
-                  <TableCell className="text-center text-muted-foreground">{(c?.activeProjectCount || 0) - (r?.activeProjectCount || 0)}</TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">{t('الإيرادات', 'Revenue', lang)}</TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={c?.totalRevenue || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-emerald-700" /></TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={r?.totalRentalRevenue || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-cyan-700" /></TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={(c?.totalRevenue || 0) - (r?.totalRentalRevenue || 0)} lang={lang} size="xs" inline showSymbol={false} className="text-muted-foreground" /></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">{t('التكاليف', 'Costs', lang)}</TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={c?.totalCosts || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-rose-600" /></TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={r?.totalRentalCosts || 0} lang={lang} size="xs" bold inline showSymbol={false} className="text-rose-600" /></TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={(c?.totalCosts || 0) - (r?.totalRentalCosts || 0)} lang={lang} size="xs" inline showSymbol={false} className="text-muted-foreground" /></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">{t('الربح', 'Profit', lang)}</TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={c?.profit || 0} lang={lang} size="xs" bold inline showSymbol={false} className={(c?.profit || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={r?.profit || 0} lang={lang} size="xs" bold inline showSymbol={false} className={(r?.profit || 0) >= 0 ? 'text-cyan-700' : 'text-rose-700'} /></TableCell>
-                  <TableCell className="text-center"><MoneyDisplay value={(c?.profit || 0) - (r?.profit || 0)} lang={lang} size="xs" inline showSymbol={false} className="text-muted-foreground" /></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">{t('هامش الربح', 'Profit Margin', lang)}</TableCell>
-                  <TableCell className="text-center font-bold text-emerald-700">{formatNumber(Math.round(c?.profitMargin || 0))}%</TableCell>
-                  <TableCell className="text-center font-bold text-cyan-700">{formatNumber(Math.round(r?.profitMargin || 0))}%</TableCell>
-                  <TableCell className="text-center text-muted-foreground">{formatNumber(Math.round((c?.profitMargin || 0) - (r?.profitMargin || 0)))}%</TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Cost Breakdown Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Construction Cost Breakdown */}
-        <Card className="border-emerald-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base text-emerald-800">
-              <Receipt className="size-5 text-emerald-600" />
-              {t('تفصيل تكاليف التنفيذية', 'Construction Cost Breakdown', lang)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <CostRow label={t('المواد (مشتريات)', 'Materials (Purchases)', lang)} value={c?.materialCosts || 0} lang={lang} />
-            <CostRow label={t('العمالة', 'Labor', lang)} value={c?.laborCosts || 0} lang={lang} />
-            <CostRow label={t('مقاولو الباطن', 'Subcontractors', lang)} value={c?.subcontractorCosts || 0} lang={lang} />
-            <CostRow label={t('المعدات', 'Equipment', lang)} value={c?.equipmentCosts || 0} lang={lang} />
-            <CostRow label={t('مصروفات المشروع', 'Project Expenses', lang)} value={c?.projectExpenses || 0} lang={lang} />
-            <Separator className="my-2" />
-            <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-emerald-50">
-              <span className="font-semibold text-emerald-800">{t('إجمالي التكاليف', 'Total Costs', lang)}</span>
-              <MoneyDisplay value={c?.totalCosts || 0} lang={lang} size="md" bold className="text-emerald-700" />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Rental Cost Breakdown */}
-        <Card className="border-cyan-200">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base text-cyan-800">
-              <Receipt className="size-5 text-cyan-600" />
-              {t('تفصيل تكاليف التأجير', 'Rental Cost Breakdown', lang)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <CostRow label={t('الصيانة', 'Maintenance', lang)} value={r?.maintenanceCosts || 0} lang={lang} />
-            <CostRow label={t('الوقود', 'Fuel', lang)} value={r?.fuelCosts || 0} lang={lang} />
-            <CostRow label={t('التشغيل', 'Operations', lang)} value={r?.operationCosts || 0} lang={lang} />
-            <CostRow label={t('مصروفات التأجير', 'Rental Expenses', lang)} value={r?.rentalExpenses || 0} lang={lang} />
-            <Separator className="my-2" />
-            <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-cyan-50">
-              <span className="font-semibold text-cyan-800">{t('إجمالي التكاليف', 'Total Costs', lang)}</span>
-              <MoneyDisplay value={r?.totalRentalCosts || 0} lang={lang} size="md" bold className="text-cyan-700" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Revenue vs Costs Visual */}
-      {data && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <TrendingUp className="size-5 text-emerald-600" />
-              {t('الإيرادات مقابل التكاليف', 'Revenue vs Costs', lang)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Construction */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Building2 className="size-4 text-emerald-600" />
-                  <span className="font-medium text-sm">{t('التنفيذية', 'Construction', lang)}</span>
-                </div>
-                {c && c.totalRevenue > 0 && (
-                  <div className="space-y-1.5">
-                    <div>
-                      <div className="flex justify-between text-xs mb-0.5">
-                        <span className="text-emerald-600">{t('الإيرادات', 'Revenue', lang)}</span>
-                        <MoneyDisplay value={c.totalRevenue} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-700" />
-                      </div>
-                      <div className="h-3 w-full rounded-full bg-gray-100">
-                        <div className="h-3 rounded-full bg-emerald-500 transition-all" style={{ width: '100%' }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-0.5">
-                        <span className="text-rose-600">{t('التكاليف', 'Costs', lang)}</span>
-                        <MoneyDisplay value={c.totalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" />
-                      </div>
-                      <div className="h-3 w-full rounded-full bg-gray-100">
-                        <div className="h-3 rounded-full bg-rose-400 transition-all" style={{ width: `${Math.min((c.totalCosts / c.totalRevenue) * 100, 100)}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {c && c.totalRevenue === 0 && (
-                  <p className="text-xs text-muted-foreground">{t('لا توجد إيرادات بعد', 'No revenue yet', lang)}</p>
-                )}
-              </div>
-
-              <Separator />
-
-              {/* Rental */}
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Truck className="size-4 text-cyan-600" />
-                  <span className="font-medium text-sm">{t('تأجير المعدات', 'Equipment Rental', lang)}</span>
-                </div>
-                {r && r.totalRentalRevenue > 0 && (
-                  <div className="space-y-1.5">
-                    <div>
-                      <div className="flex justify-between text-xs mb-0.5">
-                        <span className="text-cyan-600">{t('الإيرادات', 'Revenue', lang)}</span>
-                        <MoneyDisplay value={r.totalRentalRevenue} lang={lang} size="xs" inline showSymbol={false} className="text-cyan-700" />
-                      </div>
-                      <div className="h-3 w-full rounded-full bg-gray-100">
-                        <div className="h-3 rounded-full bg-cyan-500 transition-all" style={{ width: '100%' }} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-0.5">
-                        <span className="text-rose-600">{t('التكاليف', 'Costs', lang)}</span>
-                        <MoneyDisplay value={r.totalRentalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" />
-                      </div>
-                      <div className="h-3 w-full rounded-full bg-gray-100">
-                        <div className="h-3 rounded-full bg-rose-400 transition-all" style={{ width: `${Math.min((r.totalRentalCosts / r.totalRentalRevenue) * 100, 100)}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {r && r.totalRentalRevenue === 0 && (
-                  <p className="text-xs text-muted-foreground">{t('لا توجد إيرادات بعد', 'No revenue yet', lang)}</p>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ============ 1. Project Cost Sheet Tab ============
-function ProjectCostSheetTab({ lang }: { lang: 'ar' | 'en' }) {
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('')
+  // Project list for cost breakdown
   const { data: projectsList } = useQuery({
     queryKey: ['projects-list-for-report'],
-    queryFn: async () => {
-      const res = await fetch('/api/projects/list')
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
+    queryFn: async () => { const res = await fetch('/api/projects/list'); if (!res.ok) throw new Error(); return res.json() },
   })
 
-  const { data: costData, isLoading, refetch } = useQuery<ProjectCostData>({
+  // Project cost detail
+  const { data: costData, isLoading: costLoading, refetch: refetchCost } = useQuery<ProjectCostData>({
     queryKey: ['project-costs', selectedProjectId],
-    queryFn: async () => {
-      if (!selectedProjectId) return null
-      const res = await fetch(`/api/reports/project-costs?projectId=${selectedProjectId}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
+    queryFn: async () => { if (!selectedProjectId) return null; const res = await fetch(`/api/reports/project-costs?projectId=${selectedProjectId}`); if (!res.ok) throw new Error(); return res.json() },
     enabled: !!selectedProjectId,
   })
 
-  const handleExport = useCallback(() => {
-    if (!costData) return
-    const rows = [
-      { field: t('قيمة العقد', 'Contract Value', lang), value: costData.contractValue },
-      { field: t('المواد', 'Materials', lang), value: costData.costs.materials },
-      { field: t('تشغيل المعدات', 'Equipment Operations', lang), value: costData.costs.equipmentOperations },
-      { field: t('صيانة المعدات', 'Equipment Maintenance', lang), value: costData.costs.equipmentMaintenance },
-      { field: t('وقود المعدات', 'Equipment Fuel', lang), value: costData.costs.equipmentFuel },
-      { field: t('مقاولو الباطن', 'Subcontractors', lang), value: costData.costs.subcontractors },
-      { field: t('تكاليف العمالة', 'Labor', lang), value: costData.costs.labor },
-      { field: t('الرواتب', 'Salaries', lang), value: costData.costs.salaries },
-      { field: t('مصروفات المشروع', 'Project Expenses', lang), value: costData.costs.projectExpenses },
-      { field: t('إجمالي التكلفة', 'Total Cost', lang), value: costData.totalCost },
-      { field: t('الربح الإجمالي', 'Gross Profit', lang), value: costData.grossProfit },
-      { field: t('هامش الربح', 'Profit Margin', lang), value: costData.profitMargin },
+  // Project status summary from profitability data
+
+  const handleExportProfit = useCallback(() => {
+    if (!profitData) return
+    const columns: CSVColumn[] = [
+      { key: 'code', label: t('الكود', 'Code', lang) },
+      { key: 'name', label: t('المشروع', 'Project', lang) },
+      { key: 'client', label: t('العميل', 'Client', lang) },
+      { key: 'contractValue', label: t('قيمة العقد', 'Contract', lang), format: v => Number(v).toFixed(2) },
+      { key: 'invoiced', label: t('المفوتر', 'Invoiced', lang), format: v => Number(v).toFixed(2) },
+      { key: 'collected', label: t('المحصل', 'Collected', lang), format: v => Number(v).toFixed(2) },
+      { key: 'totalCosts', label: t('التكاليف', 'Costs', lang), format: v => Number(v).toFixed(2) },
+      { key: 'grossProfit', label: t('الربح', 'Profit', lang), format: v => Number(v).toFixed(2) },
+      { key: 'profitMargin', label: t('الهامش %', 'Margin %', lang), format: v => Number(v).toFixed(1) },
     ]
-    const columns: CSVColumn[] = [{ key: 'field', label: t('الحقل', 'Field', lang) }, { key: 'value', label: t('القيمة', 'Value', lang) }]
-    exportToCSV(rows as Record<string, unknown>[], `project-costs-${selectedProjectId}`, columns)
-  }, [costData, selectedProjectId, lang])
+    exportToCSV(profitData.projects as Record<string, unknown>[], 'project-profitability', columns)
+  }, [profitData, lang])
+
+  const handlePrint = useCallback(() => { window.print() }, [])
+
+  const statusSummary = React.useMemo(() => {
+    if (!profitData?.projects) return { byStatus: {} as Record<string, number>, totalContractValue: 0, count: 0 }
+    const byStatus: Record<string, number> = {}
+    let totalCV = 0
+    for (const p of profitData.projects) {
+      byStatus[p.status] = (byStatus[p.status] || 0) + 1
+      totalCV += p.contractValue
+    }
+    return { byStatus, totalContractValue: totalCV, count: profitData.projects.length }
+  }, [profitData])
 
   return (
     <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Label className="text-sm font-medium">{t('اختر المشروع', 'Select Project', lang)}</Label>
-            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-              <SelectTrigger className="w-64"><SelectValue placeholder={t('اختر مشروع...', 'Select project...', lang)} /></SelectTrigger>
-              <SelectContent>
-                {projectsList?.map((p: { id: string; code: string; name: string }) => (
-                  <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedProjectId && (
-              <div className="flex gap-2">
-                <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExport}><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <Tabs value={subTab} onValueChange={setSubTab}>
+        <TabsList className="grid grid-cols-3 w-full">
+          <TabsTrigger value="profitability" className="text-xs">{t('ربحية المشاريع', 'Profitability', lang)}</TabsTrigger>
+          <TabsTrigger value="cost-breakdown" className="text-xs">{t('تفصيل التكاليف', 'Cost Breakdown', lang)}</TabsTrigger>
+          <TabsTrigger value="status-summary" className="text-xs">{t('ملخص الحالات', 'Status Summary', lang)}</TabsTrigger>
+        </TabsList>
 
-      {!selectedProjectId ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-3 py-12">
-            <Building2 className="size-12 text-gray-300" />
-            <p className="text-muted-foreground">{t('اختر مشروعاً لعرض تقرير التكاليف', 'Select a project to view cost report', lang)}</p>
-          </CardContent>
-        </Card>
-      ) : isLoading ? (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-100" />)}
-        </div>
-      ) : costData ? (
-        <div className="space-y-4">
-          {/* Project Header */}
-          <Card className={`border-2 ${costData.grossProfit >= 0 ? 'border-emerald-300 bg-emerald-50/30' : 'border-rose-300 bg-rose-50/30'}`}>
-            <CardContent className="p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-bold">{costData.project.name}</h3>
-                  <p className="text-sm text-muted-foreground">{costData.project.code} • {costData.project.clientName}</p>
-                </div>
-                <Badge className={`${costData.grossProfit >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'} border-0 text-sm`}>
-                  {costData.grossProfit >= 0 ? t('رابح', 'Profitable', lang) : t('خاسر', 'Losing', lang)}
-                </Badge>
+        {/* Profitability Tab */}
+        <TabsContent value="profitability" className="space-y-4">
+          <ReportHeader title={t('تقرير ربحية المشاريع', 'Project Profitability Report', lang)} icon={TrendingUp} lang={lang}
+            onRefresh={() => refetchProfit()} onExport={handleExportProfit} onPrint={handlePrint} />
+
+          {profitLoading ? <LoadingSkeleton /> : profitData?.projects && profitData.projects.length > 0 ? (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('قيمة العقود', 'Contracts', lang)}</p><MoneyDisplay value={profitData.totals.contractValue} lang={lang} size="sm" bold /></CardContent></Card>
+                <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3 text-center"><p className="text-xs text-teal-600">{t('المفوتر', 'Invoiced', lang)}</p><MoneyDisplay value={profitData.totals.invoiced} lang={lang} size="sm" bold /></CardContent></Card>
+                <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-3 text-center"><p className="text-xs text-cyan-600">{t('المحصل', 'Collected', lang)}</p><MoneyDisplay value={profitData.totals.collected} lang={lang} size="sm" bold /></CardContent></Card>
+                <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('التكاليف', 'Costs', lang)}</p><MoneyDisplay value={profitData.totals.totalCosts} lang={lang} size="sm" bold /></CardContent></Card>
+                <Card className={`${profitData.totals.grossProfit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">{t('الربح', 'Profit', lang)}</p><MoneyDisplay value={profitData.totals.grossProfit} lang={lang} size="sm" bold className={profitData.totals.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></CardContent></Card>
               </div>
+              {/* Table */}
+              <Card><CardContent className="p-0"><div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+                    <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+                    <TableHead className="text-right">{t('قيمة العقد', 'Contract', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المفوتر', 'Invoiced', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المحصل', 'Collected', lang)}</TableHead>
+                    <TableHead className="text-right">{t('التكاليف', 'Costs', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الربح', 'Profit', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الهامش %', 'Margin %', lang)}</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {profitData.projects.map(p => (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-mono text-xs">{p.code}</TableCell>
+                        <TableCell><div className="flex items-center gap-1.5"><span className="font-medium text-sm">{p.name}</span><ProjectTypeBadge projectType={p.projectType} lang={lang} /></div></TableCell>
+                        <TableCell><ProjectTypeBadge projectType={p.projectType} lang={lang} /></TableCell>
+                        <TableCell><MoneyDisplay value={p.contractValue} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                        <TableCell><MoneyDisplay value={p.invoiced} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                        <TableCell><MoneyDisplay value={p.collected} lang={lang} size="xs" inline showSymbol={false} className="text-teal-600" /></TableCell>
+                        <TableCell><MoneyDisplay value={p.totalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell>
+                        <TableCell><MoneyDisplay value={p.grossProfit} lang={lang} size="xs" bold inline showSymbol={false} className={p.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'} /></TableCell>
+                        <TableCell className={`font-bold text-xs ${p.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatNumber(Math.round(p.profitMargin))}%</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div></CardContent></Card>
+            </>
+          ) : <EmptyState icon={Building2} message={t('لا توجد مشاريع', 'No projects found', lang)} />}
+        </TabsContent>
+
+        {/* Cost Breakdown Tab */}
+        <TabsContent value="cost-breakdown" className="space-y-4">
+          <Card className="bg-gray-50/50"><CardContent className="p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Label className="text-sm font-medium">{t('اختر المشروع', 'Select Project', lang)}</Label>
+              <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                <SelectTrigger className="w-64"><SelectValue placeholder={t('اختر مشروع...', 'Select project...', lang)} /></SelectTrigger>
+                <SelectContent>
+                  {projectsList?.map((p: { id: string; code: string; name: string }) => (
+                    <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedProjectId && <Button variant="outline" size="icon" className="size-8" onClick={() => refetchCost()}><RefreshCw className="size-3.5" /></Button>}
+            </div>
+          </CardContent></Card>
+
+          {!selectedProjectId ? <EmptyState icon={Building2} message={t('اختر مشروعاً لعرض تفصيل التكاليف', 'Select a project to view cost breakdown', lang)} />
+            : costLoading ? <LoadingSkeleton />
+            : costData ? (
+              <>
+                <Card className={`border-2 ${costData.grossProfit >= 0 ? 'border-emerald-300 bg-emerald-50/30' : 'border-rose-300 bg-rose-50/30'}`}>
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-4">
+                      <div><h3 className="text-lg font-bold">{costData.project.name}</h3><p className="text-sm text-muted-foreground">{costData.project.code} • {costData.project.clientName}</p></div>
+                      <Badge className={`${costData.grossProfit >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'} border-0`}>
+                        {costData.grossProfit >= 0 ? t('رابح', 'Profitable', lang) : t('خاسر', 'Losing', lang)}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="bg-white rounded-lg p-3 text-center border"><p className="text-xs text-gray-500">{t('قيمة العقد', 'Contract Value', lang)}</p><MoneyDisplay value={costData.contractValue} lang={lang} size="md" bold /></div>
+                      <div className="bg-white rounded-lg p-3 text-center border"><p className="text-xs text-gray-500">{t('إجمالي التكلفة', 'Total Cost', lang)}</p><MoneyDisplay value={costData.totalCost} lang={lang} size="md" bold className="text-rose-600" /></div>
+                      <div className={`rounded-lg p-3 text-center border ${costData.grossProfit >= 0 ? 'bg-emerald-50' : 'bg-rose-50'}`}><p className="text-xs">{t('الربح الإجمالي', 'Gross Profit', lang)}</p><MoneyDisplay value={costData.grossProfit} lang={lang} size="md" bold className={costData.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'} /></div>
+                      <div className={`rounded-lg p-3 text-center border ${costData.grossProfit >= 0 ? 'bg-emerald-50' : 'bg-rose-50'}`}><p className="text-xs">{t('هامش الربح', 'Profit Margin', lang)}</p><p className={`text-xl font-bold ${costData.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatNumber(Math.round(costData.profitMargin))}%</p></div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><Receipt className="size-5 text-amber-600" />{t('تفصيل التكاليف', 'Cost Breakdown', lang)}</CardTitle></CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto"><Table><TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead><TableHead className="text-right">{t('النسبة', '%', lang)}</TableHead></TableRow></TableHeader>
+                      <TableBody>
+                        {[
+                          { label: t('المواد', 'Materials', lang), value: costData.costs.materials },
+                          { label: t('تشغيل المعدات', 'Equip. Operations', lang), value: costData.costs.equipmentOperations },
+                          { label: t('صيانة المعدات', 'Equip. Maintenance', lang), value: costData.costs.equipmentMaintenance },
+                          { label: t('وقود المعدات', 'Equip. Fuel', lang), value: costData.costs.equipmentFuel },
+                          { label: t('مقاولو الباطن', 'Subcontractors', lang), value: costData.costs.subcontractors },
+                          { label: t('العمالة', 'Labor', lang), value: costData.costs.labor },
+                          { label: t('الرواتب', 'Salaries', lang), value: costData.costs.salaries },
+                          { label: t('مصروفات المشروع', 'Project Expenses', lang), value: costData.costs.projectExpenses },
+                        ].map(item => (
+                          <TableRow key={item.label}>
+                            <TableCell className="text-sm">{item.label}</TableCell>
+                            <TableCell><MoneyDisplay value={item.value} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                            <TableCell className="text-xs text-muted-foreground">{costData.totalCost > 0 ? formatNumber(Math.round((item.value / costData.totalCost) * 100)) + '%' : '0%'}</TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="bg-rose-50 font-semibold">
+                          <TableCell>{t('إجمالي التكلفة', 'Total Cost', lang)}</TableCell>
+                          <TableCell><MoneyDisplay value={costData.totalCost} lang={lang} size="sm" bold inline showSymbol={false} className="text-rose-700" /></TableCell>
+                          <TableCell className="text-xs">100%</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table></div>
+                  </CardContent>
+                </Card>
+              </>
+            ) : null}
+        </TabsContent>
+
+        {/* Status Summary Tab */}
+        <TabsContent value="status-summary" className="space-y-4">
+          <ReportHeader title={t('ملخص حالات المشاريع', 'Project Status Summary', lang)} icon={PieChart} lang={lang} onPrint={handlePrint} />
+          {profitData?.projects ? (
+            <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="bg-white rounded-lg p-3 text-center border">
-                  <p className="text-xs text-gray-500">{t('قيمة العقد', 'Contract Value', lang)}</p>
-                  <MoneyDisplay value={costData.contractValue} lang={lang} size="md" bold />
-                </div>
-                <div className="bg-white rounded-lg p-3 text-center border">
-                  <p className="text-xs text-gray-500">{t('إجمالي التكلفة', 'Total Cost', lang)}</p>
-                  <MoneyDisplay value={costData.totalCost} lang={lang} size="md" bold className="text-rose-600" />
-                </div>
-                <div className={`rounded-lg p-3 text-center border ${costData.grossProfit >= 0 ? 'bg-emerald-50' : 'bg-rose-50'}`}>
-                  <p className={`text-xs ${costData.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{t('الربح الإجمالي', 'Gross Profit', lang)}</p>
-                  <MoneyDisplay value={costData.grossProfit} lang={lang} size="md" bold className={costData.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'} />
-                </div>
-                <div className={`rounded-lg p-3 text-center border ${costData.grossProfit >= 0 ? 'bg-emerald-50' : 'bg-rose-50'}`}>
-                  <p className={`text-xs ${costData.grossProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{t('هامش الربح', 'Profit Margin', lang)}</p>
-                  <p className={`text-xl font-bold ${costData.grossProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{formatNumber(Math.round(costData.profitMargin))}%</p>
-                </div>
+                <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-4 text-center"><p className="text-xs text-emerald-600">{t('إجمالي المشاريع', 'Total Projects', lang)}</p><p className="text-2xl font-bold text-emerald-800">{statusSummary.count}</p></CardContent></Card>
+                <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-4 text-center"><p className="text-xs text-cyan-600">{t('إجمالي العقود', 'Total Contracts', lang)}</p><MoneyDisplay value={statusSummary.totalContractValue} lang={lang} size="md" bold /></CardContent></Card>
               </div>
-            </CardContent>
-          </Card>
+              <Card><CardContent className="p-0"><div className="overflow-x-auto"><Table>
+                <TableHeader><TableRow><TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead><TableHead className="text-right">{t('العدد', 'Count', lang)}</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {Object.entries(statusSummary.byStatus).map(([status, count]) => (
+                    <TableRow key={status}><TableCell className="font-medium">{status}</TableCell><TableCell className="font-bold">{count}</TableCell></TableRow>
+                  ))}
+                </TableBody>
+              </Table></div></CardContent></Card>
+            </>
+          ) : <EmptyState icon={PieChart} message={t('لا توجد بيانات', 'No data', lang)} />}
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
 
-          {/* Cost Breakdown */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Receipt className="size-5 text-amber-600" />
-                {t('تفصيل التكاليف', 'Cost Breakdown', lang)}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              <CostRow label={t('المواد', 'Materials', lang)} value={costData.costs.materials} lang={lang} />
-              <CostRow label={t('تشغيل المعدات', 'Equipment Operations', lang)} value={costData.costs.equipmentOperations} lang={lang} />
-              <CostRow label={t('صيانة المعدات', 'Equipment Maintenance', lang)} value={costData.costs.equipmentMaintenance} lang={lang} />
-              <CostRow label={t('وقود المعدات', 'Equipment Fuel', lang)} value={costData.costs.equipmentFuel} lang={lang} />
-              <CostRow label={t('مقاولو الباطن', 'Subcontractors', lang)} value={costData.costs.subcontractors} lang={lang} />
-              <CostRow label={t('تكاليف العمالة', 'Labor Costs', lang)} value={costData.costs.labor} lang={lang} />
-              <CostRow label={t('الرواتب', 'Salaries', lang)} value={costData.costs.salaries} lang={lang} />
-              <CostRow label={t('مصروفات المشروع', 'Project Expenses', lang)} value={costData.costs.projectExpenses} lang={lang} />
-              <CostRow label={t('تكاليف معدات أخرى', 'Other Equipment Costs', lang)} value={costData.costs.equipmentCosts + costData.costs.equipmentUsages} lang={lang} />
-              <Separator className="my-2" />
-              <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-rose-50">
-                <span className="font-semibold text-rose-800">{t('إجمالي التكلفة', 'Total Cost', lang)}</span>
-                <MoneyDisplay value={costData.totalCost} lang={lang} size="md" bold className="text-rose-700" />
-              </div>
-              <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-purple-50">
-                <span className="font-semibold text-purple-800">{t('ضريبة المدخلات', 'Input VAT', lang)}</span>
-                <MoneyDisplay value={costData.inputVat} lang={lang} size="sm" bold className="text-purple-700" />
-              </div>
-            </CardContent>
-          </Card>
+// ========================================================
+// TAB 2: RENTAL REPORTS
+// ========================================================
+function RentalReportsTab({ lang }: { lang: 'ar' | 'en' }) {
+  const [subTab, setSubTab] = useState('utilization')
 
-          {/* Cost Distribution Bar */}
-          {costData.totalCost > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">{t('توزيع التكاليف', 'Cost Distribution', lang)}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {[
-                    { label: t('المواد', 'Materials', lang), value: costData.costs.materials, color: 'bg-emerald-500' },
-                    { label: t('تشغيل المعدات', 'Equip. Ops', lang), value: costData.costs.equipmentOperations, color: 'bg-amber-500' },
-                    { label: t('مقاولو الباطن', 'Subcontractors', lang), value: costData.costs.subcontractors, color: 'bg-purple-500' },
-                    { label: t('العمالة', 'Labor', lang), value: costData.costs.labor, color: 'bg-cyan-500' },
-                    { label: t('الرواتب', 'Salaries', lang), value: costData.costs.salaries, color: 'bg-teal-500' },
-                    { label: t('المصروفات', 'Expenses', lang), value: costData.costs.projectExpenses, color: 'bg-rose-400' },
-                  ].map(item => {
-                    const pct = costData.totalCost > 0 ? (item.value / costData.totalCost) * 100 : 0
-                    return (
-                      <div key={item.label} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <div className={`size-3 rounded-full ${item.color}`} />
-                            <span>{item.label}</span>
-                          </div>
-                          <span className="text-muted-foreground">{formatNumber(Math.round(pct))}%</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-gray-100">
-                          <div className={`h-2 rounded-full ${item.color} transition-all`} style={{ width: `${Math.max(pct, 0)}%` }} />
-                        </div>
+  const { data: utilData, isLoading: utilLoading, refetch: refetchUtil } = useQuery<EquipmentUtilization>({
+    queryKey: ['report-equipment-utilization'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=equipment-utilization'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  const { data: revByClient, isLoading: revLoading, refetch: refetchRev } = useQuery<RentalRevenueByClient>({
+    queryKey: ['report-rental-revenue-by-client'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=rental-revenue-by-client'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  const { data: eqStatus, isLoading: statusLoading, refetch: refetchStatus } = useQuery<EquipmentStatusReport>({
+    queryKey: ['report-equipment-status'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=equipment-status'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  const handlePrint = useCallback(() => { window.print() }, [])
+
+  return (
+    <div className="space-y-4">
+      <Tabs value={subTab} onValueChange={setSubTab}>
+        <TabsList className="grid grid-cols-3 w-full">
+          <TabsTrigger value="utilization" className="text-xs">{t('استخدام المعدات', 'Equipment Utilization', lang)}</TabsTrigger>
+          <TabsTrigger value="revenue-by-client" className="text-xs">{t('إيرادات حسب العميل', 'Revenue by Client', lang)}</TabsTrigger>
+          <TabsTrigger value="equipment-status" className="text-xs">{t('حالة المعدات', 'Equipment Status', lang)}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="utilization" className="space-y-4">
+          <ReportHeader title={t('تقرير استخدام المعدات', 'Equipment Utilization Report', lang)} icon={Truck} lang={lang}
+            onRefresh={() => refetchUtil()} onPrint={handlePrint} />
+          {utilLoading ? <LoadingSkeleton /> : utilData?.equipment && utilData.equipment.length > 0 ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-3 text-center"><p className="text-xs text-cyan-600">{t('إجمالي الساعات', 'Total Hours', lang)}</p><p className="text-xl font-bold text-cyan-800">{formatNumber(Math.round(utilData.totals.totalHoursRented))}</p></CardContent></Card>
+                <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('الإيرادات', 'Revenue', lang)}</p><MoneyDisplay value={utilData.totals.revenueGenerated} lang={lang} size="sm" bold /></CardContent></Card>
+                <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('التكاليف', 'Costs', lang)}</p><MoneyDisplay value={utilData.totals.totalCosts} lang={lang} size="sm" bold /></CardContent></Card>
+                <Card className={`${utilData.totals.netProfit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">{t('صافي الربح', 'Net Profit', lang)}</p><MoneyDisplay value={utilData.totals.netProfit} lang={lang} size="sm" bold className={utilData.totals.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></CardContent></Card>
+              </div>
+              <Card><CardContent className="p-0"><div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+                    <TableHead className="text-right">{t('المعدة', 'Equipment', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الساعات', 'Hours', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الإيرادات', 'Revenue', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الصيانة', 'Maint.', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الوقود', 'Fuel', lang)}</TableHead>
+                    <TableHead className="text-right">{t('التكاليف', 'Costs', lang)}</TableHead>
+                    <TableHead className="text-right">{t('صافي الربح', 'Net Profit', lang)}</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {utilData.equipment.map(eq => (
+                      <TableRow key={eq.id}>
+                        <TableCell className="font-mono text-xs">{eq.code}</TableCell>
+                        <TableCell className="font-medium text-sm">{eq.name}</TableCell>
+                        <TableCell className="text-sm">{formatNumber(Math.round(eq.totalHoursRented))}</TableCell>
+                        <TableCell><MoneyDisplay value={eq.revenueGenerated} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-600" /></TableCell>
+                        <TableCell><MoneyDisplay value={eq.maintenanceCosts} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                        <TableCell><MoneyDisplay value={eq.fuelCosts} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                        <TableCell><MoneyDisplay value={eq.totalCosts} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell>
+                        <TableCell><MoneyDisplay value={eq.netProfit} lang={lang} size="xs" bold inline showSymbol={false} className={eq.netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'} /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div></CardContent></Card>
+            </>
+          ) : <EmptyState icon={Truck} message={t('لا توجد معدات', 'No equipment found', lang)} />}
+        </TabsContent>
+
+        <TabsContent value="revenue-by-client" className="space-y-4">
+          <ReportHeader title={t('إيرادات التأجير حسب العميل', 'Rental Revenue by Client', lang)} icon={CreditCard} lang={lang}
+            onRefresh={() => refetchRev()} onPrint={handlePrint} />
+          {revLoading ? <LoadingSkeleton /> : revByClient?.clients && revByClient.clients.length > 0 ? (
+            <>
+              <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-4 text-center"><p className="text-xs text-cyan-600">{t('إجمالي إيرادات التأجير', 'Total Rental Revenue', lang)}</p><MoneyDisplay value={revByClient.totalRevenue} lang={lang} size="lg" bold /></CardContent></Card>
+              <Card><CardContent className="p-0"><div className="overflow-x-auto"><Table>
+                <TableHeader><TableRow>
+                  <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+                  <TableHead className="text-right">{t('العميل', 'Client', lang)}</TableHead>
+                  <TableHead className="text-right">{t('عدد الفواتير', 'Invoices', lang)}</TableHead>
+                  <TableHead className="text-right">{t('الإيرادات', 'Revenue', lang)}</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {revByClient.clients.map(c => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-mono text-xs">{c.code}</TableCell>
+                      <TableCell className="font-medium">{c.name}</TableCell>
+                      <TableCell className="text-sm">{c.invoiceCount}</TableCell>
+                      <TableCell><MoneyDisplay value={c.revenue} lang={lang} size="xs" bold inline showSymbol={false} className="text-cyan-600" /></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table></div></CardContent></Card>
+            </>
+          ) : <EmptyState icon={CreditCard} message={t('لا توجد إيرادات تأجير', 'No rental revenue', lang)} />}
+        </TabsContent>
+
+        <TabsContent value="equipment-status" className="space-y-4">
+          <ReportHeader title={t('تقرير حالة المعدات', 'Equipment Status Report', lang)} icon={Wrench} lang={lang}
+            onRefresh={() => refetchStatus()} onPrint={handlePrint} />
+          {statusLoading ? <LoadingSkeleton /> : eqStatus ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي المعدات', 'Total', lang)}</p><p className="text-xl font-bold">{eqStatus.total}</p></CardContent></Card>
+                {Object.entries(eqStatus.byStatus).map(([status, count]) => {
+                  const sl = statusLabels[status]
+                  return <Card key={status} className={`${sl?.color || 'bg-gray-50 border-gray-200'} border`}><CardContent className="p-3 text-center"><p className="text-xs">{sl ? t(sl.ar, sl.en, lang) : status}</p><p className="text-xl font-bold">{count}</p></CardContent></Card>
+                })}
+              </div>
+              {Object.keys(eqStatus.byCategory).length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3"><CardTitle className="text-base">{t('حسب الفئة', 'By Category', lang)}</CardTitle></CardHeader>
+                  <CardContent className="p-0"><div className="overflow-x-auto"><Table>
+                    <TableHeader><TableRow><TableHead className="text-right">{t('الفئة', 'Category', lang)}</TableHead><TableHead className="text-right">{t('العدد', 'Count', lang)}</TableHead>
+                      {Object.keys(eqStatus.byStatus).map(s => <TableHead key={s} className="text-right">{statusLabels[s] ? t(statusLabels[s].ar, statusLabels[s].en, lang) : s}</TableHead>)}
+                    </TableRow></TableHeader>
+                    <TableBody>
+                      {Object.entries(eqStatus.byCategory).map(([cat, data]) => (
+                        <TableRow key={cat}><TableCell className="font-medium">{cat}</TableCell><TableCell>{data.count}</TableCell>
+                          {Object.keys(eqStatus.byStatus).map(s => <TableCell key={s} className="text-sm">{data.byStatus[s] || 0}</TableCell>)}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table></div></CardContent>
+                </Card>
+              )}
+            </>
+          ) : <EmptyState icon={Wrench} message={t('لا توجد معدات', 'No equipment', lang)} />}
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+// ========================================================
+// TAB 3: FINANCIAL REPORTS
+// ========================================================
+function FinancialReportsTab({ lang }: { lang: 'ar' | 'en' }) {
+  const [subTab, setSubTab] = useState('trial-balance')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  // Trial Balance
+  const { data: tbData, isLoading: tbLoading, refetch: refetchTb } = useQuery({
+    queryKey: ['trial-balance-report', dateFrom, dateTo],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
+      const res = await fetch(`/api/trial-balance?${params}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  // Revenue Summary
+  const { data: revData, isLoading: revLoading, refetch: refetchRev } = useQuery<RevenueSummary>({
+    queryKey: ['report-revenue-summary'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=revenue-summary'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  // Expense Summary
+  const { data: expData, isLoading: expLoading, refetch: refetchExp } = useQuery<ExpenseSummary>({
+    queryKey: ['report-expense-summary'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=expense-summary'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  // Cash Flow Summary
+  const { data: cfData, isLoading: cfLoading, refetch: refetchCf } = useQuery<CashFlowSummary>({
+    queryKey: ['report-cash-flow-summary'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=cash-flow-summary'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  const handlePrint = useCallback(() => { window.print() }, [])
+
+  const handleExportTb = useCallback(() => {
+    if (!tbData?.data) return
+    const columns: CSVColumn[] = [
+      { key: 'account.code', label: t('الكود', 'Code', lang) },
+      { key: 'account.name', label: t('الحساب', 'Account', lang) },
+      { key: 'netDebit', label: t('مدين', 'Debit', lang), format: v => Number(v).toFixed(2) },
+      { key: 'netCredit', label: t('دائن', 'Credit', lang), format: v => Number(v).toFixed(2) },
+    ]
+    exportToCSV(tbData.data as Record<string, unknown>[], 'trial-balance', columns)
+  }, [tbData, lang])
+
+  return (
+    <div className="space-y-4">
+      <Tabs value={subTab} onValueChange={setSubTab}>
+        <TabsList className="grid grid-cols-4 w-full">
+          <TabsTrigger value="trial-balance" className="text-xs">{t('ميزان المراجعة', 'Trial Balance', lang)}</TabsTrigger>
+          <TabsTrigger value="revenue-summary" className="text-xs">{t('ملخص الإيرادات', 'Revenue', lang)}</TabsTrigger>
+          <TabsTrigger value="expense-summary" className="text-xs">{t('ملخص المصروفات', 'Expenses', lang)}</TabsTrigger>
+          <TabsTrigger value="cash-flow" className="text-xs">{t('التدفق النقدي', 'Cash Flow', lang)}</TabsTrigger>
+        </TabsList>
+
+        {/* Trial Balance */}
+        <TabsContent value="trial-balance" className="space-y-4">
+          <ReportHeader title={t('ميزان المراجعة', 'Trial Balance', lang)} icon={BookOpen} lang={lang}
+            onRefresh={() => refetchTb()} onExport={handleExportTb} onPrint={handlePrint} />
+          <Card className="bg-gray-50/50"><CardContent className="p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <Label className="text-sm">{t('من', 'From', lang)}</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40 h-8 text-sm" />
+              <Label className="text-sm">{t('إلى', 'To', lang)}</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40 h-8 text-sm" />
+            </div>
+          </CardContent></Card>
+          {tbLoading ? <LoadingSkeleton /> : tbData?.data && Array.isArray(tbData.data) && tbData.data.length > 0 ? (
+            <>
+              {tbData.totals && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p><MoneyDisplay value={tbData.totals.totalDebit} lang={lang} size="md" bold /></CardContent></Card>
+                  <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p><MoneyDisplay value={tbData.totals.totalCredit} lang={lang} size="md" bold /></CardContent></Card>
+                </div>
+              )}
+              <Card><CardContent className="p-0"><div className="overflow-x-auto max-h-96 overflow-y-auto"><Table>
+                <TableHeader><TableRow>
+                  <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+                  <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+                  <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+                  <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {(tbData.data as { account: { code: string; name: string }; totalDebit: number; totalCredit: number; netDebit: number; netCredit: number }[]).map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-mono text-xs">{row.account.code}</TableCell>
+                      <TableCell className="text-sm">{row.account.name}</TableCell>
+                      <TableCell>{row.netDebit > 0 ? <MoneyDisplay value={row.netDebit} lang={lang} size="xs" bold inline showSymbol={false} /> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
+                      <TableCell>{row.netCredit > 0 ? <MoneyDisplay value={row.netCredit} lang={lang} size="xs" bold inline showSymbol={false} /> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table></div></CardContent></Card>
+              {tbData.totals && (
+                <Badge className={`${tbData.totals.isBalanced ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'} border-0`}>
+                  {tbData.totals.isBalanced ? t('✓ الميزان متوازن', '✓ Balance is balanced', lang) : t('✗ الميزان غير متوازن', '✗ Balance is not balanced', lang)}
+                </Badge>
+              )}
+            </>
+          ) : <EmptyState icon={BookOpen} message={t('لا توجد بيانات', 'No data', lang)} />}
+        </TabsContent>
+
+        {/* Revenue Summary */}
+        <TabsContent value="revenue-summary" className="space-y-4">
+          <ReportHeader title={t('ملخص الإيرادات', 'Revenue Summary', lang)} icon={TrendingUp} lang={lang}
+            onRefresh={() => refetchRev()} onPrint={handlePrint} />
+          {revLoading ? <LoadingSkeleton /> : revData ? (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="border-2 border-emerald-300 bg-gradient-to-br from-emerald-50 to-white"><CardContent className="p-4 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-2"><Building2 className="size-5 text-emerald-600" /><span className="text-xs text-emerald-600">{t('التنفيذية', 'Construction', lang)}</span></div>
+                  <MoneyDisplay value={revData.totalConstructionRevenue} lang={lang} size="lg" bold className="text-emerald-700" />
+                </CardContent></Card>
+                <Card className="border-2 border-cyan-300 bg-gradient-to-br from-cyan-50 to-white"><CardContent className="p-4 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-2"><Truck className="size-5 text-cyan-600" /><span className="text-xs text-cyan-600">{t('التأجير', 'Rental', lang)}</span></div>
+                  <MoneyDisplay value={revData.totalRentalRevenue} lang={lang} size="lg" bold className="text-cyan-700" />
+                </CardContent></Card>
+                <Card className="bg-gray-50"><CardContent className="p-4 text-center"><p className="text-xs text-muted-foreground">{t('الإجمالي', 'Total', lang)}</p><MoneyDisplay value={revData.totalRevenue} lang={lang} size="lg" bold /></CardContent></Card>
+              </div>
+              {revData.monthly.length > 0 && (
+                <Card><CardHeader className="pb-3"><CardTitle className="text-base">{t('الإيرادات الشهرية', 'Monthly Revenue', lang)}</CardTitle></CardHeader>
+                <CardContent className="p-0"><div className="overflow-x-auto"><Table>
+                  <TableHeader><TableRow>
+                    <TableHead className="text-right">{t('الشهر', 'Month', lang)}</TableHead>
+                    <TableHead className="text-right"><span className="text-emerald-600">{t('التنفيذية', 'Construction', lang)}</span></TableHead>
+                    <TableHead className="text-right"><span className="text-cyan-600">{t('التأجير', 'Rental', lang)}</span></TableHead>
+                    <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {revData.monthly.map(m => (
+                      <TableRow key={m.month}>
+                        <TableCell className="font-mono text-sm">{m.month}</TableCell>
+                        <TableCell><MoneyDisplay value={m.construction} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-600" /></TableCell>
+                        <TableCell><MoneyDisplay value={m.rental} lang={lang} size="xs" inline showSymbol={false} className="text-cyan-600" /></TableCell>
+                        <TableCell><MoneyDisplay value={m.construction + m.rental} lang={lang} size="xs" bold inline showSymbol={false} /></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table></div></CardContent></Card>
+              )}
+            </>
+          ) : <EmptyState icon={TrendingUp} message={t('لا توجد بيانات', 'No data', lang)} />}
+        </TabsContent>
+
+        {/* Expense Summary */}
+        <TabsContent value="expense-summary" className="space-y-4">
+          <ReportHeader title={t('ملخص المصروفات', 'Expense Summary', lang)} icon={Receipt} lang={lang}
+            onRefresh={() => refetchExp()} onPrint={handlePrint} />
+          {expLoading ? <LoadingSkeleton /> : expData ? (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('تكاليف مباشرة', 'Direct Costs', lang)}</p><MoneyDisplay value={expData.totalDirect} lang={lang} size="md" bold className="text-amber-700" /></CardContent></Card>
+                <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('تكاليف غير مباشرة', 'Indirect Costs', lang)}</p><MoneyDisplay value={expData.totalIndirect} lang={lang} size="md" bold className="text-purple-700" /></CardContent></Card>
+                <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('الإجمالي', 'Total', lang)}</p><MoneyDisplay value={expData.totalExpenses} lang={lang} size="md" bold className="text-rose-700" /></CardContent></Card>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card><CardHeader className="pb-3"><CardTitle className="text-base text-amber-800">{t('التكاليف المباشرة حسب الفئة', 'Direct Costs by Category', lang)}</CardTitle></CardHeader>
+                  <CardContent className="space-y-1">
+                    {Object.entries(expData.directByCategory).map(([cat, val]) => (
+                      <div key={cat} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-gray-50">
+                        <span className="text-sm">{cat}</span><MoneyDisplay value={val} lang={lang} size="xs" bold inline showSymbol={false} className="text-amber-700" />
                       </div>
-                    )
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                    {Object.keys(expData.directByCategory).length === 0 && <p className="text-sm text-muted-foreground text-center py-4">{t('لا توجد بيانات', 'No data', lang)}</p>}
+                    <Separator className="my-2" />
+                    <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-amber-50 font-semibold">
+                      <span className="text-amber-800">{t('الإجمالي', 'Total', lang)}</span>
+                      <MoneyDisplay value={expData.totalDirect} lang={lang} size="sm" bold className="text-amber-700" />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card><CardHeader className="pb-3"><CardTitle className="text-base text-purple-800">{t('التكاليف غير المباشرة حسب الفئة', 'Indirect Costs by Category', lang)}</CardTitle></CardHeader>
+                  <CardContent className="space-y-1">
+                    {Object.entries(expData.indirectByCategory).map(([cat, val]) => (
+                      <div key={cat} className="flex items-center justify-between py-1.5 px-3 rounded-lg hover:bg-gray-50">
+                        <span className="text-sm">{cat}</span><MoneyDisplay value={val} lang={lang} size="xs" bold inline showSymbol={false} className="text-purple-700" />
+                      </div>
+                    ))}
+                    {Object.keys(expData.indirectByCategory).length === 0 && <p className="text-sm text-muted-foreground text-center py-4">{t('لا توجد بيانات', 'No data', lang)}</p>}
+                    <Separator className="my-2" />
+                    <div className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-purple-50 font-semibold">
+                      <span className="text-purple-800">{t('الإجمالي', 'Total', lang)}</span>
+                      <MoneyDisplay value={expData.totalIndirect} lang={lang} size="sm" bold className="text-purple-700" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          ) : <EmptyState icon={Receipt} message={t('لا توجد بيانات', 'No data', lang)} />}
+        </TabsContent>
+
+        {/* Cash Flow */}
+        <TabsContent value="cash-flow" className="space-y-4">
+          <ReportHeader title={t('ملخص التدفق النقدي', 'Cash Flow Summary', lang)} icon={Wallet} lang={lang}
+            onRefresh={() => refetchCf()} onPrint={handlePrint} />
+          {cfLoading ? <LoadingSkeleton /> : cfData ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('التدفقات الداخلة', 'Inflows', lang)}</p><MoneyDisplay value={cfData.totalInflows} lang={lang} size="md" bold className="text-emerald-700" /></CardContent></Card>
+                <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('التدفقات الخارجة', 'Outflows', lang)}</p><MoneyDisplay value={cfData.totalOutflows} lang={lang} size="md" bold className="text-rose-700" /></CardContent></Card>
+                <Card className={`${cfData.netCashFlow >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">{t('صافي التدفق', 'Net Flow', lang)}</p><MoneyDisplay value={cfData.netCashFlow} lang={lang} size="md" bold className={cfData.netCashFlow >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></CardContent></Card>
+                <Card className="bg-gray-50 border-gray-200"><CardContent className="p-3">
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t('تحصيلات عملاء', 'Client Payments', lang)}</span><span className="font-medium"><MoneyDisplay value={cfData.clientPaymentsTotal} lang={lang} size="xs" inline showSymbol={false} /></span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t('سداد موردين', 'Supplier Payments', lang)}</span><span className="font-medium"><MoneyDisplay value={cfData.supplierPaymentsTotal} lang={lang} size="xs" inline showSymbol={false} /></span></div>
+                    <div className="flex justify-between"><span className="text-muted-foreground">{t('رواتب', 'Salaries', lang)}</span><span className="font-medium"><MoneyDisplay value={cfData.salaryPaymentsTotal} lang={lang} size="xs" inline showSymbol={false} /></span></div>
+                  </div>
+                </CardContent></Card>
+              </div>
+              {cfData.monthly.length > 0 && (
+                <Card><CardHeader className="pb-3"><CardTitle className="text-base">{t('التدفق النقدي الشهري', 'Monthly Cash Flow', lang)}</CardTitle></CardHeader>
+                <CardContent className="p-0"><div className="overflow-x-auto"><Table>
+                  <TableHeader><TableRow>
+                    <TableHead className="text-right">{t('الشهر', 'Month', lang)}</TableHead>
+                    <TableHead className="text-right"><span className="text-emerald-600">{t('الداخلة', 'Inflows', lang)}</span></TableHead>
+                    <TableHead className="text-right"><span className="text-rose-600">{t('الخارجة', 'Outflows', lang)}</span></TableHead>
+                    <TableHead className="text-right">{t('صافي التدفق', 'Net Flow', lang)}</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {cfData.monthly.map(m => {
+                      const net = m.inflows - m.outflows
+                      return (
+                        <TableRow key={m.month}>
+                          <TableCell className="font-mono text-sm">{m.month}</TableCell>
+                          <TableCell><MoneyDisplay value={m.inflows} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-600" /></TableCell>
+                          <TableCell><MoneyDisplay value={m.outflows} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell>
+                          <TableCell><MoneyDisplay value={net} lang={lang} size="xs" bold inline showSymbol={false} className={net >= 0 ? 'text-emerald-600' : 'text-rose-600'} /></TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table></div></CardContent></Card>
+              )}
+            </>
+          ) : <EmptyState icon={Wallet} message={t('لا توجد بيانات', 'No data', lang)} />}
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}
+
+// ========================================================
+// TAB 4: PURCHASE REPORTS
+// ========================================================
+function PurchaseReportsTab({ lang }: { lang: 'ar' | 'en' }) {
+  const [subTab, setSubTab] = useState('summary')
+
+  const { data: purchaseSummary, isLoading: purchaseLoading, refetch: refetchPurchase } = useQuery<PurchaseSummary>({
+    queryKey: ['report-purchase-summary'],
+    queryFn: async () => { const res = await fetch('/api/reports?type=purchase-summary'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  const { data: supplierData, isLoading: supplierLoading, refetch: refetchSupplier } = useQuery<SupplierBalanceData>({
+    queryKey: ['supplier-balances-report'],
+    queryFn: async () => { const res = await fetch('/api/reports/supplier-balances'); if (!res.ok) throw new Error(); return res.json() },
+  })
+
+  const handlePrint = useCallback(() => { window.print() }, [])
+
+  const handleExportSupplier = useCallback(() => {
+    if (!supplierData) return
+    const columns: CSVColumn[] = [
+      { key: 'code', label: t('الكود', 'Code', lang) },
+      { key: 'name', label: t('الاسم', 'Name', lang) },
+      { key: 'totalPurchased', label: t('المشتريات', 'Purchased', lang), format: v => Number(v).toFixed(2) },
+      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: v => Number(v).toFixed(2) },
+      { key: 'balanceOwed', label: t('الرصيد', 'Balance', lang), format: v => Number(v).toFixed(2) },
+    ]
+    exportToCSV(supplierData.suppliers as Record<string, unknown>[], 'supplier-balances', columns)
+  }, [supplierData, lang])
+
+  return (
+    <div className="space-y-4">
+      <Tabs value={subTab} onValueChange={setSubTab}>
+        <TabsList className="grid grid-cols-2 w-full">
+          <TabsTrigger value="summary" className="text-xs">{t('ملخص المشتريات', 'Purchase Summary', lang)}</TabsTrigger>
+          <TabsTrigger value="supplier-balances" className="text-xs">{t('أرصدة الموردين', 'Supplier Balances', lang)}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="summary" className="space-y-4">
+          <ReportHeader title={t('ملخص المشتريات', 'Purchase Summary', lang)} icon={ShoppingCart} lang={lang}
+            onRefresh={() => refetchPurchase()} onPrint={handlePrint} />
+          {purchaseLoading ? <LoadingSkeleton /> : purchaseSummary ? (
+            <>
+              <Card className="bg-amber-50 border-amber-200"><CardContent className="p-4 text-center"><p className="text-xs text-amber-600">{t('إجمالي المشتريات', 'Total Purchases', lang)}</p><MoneyDisplay value={purchaseSummary.totalPurchases} lang={lang} size="lg" bold className="text-amber-700" /><p className="text-xs text-muted-foreground mt-1">{purchaseSummary.invoiceCount} {t('فاتورة', 'invoices', lang)}</p></CardContent></Card>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card><CardHeader className="pb-3"><CardTitle className="text-base">{t('حسب المورد', 'By Supplier', lang)}</CardTitle></CardHeader>
+                  <CardContent className="p-0"><div className="overflow-x-auto max-h-64 overflow-y-auto"><Table>
+                    <TableHeader><TableRow><TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead><TableHead className="text-right">{t('الفواتير', 'Inv.', lang)}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {purchaseSummary.bySupplier.map(s => (
+                        <TableRow key={s.id}><TableCell className="text-sm">{s.name}</TableCell><TableCell className="text-xs">{s.invoiceCount}</TableCell><TableCell><MoneyDisplay value={s.total} lang={lang} size="xs" inline showSymbol={false} /></TableCell></TableRow>
+                      ))}
+                    </TableBody>
+                  </Table></div></CardContent>
+                </Card>
+                <Card><CardHeader className="pb-3"><CardTitle className="text-base">{t('حسب المشروع', 'By Project', lang)}</CardTitle></CardHeader>
+                  <CardContent className="p-0"><div className="overflow-x-auto max-h-64 overflow-y-auto"><Table>
+                    <TableHeader><TableRow><TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead><TableHead className="text-right">{t('الفواتير', 'Inv.', lang)}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead></TableRow></TableHeader>
+                    <TableBody>
+                      {purchaseSummary.byProject.map(p => (
+                        <TableRow key={p.id}>
+                          <TableCell><div className="flex items-center gap-1"><span className="text-sm">{p.name}</span><ProjectTypeBadge projectType={p.projectType} lang={lang} /></div></TableCell>
+                          <TableCell className="text-xs">{p.invoiceCount}</TableCell><TableCell><MoneyDisplay value={p.total} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table></div></CardContent>
+                </Card>
+              </div>
+            </>
+          ) : <EmptyState icon={ShoppingCart} message={t('لا توجد بيانات', 'No data', lang)} />}
+        </TabsContent>
+
+        <TabsContent value="supplier-balances" className="space-y-4">
+          <ReportHeader title={t('أرصدة الموردين', 'Supplier Balances', lang)} icon={Users} lang={lang}
+            onRefresh={() => refetchSupplier()} onExport={handleExportSupplier} onPrint={handlePrint} />
+          {supplierData?.totals && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('إجمالي المشتريات', 'Purchased', lang)}</p><MoneyDisplay value={supplierData.totals.totalPurchased} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3 text-center"><p className="text-xs text-teal-600">{t('المدفوع', 'Paid', lang)}</p><MoneyDisplay value={supplierData.totals.totalPaid} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-orange-50 border-orange-200"><CardContent className="p-3 text-center"><p className="text-xs text-orange-600">{t('الرصيد المستحق', 'Balance Owed', lang)}</p><MoneyDisplay value={supplierData.totals.totalBalance} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('المتأخر', 'Overdue', lang)}</p><MoneyDisplay value={supplierData.totals.totalOverdue} lang={lang} size="sm" bold /></CardContent></Card>
+            </div>
           )}
-        </div>
-      ) : null}
+          {supplierLoading ? <LoadingSkeleton /> : supplierData?.suppliers && supplierData.suppliers.length > 0 ? (
+            <Card><CardContent className="p-0"><div className="overflow-x-auto max-h-96 overflow-y-auto"><Table>
+              <TableHeader><TableRow>
+                <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+                <TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead>
+                <TableHead className="text-right">{t('المشتريات', 'Purchased', lang)}</TableHead>
+                <TableHead className="text-right">{t('المدفوع', 'Paid', lang)}</TableHead>
+                <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+                <TableHead className="text-right">{t('المتأخر', 'Overdue', lang)}</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {supplierData.suppliers.map(s => (
+                  <TableRow key={s.id}>
+                    <TableCell className="font-mono text-xs">{s.code}</TableCell>
+                    <TableCell className="font-medium">{s.name}</TableCell>
+                    <TableCell><MoneyDisplay value={s.totalPurchased} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                    <TableCell><MoneyDisplay value={s.totalPaid} lang={lang} size="xs" inline showSymbol={false} className="text-teal-600" /></TableCell>
+                    <TableCell><MoneyDisplay value={s.balanceOwed} lang={lang} size="xs" bold inline showSymbol={false} className={s.balanceOwed > 0 ? 'text-orange-600' : ''} /></TableCell>
+                    <TableCell><MoneyDisplay value={s.overdue} lang={lang} size="xs" inline showSymbol={false} className={s.overdue > 0 ? 'text-rose-600' : ''} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table></div></CardContent></Card>
+          ) : <EmptyState icon={Users} message={t('لا توجد بيانات موردين', 'No supplier data', lang)} />}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
 
-// ============ 2. Supplier Balances Tab ============
-function SupplierBalancesTab({ lang }: { lang: 'ar' | 'en' }) {
-  const { data, isLoading, refetch } = useQuery<SupplierBalanceData>({
-    queryKey: ['supplier-balances'],
-    queryFn: async () => {
-      const res = await fetch('/api/reports/supplier-balances')
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
+// ========================================================
+// TAB 5: CLIENT REPORTS
+// ========================================================
+function ClientReportsTab({ lang }: { lang: 'ar' | 'en' }) {
+  const [subTab, setSubTab] = useState('balances')
+
+  const { data: clientData, isLoading: clientLoading, refetch: refetchClient } = useQuery<ClientBalanceData>({
+    queryKey: ['client-balances-report'],
+    queryFn: async () => { const res = await fetch('/api/reports/client-balances'); if (!res.ok) throw new Error(); return res.json() },
   })
 
+  const handlePrint = useCallback(() => { window.print() }, [])
+
   const handleExport = useCallback(() => {
-    if (!data) return
+    if (!clientData) return
     const columns: CSVColumn[] = [
       { key: 'code', label: t('الكود', 'Code', lang) },
       { key: 'name', label: t('الاسم', 'Name', lang) },
-      { key: 'totalPurchased', label: t('إجمالي المشتريات', 'Total Purchased', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'balanceOwed', label: t('الرصيد', 'Balance', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'overdue', label: t('المتأخر', 'Overdue', lang), format: (v) => Number(v).toFixed(2) },
+      { key: 'totalInvoiced', label: t('الفواتير', 'Invoiced', lang), format: v => Number(v).toFixed(2) },
+      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: v => Number(v).toFixed(2) },
+      { key: 'balanceReceivable', label: t('المستحق', 'Receivable', lang), format: v => Number(v).toFixed(2) },
+      { key: 'overdue', label: t('المتأخر', 'Overdue', lang), format: v => Number(v).toFixed(2) },
     ]
-    exportToCSV(data.suppliers as Record<string, unknown>[], 'supplier-balances', columns)
-  }, [data, lang])
+    exportToCSV(clientData.clients as Record<string, unknown>[], 'client-balances', columns)
+  }, [clientData, lang])
 
   return (
     <div className="space-y-4">
-      {/* Summary Cards */}
-      {data?.totals && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('إجمالي المشتريات', 'Total Purchased', lang)}</p><MoneyDisplay value={data.totals.totalPurchased} lang={lang} size="sm" bold /></CardContent></Card>
-          <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3 text-center"><p className="text-xs text-teal-600">{t('المدفوع', 'Paid', lang)}</p><MoneyDisplay value={data.totals.totalPaid} lang={lang} size="sm" bold /></CardContent></Card>
-          <Card className="bg-orange-50 border-orange-200"><CardContent className="p-3 text-center"><p className="text-xs text-orange-600">{t('الرصيد المستحق', 'Balance Owed', lang)}</p><MoneyDisplay value={data.totals.totalBalance} lang={lang} size="sm" bold /></CardContent></Card>
-          <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('المتأخر', 'Overdue', lang)}</p><MoneyDisplay value={data.totals.totalOverdue} lang={lang} size="sm" bold /></CardContent></Card>
-        </div>
-      )}
+      <Tabs value={subTab} onValueChange={setSubTab}>
+        <TabsList className="grid grid-cols-2 w-full">
+          <TabsTrigger value="balances" className="text-xs">{t('أرصدة العملاء', 'Client Balances', lang)}</TabsTrigger>
+          <TabsTrigger value="aging" className="text-xs">{t('تقرير التقادم', 'Aging Report', lang)}</TabsTrigger>
+        </TabsList>
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExport}><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
-      </div>
+        <TabsContent value="balances" className="space-y-4">
+          <ReportHeader title={t('أرصدة العملاء', 'Client Balances', lang)} icon={Users} lang={lang}
+            onRefresh={() => refetchClient()} onExport={handleExport} onPrint={handlePrint} />
+          {clientData?.totals && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي الفواتير', 'Invoiced', lang)}</p><MoneyDisplay value={clientData.totals.totalInvoiced} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3 text-center"><p className="text-xs text-teal-600">{t('المحصل', 'Collected', lang)}</p><MoneyDisplay value={clientData.totals.totalPaid} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-3 text-center"><p className="text-xs text-cyan-600">{t('المستحق', 'Receivable', lang)}</p><MoneyDisplay value={clientData.totals.totalBalance} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('المتأخر', 'Overdue', lang)}</p><MoneyDisplay value={clientData.totals.totalOverdue} lang={lang} size="sm" bold /></CardContent></Card>
+            </div>
+          )}
+          {clientLoading ? <LoadingSkeleton /> : clientData?.clients && clientData.clients.length > 0 ? (
+            <Card><CardContent className="p-0"><div className="overflow-x-auto max-h-96 overflow-y-auto"><Table>
+              <TableHeader><TableRow>
+                <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+                <TableHead className="text-right">{t('العميل', 'Client', lang)}</TableHead>
+                <TableHead className="text-right">{t('الفواتير', 'Invoiced', lang)}</TableHead>
+                <TableHead className="text-right">{t('المدفوع', 'Paid', lang)}</TableHead>
+                <TableHead className="text-right">{t('المستحق', 'Receivable', lang)}</TableHead>
+                <TableHead className="text-right">{t('المتأخر', 'Overdue', lang)}</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {clientData.clients.map(c => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-mono text-xs">{c.code}</TableCell>
+                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell><MoneyDisplay value={c.totalInvoiced} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
+                    <TableCell><MoneyDisplay value={c.totalPaid} lang={lang} size="xs" inline showSymbol={false} className="text-teal-600" /></TableCell>
+                    <TableCell><MoneyDisplay value={c.balanceReceivable} lang={lang} size="xs" bold inline showSymbol={false} className={c.balanceReceivable > 0 ? 'text-cyan-600' : ''} /></TableCell>
+                    <TableCell><MoneyDisplay value={c.overdue} lang={lang} size="xs" inline showSymbol={false} className={c.overdue > 0 ? 'text-rose-600' : ''} /></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table></div></CardContent></Card>
+          ) : <EmptyState icon={Users} message={t('لا توجد بيانات عملاء', 'No client data', lang)} />}
+        </TabsContent>
 
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}</div>
-      ) : data?.suppliers && data.suppliers.length > 0 ? (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow>
-              <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-              <TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead>
-              <TableHead className="text-right">{t('إجمالي المشتريات', 'Purchased', lang)}</TableHead>
-              <TableHead className="text-right">{t('المدفوع', 'Paid', lang)}</TableHead>
-              <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
-              <TableHead className="text-right">{t('المتأخر', 'Overdue', lang)}</TableHead>
-              <TableHead className="text-right">{t('0-30 يوم', '0-30d', lang)}</TableHead>
-              <TableHead className="text-right">{t('31-60 يوم', '31-60d', lang)}</TableHead>
-              <TableHead className="text-right">{t('61-90 يوم', '61-90d', lang)}</TableHead>
-              <TableHead className="text-right">{t('+90 يوم', '90+d', lang)}</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-              {data.suppliers.map(s => (
-                <TableRow key={s.id}>
-                  <TableCell className="font-mono text-xs">{s.code}</TableCell>
-                  <TableCell className="font-medium">{s.name}</TableCell>
-                  <TableCell><MoneyDisplay value={s.totalPurchased} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
-                  <TableCell><MoneyDisplay value={s.totalPaid} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
-                  <TableCell><MoneyDisplay value={s.balanceOwed} lang={lang} size="xs" bold inline showSymbol={false} className={s.balanceOwed > 0 ? 'text-orange-600' : ''} /></TableCell>
-                  <TableCell><MoneyDisplay value={s.overdue} lang={lang} size="xs" inline showSymbol={false} className={s.overdue > 0 ? 'text-rose-600' : ''} /></TableCell>
-                  <TableCell className="text-xs">{s.aging['0to30'] > 0 ? <MoneyDisplay value={s.aging['0to30']} lang={lang} size="xs" inline showSymbol={false} /> : '-'}</TableCell>
-                  <TableCell className="text-xs">{s.aging['31to60'] > 0 ? <MoneyDisplay value={s.aging['31to60']} lang={lang} size="xs" inline showSymbol={false} /> : '-'}</TableCell>
-                  <TableCell className="text-xs">{s.aging['61to90'] > 0 ? <MoneyDisplay value={s.aging['61to90']} lang={lang} size="xs" inline showSymbol={false} /> : '-'}</TableCell>
-                  <TableCell className="text-xs">{s.aging['90plus'] > 0 ? <MoneyDisplay value={s.aging['90plus']} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /> : '-'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
-        <Card className="border-dashed"><CardContent className="py-8 text-center text-muted-foreground">{t('لا توجد بيانات موردين', 'No supplier data', lang)}</CardContent></Card>
-      )}
+        <TabsContent value="aging" className="space-y-4">
+          <ReportHeader title={t('تقرير تقادم المقبوضات', 'Receivables Aging Report', lang)} icon={Clock} lang={lang}
+            onRefresh={() => refetchClient()} onExport={handleExport} onPrint={handlePrint} />
+          {clientData?.totals && (
+            <div className="grid grid-cols-4 gap-3">
+              <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3 text-center"><p className="text-xs text-teal-600">{t('حالي (0-30)', 'Current (0-30)', lang)}</p><MoneyDisplay value={clientData.totals.totalAging0to30} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('31-60 يوم', '31-60 Days', lang)}</p><MoneyDisplay value={clientData.totals.totalAging31to60} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-orange-50 border-orange-200"><CardContent className="p-3 text-center"><p className="text-xs text-orange-600">{t('61-90 يوم', '61-90 Days', lang)}</p><MoneyDisplay value={clientData.totals.totalAging61to90} lang={lang} size="sm" bold /></CardContent></Card>
+              <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('+90 يوم', '90+ Days', lang)}</p><MoneyDisplay value={clientData.totals.totalAging90plus} lang={lang} size="sm" bold /></CardContent></Card>
+            </div>
+          )}
+          {clientLoading ? <LoadingSkeleton /> : clientData?.clients && clientData.clients.length > 0 ? (
+            <Card><CardContent className="p-0"><div className="overflow-x-auto max-h-96 overflow-y-auto"><Table>
+              <TableHeader><TableRow>
+                <TableHead className="text-right">{t('العميل', 'Client', lang)}</TableHead>
+                <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+                <TableHead className="text-right">{t('0-30 يوم', '0-30d', lang)}</TableHead>
+                <TableHead className="text-right">{t('31-60 يوم', '31-60d', lang)}</TableHead>
+                <TableHead className="text-right">{t('61-90 يوم', '61-90d', lang)}</TableHead>
+                <TableHead className="text-right">{t('+90 يوم', '90+d', lang)}</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {clientData.clients.filter(c => c.balanceReceivable > 0).map(c => (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-medium">{c.name}</TableCell>
+                    <TableCell><MoneyDisplay value={c.balanceReceivable} lang={lang} size="xs" bold inline showSymbol={false} /></TableCell>
+                    <TableCell>{c.aging['0to30'] > 0 ? <MoneyDisplay value={c.aging['0to30']} lang={lang} size="xs" inline showSymbol={false} className="text-teal-600" /> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
+                    <TableCell>{c.aging['31to60'] > 0 ? <MoneyDisplay value={c.aging['31to60']} lang={lang} size="xs" inline showSymbol={false} className="text-amber-600" /> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
+                    <TableCell>{c.aging['61to90'] > 0 ? <MoneyDisplay value={c.aging['61to90']} lang={lang} size="xs" inline showSymbol={false} className="text-orange-600" /> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
+                    <TableCell>{c.aging['90plus'] > 0 ? <MoneyDisplay value={c.aging['90plus']} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /> : <span className="text-xs text-muted-foreground">-</span>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table></div></CardContent></Card>
+          ) : <EmptyState icon={Clock} message={t('لا توجد أرصدة متأخرة', 'No outstanding balances', lang)} />}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
 
-// ============ 3. Client Balances Tab ============
-function ClientBalancesTab({ lang }: { lang: 'ar' | 'en' }) {
-  const { data, isLoading, refetch } = useQuery<ClientBalanceData>({
-    queryKey: ['client-balances'],
-    queryFn: async () => {
-      const res = await fetch('/api/reports/client-balances')
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-  })
-
-  const handleExport = useCallback(() => {
-    if (!data) return
-    const columns: CSVColumn[] = [
-      { key: 'code', label: t('الكود', 'Code', lang) },
-      { key: 'name', label: t('الاسم', 'Name', lang) },
-      { key: 'totalInvoiced', label: t('إجمالي الفواتير', 'Total Invoiced', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'totalPaid', label: t('المدفوع', 'Paid', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'balanceReceivable', label: t('المستحق', 'Receivable', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'overdue', label: t('المتأخر', 'Overdue', lang), format: (v) => Number(v).toFixed(2) },
-    ]
-    exportToCSV(data.clients as Record<string, unknown>[], 'client-balances', columns)
-  }, [data, lang])
-
-  return (
-    <div className="space-y-4">
-      {data?.totals && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي الفواتير', 'Total Invoiced', lang)}</p><MoneyDisplay value={data.totals.totalInvoiced} lang={lang} size="sm" bold /></CardContent></Card>
-          <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3 text-center"><p className="text-xs text-teal-600">{t('المحصل', 'Collected', lang)}</p><MoneyDisplay value={data.totals.totalPaid} lang={lang} size="sm" bold /></CardContent></Card>
-          <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-3 text-center"><p className="text-xs text-cyan-600">{t('المستحق', 'Receivable', lang)}</p><MoneyDisplay value={data.totals.totalBalance} lang={lang} size="sm" bold /></CardContent></Card>
-          <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('المتأخر', 'Overdue', lang)}</p><MoneyDisplay value={data.totals.totalOverdue} lang={lang} size="sm" bold /></CardContent></Card>
-        </div>
-      )}
-
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExport}><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
-      </div>
-
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}</div>
-      ) : data?.clients && data.clients.length > 0 ? (
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader><TableRow>
-              <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-              <TableHead className="text-right">{t('العميل', 'Client', lang)}</TableHead>
-              <TableHead className="text-right">{t('إجمالي الفواتير', 'Invoiced', lang)}</TableHead>
-              <TableHead className="text-right">{t('المدفوع', 'Paid', lang)}</TableHead>
-              <TableHead className="text-right">{t('المستحق', 'Receivable', lang)}</TableHead>
-              <TableHead className="text-right">{t('المتأخر', 'Overdue', lang)}</TableHead>
-              <TableHead className="text-right">{t('0-30 يوم', '0-30d', lang)}</TableHead>
-              <TableHead className="text-right">{t('31-60 يوم', '31-60d', lang)}</TableHead>
-              <TableHead className="text-right">{t('61-90 يوم', '61-90d', lang)}</TableHead>
-              <TableHead className="text-right">{t('+90 يوم', '90+d', lang)}</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-              {data.clients.map(c => (
-                <TableRow key={c.id}>
-                  <TableCell className="font-mono text-xs">{c.code}</TableCell>
-                  <TableCell className="font-medium">{c.name}</TableCell>
-                  <TableCell><MoneyDisplay value={c.totalInvoiced} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
-                  <TableCell><MoneyDisplay value={c.totalPaid} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
-                  <TableCell><MoneyDisplay value={c.balanceReceivable} lang={lang} size="xs" bold inline showSymbol={false} className={c.balanceReceivable > 0 ? 'text-cyan-600' : ''} /></TableCell>
-                  <TableCell><MoneyDisplay value={c.overdue} lang={lang} size="xs" inline showSymbol={false} className={c.overdue > 0 ? 'text-rose-600' : ''} /></TableCell>
-                  <TableCell className="text-xs">{c.aging['0to30'] > 0 ? <MoneyDisplay value={c.aging['0to30']} lang={lang} size="xs" inline showSymbol={false} /> : '-'}</TableCell>
-                  <TableCell className="text-xs">{c.aging['31to60'] > 0 ? <MoneyDisplay value={c.aging['31to60']} lang={lang} size="xs" inline showSymbol={false} /> : '-'}</TableCell>
-                  <TableCell className="text-xs">{c.aging['61to90'] > 0 ? <MoneyDisplay value={c.aging['61to90']} lang={lang} size="xs" inline showSymbol={false} /> : '-'}</TableCell>
-                  <TableCell className="text-xs">{c.aging['90plus'] > 0 ? <MoneyDisplay value={c.aging['90plus']} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /> : '-'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      ) : (
-        <Card className="border-dashed"><CardContent className="py-8 text-center text-muted-foreground">{t('لا توجد بيانات عملاء', 'No client data', lang)}</CardContent></Card>
-      )}
-    </div>
-  )
-}
-
-// ============ 4. VAT Return Tab (in Reports) ============
-function VATReturnReportTab({ lang }: { lang: 'ar' | 'en' }) {
+// ========================================================
+// TAB 6: TAX REPORTS
+// ========================================================
+function TaxReportsTab({ lang }: { lang: 'ar' | 'en' }) {
   const currentYear = new Date().getFullYear()
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
   const [selectedQuarter, setSelectedQuarter] = useState<number>(0)
@@ -796,8 +1007,8 @@ function VATReturnReportTab({ lang }: { lang: 'ar' | 'en' }) {
   const [payReference, setPayReference] = useState('')
   const [payingId, setPayingId] = useState<string>('')
   const queryClient = useQueryClient()
-
   const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
+
   const quarterConfig: Record<number, { ar: string; en: string; monthsAr: string; monthsEn: string }> = {
     1: { ar: 'الربع الأول', en: 'Q1', monthsAr: 'يناير - مارس', monthsEn: 'January - March' },
     2: { ar: 'الربع الثاني', en: 'Q2', monthsAr: 'أبريل - يونيو', monthsEn: 'April - June' },
@@ -805,7 +1016,6 @@ function VATReturnReportTab({ lang }: { lang: 'ar' | 'en' }) {
     4: { ar: 'الربع الرابع', en: 'Q4', monthsAr: 'أكتوبر - ديسمبر', monthsEn: 'October - December' },
   }
 
-  // Auto-calc data from invoices
   const { data: vatCalcData, isLoading: calcLoading } = useQuery<{
     declaration: VATDeclaration | null
     autoCalc: { outputVat: number; inputVat: number; netVat: number; totalSales: number; totalPurchases: number }
@@ -821,14 +1031,9 @@ function VATReturnReportTab({ lang }: { lang: 'ar' | 'en' }) {
     enabled: !!selectedQuarter,
   })
 
-  // Filed returns
   const { data: filedReturns = [] } = useQuery<VATDeclaration[]>({
     queryKey: ['vat-returns-filed', selectedYear],
-    queryFn: async () => {
-      const res = await fetch(`/api/vat?year=${selectedYear}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
+    queryFn: async () => { const res = await fetch(`/api/vat?year=${selectedYear}`); if (!res.ok) throw new Error(); return res.json() },
   })
 
   const createMutation = useMutation({
@@ -861,8 +1066,7 @@ function VATReturnReportTab({ lang }: { lang: 'ar' | 'en' }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['vat-report-calc', selectedYear, selectedQuarter] })
       queryClient.invalidateQueries({ queryKey: ['vat-returns-filed', selectedYear] })
-      setPayDialogOpen(false)
-      setPayReference('')
+      setPayDialogOpen(false); setPayReference('')
       toast.success(t('تم تسجيل الدفع', 'Payment recorded', lang))
     },
   })
@@ -874,236 +1078,107 @@ function VATReturnReportTab({ lang }: { lang: 'ar' | 'en' }) {
   return (
     <div className="space-y-4">
       {/* Year + Quarter Selector */}
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <Label className="text-sm font-medium">{t('السنة', 'Year', lang)}</Label>
-            <Select value={String(selectedYear)} onValueChange={v => setSelectedYear(Number(v))}>
-              <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-              <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
-            </Select>
-            <Label className="text-sm font-medium">{t('الربع', 'Quarter', lang)}</Label>
-            <Select value={String(selectedQuarter)} onValueChange={v => setSelectedQuarter(Number(v))}>
-              <SelectTrigger className="w-40"><SelectValue placeholder={t('اختر الربع', 'Select quarter', lang)} /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">{t('اختر الربع', 'Select quarter', lang)}</SelectItem>
-                {[1, 2, 3, 4].map(q => <SelectItem key={q} value={String(q)}>{lang === 'ar' ? quarterConfig[q].ar : quarterConfig[q].en} ({lang === 'ar' ? quarterConfig[q].monthsAr : quarterConfig[q].monthsEn})</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <Card className="bg-gray-50/50"><CardContent className="p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Label className="text-sm font-medium">{t('السنة', 'Year', lang)}</Label>
+          <Select value={String(selectedYear)} onValueChange={v => setSelectedYear(Number(v))}>
+            <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
+            <SelectContent>{yearOptions.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent>
+          </Select>
+          <Label className="text-sm font-medium">{t('الربع', 'Quarter', lang)}</Label>
+          <Select value={String(selectedQuarter)} onValueChange={v => setSelectedQuarter(Number(v))}>
+            <SelectTrigger className="w-40"><SelectValue placeholder={t('اختر الربع', 'Select quarter', lang)} /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">{t('اختر الربع', 'Select quarter', lang)}</SelectItem>
+              {[1, 2, 3, 4].map(q => <SelectItem key={q} value={String(q)}>{lang === 'ar' ? quarterConfig[q].ar : quarterConfig[q].en} ({lang === 'ar' ? quarterConfig[q].monthsAr : quarterConfig[q].monthsEn})</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => window.print()}><Printer className="size-3.5" />{t('طباعة', 'Print', lang)}</Button>
+        </div>
+      </CardContent></Card>
 
       {!selectedQuarter ? (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-3 py-12">
-            <Percent className="size-12 text-gray-300" />
-            <p className="text-muted-foreground">{t('اختر السنة والربع لحساب الضريبة تلقائياً', 'Select year and quarter to auto-calculate VAT', lang)}</p>
-          </CardContent>
-        </Card>
-      ) : calcLoading ? (
-        <div className="space-y-3">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />)}</div>
-      ) : (
+        <EmptyState icon={Percent} message={t('اختر السنة والربع لحساب الضريبة تلقائياً', 'Select year and quarter to auto-calculate VAT', lang)} />
+      ) : calcLoading ? <LoadingSkeleton count={4} /> : (
         <div className="space-y-4">
-          {/* Auto-calculated VAT Summary */}
+          {/* VAT Summary Cards */}
           {autoCalc && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
-                <CardContent className="p-5">
-                  <p className="text-sm font-medium text-emerald-700 mb-1">{t('ضريبة المخرجات', 'Output VAT', lang)}</p>
-                  <p className="text-xs text-muted-foreground mb-2">{t('فواتير المبيعات + المستخلصات', 'Sales invoices + Claims', lang)}</p>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">{t('إجمالي المبيعات', 'Total Sales', lang)}</span>
-                    <MoneyDisplay value={autoCalc.totalSales} lang={lang} size="xs" bold className="text-emerald-700" />
-                  </div>
-                  <Separator className="my-2" />
-                  <MoneyDisplay value={autoCalc.outputVat} lang={lang} size="lg" bold className="text-emerald-700" />
-                </CardContent>
-              </Card>
-              <Card className="border-rose-200 bg-gradient-to-br from-rose-50 to-white">
-                <CardContent className="p-5">
-                  <p className="text-sm font-medium text-rose-700 mb-1">{t('ضريبة المدخلات', 'Input VAT', lang)}</p>
-                  <p className="text-xs text-muted-foreground mb-2">{t('المشتريات + المصروفات', 'Purchases + Expenses', lang)}</p>
-                  <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">{t('إجمالي المشتريات', 'Total Purchases', lang)}</span>
-                    <MoneyDisplay value={autoCalc.totalPurchases} lang={lang} size="xs" bold className="text-rose-700" />
-                  </div>
-                  <Separator className="my-2" />
-                  <MoneyDisplay value={autoCalc.inputVat} lang={lang} size="lg" bold className="text-rose-700" />
-                </CardContent>
-              </Card>
-              <Card className={`border-2 ${autoCalc.netVat >= 0 ? 'border-amber-300' : 'border-teal-300'}`}>
-                <CardContent className="p-5">
-                  <p className={`text-sm font-medium ${autoCalc.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} mb-1`}>{t('صافي الضريبة', 'Net VAT', lang)}</p>
-                  <p className="text-xs text-muted-foreground mb-2">{autoCalc.netVat >= 0 ? t('مستحق للدفع', 'Payable', lang) : t('مسترد', 'Refundable', lang)}</p>
-                  <MoneyDisplay value={autoCalc.netVat} lang={lang} size="xl" bold className={autoCalc.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} />
-                </CardContent>
-              </Card>
+              <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white"><CardContent className="p-5">
+                <p className="text-sm font-medium text-emerald-700 mb-1">{t('ضريبة المخرجات', 'Output VAT', lang)}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t('فواتير المبيعات + المستخلصات', 'Sales + Claims', lang)}</p>
+                <div className="flex items-center justify-between text-sm mb-1"><span className="text-muted-foreground">{t('إجمالي المبيعات', 'Total Sales', lang)}</span><MoneyDisplay value={autoCalc.totalSales} lang={lang} size="xs" bold className="text-emerald-700" /></div>
+                <Separator className="my-2" /><MoneyDisplay value={autoCalc.outputVat} lang={lang} size="lg" bold className="text-emerald-700" />
+              </CardContent></Card>
+              <Card className="border-rose-200 bg-gradient-to-br from-rose-50 to-white"><CardContent className="p-5">
+                <p className="text-sm font-medium text-rose-700 mb-1">{t('ضريبة المدخلات', 'Input VAT', lang)}</p>
+                <p className="text-xs text-muted-foreground mb-2">{t('المشتريات + المصروفات', 'Purchases + Expenses', lang)}</p>
+                <div className="flex items-center justify-between text-sm mb-1"><span className="text-muted-foreground">{t('إجمالي المشتريات', 'Total Purchases', lang)}</span><MoneyDisplay value={autoCalc.totalPurchases} lang={lang} size="xs" bold className="text-rose-700" /></div>
+                <Separator className="my-2" /><MoneyDisplay value={autoCalc.inputVat} lang={lang} size="lg" bold className="text-rose-700" />
+              </CardContent></Card>
+              <Card className={`border-2 ${autoCalc.netVat >= 0 ? 'border-amber-300' : 'border-teal-300'}`}><CardContent className="p-5">
+                <p className={`text-sm font-medium ${autoCalc.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} mb-1`}>{t('صافي الضريبة', 'Net VAT', lang)}</p>
+                <p className="text-xs text-muted-foreground mb-2">{autoCalc.netVat >= 0 ? t('مستحق للدفع', 'Payable', lang) : t('مسترد', 'Refundable', lang)}</p>
+                <MoneyDisplay value={autoCalc.netVat} lang={lang} size="xl" bold className={autoCalc.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} />
+              </CardContent></Card>
             </div>
           )}
 
           {/* Declaration Status & Actions */}
           {declaration && (
             <Card className={`${declaration.status === 'PAID' ? 'border-emerald-300 bg-emerald-50/30' : declaration.status === 'FILED' ? 'border-teal-300 bg-teal-50/30' : 'border-amber-300 bg-amber-50/30'}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex items-center gap-2">
-                    {declaration.status === 'DRAFT' && <Clock className="size-5 text-amber-600" />}
-                    {declaration.status === 'FILED' && <Send className="size-5 text-teal-600" />}
-                    {declaration.status === 'PAID' && <CheckCircle2 className="size-5 text-emerald-600" />}
-                    <span className="font-medium">
-                      {declaration.status === 'DRAFT' && t('إقرار في حالة مسودة', 'Declaration in Draft', lang)}
-                      {declaration.status === 'FILED' && t('تم تقديم الإقرار', 'Declaration Filed', lang)}
-                      {declaration.status === 'PAID' && t('تم الدفع', 'Payment Complete', lang)}
-                    </span>
-                    {declaration.filedDate && <span className="text-sm text-muted-foreground">({formatDate(declaration.filedDate, lang)})</span>}
-                  </div>
-                  <div className="flex gap-2">
-                    {declaration.status === 'DRAFT' && (
-                      <Button className="bg-emerald-600 hover:bg-emerald-700 gap-1.5" size="sm" onClick={() => fileMutation.mutate(declaration.id)} disabled={fileMutation.isPending}>
-                        {fileMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
-                        {t('تقديم الإقرار', 'File Return', lang)}
-                      </Button>
-                    )}
-                    {declaration.status === 'FILED' && (
-                      <Button className="bg-teal-600 hover:bg-teal-700 gap-1.5" size="sm" onClick={() => { setPayingId(declaration.id); setPayDialogOpen(true) }}>
-                        <Wallet className="size-4" />{t('تسجيل الدفع', 'Record Payment', lang)}
-                      </Button>
-                    )}
-                  </div>
+              <CardContent className="p-4"><div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  {declaration.status === 'DRAFT' && <Clock className="size-5 text-amber-600" />}
+                  {declaration.status === 'FILED' && <Send className="size-5 text-teal-600" />}
+                  {declaration.status === 'PAID' && <CheckCircle2 className="size-5 text-emerald-600" />}
+                  <span className="font-medium">{declaration.status === 'DRAFT' ? t('إقرار في حالة مسودة', 'Declaration in Draft', lang) : declaration.status === 'FILED' ? t('تم تقديم الإقرار', 'Declaration Filed', lang) : t('تم الدفع', 'Payment Complete', lang)}</span>
                 </div>
-              </CardContent>
+                <div className="flex gap-2">
+                  {declaration.status === 'DRAFT' && <Button className="bg-emerald-600 hover:bg-emerald-700 gap-1.5" size="sm" onClick={() => fileMutation.mutate(declaration.id)} disabled={fileMutation.isPending}>{fileMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}{t('تقديم الإقرار', 'File Return', lang)}</Button>}
+                  {declaration.status === 'FILED' && <Button className="bg-teal-600 hover:bg-teal-700 gap-1.5" size="sm" onClick={() => { setPayingId(declaration.id); setPayDialogOpen(true) }}><Wallet className="size-4" />{t('تسجيل الدفع', 'Record Payment', lang)}</Button>}
+                </div>
+              </div></CardContent>
             </Card>
           )}
-
           {!declaration && autoCalc && (
-            <div className="flex justify-center">
-              <Button className="bg-emerald-600 hover:bg-emerald-700 gap-1.5" size="sm" onClick={() => createMutation.mutate({ year: selectedYear, quarter: selectedQuarter })} disabled={createMutation.isPending}>
-                {createMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <PlusCircle className="size-4" />}
-                {t('إنشاء إقرار ضريبي', 'Create VAT Return', lang)}
-              </Button>
-            </div>
-          )}
-
-          {/* Breakdown Tables */}
-          {breakdown && (
-            <div className="space-y-4">
-              {breakdown.salesInvoices.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <h4 className="font-semibold text-emerald-800 flex items-center gap-2"><Receipt className="size-4" />{t('فواتير المبيعات', 'Sales Invoices', lang)}<Badge className="bg-emerald-100 text-emerald-700 border-0">{breakdown.salesInvoices.length}</Badge></h4>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                      <Table><TableHeader><TableRow><TableHead className="text-right">{t('الرقم', 'No.', lang)}</TableHead><TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead><TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead></TableRow></TableHeader>
-                        <TableBody>{breakdown.salesInvoices.map(inv => (<TableRow key={inv.id}><TableCell className="font-mono text-xs">{inv.invoiceNo}</TableCell><TableCell className="text-xs">{formatDate(inv.date, lang)}</TableCell><TableCell><MoneyDisplay value={inv.totalAmount} lang={lang} size="xs" inline showSymbol={false} /></TableCell><TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-600" /></TableCell></TableRow>))}</TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              {breakdown.progressClaims.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <h4 className="font-semibold text-emerald-800 flex items-center gap-2"><FileText className="size-4" />{t('المستخلصات', 'Progress Claims', lang)}<Badge className="bg-emerald-100 text-emerald-700 border-0">{breakdown.progressClaims.length}</Badge></h4>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                      <Table><TableHeader><TableRow><TableHead className="text-right">{t('الرقم', 'No.', lang)}</TableHead><TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead><TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead></TableRow></TableHeader>
-                        <TableBody>{breakdown.progressClaims.map(c => (<TableRow key={c.id}><TableCell className="font-mono text-xs">{c.claimNo}</TableCell><TableCell className="text-xs">{formatDate(c.date, lang)}</TableCell><TableCell><MoneyDisplay value={c.totalAmount} lang={lang} size="xs" inline showSymbol={false} /></TableCell><TableCell><MoneyDisplay value={c.vatAmount} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-600" /></TableCell></TableRow>))}</TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              {breakdown.purchaseInvoices.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <h4 className="font-semibold text-rose-800 flex items-center gap-2"><ShoppingCart className="size-4" />{t('فواتير المشتريات', 'Purchase Invoices', lang)}<Badge className="bg-rose-100 text-rose-700 border-0">{breakdown.purchaseInvoices.length}</Badge></h4>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                      <Table><TableHeader><TableRow><TableHead className="text-right">{t('الرقم', 'No.', lang)}</TableHead><TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead><TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead></TableRow></TableHeader>
-                        <TableBody>{breakdown.purchaseInvoices.map(inv => (<TableRow key={inv.id}><TableCell className="font-mono text-xs">{inv.invoiceNo}</TableCell><TableCell className="text-xs">{formatDate(inv.date, lang)}</TableCell><TableCell><MoneyDisplay value={inv.totalAmount} lang={lang} size="xs" inline showSymbol={false} /></TableCell><TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell></TableRow>))}</TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-              {breakdown.expenses.length > 0 && (
-                <Card>
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <h4 className="font-semibold text-purple-800 flex items-center gap-2"><Receipt className="size-4" />{t('المصروفات الخاضعة للضريبة', 'Taxed Expenses', lang)}<Badge className="bg-purple-100 text-purple-700 border-0">{breakdown.expenses.length}</Badge></h4>
-                  </CardHeader>
-                  <CardContent className="p-4 pt-0">
-                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                      <Table><TableHeader><TableRow><TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead><TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead><TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead></TableRow></TableHeader>
-                        <TableBody>{breakdown.expenses.map(exp => (<TableRow key={exp.id}><TableCell className="text-sm">{exp.description}</TableCell><TableCell className="text-xs">{formatDate(exp.date, lang)}</TableCell><TableCell><MoneyDisplay value={exp.amount} lang={lang} size="xs" inline showSymbol={false} /></TableCell><TableCell><MoneyDisplay value={exp.vatAmount || 0} lang={lang} size="xs" inline showSymbol={false} className="text-purple-600" /></TableCell></TableRow>))}</TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+            <div className="flex justify-center"><Button className="bg-emerald-600 hover:bg-emerald-700 gap-1.5" size="sm" onClick={() => createMutation.mutate({ year: selectedYear, quarter: selectedQuarter })} disabled={createMutation.isPending}>{createMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : null}{t('إنشاء إقرار ضريبي', 'Create VAT Return', lang)}</Button></div>
           )}
 
           {/* Filed Returns History */}
           {filedReturns.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2"><BookOpen className="size-5 text-emerald-600" />{t('الإقرارات المقدمة', 'Filed Returns', lang)}</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader><TableRow>
-                      <TableHead className="text-right">{t('الفترة', 'Period', lang)}</TableHead>
-                      <TableHead className="text-right">{t('ضريبة مخرجات', 'Output VAT', lang)}</TableHead>
-                      <TableHead className="text-right">{t('ضريبة مدخلات', 'Input VAT', lang)}</TableHead>
-                      <TableHead className="text-right">{t('صافي الضريبة', 'Net VAT', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
-                    </TableRow></TableHeader>
-                    <TableBody>
-                      {filedReturns.map(vr => (
-                        <TableRow key={vr.id}>
-                          <TableCell className="font-mono text-sm">{vr.period}</TableCell>
-                          <TableCell><MoneyDisplay value={vr.outputVat} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-600" /></TableCell>
-                          <TableCell><MoneyDisplay value={vr.inputVat} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell>
-                          <TableCell><MoneyDisplay value={vr.netVat} lang={lang} size="xs" bold inline showSymbol={false} className={vr.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} /></TableCell>
-                          <TableCell>
-                            <Badge className={`${vr.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : vr.status === 'FILED' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'} border-0`}>
-                              {vr.status === 'DRAFT' ? t('مسودة', 'Draft', lang) : vr.status === 'FILED' ? t('مقدم', 'Filed', lang) : t('مدفوع', 'Paid', lang)}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+            <Card><CardHeader className="pb-3"><CardTitle className="text-base flex items-center gap-2"><BookOpen className="size-5 text-emerald-600" />{t('الإقرارات المقدمة', 'Filed Returns', lang)}</CardTitle></CardHeader>
+            <CardContent className="p-0"><div className="overflow-x-auto"><Table>
+              <TableHeader><TableRow>
+                <TableHead className="text-right">{t('الفترة', 'Period', lang)}</TableHead>
+                <TableHead className="text-right">{t('ض.مخرجات', 'Output VAT', lang)}</TableHead>
+                <TableHead className="text-right">{t('ض.مدخلات', 'Input VAT', lang)}</TableHead>
+                <TableHead className="text-right">{t('صافي الضريبة', 'Net VAT', lang)}</TableHead>
+                <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {filedReturns.map(vr => (
+                  <TableRow key={vr.id}>
+                    <TableCell className="font-mono text-sm">{vr.period}</TableCell>
+                    <TableCell><MoneyDisplay value={vr.outputVat} lang={lang} size="xs" inline showSymbol={false} className="text-emerald-600" /></TableCell>
+                    <TableCell><MoneyDisplay value={vr.inputVat} lang={lang} size="xs" inline showSymbol={false} className="text-rose-600" /></TableCell>
+                    <TableCell><MoneyDisplay value={vr.netVat} lang={lang} size="xs" bold inline showSymbol={false} className={vr.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} /></TableCell>
+                    <TableCell><Badge className={`${vr.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : vr.status === 'FILED' ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'} border-0`}>{vr.status === 'DRAFT' ? t('مسودة', 'Draft', lang) : vr.status === 'FILED' ? t('مقدم', 'Filed', lang) : t('مدفوع', 'Paid', lang)}</Badge></TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table></div></CardContent></Card>
           )}
         </div>
       )}
 
-      {/* Payment Dialog */}
       <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t('تسجيل دفع الضريبة', 'Record VAT Payment', lang)}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>{t('رقم مرجع الدفع', 'Payment Reference', lang)}</Label>
-              <Input value={payReference} onChange={e => setPayReference(e.target.value)} placeholder={t('أدخل رقم المرجع', 'Enter reference number', lang)} dir="ltr" />
-            </div>
-          </div>
+          <DialogHeader><DialogTitle>{t('تسجيل دفع الضريبة', 'Record VAT Payment', lang)}</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4"><div className="space-y-2"><Label>{t('رقم مرجع الدفع', 'Payment Reference', lang)}</Label><Input value={payReference} onChange={e => setPayReference(e.target.value)} placeholder={t('أدخل رقم المرجع', 'Enter reference number', lang)} dir="ltr" /></div></div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayDialogOpen(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => payMutation.mutate({ id: payingId, paymentReference: payReference })} disabled={!payReference || payMutation.isPending}>
-              {payMutation.isPending ? <RefreshCw className="size-4 animate-spin mr-2" /> : null}
-              {t('تأكيد الدفع', 'Confirm Payment', lang)}
-            </Button>
+            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => payMutation.mutate({ id: payingId, paymentReference: payReference })} disabled={!payReference || payMutation.isPending}>{payMutation.isPending ? <RefreshCw className="size-4 animate-spin mr-2" /> : null}{t('تأكيد الدفع', 'Confirm Payment', lang)}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1111,188 +1186,31 @@ function VATReturnReportTab({ lang }: { lang: 'ar' | 'en' }) {
   )
 }
 
-// ============ 5. Cash Flow Tab ============
-function CashFlowTab({ lang }: { lang: 'ar' | 'en' }) {
-  const { data: dashboard } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: async () => { const res = await fetch('/api/dashboard'); if (!res.ok) throw new Error(); return res.json() },
-    staleTime: 30000,
-  })
-
-  const monthlyData = dashboard?.monthlyData || []
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Wallet className="size-5 text-emerald-600" />
-            {t('التدفق النقدي', 'Cash Flow', lang)}
-            <span className="text-xs text-muted-foreground font-normal">({t('آخر 6 أشهر', 'Last 6 months', lang)})</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {monthlyData.length > 0 ? (
-            <div className="space-y-4">
-              {monthlyData.map(m => {
-                const netFlow = m.revenue - m.expenses
-                return (
-                  <Card key={m.month} className="border-l-4" style={{ borderLeftColor: netFlow >= 0 ? '#059669' : '#dc2626' }}>
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold">{lang === 'ar' ? m.labelAr : m.labelEn}</span>
-                        <Badge className={`${netFlow >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'} border-0`}>
-                          {netFlow >= 0 ? t('فائض', 'Surplus', lang) : t('عجز', 'Deficit', lang)}
-                        </Badge>
-                      </div>
-                      <div className="grid grid-cols-3 gap-3 text-sm">
-                        <div>
-                          <p className="text-xs text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
-                          <MoneyDisplay value={m.revenue} lang={lang} size="sm" bold className="text-emerald-600" />
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">{t('المصروفات', 'Expenses', lang)}</p>
-                          <MoneyDisplay value={m.expenses} lang={lang} size="sm" bold className="text-rose-600" />
-                        </div>
-                        <div>
-                          <p className="text-xs text-muted-foreground">{t('صافي التدفق', 'Net Flow', lang)}</p>
-                          <MoneyDisplay value={netFlow} lang={lang} size="sm" bold className={netFlow >= 0 ? 'text-emerald-600' : 'text-rose-600'} />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-center text-muted-foreground py-8">{t('لا توجد بيانات', 'No data', lang)}</p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-// ============ Main Reports Module ============
+// ========================================================
+// MAIN REPORTS MODULE
+// ========================================================
 export function ReportsModule() {
-  const { lang } = useAppStore()
-  const [activeTab, setActiveTab] = useState('activity-summary')
+  const { activeSubModule, lang } = useAppStore()
+
+  // Map activeSubModule to the corresponding tab component
+  const renderTab = () => {
+    switch (activeSubModule) {
+      case 'report-projects': return <ProjectReportsTab lang={lang} />
+      case 'report-rental': return <RentalReportsTab lang={lang} />
+      case 'report-finance': return <FinancialReportsTab lang={lang} />
+      case 'report-purchases': return <PurchaseReportsTab lang={lang} />
+      case 'report-clients': return <ClientReportsTab lang={lang} />
+      case 'report-tax': return <TaxReportsTab lang={lang} />
+      default: return <ProjectReportsTab lang={lang} />
+    }
+  }
 
   return (
     <ModuleLayout
       title={{ ar: 'التقارير', en: 'Reports' }}
-      subtitle={{ ar: 'تقارير شاملة لإدارة المشاريع والمالية', en: 'Comprehensive project and financial reports' }}
+      subtitle={{ ar: 'تقارير شاملة للمشاريع والتأجير والمالية', en: 'Comprehensive reports for projects, rental, and finance' }}
     >
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 sm:grid-cols-7 w-full gap-1">
-          <TabsTrigger value="activity-summary" className="text-xs">{t('ملخص الأنشطة', 'Activity Summary', lang)}</TabsTrigger>
-          <TabsTrigger value="project-costs" className="text-xs">{t('تكاليف المشاريع', 'Project Costs', lang)}</TabsTrigger>
-          <TabsTrigger value="supplier-balances" className="text-xs">{t('أرصدة الموردين', 'Supplier Bal.', lang)}</TabsTrigger>
-          <TabsTrigger value="client-balances" className="text-xs">{t('أرصدة العملاء', 'Client Bal.', lang)}</TabsTrigger>
-          <TabsTrigger value="vat-return" className="text-xs">{t('إقرار الضريبة', 'VAT Return', lang)}</TabsTrigger>
-          <TabsTrigger value="trial-balance" className="text-xs">{t('ميزان المراجعة', 'Trial Balance', lang)}</TabsTrigger>
-          <TabsTrigger value="cash-flow" className="text-xs">{t('التدفق النقدي', 'Cash Flow', lang)}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="activity-summary">
-          <ActivitySummaryTab lang={lang} />
-        </TabsContent>
-        <TabsContent value="project-costs">
-          <ProjectCostSheetTab lang={lang} />
-        </TabsContent>
-        <TabsContent value="supplier-balances">
-          <SupplierBalancesTab lang={lang} />
-        </TabsContent>
-        <TabsContent value="client-balances">
-          <ClientBalancesTab lang={lang} />
-        </TabsContent>
-        <TabsContent value="vat-return">
-          <VATReturnReportTab lang={lang} />
-        </TabsContent>
-        <TabsContent value="trial-balance">
-          <TrialBalanceTab lang={lang} />
-        </TabsContent>
-        <TabsContent value="cash-flow">
-          <CashFlowTab lang={lang} />
-        </TabsContent>
-      </Tabs>
+      {renderTab()}
     </ModuleLayout>
-  )
-}
-
-// ============ Trial Balance Tab (wrapper) ============
-function TrialBalanceTab({ lang }: { lang: 'ar' | 'en' }) {
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['trial-balance-report'],
-    queryFn: async () => {
-      const res = await fetch('/api/trial-balance')
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-  })
-
-  const handleExport = useCallback(() => {
-    if (!data) return
-    const columns: CSVColumn[] = [
-      { key: 'code', label: t('الكود', 'Code', lang) },
-      { key: 'name', label: t('الحساب', 'Account', lang) },
-      { key: 'totalDebit', label: t('مدين', 'Debit', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'totalCredit', label: t('دائن', 'Credit', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'netDebit', label: t('رصيد مدين', 'Net Debit', lang), format: (v) => Number(v).toFixed(2) },
-      { key: 'netCredit', label: t('رصيد دائن', 'Net Credit', lang), format: (v) => Number(v).toFixed(2) },
-    ]
-    exportToCSV(data as Record<string, unknown>[], 'trial-balance', columns)
-  }, [data, lang])
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
-        <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExport}><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
-      </div>
-      {isLoading ? (
-        <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded bg-gray-100" />)}</div>
-      ) : data && Array.isArray(data) ? (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader><TableRow>
-                  <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-                  <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
-                  <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                  <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                  <TableHead className="text-right">{t('رصيد مدين', 'Net Debit', lang)}</TableHead>
-                  <TableHead className="text-right">{t('رصيد دائن', 'Net Credit', lang)}</TableHead>
-                </TableRow></TableHeader>
-                <TableBody>
-                  {(data as { account: { code: string; name: string }; totalDebit: number; totalCredit: number; netDebit: number; netCredit: number }[]).map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-mono text-xs">{row.account.code}</TableCell>
-                      <TableCell>{row.account.name}</TableCell>
-                      <TableCell><MoneyDisplay value={row.totalDebit} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
-                      <TableCell><MoneyDisplay value={row.totalCredit} lang={lang} size="xs" inline showSymbol={false} /></TableCell>
-                      <TableCell>{row.netDebit > 0 ? <MoneyDisplay value={row.netDebit} lang={lang} size="xs" bold inline showSymbol={false} /> : '-'}</TableCell>
-                      <TableCell>{row.netCredit > 0 ? <MoneyDisplay value={row.netCredit} lang={lang} size="xs" bold inline showSymbol={false} /> : '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="border-dashed"><CardContent className="py-8 text-center text-muted-foreground">{t('لا توجد بيانات', 'No data', lang)}</CardContent></Card>
-      )}
-    </div>
-  )
-}
-
-// PlusCircle import for VAT tab
-function PlusCircle(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <circle cx="12" cy="12" r="10" /><path d="M8 12h8" /><path d="M12 8v8" />
-    </svg>
   )
 }

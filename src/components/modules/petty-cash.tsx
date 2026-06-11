@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate } from '@/stores/app-store'
 
@@ -28,7 +29,7 @@ interface Branch { id: string; code: string; name: string }
 
 interface PettyCashEntry {
   id: string; branchId: string; description: string; amount: number
-  date: string; category: string | null; reference: string | null
+  date: string; category: string | null; reference: string | null; journalEntryId: string | null
   branch: Branch
 }
 
@@ -267,6 +268,7 @@ export function PettyCashModule() {
                     <TableHead className="text-right">{t(lang, 'الفئة', 'Category')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الفرع', 'Branch')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -284,6 +286,9 @@ export function PettyCashModule() {
                       </TableCell>
                       <TableCell className="text-muted-foreground">{e.reference || '—'}</TableCell>
                       <TableCell className="text-muted-foreground">{e.branch.name}</TableCell>
+                      <TableCell>
+                        <AccountingEntryDisplay journalEntryId={e.journalEntryId} lang={lang} />
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

@@ -25,6 +25,7 @@ import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 
 // ============ Types ============
 type ViewState =
@@ -601,6 +602,7 @@ export function SupplierInvoicesModule() {
                 <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+                <TableHead className="text-right">{t('القيد المحاسبي', 'Accounting', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
@@ -623,8 +625,11 @@ export function SupplierInvoicesModule() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
-                          {i.journalEntryId && <BookOpen className="size-3 text-purple-500" title={t('قيد محاسبي', 'Accounting Entry', lang)} />}
+                          {i.journalEntryId && <BookOpen className="size-3 text-purple-500" />}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <AccountingEntryDisplay journalEntryId={i.journalEntryId} lang={lang} />
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">

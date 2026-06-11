@@ -37,6 +37,7 @@ import { GoodsReceiptModule } from '@/components/modules/goods-receipt'
 import { SupplierInvoicesModule } from '@/components/modules/supplier-invoices'
 import { SupplierPaymentsModule } from '@/components/modules/supplier-payments'
 import { PlaceholderModule } from '@/components/modules/placeholder'
+import { ClientPaymentsModule } from '@/components/modules/client-payments'
 
 const moduleMap: Record<NavItem, React.ComponentType> = {
   'dashboard': DashboardModule,
@@ -44,7 +45,7 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   'sales': SalesModule,
   'extracts': ExtractsModule,
   'clients': ClientsModule,
-  'client-payments': PlaceholderModule,
+  'client-payments': ClientPaymentsModule,
   // المشتريات
   'purchases': PurchasesModule,
   'suppliers': SuppliersModule,

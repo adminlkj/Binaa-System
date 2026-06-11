@@ -28,6 +28,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 
 // ============ Types ============
 interface ProjectOption { id: string; code: string; name: string }
@@ -35,7 +36,7 @@ interface ProjectOption { id: string; code: string; name: string }
 interface Expense {
   id: string; projectId: string | null; expenseType: string; category: string; description: string
   amount: number; vatRate: number; vatAmount: number | null; totalAmount: number; date: string
-  reference: string | null; payFrom: string; attachmentPath: string | null
+  reference: string | null; payFrom: string; attachmentPath: string | null; journalEntryId: string | null
   project: { id: string; code: string; name: string; projectType?: string } | null
 }
 
@@ -593,6 +594,7 @@ export function ExpensesModule() {
                         <TableHead className="text-right">{t(lang, 'السداد من', 'Pay From')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
+                        <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -626,6 +628,9 @@ export function ExpensesModule() {
                           <TableCell><PayFromBadge value={exp.payFrom} /></TableCell>
                           <TableCell>{formatDate(exp.date, lang)}</TableCell>
                           <TableCell className="text-muted-foreground">{exp.reference || '—'}</TableCell>
+                          <TableCell>
+                            <AccountingEntryDisplay journalEntryId={exp.journalEntryId} lang={lang} />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -699,6 +704,7 @@ export function ExpensesModule() {
                         <TableHead className="text-right">{t(lang, 'السداد من', 'Pay From')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
+                        <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -724,6 +730,9 @@ export function ExpensesModule() {
                           <TableCell><PayFromBadge value={exp.payFrom} /></TableCell>
                           <TableCell>{formatDate(exp.date, lang)}</TableCell>
                           <TableCell className="text-muted-foreground">{exp.reference || '—'}</TableCell>
+                          <TableCell>
+                            <AccountingEntryDisplay journalEntryId={exp.journalEntryId} lang={lang} />
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

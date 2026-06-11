@@ -170,11 +170,42 @@ export const navItemActivity: Record<NavItem, ActivityType> = {
 // Accounting sub-tabs
 export type AccountingTab = 'chart-of-accounts' | 'journal-entries' | 'general-ledger' | 'trial-balance' | 'receivables' | 'payables'
 
+// ============ SUB MODULE KEYS ============
+
+export type SubModuleKey = string
+
+export const subModuleLabels: Record<string, { ar: string; en: string }> = {
+  // Project sub-tabs
+  'project-list': { ar: 'قائمة المشاريع', en: 'Project List' },
+  'project-overview': { ar: 'نظرة عامة', en: 'Overview' },
+  'project-contracts': { ar: 'العقود', en: 'Contracts' },
+  'project-extracts': { ar: 'المستخلصات', en: 'Extracts' },
+  'project-invoices': { ar: 'الفواتير', en: 'Invoices' },
+  'project-costs': { ar: 'التكاليف', en: 'Costs' },
+  'project-collections': { ar: 'التحصيلات', en: 'Collections' },
+  'project-contracting': { ar: 'التعاقد', en: 'Contracting' },
+  'project-planning': { ar: 'التخطيط', en: 'Planning' },
+  'project-execution': { ar: 'التنفيذ', en: 'Execution' },
+  'project-boq': { ar: 'جدول الكميات', en: 'BOQ' },
+  'project-quality': { ar: 'الجودة', en: 'Quality' },
+  'project-safety': { ar: 'السلامة', en: 'Safety' },
+  'project-correspondence': { ar: 'المراسلات', en: 'Correspondence' },
+  'project-documents': { ar: 'الوثائق', en: 'Documents' },
+
+  // Rental sub-tabs
+  'rental-contracts': { ar: 'عقود التأجير', en: 'Rental Contracts' },
+  'rental-delivery-orders': { ar: 'أوامر التسليم', en: 'Delivery Orders' },
+  'rental-timesheets': { ar: 'ساعات العمل', en: 'Timesheets' },
+  'rental-invoices': { ar: 'الفواتير', en: 'Invoices' },
+  'rental-collections': { ar: 'التحصيلات', en: 'Collections' },
+}
+
 // ============ APP STORE ============
 
 interface AppState {
   // Navigation
   activeItem: NavItem
+  activeSubModule: SubModuleKey
   sidebarOpen: boolean
   sidebarCollapsed: boolean
   lang: Lang
@@ -187,6 +218,7 @@ interface AppState {
   useThousandSeparatorsOfficial: boolean
   // Actions
   setActiveItem: (item: NavItem) => void
+  setActiveSubModule: (key: SubModuleKey) => void
   setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -199,6 +231,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   activeItem: 'dashboard',
+  activeSubModule: '',
   sidebarOpen: false,
   sidebarCollapsed: false,
   lang: 'ar',
@@ -207,6 +240,7 @@ export const useAppStore = create<AppState>((set) => ({
   useThousandSeparatorsSystem: true,
   useThousandSeparatorsOfficial: false,
   setActiveItem: (item) => set({ activeItem: item }),
+  setActiveSubModule: (key) => set({ activeSubModule: key }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
