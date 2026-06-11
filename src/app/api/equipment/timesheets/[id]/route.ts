@@ -8,15 +8,34 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const timesheet = await db.equipmentTimesheet.findUnique({
+    const timesheet = await db.timesheet.findUnique({
       where: { id },
       include: {
         contract: {
-          include: {
-            equipment: {
-              select: { id: true, code: true, name: true, nameAr: true, status: true },
-            },
+          select: {
+            id: true, contractNo: true, clientId: true, projectId: true,
+            hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true,
+            paymentTerms: true, salesOrderNo: true, purchaseOrderNo: true,
+            contractType: true, startDate: true, endDate: true,
           },
+        },
+        equipment: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
+        rental: {
+          select: {
+            id: true, pricingType: true, status: true,
+            clientId: true, projectId: true,
+            hourlyRate: true, dailyRate: true, monthlyRate: true,
+            deliveryFees: true, deliveryFeesTaxable: true,
+            salesOrderNo: true, paymentDuration: true,
+          },
+        },
+        project: {
+          select: { id: true, code: true, name: true, nameAr: true, clientId: true, client: { select: { id: true, name: true, nameAr: true } } },
+        },
+        invoice: {
+          select: { id: true, invoiceNo: true, status: true, totalAmount: true },
         },
       },
     })
@@ -25,49 +44,23 @@ export async function GET(
       return NextResponse.json({ error: 'التايم شيت غير موجود' }, { status: 404 })
     }
 
-    // Enrich with client and project names
+    // Enrich with client name from rental or contract
     let clientName = ''
     let clientNameAr = ''
-    let projectName = ''
-    let projectNameAr = ''
-
-    if (timesheet.contract.clientId) {
+    const clientId = timesheet.rental?.clientId || timesheet.contract?.clientId
+    if (clientId) {
       const client = await db.client.findUnique({
-        where: { id: timesheet.contract.clientId },
+        where: { id: clientId },
         select: { name: true, nameAr: true },
       })
       clientName = client?.name || ''
       clientNameAr = client?.nameAr || ''
     }
 
-    if (timesheet.contract.projectId) {
-      const project = await db.project.findUnique({
-        where: { id: timesheet.contract.projectId },
-        select: { name: true, nameAr: true },
-      })
-      projectName = project?.name || ''
-      projectNameAr = project?.nameAr || ''
-    }
-
-    // Get invoice if linked
-    let invoice = null
-    if (timesheet.invoiceId) {
-      invoice = await db.salesInvoice.findUnique({
-        where: { id: timesheet.invoiceId },
-        select: { id: true, invoiceNo: true, status: true, totalAmount: true },
-      })
-    }
-
     return NextResponse.json({
       ...timesheet,
-      contract: {
-        ...timesheet.contract,
-        clientName,
-        clientNameAr,
-        projectName,
-        projectNameAr,
-      },
-      invoice,
+      clientName,
+      clientNameAr,
     })
   } catch (error) {
     console.error('Error fetching timesheet:', error)
@@ -75,8 +68,8 @@ export async function GET(
   }
 }
 
-// PATCH: Update timesheet (status changes, worked hours, etc.)
-export async function PATCH(
+// PUT: Update timesheet (status changes, operating hours, etc.)
+export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -84,33 +77,38 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    const existing = await db.equipmentTimesheet.findUnique({
-      where: { id },
-    })
+    const existing = await db.timesheet.findUnique({ where: { id } })
 
     if (!existing) {
       return NextResponse.json({ error: 'التايم شيت غير موجود' }, { status: 404 })
+    }
+
+    // PREVENT MODIFICATIONS WHEN INVOICED
+    if (existing.status === 'INVOICED') {
+      return NextResponse.json(
+        { error: 'لا يمكن تعديل تايم شيت تم إصدار فاتورة له. يجب إلغاء الفاتورة أولاً' },
+        { status: 403 }
+      )
     }
 
     const updateData: Record<string, unknown> = {}
 
     // Handle status changes
     if (body.status !== undefined) {
-      // Validate workflow transitions
       const currentStatus = existing.status
       const newStatus = body.status
 
+      // Validate workflow transitions
       if (currentStatus === 'DRAFT' && newStatus === 'SUBMITTED') {
         updateData.status = 'SUBMITTED'
       } else if (currentStatus === 'SUBMITTED' && newStatus === 'APPROVED') {
         updateData.status = 'APPROVED'
         updateData.approvedDate = new Date()
-        updateData.approvedBy = body.approvedBy || null
-      } else if (currentStatus === 'SUBMITTED' && newStatus === 'REJECTED') {
-        updateData.status = 'REJECTED'
-      } else if (currentStatus === 'DRAFT' && newStatus === 'DRAFT') {
-        // Allow updating DRAFT fields
+      } else if (currentStatus === 'SUBMITTED' && newStatus === 'DRAFT') {
+        // Allow reverting to DRAFT
         updateData.status = 'DRAFT'
+      } else if (currentStatus === 'APPROVED' && newStatus === 'INVOICED') {
+        updateData.status = 'INVOICED'
       } else {
         return NextResponse.json(
           { error: `لا يمكن تغيير الحالة من ${currentStatus} إلى ${newStatus}` },
@@ -121,20 +119,8 @@ export async function PATCH(
 
     // If still DRAFT, allow updating fields
     if (existing.status === 'DRAFT' && body.status === undefined) {
-      if (body.workedHours !== undefined) {
-        const wh = parseFloat(body.workedHours) || 0
-        updateData.workedHours = wh
-        // Recalculate amounts
-        const hourlyRate = body.hourlyRate !== undefined
-          ? parseFloat(body.hourlyRate) || existing.hourlyRate
-          : existing.hourlyRate
-        updateData.hourlyRate = hourlyRate
-        updateData.subtotal = wh * hourlyRate
-        updateData.vatAmount = updateData.subtotal * existing.vatRate
-        updateData.totalAmount = updateData.subtotal + updateData.vatAmount
-      }
-      if (body.remarks !== undefined) {
-        updateData.remarks = body.remarks || null
+      if (body.operatingHours !== undefined) {
+        updateData.operatingHours = parseFloat(body.operatingHours) || 0
       }
       if (body.month !== undefined) {
         updateData.month = parseInt(body.month)
@@ -142,18 +128,32 @@ export async function PATCH(
       if (body.year !== undefined) {
         updateData.year = parseInt(body.year)
       }
+      if (body.notes !== undefined) {
+        updateData.notes = body.notes || null
+      }
     }
 
-    const timesheet = await db.equipmentTimesheet.update({
+    const timesheet = await db.timesheet.update({
       where: { id },
       data: updateData,
       include: {
         contract: {
-          include: {
-            equipment: {
-              select: { id: true, code: true, name: true, nameAr: true, status: true },
-            },
+          select: {
+            id: true, contractNo: true, hourlyRate: true, deliveryFees: true,
+            deliveryFeesTaxable: true, paymentTerms: true, salesOrderNo: true,
           },
+        },
+        equipment: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
+        rental: {
+          select: { id: true, hourlyRate: true, pricingType: true },
+        },
+        project: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
+        invoice: {
+          select: { id: true, invoiceNo: true, status: true },
         },
       },
     })
@@ -162,5 +162,39 @@ export async function PATCH(
   } catch (error) {
     console.error('Error updating timesheet:', error)
     return NextResponse.json({ error: 'فشل في تحديث التايم شيت' }, { status: 500 })
+  }
+}
+
+// PATCH: Alias for PUT (support both methods)
+export { PUT as PATCH }
+
+// DELETE: Delete a timesheet (only DRAFT status)
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    const existing = await db.timesheet.findUnique({ where: { id } })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'التايم شيت غير موجود' }, { status: 404 })
+    }
+
+    // Only DRAFT timesheets can be deleted
+    if (existing.status !== 'DRAFT') {
+      return NextResponse.json(
+        { error: 'لا يمكن حذف تايم شيت إلا في حالة المسودة' },
+        { status: 403 }
+      )
+    }
+
+    await db.timesheet.delete({ where: { id } })
+
+    return NextResponse.json({ success: true, message: 'تم حذف التايم شيت بنجاح' })
+  } catch (error) {
+    console.error('Error deleting timesheet:', error)
+    return NextResponse.json({ error: 'فشل في حذف التايم شيت' }, { status: 500 })
   }
 }

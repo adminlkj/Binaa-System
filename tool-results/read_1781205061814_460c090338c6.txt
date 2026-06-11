@@ -1,0 +1,733 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  Clock, Plus, Search, RefreshCw, ArrowRight, Eye, Trash2,
+     7→     7→  Send, CheckCircle, FileText,
+     8→     8→} from 'lucide-react'
+     9→     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→    10→import { Button } from '@/components/ui/button'
+    11→    11→import { Input } from '@/components/ui/input'
+    12→    12→import { Badge } from '@/components/ui/badge'
+    13→    13→import {
+    14→    14→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    15→    15→} from '@/components/ui/table'
+    16→    16→import {
+    17→    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→    18→} from '@/components/ui/select'
+    19→    19→import {
+    20→    20→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    21→    21→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    22→    22→} from '@/components/ui/alert-dialog'
+    23→    23→import { Label } from '@/components/ui/label'
+    24→    24→import { Textarea } from '@/components/ui/textarea'
+    25→    25→import { Separator } from '@/components/ui/separator'
+    26→    26→import { MoneyDisplay } from '@/components/ui/money-display'
+    27→    27→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    28→    28→import { PrintButton } from '@/components/shared/print-button'
+    29→    29→import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+    30→    30→
+    31→    31→// ============ Arabic/English Month Names ============
+    32→    32→const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+    33→    33→const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    34→    34→
+    35→    35→function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string {
+    36→    36→  if (lang === 'ar') return `${arabicMonths[month - 1]} ${year}`
+    37→    37→  return `${englishMonths[month - 1]} ${year}`
+    38→    38→}
+    39→    39→
+    40→    40→// ============ Types ============
+    41→    41→interface RentalContractOption {
+    42→    42→  id: string; contractNo: string; hourlyRate: number; deliveryFees: number
+    43→    43→  deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentTerms: string | null
+    44→    44→  clientId: string; equipmentId: string; projectId: string
+    45→    45→  client: { id: string; name: string; nameAr?: string | null }
+    46→    46→  project: { id: string; name: string; nameAr?: string | null }
+    47→    47→  equipment: { id: string; name: string; nameAr?: string | null; code: string }
+    48→    48→}
+    49→    49→
+    50→    50→interface TimesheetItem {
+    51→    51→  id: string
+    52→    52→  rentalId: string
+    53→    53→  contractId: string
+    54→    54→  projectId: string
+    55→    55→  equipmentId: string
+    56→    56→  month: number
+    57→    57→  year: number
+    58→    58→  operatingHours: number
+    59→    59→  status: string // DRAFT | SUBMITTED | APPROVED | INVOICED
+    60→    60→  approvedDate: string | null
+    61→    61→  notes: string | null
+    62→    62→  createdAt: string
+    63→    63→  updatedAt: string
+    64→    64→  contract: {
+    65→    65→    id: string; contractNo: string; hourlyRate: number; deliveryFees: number
+    66→    66→    deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentTerms: string | null
+    67→    67→    project: { id: string; name: string; nameAr: string | null; code: string }
+    68→    68→  }
+    69→    69→  project: { id: string; name: string; nameAr: string | null; code: string }
+    70→    70→  equipment: { id: string; name: string; nameAr: string | null; code: string }
+    71→    71→  rental: { id: string; rate: number; client: { id: string; name: string; nameAr: string | null } }
+    72→    72→  invoice: { id: string; invoiceNo: string } | null
+    73→    73→}
+    74→    74→
+    75→    75→// ============ Labels ============
+    76→    76→const labels = {
+    77→    77→  title: { ar: 'ساعات العمل', en: 'Timesheets' },
+    78→    78→  subtitle: { ar: 'إدارة سجلات ساعات عمل المعدات', en: 'Manage equipment working hours records' },
+    79→    79→  contract: { ar: 'العقد', en: 'Contract' },
+    80→    80→  month: { ar: 'الشهر', en: 'Month' },
+    81→    81→  year: { ar: 'السنة', en: 'Year' },
+    82→    82→  operatingHours: { ar: 'ساعات التشغيل', en: 'Operating Hours' },
+    83→    83→  hourlyRate: { ar: 'سعر الساعة', en: 'Hourly Rate' },
+    84→    84→  billingAmount: { ar: 'مبلغ الفاتورة', en: 'Billing Amount' },
+    85→    85→  status: { ar: 'الحالة', en: 'Status' },
+    86→    86→  actions: { ar: 'الإجراءات', en: 'Actions' },
+    87→    87→  project: { ar: 'المشروع', en: 'Project' },
+    88→    88→  equipment: { ar: 'المعدة', en: 'Equipment' },
+    89→    89→  client: { ar: 'العميل', en: 'Client' },
+    90→    90→  newTimesheet: { ar: 'سجل جديد', en: 'New Timesheet' },
+    91→    91→  search: { ar: 'بحث بالشهر، المشروع، العقد...', en: 'Search by month, project, contract...' },
+    92→    92→  allStatus: { ar: 'كل الحالات', en: 'All Status' },
+    93→    93→  deliveryMonth: { ar: 'شهر التسليم', en: 'Delivery Month' },
+    94→    94→  notes: { ar: 'ملاحظات', en: 'Notes' },
+    95→    95→  selectContract: { ar: 'اختر العقد النشط', en: 'Select Active Contract' },
+    96→    96→  totalHours: { ar: 'إجمالي الساعات', en: 'Total Hours' },
+    97→    97→  totalAmount: { ar: 'إجمالي المبلغ', en: 'Total Amount' },
+    98→    98→  submit: { ar: 'تقديم', en: 'Submit' },
+    99→    99→  approve: { ar: 'اعتماد', en: 'Approve' },
+   100→   100→  invoiceGenerated: { ar: 'تم إنشاء الفاتورة', en: 'Invoice Generated' },
+   101→   101→  deleteTitle: { ar: 'حذف سجل الساعات', en: 'Delete Timesheet' },
+   102→   102→  deleteConfirm: { ar: 'هل أنت متأكد من حذف هذا السجل؟', en: 'Are you sure you want to delete this timesheet?' },
+   103→   103→  noTimesheets: { ar: 'لا توجد سجلات ساعات عمل', en: 'No timesheets found' },
+   104→   104→  noActiveContracts: { ar: 'لا توجد عقود نشطة', en: 'No active contracts' },
+   105→   105→  cannotModifyInvoiced: { ar: 'لا يمكن تعديل سجل مفوتر', en: 'Cannot modify invoiced timesheet' },
+   106→   106→  billingPreview: { ar: 'معاينة الفاتورة', en: 'Billing Preview' },
+   107→   107→  deliveryFees: { ar: 'رسوم النقل', en: 'Delivery Fees' },
+   108→   108→  vat: { ar: 'الضريبة (15%)', en: 'VAT (15%)' },
+   109→   109→  totalWithVat: { ar: 'الإجمالي مع الضريبة', en: 'Total with VAT' },
+   110→   110→  salesOrderNo: { ar: 'رقم طلب البيع', en: 'Sales Order No.' },
+   111→   111→  paymentTerms: { ar: 'شروط السداد', en: 'Payment Terms' },
+   112→   112→}
+   113→   113→
+   114→   114→// ============ View State ============
+   115→   115→type ViewState = { type: 'list' } | { type: 'create' } | { type: 'detail'; timesheetId: string }
+   116→   116→
+   117→   117→// ============ Skeleton ============
+   118→   118→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   119→   119→  return (
+   120→   120→    <div className="space-y-2 p-4">
+   121→   121→      {Array.from({ length: rows }).map((_, i) => (
+   122→   122→        <div key={i} className="flex gap-4 p-3">
+   123→   123→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   124→   124→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   125→   125→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   126→   126→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   127→   127→        </div>
+   128→   128→      ))}
+   129→   129→    </div>
+   130→   130→  )
+   131→   131→}
+   132→   132→
+   133→   133→// ============ Create Timesheet Page ============
+   134→   134→function CreateTimesheetPage({
+   135→   135→  contracts, onBack,
+   136→   136→}: {
+   137→   137→  contracts: RentalContractOption[]; onBack: () => void
+   138→   138→}) {
+   139→   139→  const queryClient = useQueryClient()
+   140→   140→  const { lang } = useAppStore()
+   141→   141→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   142→   142→
+   143→   143→  const [contractId, setContractId] = useState('')
+   144→   144→  const [month, setMonth] = useState('')
+   145→   145→  const [year, setYear] = useState(new Date().getFullYear().toString())
+   146→   146→  const [operatingHours, setOperatingHours] = useState('')
+   147→   147→  const [notes, setNotes] = useState('')
+   148→   148→
+   149→   149→  // Selected contract details
+   150→   150→  const selectedContract = contracts.find(c => c.id === contractId)
+   151→   151→
+   152→   152→  // Auto-calculate billing
+   153→   153→  const hours = parseFloat(operatingHours) || 0
+   154→   154→  const hourlyRate = selectedContract?.hourlyRate || 0
+   155→   155→  const subtotal = hours * hourlyRate
+   156→   156→  const vatRate = 0.15
+   157→   157→  const vatAmount = Math.round(subtotal * vatRate * 100) / 100
+   158→   158→  const deliveryFees = selectedContract?.deliveryFees || 0
+   159→   159→  const deliveryVat = selectedContract?.deliveryFeesTaxable ? Math.round(deliveryFees * vatRate * 100) / 100 : 0
+   160→   160→  const totalWithVat = subtotal + vatAmount + deliveryFees + deliveryVat
+   161→   161→
+   162→   162→  const createMutation = useMutation({
+   163→   163→    mutationFn: (data: Record<string, unknown>) =>
+   164→   164→      fetch('/api/equipment/timesheets', {
+   165→   165→        method: 'POST',
+   166→   166→        headers: { 'Content-Type': 'application/json' },
+   167→   167→        body: JSON.stringify(data),
+   168→   168→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   169→   169→    onSuccess: () => {
+   170→   170→      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
+   171→   171→      onBack()
+   172→   172→    },
+   173→   173→  })
+   174→   174→
+   175→   175→  const handleSubmit = (e: React.FormEvent) => {
+   176→   176→    e.preventDefault()
+   177→   177→    if (!contractId || !month || !year || !operatingHours) return
+   178→   178→
+   179→   179→    createMutation.mutate({
+   180→   180→      rentalId: contractId, // Using rental contract ID
+   181→   181→      contractId: selectedContract?.id,
+   182→   182→      projectId: selectedContract?.projectId,
+   183→   183→      equipmentId: selectedContract?.equipmentId,
+   184→   184→      month: parseInt(month),
+   185→   185→      year: parseInt(year),
+   186→   186→      operatingHours: hours,
+   187→   187→      notes,
+   188→   188→    })
+   189→   189→  }
+   190→   190→
+   191→   191→  return (
+   192→   192→    <div className="space-y-6">
+   193→   193→      <div className="flex items-center gap-3">
+   194→   194→        <Button variant="outline" size="icon" onClick={onBack}>
+   195→   195→          <ArrowRight className="size-4" />
+   196→   196→        </Button>
+   197→   197→        <div className="flex-1">
+   198→   198→          <h1 className="text-2xl font-bold text-gray-900">{t('سجل ساعات عمل جديد', 'New Timesheet')}</h1>
+   199→   199→          <p className="text-sm text-muted-foreground">{t('إنشاء سجل ساعات عمل مرتبط بعقد تأجير نشط', 'Create a timesheet linked to an active rental contract')}</p>
+   200→   200→        </div>
+   201→   201→      </div>
+   202→   202→
+   203→   203→      <form onSubmit={handleSubmit} className="space-y-6">
+   204→   204→        {/* RULE: No timesheet without an active contract */}
+   205→   205→        {contracts.length === 0 ? (
+   206→   206→          <Card className="bg-amber-50 border-amber-200">
+   207→   207→            <CardContent className="p-6 text-center">
+   208→   208→              <p className="text-amber-700 font-medium">{t(labels.noActiveContracts.ar, labels.noActiveContracts.en)}</p>
+   209→   209→              <p className="text-sm text-amber-600 mt-1">{t('يجب إنشاء عقد تأجير نشط أولاً', 'An active rental contract must be created first')}</p>
+   210→   210→            </CardContent>
+   211→   211→          </Card>
+   212→   212→        ) : (
+   213→   213→          <>
+   214→   214→            {/* Contract Selection */}
+   215→   215→            <Card>
+   216→   216→              <CardHeader className="pb-4">
+   217→   217→                <CardTitle className="text-lg">{t('بيانات العقد', 'Contract Information')}</CardTitle>
+   218→   218→              </CardHeader>
+   219→   219→              <CardContent className="space-y-4">
+   220→   220→                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   221→   221→                  <div className="space-y-2">
+   222→   222→                    <Label>{t(labels.contract.ar, labels.contract.en)} *</Label>
+   223→   223→                    <Select value={contractId} onValueChange={setContractId}>
+   224→   224→                      <SelectTrigger className="w-full"><SelectValue placeholder={t(labels.selectContract.ar, labels.selectContract.en)} /></SelectTrigger>
+   225→   225→                      <SelectContent>
+   226→   226→                        {contracts.map(c => (
+   227→   227→                          <SelectItem key={c.id} value={c.id}>
+   228→   228→                            {c.contractNo} - {c.equipment?.name || c.project?.name}
+   229→   229→                          </SelectItem>
+   230→   230→                        ))}
+   231→   231→                      </SelectContent>
+   232→   232→                    </Select>
+   233→   233→                  </div>
+   234→   234→                  <div className="space-y-2">
+   235→   235→                    <Label>{t(labels.month.ar, labels.month.en)} *</Label>
+   236→   236→                    <Select value={month} onValueChange={setMonth}>
+   237→   237→                      <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر الشهر', 'Select month')} /></SelectTrigger>
+   238→   238→                      <SelectContent>
+   239→   239→                        {arabicMonths.map((m, i) => (
+   240→   240→                          <SelectItem key={i + 1} value={String(i + 1)}>
+   241→   241→                            {lang === 'ar' ? m : englishMonths[i]}
+   242→   242→                          </SelectItem>
+   243→   243→                        ))}
+   244→   244→                      </SelectContent>
+   245→   245→                    </Select>
+   246→   246→                  </div>
+   247→   247→                  <div className="space-y-2">
+   248→   248→                    <Label>{t(labels.year.ar, labels.year.en)} *</Label>
+   249→   249→                    <Input type="number" min="2020" max="2099" value={year} onChange={e => setYear(e.target.value)} dir="ltr" />
+   250→   250→                  </div>
+   251→   251→                </div>
+   252→   252→
+   253→   253→                {/* Auto-filled contract info */}
+   254→   254→                {selectedContract && (
+   255→   255→                  <div className="p-3 rounded-lg border bg-emerald-50 text-sm space-y-1">
+   256→   256→                    <div className="flex items-center gap-4 flex-wrap">
+   257→   257→                      <span><span className="text-muted-foreground">{t(labels.client.ar, labels.client.en)}:</span> <span className="font-medium">{selectedContract.client?.name || '—'}</span></span>
+   258→   258→                      <span><span className="text-muted-foreground">{t(labels.project.ar, labels.project.en)}:</span> <span className="font-medium">{selectedContract.project?.name || '—'}</span></span>
+   259→   259→                      <span><span className="text-muted-foreground">{t(labels.equipment.ar, labels.equipment.en)}:</span> <span className="font-medium">{selectedContract.equipment?.name || '—'}</span></span>
+   260→   260→                    </div>
+   261→   261→                    <div className="flex items-center gap-4 flex-wrap">
+   262→   262→                      <span><span className="text-muted-foreground">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}:</span> <MoneyDisplay value={selectedContract.hourlyRate} lang={lang} size="sm" inline bold /></span>
+   263→   263→                      {selectedContract.deliveryFees > 0 && (
+   264→   264→                        <span><span className="text-muted-foreground">{t(labels.deliveryFees.ar, labels.deliveryFees.en)}:</span> <MoneyDisplay value={selectedContract.deliveryFees} lang={lang} size="sm" inline /></span>
+   265→   265→                      )}
+   266→   266→                      {selectedContract.salesOrderNo && (
+   267→   267→                        <span><span className="text-muted-foreground">{t(labels.salesOrderNo.ar, labels.salesOrderNo.en)}:</span> <span className="font-medium font-mono">{selectedContract.salesOrderNo}</span></span>
+   268→   268→                      )}
+   269→   269→                    </div>
+   270→   270→                  </div>
+   271→   271→                )}
+   272→   272→              </CardContent>
+   273→   273→            </Card>
+   274→   274→
+   275→   275→            {/* Operating Hours - RULE: Hourly rate comes from contract ONLY (read-only) */}
+   276→   276→            <Card>
+   277→   277→              <CardHeader className="pb-4">
+   278→   278→                <CardTitle className="text-lg">{t('ساعات التشغيل', 'Operating Hours')}</CardTitle>
+   279→   279→              </CardHeader>
+   280→   280→              <CardContent className="space-y-4">
+   281→   281→                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   282→   282→                  <div className="space-y-2">
+   283→   283→                    <Label>{t(labels.operatingHours.ar, labels.operatingHours.en)} *</Label>
+   284→   284→                    <Input type="number" min="0" step="0.5" value={operatingHours || ''} onChange={e => setOperatingHours(e.target.value)} placeholder="0" dir="ltr" required />
+   285→   285→                  </div>
+   286→   286→                  <div className="space-y-2">
+   287→   287→                    <Label>{t(labels.hourlyRate.ar, labels.hourlyRate.en)} ({t('من العقد', 'From Contract')})</Label>
+   288→   288→                    {/* RULE: Rate is read-only from contract */}
+   289→   289→                    <Input type="number" value={hourlyRate || ''} readOnly className="bg-gray-100" dir="ltr" />
+   290→   290→                    <p className="text-xs text-muted-foreground">{t('سعر الساعة من العقد فقط - للقراءة فقط', 'Rate from contract only - read only')}</p>
+   291→   291→                  </div>
+   292→   292→                  <div className="space-y-2">
+   293→   293→                    <Label>{t(labels.billingAmount.ar, labels.billingAmount.en)}</Label>
+   294→   294→                    <div className="h-9 flex items-center">
+   295→   295→                      <MoneyDisplay value={subtotal} lang={lang} size="md" bold />
+   296→   296→                    </div>
+   297→   297→                  </div>
+   298→   298→                </div>
+   299→   299→              </CardContent>
+   300→   300→            </Card>
+   301→   301→
+   302→   302→            {/* Billing Preview */}
+   303→   303→            {hours > 0 && selectedContract && (
+   304→   304→              <Card className="bg-emerald-50 border-emerald-200">
+   305→   305→                <CardHeader className="pb-3">
+   306→   306→                  <CardTitle className="text-lg">{t(labels.billingPreview.ar, labels.billingPreview.en)}</CardTitle>
+   307→   307→                </CardHeader>
+   308→   308→                <CardContent className="space-y-2">
+   309→   309→                  <div className="flex justify-between text-sm">
+   310→   310→                    <span>{t('ساعات التشغيل', 'Operating Hours')}</span>
+   311→   311→                    <span className="font-medium">{formatNumber(hours)} {t('ساعة', 'hours')}</span>
+   312→   312→                  </div>
+   313→   313→                  <div className="flex justify-between text-sm">
+   314→   314→                    <span>{t(labels.subtotal || 'المجموع الفرعي', labels.subtotal || 'Subtotal')}</span>
+   315→   315→                    <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" inline /></span>
+   316→   316→                  </div>
+   317→   317→                  <div className="flex justify-between text-sm">
+   318→   318→                    <span>{t(labels.vat.ar, labels.vat.en)}</span>
+   319→   319→                    <span className="font-medium"><MoneyDisplay value={vatAmount} lang={lang} size="sm" inline /></span>
+   320→   320→                  </div>
+   321→   321→                  {deliveryFees > 0 && (
+   322→   322→                    <>
+   323→   323→                      <div className="flex justify-between text-sm text-amber-700">
+   324→   324→                        <span>{t(labels.deliveryFees.ar, labels.deliveryFees.en)}</span>
+   325→   325→                        <span className="font-medium"><MoneyDisplay value={deliveryFees} lang={lang} size="sm" inline /></span>
+   326→   326→                      </div>
+   327→   327→                      {deliveryVat > 0 && (
+   328→   328→                        <div className="flex justify-between text-sm text-amber-700">
+   329→   329→                          <span>{t('ضريبة رسوم النقل', 'Delivery Fees VAT')}</span>
+   330→   330→                          <span className="font-medium"><MoneyDisplay value={deliveryVat} lang={lang} size="sm" inline /></span>
+   331→   331→                        </div>
+   332→   332→                      )}
+   333→   333→                    </>
+   334→   334→                  )}
+   335→   335→                  <Separator />
+   336→   336→                  <div className="flex justify-between text-lg font-bold">
+   337→   337→                    <span>{t(labels.totalWithVat.ar, labels.totalWithVat.en)}</span>
+   338→   338→                    <span className="text-emerald-700"><MoneyDisplay value={totalWithVat} lang={lang} size="lg" inline bold /></span>
+   339→   339→                  </div>
+   340→   340→                </CardContent>
+   341→   341→              </Card>
+   342→   342→            )}
+   343→   343→
+   344→   344→            {/* Notes */}
+   345→   345→            <Card>
+   346→   346→              <CardContent className="p-4">
+   347→   347→                <Label>{t(labels.notes.ar, labels.notes.en)}</Label>
+   348→   348→                <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات إضافية', 'Additional notes')} rows={2} className="mt-2" />
+   349→   349→              </CardContent>
+   350→   350→            </Card>
+   351→   351→          </>
+   352→   352→        )}
+   353→   353→
+   354→   354→        {/* Actions */}
+   355→   355→        <div className="flex items-center justify-end gap-3">
+   356→   356→          <Button type="button" variant="outline" onClick={onBack}>{commonText.cancel[lang]}</Button>
+   357→   357→          <Button type="submit" disabled={createMutation.isPending || !contractId || !month || !year || !operatingHours || contracts.length === 0} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+   358→   358→            {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء السجل', 'Create Timesheet')}
+   359→   359→          </Button>
+   360→   360→        </div>
+   361→   361→      </form>
+   362→   362→    </div>
+   363→   363→  )
+   364→   364→}
+   365→   365→
+   366→   366→// ============ Main Timesheets Module ============
+   367→   367→export function TimesheetsModule() {
+   368→   368→  const { lang } = useAppStore()
+   369→   369→  const queryClient = useQueryClient()
+   370→   370→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   371→   371→
+   372→   372→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+   373→   373→  const [search, setSearch] = useState('')
+   374→   374→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   375→   375→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   376→   376→
+   377→   377→  // Fetch timesheets
+   378→   378→  const { data: timesheets = [], isLoading, isError, refetch } = useQuery<TimesheetItem[]>({
+   379→   379→    queryKey: ['equipment-timesheets'],
+   380→   380→    queryFn: async () => {
+   381→   381→      const res = await fetch('/api/equipment/timesheets')
+   382→   382→      if (!res.ok) throw new Error('Failed to fetch')
+   383→   383→      return res.json()
+   384→   384→    },
+   385→   385→  })
+   386→   386→
+   387→   387→  // Fetch active rental contracts for create form
+   388→   388→  const { data: rentalContracts = [] } = useQuery<RentalContractOption[]>({
+   389→   389→    queryKey: ['rental-contracts-for-timesheets'],
+   390→   390→    queryFn: async () => {
+   391→   391→      const res = await fetch('/api/equipment/rental-contracts')
+   392→   392→      if (!res.ok) return []
+   393→   393→      const data = await res.json()
+   394→   394→      // Only active contracts
+   395→   395→      return (Array.isArray(data) ? data : []).filter((c: { status: string }) => c.status === 'ACTIVE')
+   396→   396→    },
+   397→   397→  })
+   398→   398→
+   399→   399→  // Delete mutation
+   400→   400→  const deleteMutation = useMutation({
+   401→   401→    mutationFn: (id: string) =>
+   402→   402→      fetch(`/api/equipment/timesheets/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   403→   403→    onSuccess: () => {
+   404→   404→      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
+   405→   405→      setDeleteId(null)
+   406→   406→    },
+   407→   407→  })
+   408→   408→
+   409→   409→  // Status workflow mutation
+   410→   410→  const statusMutation = useMutation({
+   411→   411→    mutationFn: ({ id, status }: { id: string; status: string }) =>
+   412→   412→      fetch(`/api/equipment/timesheets/${id}`, {
+   413→   413→        method: 'PUT',
+   414→   414→        headers: { 'Content-Type': 'application/json' },
+   415→   415→        body: JSON.stringify({ status }),
+   416→   416→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   417→   417→    onSuccess: () => {
+   418→   418→      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
+   419→   419→    },
+   420→   420→  })
+   421→   421→
+   422→   422→  // Filters
+   423→   423→  const filtered = timesheets.filter(ts => {
+   424→   424→    const monthYear = formatMonthYear(ts.month, ts.year, 'ar')
+   425→   425→    const monthYearEn = formatMonthYear(ts.month, ts.year, 'en')
+   426→   426→    const projectName = ts.project?.name || ''
+   427→   427→    const contractNo = ts.contract?.contractNo || ''
+   428→   428→    const matchSearch = !search ||
+   429→   429→      monthYear.includes(search) ||
+   430→   430→      monthYearEn.toLowerCase().includes(search.toLowerCase()) ||
+   431→   431→      projectName.includes(search) ||
+   432→   432→      contractNo.toLowerCase().includes(search.toLowerCase())
+   433→   433→    const matchStatus = statusFilter === 'all' || ts.status === statusFilter
+   434→   434→    return matchSearch && matchStatus
+   435→   435→  })
+   436→   436→
+   437→   437→  // Summary
+   438→   438→  const totalTimesheets = timesheets.length
+   439→   439→  const draftCount = timesheets.filter(ts => ts.status === 'DRAFT').length
+   440→   440→  const submittedCount = timesheets.filter(ts => ts.status === 'SUBMITTED').length
+   441→   441→  const approvedCount = timesheets.filter(ts => ts.status === 'APPROVED').length
+   442→   442→  const invoicedCount = timesheets.filter(ts => ts.status === 'INVOICED').length
+   443→   443→
+   444→   444→  // ============ CREATE VIEW ============
+   445→   445→  if (viewState.type === 'create') {
+   446→   446→    return (
+   447→   447→      <CreateTimesheetPage
+   448→   448→        contracts={rentalContracts}
+   449→   449→        onBack={() => setViewState({ type: 'list' })}
+   450→   450→      />
+   451→   451→    )
+   452→   452→  }
+   453→   453→
+   454→   454→  // ============ DETAIL VIEW ============
+   455→   455→  if (viewState.type === 'detail') {
+   456→   456→    const timesheet = timesheets.find(ts => ts.id === viewState.timesheetId)
+   457→   457→    if (!timesheet) {
+   458→   458→      return (
+   459→   459→        <div className="flex flex-col items-center gap-3 py-10">
+   460→   460→          <p className="text-rose-600">{t('لم يتم العثور على السجل', 'Timesheet not found')}</p>
+   461→   461→          <Button variant="outline" onClick={() => setViewState({ type: 'list' })}>{t('العودة', 'Back')}</Button>
+   462→   462→        </div>
+   463→   463→      )
+   464→   464→    }
+   465→   465→
+   466→   466→    const hourlyRate = timesheet.rental?.rate || timesheet.contract?.hourlyRate || 0
+   467→   467→    const subtotal = timesheet.operatingHours * hourlyRate
+   468→   468→    const vatAmount = Math.round(subtotal * 0.15 * 100) / 100
+   469→   469→    const totalAmount = subtotal + vatAmount
+   470→   470→    const isInvoiced = timesheet.status === 'INVOICED'
+   471→   471→
+   472→   472→    return (
+   473→   473→      <div className="space-y-6">
+   474→   474→        <div className="flex items-center gap-3">
+   475→   475→          <Button variant="outline" size="icon" onClick={() => setViewState({ type: 'list' })}>
+   476→   476→            <ArrowRight className="size-4" />
+   477→   477→          </Button>
+   478→   478→          <div className="flex-1">
+   479→   479→            <div className="flex items-center gap-3">
+   480→   480→              <h2 className="text-xl font-bold">
+   481→   481→                {t('سجل ساعات عمل', 'Timesheet')} - {formatMonthYear(timesheet.month, timesheet.year, lang)}
+   482→   482→              </h2>
+   483→   483→              <StatusBadge status={timesheet.status} lang={lang} />
+   484→   484→            </div>
+   485→   485→            <p className="text-sm text-muted-foreground">
+   486→   486→              {timesheet.project?.name || '—'} - {timesheet.contract?.contractNo || '—'}
+   487→   487→            </p>
+   488→   488→          </div>
+   489→   489→        </div>
+   490→   490→
+   491→   491→        {/* Info Cards */}
+   492→   492→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   493→   493→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.project.ar, labels.project.en)}</p><p className="text-sm font-medium truncate">{timesheet.project?.name || '—'}</p></CardContent></Card>
+   494→   494→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.equipment.ar, labels.equipment.en)}</p><p className="text-sm font-medium truncate">{timesheet.equipment?.name || '—'}</p></CardContent></Card>
+   495→   495→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.operatingHours.ar, labels.operatingHours.en)}</p><p className="text-sm font-medium">{formatNumber(timesheet.operatingHours)} {t('ساعة', 'hrs')}</p></CardContent></Card>
+   496→   496→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.deliveryMonth.ar, labels.deliveryMonth.en)}</p><p className="text-sm font-medium">{formatMonthYear(timesheet.month, timesheet.year, lang)}</p></CardContent></Card>
+   497→   497→        </div>
+   498→   498→
+   499→   499→        {/* Billing Details */}
+   500→   500→        <Card>
+   501→   501→          <CardHeader><CardTitle className="text-lg">{t('تفاصيل الفوترة', 'Billing Details')}</CardTitle></CardHeader>
+   502→   502→          <CardContent className="space-y-2">
+   503→   503→            <div className="flex justify-between text-sm">
+   504→   504→              <span>{t(labels.operatingHours.ar, labels.operatingHours.en)}</span>
+   505→   505→              <span className="font-medium">{formatNumber(timesheet.operatingHours)} {t('ساعة', 'hours')}</span>
+   506→   506→            </div>
+   507→   507→            <div className="flex justify-between text-sm">
+   508→   508→              <span>{t(labels.hourlyRate.ar, labels.hourlyRate.en)} ({t('من العقد', 'From Contract')})</span>
+   509→   509→              <span className="font-medium"><MoneyDisplay value={hourlyRate} lang={lang} size="sm" inline /></span>
+   510→   510→            </div>
+   511→   511→            <Separator />
+   512→   512→            <div className="flex justify-between text-sm">
+   513→   513→              <span>{t('المجموع الفرعي', 'Subtotal')}</span>
+   514→   514→              <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" inline /></span>
+   515→   515→            </div>
+   516→   516→            <div className="flex justify-between text-sm">
+   517→   517→              <span>{t(labels.vat.ar, labels.vat.en)}</span>
+   518→   518→              <span className="font-medium"><MoneyDisplay value={vatAmount} lang={lang} size="sm" inline /></span>
+   519→   519→            </div>
+   520→   520→            <Separator />
+   521→   521→            <div className="flex justify-between text-lg font-bold">
+   522→   522→              <span>{t('الإجمالي', 'Total')}</span>
+   523→   523→              <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} size="lg" inline bold /></span>
+   524→   524→            </div>
+   525→   525→          </CardContent>
+   526→   526→        </Card>
+   527→   527→
+   528→   528→        {timesheet.notes && (
+   529→   529→          <Card>
+   530→   530→            <CardContent className="p-4">
+   531→   531→              <p className="text-sm text-muted-foreground mb-1">{t(labels.notes.ar, labels.notes.en)}</p>
+   532→   532→              <p className="text-sm">{timesheet.notes}</p>
+   533→   533→            </CardContent>
+   534→   534→          </Card>
+   535→   535→        )}
+   536→   536→
+   537→   537→        {/* RULE: Only APPROVED timesheets can be invoiced */}
+   538→   538→        {/* RULE: Once INVOICED, timesheet cannot be modified */}
+   539→   539→        <Card className="border-emerald-200 bg-emerald-50/50">
+   540→   540→          <CardContent className="p-4">
+   541→   541→            <div className="flex flex-wrap items-center gap-3">
+   542→   542→              <span className="text-sm font-semibold">{t('إجراءات سير العمل:', 'Workflow Actions:')}</span>
+   543→   543→              {timesheet.status === 'DRAFT' && (
+   544→   544→                <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => statusMutation.mutate({ id: timesheet.id, status: 'SUBMITTED' })} disabled={statusMutation.isPending}>
+   545→   545→                  <Send className="size-4" /> {t(labels.submit.ar, labels.submit.en)}
+   546→   546→                </Button>
+   547→   547→              )}
+   548→   548→              {timesheet.status === 'SUBMITTED' && (
+   549→   549→                <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => statusMutation.mutate({ id: timesheet.id, status: 'APPROVED' })} disabled={statusMutation.isPending}>
+   550→   550→                  <CheckCircle className="size-4" /> {t(labels.approve.ar, labels.approve.en)}
+   551→   551→                </Button>
+   552→   552→              )}
+   553→   553→              {timesheet.status === 'APPROVED' && (
+   554→   554→                <p className="text-sm text-emerald-700 font-medium">{t('جاهز للفاتورة - يمكن إنشاء فاتورة إيجار من وحدة فواتير الإيجار', 'Ready for invoicing - Create rental invoice from Rental Invoices module')}</p>
+   555→   555→              )}
+   556→   556→              {isInvoiced && (
+   557→   557→                <Badge className="bg-purple-100 text-purple-700 border-purple-200 text-sm px-3 py-1">
+   558→   558→                  <FileText className="size-4 ml-1" />
+   559→   559→                  {timesheet.invoice ? `${t(labels.invoiceGenerated.ar, labels.invoiceGenerated.en)} - ${timesheet.invoice.invoiceNo}` : t(labels.invoiceGenerated.ar, labels.invoiceGenerated.en)}
+   560→   560→                </Badge>
+   561→   561→              )}
+   562→   562→              {isInvoiced && (
+   563→   563→                <p className="text-xs text-muted-foreground">{t(labels.cannotModifyInvoiced.ar, labels.cannotModifyInvoiced.en)}</p>
+   564→   564→              )}
+   565→   565→            </div>
+   566→   566→          </CardContent>
+   567→   567→        </Card>
+   568→   568→      </div>
+   569→   569→    )
+   570→   570→  }
+   571→   571→
+   572→   572→  // ============ LIST VIEW ============
+   573→   573→  return (
+   574→   574→    <ModuleLayout
+   575→   575→      title={labels.title}
+   576→   576→      subtitle={labels.subtitle}
+   577→   577→      actions={
+   578→   578→        <>
+   579→   579→          <PrintButton type="timesheet-report" size="icon" />
+   580→   580→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
+   581→   581→            <RefreshCw className="size-4" />
+   582→   582→          </Button>
+   583→   583→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   584→   584→            <Plus className="size-4" /> {t(labels.newTimesheet.ar, labels.newTimesheet.en)}
+   585→   585→          </Button>
+   586→   586→        </>
+   587→   587→      }
+   588→   588→    >
+   589→   589→      {/* Summary Cards */}
+   590→   590→      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+   591→   591→        <Card className="bg-gray-50 border-gray-200">
+   592→   592→          <CardContent className="p-4">
+   593→   593→            <p className="text-sm text-gray-500">{t('إجمالي السجلات', 'Total')}</p>
+   594→   594→            <p className="text-xl font-bold text-gray-700">{formatNumber(totalTimesheets)}</p>
+   595→   595→          </CardContent>
+   596→   596→        </Card>
+   597→   597→        <Card className="bg-gray-50 border-gray-200">
+   598→   598→          <CardContent className="p-4">
+   599→   599→            <p className="text-sm text-gray-500">{t('مسودة', 'Draft')}</p>
+   600→   600→            <p className="text-xl font-bold text-gray-700">{formatNumber(draftCount)}</p>
+   601→   601→          </CardContent>
+   602→   602→        </Card>
+   603→   603→        <Card className="bg-blue-50 border-blue-200">
+   604→   604→          <CardContent className="p-4">
+   605→   605→            <p className="text-sm text-blue-500">{t('مقدمة', 'Submitted')}</p>
+   606→   606→            <p className="text-xl font-bold text-blue-700">{formatNumber(submittedCount)}</p>
+   607→   607→          </CardContent>
+   608→   608→        </Card>
+   609→   609→        <Card className="bg-emerald-50 border-emerald-200">
+   610→   610→          <CardContent className="p-4">
+   611→   611→            <p className="text-sm text-emerald-500">{t('معتمدة', 'Approved')}</p>
+   612→   612→            <p className="text-xl font-bold text-emerald-700">{formatNumber(approvedCount)}</p>
+   613→   613→          </CardContent>
+   614→   614→        </Card>
+   615→   615→        <Card className="bg-purple-50 border-purple-200">
+   616→   616→          <CardContent className="p-4">
+   617→   617→            <p className="text-sm text-purple-500">{t('مفوترة', 'Invoiced')}</p>
+   618→   618→            <p className="text-xl font-bold text-purple-700">{formatNumber(invoicedCount)}</p>
+   619→   619→          </CardContent>
+   620→   620→        </Card>
+   621→   621→      </div>
+   622→   622→
+   623→   623→      {/* Filters */}
+   624→   624→      <Card>
+   625→   625→        <CardContent className="p-4">
+   626→   626→          <div className="flex flex-col sm:flex-row gap-3">
+   627→   627→            <div className="relative flex-1">
+   628→   628→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   629→   629→              <Input placeholder={t(labels.search.ar, labels.search.en)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   630→   630→            </div>
+   631→   631→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   632→   632→              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t(labels.allStatus.ar, labels.allStatus.en)} /></SelectTrigger>
+   633→   633→              <SelectContent>
+   634→   634→                <SelectItem value="all">{t(labels.allStatus.ar, labels.allStatus.en)}</SelectItem>
+   635→   635→                <SelectItem value="DRAFT">{t('مسودة', 'Draft')}</SelectItem>
+   636→   636→                <SelectItem value="SUBMITTED">{t('مقدمة', 'Submitted')}</SelectItem>
+   637→   637→                <SelectItem value="APPROVED">{t('معتمدة', 'Approved')}</SelectItem>
+   638→   638→                <SelectItem value="INVOICED">{t('مفوترة', 'Invoiced')}</SelectItem>
+   639→   639→              </SelectContent>
+   640→   640→            </Select>
+   641→   641→          </div>
+   642→   642→        </CardContent>
+   643→   643→      </Card>
+   644→   644→
+   645→   645→      {/* Table */}
+   646→   646→      <Card>
+   647→   647→        <CardContent className="p-0">
+   648→   648→          {isLoading ? (
+   649→   649→            <TableSkeleton />
+   650→   650→          ) : isError ? (
+   651→   651→            <div className="flex flex-col items-center gap-3 py-10">
+   652→   652→              <p className="text-rose-600">{commonText.error[lang]}</p>
+   653→   653→              <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   654→   654→            </div>
+   655→   655→          ) : filtered.length === 0 ? (
+   656→   656→            <div className="flex flex-col items-center gap-3 py-10">
+   657→   657→              <Clock className="size-12 text-gray-300" />
+   658→   658→              <p className="text-muted-foreground">{t(labels.noTimesheets.ar, labels.noTimesheets.en)}</p>
+   659→   659→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   660→   660→                <Plus className="size-4 mr-1" /> {t(labels.newTimesheet.ar, labels.newTimesheet.en)}
+   661→   661→              </Button>
+   662→   662→            </div>
+   663→   663→          ) : (
+   664→   664→            <div className="overflow-x-auto">
+   665→   665→              <Table>
+   666→   666→                <TableHeader>
+   667→   667→                  <TableRow>
+   668→   668→                    <TableHead className="text-right">{t(labels.deliveryMonth.ar, labels.deliveryMonth.en)}</TableHead>
+   669→   669→                    <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+   670→   670→                    <TableHead className="text-right">{t(labels.equipment.ar, labels.equipment.en)}</TableHead>
+   671→   671→                    <TableHead className="text-right">{t(labels.operatingHours.ar, labels.operatingHours.en)}</TableHead>
+   672→   672→                    <TableHead className="text-right">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}</TableHead>
+   673→   673→                    <TableHead className="text-right">{t(labels.billingAmount.ar, labels.billingAmount.en)}</TableHead>
+   674→   674→                    <TableHead className="text-right">{t(labels.status.ar, labels.status.en)}</TableHead>
+   675→   675→                    <TableHead className="text-right">{t(labels.actions.ar, labels.actions.en)}</TableHead>
+   676→   676→                  </TableRow>
+   677→   677→                </TableHeader>
+   678→   678→                <TableBody>
+   679→   679→                  {filtered.map(ts => {
+   680→   680→                    const rate = ts.rental?.rate || ts.contract?.hourlyRate || 0
+   681→   681→                    const amount = ts.operatingHours * rate
+   682→   682→                    return (
+   683→   683→                      <TableRow key={ts.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', timesheetId: ts.id })}>
+   684→   684→                        <TableCell className="font-medium">{formatMonthYear(ts.month, ts.year, lang)}</TableCell>
+   685→   685→                        <TableCell>{ts.project?.name || '—'}</TableCell>
+   686→   686→                        <TableCell>{ts.equipment?.name || '—'}</TableCell>
+   687→   687→                        <TableCell>{formatNumber(ts.operatingHours)}</TableCell>
+   688→   688→                        <TableCell><MoneyDisplay value={rate} lang={lang} size="sm" inline /></TableCell>
+   689→   689→                        <TableCell className="font-semibold"><MoneyDisplay value={amount} lang={lang} size="sm" inline bold /></TableCell>
+   690→   690→                        <TableCell><StatusBadge status={ts.status} lang={lang} /></TableCell>
+   691→   691→                        <TableCell>
+   692→   692→                          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   693→   693→                            <PrintButton type="timesheet-report" documentId={ts.id} size="icon" />
+   694→   694→                            <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', timesheetId: ts.id })} title={t('عرض', 'View')}>
+   695→   695→                              <Eye className="size-4" />
+   696→   696→                            </Button>
+   697→   697→                            {/* RULE: Only DRAFT can be deleted; Once INVOICED, cannot be modified */}
+   698→   698→                            {ts.status === 'DRAFT' && (
+   699→   699→                              <Button variant="ghost" size="icon" className="size-8 text-rose-500" onClick={() => setDeleteId(ts.id)} title={t('حذف', 'Delete')}>
+   700→   700→                                <Trash2 className="size-4" />
+   701→   701→                              </Button>
+   702→   702→                            )}
+   703→   703→                          </div>
+   704→   704→                        </TableCell>
+   705→   705→                      </TableRow>
+   706→   706→                    )
+   707→   707→                  })}
+   708→   708→                </TableBody>
+   709→   709→              </Table>
+   710→   710→            </div>
+   711→   711→          )}
+   712→   712→        </CardContent>
+   713→   713→      </Card>
+   714→   714→
+   715→   715→      {/* Delete Confirmation */}
+   716→   716→      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+   717→   717→        <AlertDialogContent>
+   718→   718→          <AlertDialogHeader>
+   719→   719→            <AlertDialogTitle>{t(labels.deleteTitle.ar, labels.deleteTitle.en)}</AlertDialogTitle>
+   720→   720→            <AlertDialogDescription>{t(labels.deleteConfirm.ar, labels.deleteConfirm.en)}</AlertDialogDescription>
+   721→   721→          </AlertDialogHeader>
+   722→   722→          <AlertDialogFooter>
+   723→   723→            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+   724→   724→            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+   725→   725→              {commonText.delete[lang]}
+   726→   726→            </AlertDialogAction>
+   727→   727→          </AlertDialogFooter>
+   728→   728→        </AlertDialogContent>
+   729→   729→      </AlertDialog>
+   730→   730→    </ModuleLayout>
+   731→   731→  )
+   732→   732→}
+   733→   733→

@@ -9,16 +9,32 @@ export async function POST(
   try {
     const { id } = await params
 
-    // 1. Get timesheet with contract details
-    const timesheet = await db.equipmentTimesheet.findUnique({
+    // 1. Get timesheet with contract and rental details
+    const timesheet = await db.timesheet.findUnique({
       where: { id },
       include: {
         contract: {
-          include: {
-            equipment: {
-              select: { id: true, code: true, name: true, nameAr: true },
-            },
+          select: {
+            id: true, contractNo: true, clientId: true, projectId: true,
+            hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true,
+            paymentTerms: true, salesOrderNo: true, purchaseOrderNo: true,
+            contractType: true, vatRate: true,
           },
+        },
+        equipment: {
+          select: { id: true, code: true, name: true, nameAr: true },
+        },
+        rental: {
+          select: {
+            id: true, pricingType: true,
+            clientId: true, projectId: true,
+            hourlyRate: true, dailyRate: true, monthlyRate: true,
+            deliveryFees: true, deliveryFeesTaxable: true,
+            salesOrderNo: true, paymentDuration: true,
+          },
+        },
+        invoice: {
+          select: { id: true },
         },
       },
     })
@@ -36,7 +52,7 @@ export async function POST(
     }
 
     // 3. Check if invoice already generated
-    if (timesheet.invoiceId) {
+    if (timesheet.invoice) {
       return NextResponse.json(
         { error: 'تم إنشاء فاتورة لهذا التايم شيت بالفعل' },
         { status: 400 }
@@ -44,18 +60,34 @@ export async function POST(
     }
 
     const contract = timesheet.contract
-    const equipment = contract.equipment
+    const equipment = timesheet.equipment
 
     // Month names in Arabic for description
     const monthNamesAr = [
       'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
       'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
     ]
+    const monthNamesEn = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ]
 
-    // 4. Build invoice data
+    // 4. Calculate invoice amounts
+    const hourlyRate = timesheet.rental?.hourlyRate || contract.hourlyRate || 0
+    const operatingHours = timesheet.operatingHours
+    const subtotal = operatingHours * hourlyRate
+    const vatRate = contract.vatRate || 0.15
+    const vatAmount = Math.round(subtotal * vatRate * 100) / 100
+    const deliveryFees = timesheet.rental?.deliveryFees || contract.deliveryFees || 0
+    const deliveryFeesTaxable = timesheet.rental?.deliveryFeesTaxable ?? contract.deliveryFeesTaxable ?? true
+    const deliveryVat = deliveryFeesTaxable ? Math.round(deliveryFees * vatRate * 100) / 100 : 0
+    const totalAmount = subtotal + vatAmount + deliveryFees + deliveryVat
+
+    // 5. Build invoice data
     const equipmentName = equipment.nameAr || equipment.name
     const monthLabel = `${monthNamesAr[timesheet.month - 1]} ${timesheet.year}`
-    const itemDescription = `تأجير ${equipmentName} - ${monthLabel} - ${timesheet.workedHours} ساعة`
+    const monthLabelEn = `${monthNamesEn[timesheet.month - 1]} ${timesheet.year}`
+    const itemDescription = `تأجير ${equipmentName} - ${monthLabel} - ${operatingHours} ساعة`
 
     // Auto-generate invoice number with RENTAL prefix
     const prefix = 'RNT'
@@ -76,48 +108,60 @@ export async function POST(
     const invoiceDate = new Date()
     const dueDate = new Date(invoiceDate)
 
-    // Calculate due date based on payment terms
-    const paymentTerms = contract.paymentTerms || 'immediate'
-    if (paymentTerms === 'net15') dueDate.setDate(dueDate.getDate() + 15)
-    else if (paymentTerms === 'net30') dueDate.setDate(dueDate.getDate() + 30)
-    else if (paymentTerms === 'net60') dueDate.setDate(dueDate.getDate() + 60)
-    else if (paymentTerms === 'net90') dueDate.setDate(dueDate.getDate() + 90)
+    // Calculate due date based on payment terms/duration
+    const paymentDuration = timesheet.rental?.paymentDuration || contract.paymentTerms || 'net30'
+    if (paymentDuration === 'immediate') {
+      // due date = today
+    } else if (paymentDuration === 'net15') {
+      dueDate.setDate(dueDate.getDate() + 15)
+    } else if (paymentDuration === 'net30') {
+      dueDate.setDate(dueDate.getDate() + 30)
+    } else if (paymentDuration === 'net60') {
+      dueDate.setDate(dueDate.getDate() + 60)
+    } else if (paymentDuration === 'net90') {
+      dueDate.setDate(dueDate.getDate() + 90)
+    } else {
+      // Try to parse as number of days
+      const days = parseInt(paymentDuration)
+      if (!isNaN(days) && days > 0) {
+        dueDate.setDate(dueDate.getDate() + days)
+      } else {
+        dueDate.setDate(dueDate.getDate() + 30)
+      }
+    }
+
+    // Get clientId from rental or contract
+    const clientId = timesheet.rental?.clientId || contract.clientId
+    const projectId = timesheet.rental?.projectId || contract.projectId || timesheet.projectId
 
     // Create the SalesInvoice
     const invoice = await db.salesInvoice.create({
       data: {
         invoiceNo,
-        clientId: contract.clientId,
-        projectId: contract.projectId || null,
-        contractId: null, // Don't link to project Contract model
+        clientId: clientId!,
+        projectId: projectId || null,
         date: invoiceDate,
         dueDate,
-        subtotal: timesheet.subtotal,
+        subtotal,
         discountRate: 0,
         discountAmount: 0,
-        netAmount: timesheet.subtotal,
-        vatRate: timesheet.vatRate,
-        vatAmount: timesheet.vatAmount,
-        totalAmount: timesheet.totalAmount,
+        netAmount: subtotal,
+        vatRate,
+        vatAmount,
+        totalAmount,
         paidAmount: 0,
         status: 'DRAFT',
         invoiceType: 'RENTAL',
+        sourceType: 'TIMESHEET',
+        timesheetId: timesheet.id,
         notes: `فاتورة تأجير معدات - عقد ${contract.contractNo} - ${monthLabel}`,
         paymentTerms: contract.paymentTerms,
         contractNo: contract.contractNo,
-        purchaseOrderNo: contract.purchaseOrderNo,
-        deliveryExpense: contract.deliveryExpense,
-        items: {
-          create: [{
-            description: itemDescription,
-            descriptionEn: `Equipment Rental - ${equipment.name} - ${monthLabel} - ${timesheet.workedHours} hours`,
-            quantity: timesheet.workedHours,
-            unit: 'ساعة',
-            unitPrice: timesheet.hourlyRate,
-            totalPrice: timesheet.subtotal,
-            itemType: 'RENTAL',
-          }],
-        },
+        contractType: 'RENTAL',
+        salesOrderNo: contract.salesOrderNo,
+        equipmentName: equipment.nameAr || equipment.name,
+        operatingHours,
+        hourlyRate,
       },
       include: {
         client: {
@@ -126,19 +170,19 @@ export async function POST(
         project: {
           select: { id: true, name: true, nameAr: true, code: true },
         },
-        items: true,
       },
     })
 
-    // 5. Update timesheet with invoiceId
-    await db.equipmentTimesheet.update({
+    // 6. Update timesheet status to INVOICED
+    await db.timesheet.update({
       where: { id: timesheet.id },
-      data: { invoiceId: invoice.id },
+      data: { status: 'INVOICED' },
     })
 
     return NextResponse.json(invoice, { status: 201 })
   } catch (error) {
     console.error('Error generating invoice from timesheet:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء الفاتورة' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ error: 'فشل في إنشاء الفاتورة', detail: message }, { status: 500 })
   }
 }

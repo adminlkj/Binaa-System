@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
             paymentTerms: true, contractType: true, startDate: true, endDate: true,
             rental: {
               select: {
-                id: true, rate: true, rateType: true, deliveryFees: true,
-                deliveryFeesTaxable: true, clientId: true, salesOrderNo: true, paymentTerms: true,
+                id: true, hourlyRate: true, pricingType: true, deliveryFees: true,
+                deliveryFeesTaxable: true, clientId: true, salesOrderNo: true, paymentDuration: true,
               },
             },
           },
@@ -44,8 +44,8 @@ export async function GET(request: NextRequest) {
         },
         rental: {
           select: {
-            id: true, rate: true, rateType: true, status: true, clientId: true,
-            deliveryFees: true, deliveryFeesTaxable: true, salesOrderNo: true, paymentTerms: true,
+            id: true, hourlyRate: true, pricingType: true, status: true, clientId: true,
+            deliveryFees: true, deliveryFeesTaxable: true, salesOrderNo: true, paymentDuration: true,
           },
         },
         project: {
@@ -165,7 +165,7 @@ export async function POST(request: Request) {
           select: { id: true, code: true, name: true, nameAr: true },
         },
         rental: {
-          select: { id: true, rate: true, rateType: true },
+          select: { id: true, hourlyRate: true, pricingType: true },
         },
         project: {
           select: { id: true, code: true, name: true, nameAr: true },
@@ -235,7 +235,7 @@ export async function PUT(request: Request) {
           select: { id: true, code: true, name: true, nameAr: true },
         },
         rental: {
-          select: { id: true, rate: true, rateType: true },
+          select: { id: true, hourlyRate: true, pricingType: true },
         },
         project: {
           select: { id: true, code: true, name: true, nameAr: true },

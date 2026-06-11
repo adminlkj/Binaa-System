@@ -1,10 +1,10 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileCheck, Plus, Search, RefreshCw, Eye, ArrowRight,
-  Download, Truck, CheckCircle2, RotateCcw, XCircle,
+  Download, Truck, CheckCircle2, RotateCcw, XCircle, Trash2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,10 +16,14 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
-import { useAppStore, formatDate as storeFormatDate } from '@/stores/app-store'
+import { useAppStore, formatDate as storeFormatDate, formatNumber, commonText } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { PrintButton } from '@/components/shared/print-button'
 
@@ -28,13 +32,23 @@ interface EquipmentOption { id: string; code: string; name: string; nameAr?: str
 interface ClientOption { id: string; code: string; name: string; nameAr?: string | null }
 interface ProjectOption { id: string; code: string; name: string; nameAr?: string | null }
 
+interface RentalContractOption {
+  id: string; contractId: string
+  clientId: string; equipmentId: string; projectId: string | null
+  hourlyRate: number; pricingType: string; status: string
+  client: { id: string; name: string; nameAr?: string | null }
+  project: { id: string; name: string; nameAr?: string | null } | null
+  equipment: { id: string; name: string; nameAr?: string | null; code: string }
+  contract: { id: string; contractNo: string; status: string }
+}
+
 interface DeliveryOrder {
-  id: string; orderNo: string; rentalId: string | null; equipmentId: string; clientId: string; projectId: string | null
+  id: string; orderNo: string; rentalId: string | null; equipmentId: string; clientId: string | null; projectId: string | null
   site: string | null; deliveryDate: string; returnDate: string | null; status: string; notes: string | null
   createdAt: string; updatedAt: string
   equipment: { id: string; code: string; name: string; nameAr?: string | null }
-  rental?: { id: string; rateType: string; rate: number; status: string } | null
-  client: { id: string; code: string; name: string; nameAr?: string | null }
+  rental?: { id: string; pricingType: string; status: string; hourlyRate: number } | null
+  client: { id: string; code: string; name: string; nameAr?: string | null } | null
   project?: { id: string; code: string; name: string; nameAr?: string | null } | null
 }
 
@@ -84,33 +98,63 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 
 // ============ Delivery Order Creation Form ============
 function DeliveryOrderFormPage({
-  clients, projects, equipmentList, onBack,
+  clients, projects, equipmentList, rentalContracts, onBack,
 }: {
-  clients: ClientOption[]; projects: ProjectOption[]; equipmentList: EquipmentOption[]; onBack: () => void
+  clients: ClientOption[]; projects: ProjectOption[]; equipmentList: EquipmentOption[]
+  rentalContracts: RentalContractOption[]; onBack: () => void
 }) {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
+  const [rentalId, setRentalId] = useState('')
   const [equipmentId, setEquipmentId] = useState('')
   const [clientId, setClientId] = useState('')
-  const [projectId, setProjectId] = useState('')
+  const [projectId, setProjectId] = useState('NONE')
   const [site, setSite] = useState('')
   const [deliveryDate, setDeliveryDate] = useState('')
   const [returnDate, setReturnDate] = useState('')
   const [notes, setNotes] = useState('')
 
+  // Auto-populate from selected rental contract
+  const selectedRental = useMemo(() => rentalContracts.find(r => r.id === rentalId), [rentalContracts, rentalId])
+
+  const handleRentalChange = (id: string) => {
+    setRentalId(id)
+    if (id === 'NONE') {
+      setEquipmentId('')
+      setClientId('')
+      setProjectId('NONE')
+      return
+    }
+    const rental = rentalContracts.find(r => r.id === id)
+    if (rental) {
+      setEquipmentId(rental.equipmentId)
+      setClientId(rental.clientId)
+      setProjectId(rental.projectId || 'NONE')
+    }
+  }
+
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
-      fetch('/api/delivery-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+      fetch('/api/delivery-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(async r => {
+        const res = await r.json()
+        if (!r.ok) throw new Error(res.error || 'Failed to create')
+        return res
+      }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['delivery-orders'] }); onBack() },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     createMutation.mutate({
-      equipmentId, clientId, projectId: projectId || null,
-      site: site || null, deliveryDate, returnDate: returnDate || null,
+      rentalId: rentalId === 'NONE' ? null : rentalId,
+      equipmentId,
+      clientId: clientId || null,
+      projectId: projectId === 'NONE' ? null : projectId,
+      site: site || null,
+      deliveryDate,
+      returnDate: returnDate || null,
       notes: notes || null,
     })
   }
@@ -128,7 +172,45 @@ function DeliveryOrderFormPage({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Section 1: Equipment & Client */}
+        {/* Section 1: Rental Contract Link (Business Flow) */}
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg">{t('عقد الإيجار', 'Rental Contract')}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t('عقد التأجير', 'Rental Contract')}</Label>
+                <Select value={rentalId} onValueChange={handleRentalChange}>
+                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر عقد التأجير (اختياري)', 'Select rental contract (optional)')} /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="NONE">{t('بدون عقد', 'No Contract')}</SelectItem>
+                    {rentalContracts.map(r => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.contract?.contractNo || '—'} - {r.equipment?.name || '—'} ({r.client?.name || '—'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {rentalContracts.length === 0 && (
+                  <p className="text-xs text-amber-600">{t('لا توجد عقود تأجير نشطة. يمكنك إنشاء أمر توصيل مستقل.', 'No active rental contracts. You can create an independent delivery order.')}</p>
+                )}
+              </div>
+            </div>
+            {selectedRental && (
+              <div className="p-3 rounded-lg border bg-emerald-50 text-sm space-y-1">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <span><span className="text-muted-foreground">{t('العميل', 'Client')}:</span> <span className="font-medium">{selectedRental.client?.name || '—'}</span></span>
+                  <span><span className="text-muted-foreground">{t('المشروع', 'Project')}:</span> <span className="font-medium">{selectedRental.project?.name || '—'}</span></span>
+                  <span><span className="text-muted-foreground">{t('المعدة', 'Equipment')}:</span> <span className="font-medium">{selectedRental.equipment?.name || '—'}</span></span>
+                  <span><span className="text-muted-foreground">{t('سعر الساعة', 'Hourly Rate')}:</span> <MoneyDisplay value={selectedRental.hourlyRate} lang={lang} size="sm" inline /></span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Section 2: Equipment & Client */}
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">{t('المعلومات الأساسية', 'Basic Information')}</CardTitle>
@@ -137,7 +219,7 @@ function DeliveryOrderFormPage({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label>{t('المعدة *', 'Equipment *')}</Label>
-                <Select value={equipmentId} onValueChange={setEquipmentId}>
+                <Select value={equipmentId} onValueChange={setEquipmentId} disabled={!!selectedRental}>
                   <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المعدة', 'Select equipment')} /></SelectTrigger>
                   <SelectContent>
                     {equipmentList.map(e => <SelectItem key={e.id} value={e.id}>{e.name} ({e.code})</SelectItem>)}
@@ -146,7 +228,7 @@ function DeliveryOrderFormPage({
               </div>
               <div className="space-y-2">
                 <Label>{t('العميل *', 'Client *')}</Label>
-                <Select value={clientId} onValueChange={setClientId}>
+                <Select value={clientId} onValueChange={setClientId} disabled={!!selectedRental}>
                   <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر العميل', 'Select client')} /></SelectTrigger>
                   <SelectContent>
                     {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
@@ -155,9 +237,10 @@ function DeliveryOrderFormPage({
               </div>
               <div className="space-y-2">
                 <Label>{t('المشروع', 'Project')}</Label>
-                <Select value={projectId} onValueChange={setProjectId}>
+                <Select value={projectId} onValueChange={setProjectId} disabled={!!selectedRental}>
                   <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المشروع', 'Select project')} /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="NONE">{t('بدون مشروع', 'No Project')}</SelectItem>
                     {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -166,7 +249,7 @@ function DeliveryOrderFormPage({
           </CardContent>
         </Card>
 
-        {/* Section 2: Delivery Details */}
+        {/* Section 3: Delivery Details */}
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">{t('تفاصيل التوصيل', 'Delivery Details')}</CardTitle>
@@ -189,7 +272,7 @@ function DeliveryOrderFormPage({
           </CardContent>
         </Card>
 
-        {/* Section 3: Notes */}
+        {/* Section 4: Notes */}
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-lg">{t('ملاحظات', 'Notes')}</CardTitle>
@@ -206,6 +289,9 @@ function DeliveryOrderFormPage({
             {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء أمر التوصيل', 'Create Delivery Order')}
           </Button>
         </div>
+        {createMutation.isError && (
+          <p className="text-sm text-rose-600 text-center">{t('فشل في إنشاء أمر التوصيل', 'Failed to create delivery order')}</p>
+        )}
       </form>
     </div>
   )
@@ -215,9 +301,11 @@ function DeliveryOrderFormPage({
 export function DeliveryOrdersModule() {
   const { lang } = useAppStore()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  const queryClient = useQueryClient()
   const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data: orders = [], isLoading, isError, refetch } = useQuery<DeliveryOrder[]>({
     queryKey: ['delivery-orders'],
@@ -255,16 +343,44 @@ export function DeliveryOrdersModule() {
     },
   })
 
+  // Fetch active rental contracts for linking
+  const { data: rentalContracts = [] } = useQuery<RentalContractOption[]>({
+    queryKey: ['rental-contracts-for-do'],
+    queryFn: async () => {
+      const res = await fetch('/api/equipment/rental-contracts?status=ACTIVE')
+      if (!res.ok) return []
+      const data = await res.json()
+      return Array.isArray(data) ? data : []
+    },
+  })
+
   // Status update mutation
-  const queryClient = useQueryClient()
   const updateMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       fetch('/api/delivery-orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status }),
-      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+      }).then(async r => {
+        const res = await r.json()
+        if (!r.ok) throw new Error(res.error || 'Failed to update')
+        return res
+      }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['delivery-orders'] }) },
+  })
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/delivery-orders/${id}`, { method: 'DELETE' }).then(async r => {
+        const res = await r.json()
+        if (!r.ok) throw new Error(res.error || 'Failed to delete')
+        return res
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['delivery-orders'] })
+      setDeleteId(null)
+    },
   })
 
   // ============ CREATE VIEW ============
@@ -274,6 +390,7 @@ export function DeliveryOrdersModule() {
         clients={clients}
         projects={projects}
         equipmentList={equipmentList}
+        rentalContracts={rentalContracts}
         onBack={() => setViewState({ type: 'list' })}
       />
     )
@@ -307,7 +424,7 @@ export function DeliveryOrdersModule() {
                 </span>
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground">{order.client.name} — {order.equipment.name}</p>
+            <p className="text-sm text-muted-foreground">{order.client?.name || '—'} — {order.equipment.name}</p>
           </div>
           <PrintButton type="delivery-order" documentId={order.id} />
         </div>
@@ -316,7 +433,7 @@ export function DeliveryOrdersModule() {
           <Card>
             <CardContent className="p-3">
               <p className="text-xs text-muted-foreground">{t('العميل', 'Client')}</p>
-              <p className="text-sm font-medium truncate">{order.client.name}</p>
+              <p className="text-sm font-medium truncate">{order.client?.name || '—'}</p>
             </CardContent>
           </Card>
           <Card>
@@ -376,11 +493,11 @@ export function DeliveryOrdersModule() {
                   <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <p className="text-xs text-muted-foreground">{t('نوع السعر', 'Rate Type')}</p>
-                      <p className="text-sm font-medium">{order.rental.rateType}</p>
+                      <p className="text-sm font-medium">{order.rental.pricingType}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">{t('السعر', 'Rate')}</p>
-                      <MoneyDisplay value={order.rental.rate} lang={lang} size="sm" inline />
+                      <MoneyDisplay value={order.rental.hourlyRate} lang={lang} size="sm" inline />
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">{t('حالة العقد', 'Contract Status')}</p>
@@ -441,7 +558,21 @@ export function DeliveryOrdersModule() {
                   {t('إلغاء', 'Cancel')}
                 </Button>
               )}
+              {order.status === 'PENDING' && (
+                <Button
+                  variant="ghost"
+                  className="gap-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => setDeleteId(order.id)}
+                >
+                  <Trash2 className="size-4" />
+                  {t('حذف', 'Delete')}
+                </Button>
+              )}
             </div>
+            {updateMutation.isError && (
+              <p className="text-sm text-rose-600 mt-2">{t('فشل في تحديث الحالة', 'Failed to update status')}</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -451,7 +582,7 @@ export function DeliveryOrdersModule() {
   // ============ LIST VIEW ============
   const filtered = orders.filter(order => {
     const matchSearch = !search || order.orderNo.toLowerCase().includes(search.toLowerCase()) ||
-      order.client.name.toLowerCase().includes(search.toLowerCase()) ||
+      (order.client?.name?.toLowerCase().includes(search.toLowerCase())) ||
       order.equipment.name.toLowerCase().includes(search.toLowerCase()) ||
       (order.site?.toLowerCase().includes(search.toLowerCase()))
     const matchStatus = statusFilter === 'all' || order.status === statusFilter
@@ -465,7 +596,7 @@ export function DeliveryOrdersModule() {
   const handleExport = () => {
     const csv = [
       [t('رقم الأمر', 'Order No'), t('العميل', 'Client'), t('المعدة', 'Equipment'), t('الموقع', 'Site'), t('تاريخ التوصيل', 'Delivery Date'), t('تاريخ الإرجاع', 'Return Date'), t('الحالة', 'Status')].join(','),
-      ...filtered.map(order => [order.orderNo, `"${order.client.name}"`, `"${order.equipment.name}"`, `"${order.site || ''}"`, formatDate(order.deliveryDate, lang), order.returnDate ? formatDate(order.returnDate, lang) : '', orderStatusLabels[order.status]].join(','))
+      ...filtered.map(order => [order.orderNo, `"${order.client?.name || ''}"`, `"${order.equipment.name}"`, `"${order.site || ''}"`, formatDate(order.deliveryDate, lang), order.returnDate ? formatDate(order.returnDate, lang) : '', orderStatusLabels[order.status]].join(','))
     ].join('\n')
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
@@ -500,19 +631,19 @@ export function DeliveryOrdersModule() {
         <Card className="bg-amber-50 border-amber-200">
           <CardContent className="p-4">
             <p className="text-sm text-amber-600">{t('في الانتظار', 'Pending')}</p>
-            <p className="text-xl font-bold text-amber-700">{pendingCount}</p>
+            <p className="text-xl font-bold text-amber-700">{formatNumber(pendingCount)}</p>
           </CardContent>
         </Card>
         <Card className="bg-emerald-50 border-emerald-200">
           <CardContent className="p-4">
             <p className="text-sm text-emerald-600">{t('تم التوصيل', 'Delivered')}</p>
-            <p className="text-xl font-bold text-emerald-700">{deliveredCount}</p>
+            <p className="text-xl font-bold text-emerald-700">{formatNumber(deliveredCount)}</p>
           </CardContent>
         </Card>
         <Card className="bg-blue-50 border-blue-200">
           <CardContent className="p-4">
             <p className="text-sm text-blue-600">{t('تم الإرجاع', 'Returned')}</p>
-            <p className="text-xl font-bold text-blue-700">{returnedCount}</p>
+            <p className="text-xl font-bold text-blue-700">{formatNumber(returnedCount)}</p>
           </CardContent>
         </Card>
       </div>
@@ -575,7 +706,7 @@ export function DeliveryOrdersModule() {
                   {filtered.map(order => (
                     <TableRow key={order.id} className="cursor-pointer hover:bg-amber-50/50" onClick={() => setViewState({ type: 'detail', orderId: order.id })}>
                       <TableCell className="font-medium font-mono">{order.orderNo}</TableCell>
-                      <TableCell>{order.client.name}</TableCell>
+                      <TableCell>{order.client?.name || '—'}</TableCell>
                       <TableCell>{order.equipment.name}</TableCell>
                       <TableCell className="text-sm">{order.site || '—'}</TableCell>
                       <TableCell>{formatDate(order.deliveryDate, lang)}</TableCell>
@@ -602,6 +733,11 @@ export function DeliveryOrdersModule() {
                               <RotateCcw className="size-4" />
                             </Button>
                           )}
+                          {order.status === 'PENDING' && (
+                            <Button variant="ghost" size="icon" className="size-8 text-rose-500" onClick={() => setDeleteId(order.id)} title={t('حذف', 'Delete')}>
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -612,6 +748,22 @@ export function DeliveryOrdersModule() {
           )}
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('حذف أمر التوصيل', 'Delete Delivery Order')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('هل أنت متأكد من حذف أمر التوصيل هذا؟', 'Are you sure you want to delete this delivery order?')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+              {commonText.delete[lang]}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

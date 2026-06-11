@@ -39,12 +39,13 @@ function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string
 
 // ============ Types ============
 interface RentalContractOption {
-  id: string; contractNo: string; hourlyRate: number; deliveryFees: number
-  deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentTerms: string | null
-  clientId: string; equipmentId: string; projectId: string
+  id: string; contractId: string; hourlyRate: number; deliveryFees: number
+  deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentDuration: string | null
+  clientId: string; equipmentId: string; projectId: string | null
   client: { id: string; name: string; nameAr?: string | null }
-  project: { id: string; name: string; nameAr?: string | null }
+  project: { id: string; name: string; nameAr?: string | null } | null
   equipment: { id: string; name: string; nameAr?: string | null; code: string }
+  contract: { id: string; contractNo: string; status: string }
 }
 
 interface TimesheetItem {
@@ -68,8 +69,10 @@ interface TimesheetItem {
   }
   project: { id: string; name: string; nameAr: string | null; code: string }
   equipment: { id: string; name: string; nameAr: string | null; code: string }
-  rental: { id: string; rate: number; client: { id: string; name: string; nameAr: string | null } }
-  invoice: { id: string; invoiceNo: string } | null
+  rental: { id: string; hourlyRate: number; pricingType: string; clientId: string; client?: { id: string; name: string; nameAr: string | null } } | null
+  invoice: { id: string; invoiceNo: string; status: string } | null
+  clientName?: string
+  clientNameAr?: string
 }
 
 // ============ Labels ============
@@ -177,8 +180,8 @@ function CreateTimesheetPage({
     if (!contractId || !month || !year || !operatingHours) return
 
     createMutation.mutate({
-      rentalId: contractId, // Using rental contract ID
-      contractId: selectedContract?.id,
+      rentalId: selectedContract?.id, // EquipmentRental ID
+      contractId: selectedContract?.contractId, // Parent Contract ID
       projectId: selectedContract?.projectId,
       equipmentId: selectedContract?.equipmentId,
       month: parseInt(month),
@@ -225,7 +228,7 @@ function CreateTimesheetPage({
                       <SelectContent>
                         {contracts.map(c => (
                           <SelectItem key={c.id} value={c.id}>
-                            {c.contractNo} - {c.equipment?.name || c.project?.name}
+                            {c.contract?.contractNo || '—'} - {c.equipment?.name || c.project?.name || '—'}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -262,6 +265,9 @@ function CreateTimesheetPage({
                       <span><span className="text-muted-foreground">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}:</span> <MoneyDisplay value={selectedContract.hourlyRate} lang={lang} size="sm" inline bold /></span>
                       {selectedContract.deliveryFees > 0 && (
                         <span><span className="text-muted-foreground">{t(labels.deliveryFees.ar, labels.deliveryFees.en)}:</span> <MoneyDisplay value={selectedContract.deliveryFees} lang={lang} size="sm" inline /></span>
+                      )}
+                      {selectedContract.contract?.contractNo && (
+                        <span><span className="text-muted-foreground">{t('رقم العقد', 'Contract No.')}:</span> <span className="font-medium font-mono">{selectedContract.contract.contractNo}</span></span>
                       )}
                       {selectedContract.salesOrderNo && (
                         <span><span className="text-muted-foreground">{t(labels.salesOrderNo.ar, labels.salesOrderNo.en)}:</span> <span className="font-medium font-mono">{selectedContract.salesOrderNo}</span></span>
@@ -463,7 +469,7 @@ export function TimesheetsModule() {
       )
     }
 
-    const hourlyRate = timesheet.rental?.rate || timesheet.contract?.hourlyRate || 0
+    const hourlyRate = timesheet.rental?.hourlyRate || timesheet.contract?.hourlyRate || 0
     const subtotal = timesheet.operatingHours * hourlyRate
     const vatAmount = Math.round(subtotal * 0.15 * 100) / 100
     const totalAmount = subtotal + vatAmount
@@ -489,7 +495,8 @@ export function TimesheetsModule() {
         </div>
 
         {/* Info Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.client.ar, labels.client.en)}</p><p className="text-sm font-medium truncate">{timesheet.clientName || timesheet.rental?.client?.name || '—'}</p></CardContent></Card>
           <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.project.ar, labels.project.en)}</p><p className="text-sm font-medium truncate">{timesheet.project?.name || '—'}</p></CardContent></Card>
           <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.equipment.ar, labels.equipment.en)}</p><p className="text-sm font-medium truncate">{timesheet.equipment?.name || '—'}</p></CardContent></Card>
           <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.operatingHours.ar, labels.operatingHours.en)}</p><p className="text-sm font-medium">{formatNumber(timesheet.operatingHours)} {t('ساعة', 'hrs')}</p></CardContent></Card>
@@ -677,7 +684,7 @@ export function TimesheetsModule() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map(ts => {
-                    const rate = ts.rental?.rate || ts.contract?.hourlyRate || 0
+                    const rate = ts.rental?.hourlyRate || ts.contract?.hourlyRate || 0
                     const amount = ts.operatingHours * rate
                     return (
                       <TableRow key={ts.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', timesheetId: ts.id })}>

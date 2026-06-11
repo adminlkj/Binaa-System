@@ -20,20 +20,20 @@ export async function GET(request: Request) {
           select: { id: true, code: true, name: true, nameAr: true },
         },
         rental: {
-          select: { id: true, rateType: true, rate: true, status: true },
+          select: { id: true, pricingType: true, status: true, hourlyRate: true },
         },
       },
       orderBy: { deliveryDate: 'desc' },
     })
 
     // Enrich with client info
-    const clientIds = [...new Set(orders.map(o => o.clientId))]
+    const clientIds = [...new Set(orders.filter(o => o.clientId).map(o => o.clientId as string))]
     const projectIds = [...new Set(orders.map(o => o.projectId).filter(Boolean))] as string[]
 
-    const clients = await db.client.findMany({
+    const clients = clientIds.length > 0 ? await db.client.findMany({
       where: { id: { in: clientIds } },
       select: { id: true, code: true, name: true, nameAr: true },
-    })
+    }) : []
     const clientMap = Object.fromEntries(clients.map(c => [c.id, c]))
 
     const projects = projectIds.length > 0 ? await db.project.findMany({
@@ -44,7 +44,7 @@ export async function GET(request: Request) {
 
     const enriched = orders.map(order => ({
       ...order,
-      client: clientMap[order.clientId] || { id: order.clientId, code: '', name: 'غير معروف', nameAr: null },
+      client: order.clientId ? (clientMap[order.clientId] || { id: order.clientId, code: '', name: 'غير معروف', nameAr: null }) : null,
       project: order.projectId ? (projectMap[order.projectId] || null) : null,
     }))
 
@@ -60,8 +60,8 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { equipmentId, clientId, projectId, site, deliveryDate, returnDate, rentalId, notes } = body
 
-    if (!equipmentId || !clientId || !deliveryDate) {
-      return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
+    if (!equipmentId || !deliveryDate) {
+      return NextResponse.json({ error: 'المعدة وتاريخ التوصيل مطلوبان' }, { status: 400 })
     }
 
     // Auto-generate order number: DO-YYYY-NNNN
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
       data: {
         orderNo,
         equipmentId,
-        clientId,
+        clientId: clientId || null,
         projectId: projectId || null,
         rentalId: rentalId || null,
         site: site || null,
@@ -99,16 +99,14 @@ export async function POST(request: Request) {
           select: { id: true, code: true, name: true, nameAr: true },
         },
         rental: {
-          select: { id: true, rateType: true, rate: true, status: true },
+          select: { id: true, pricingType: true, status: true, hourlyRate: true },
         },
       },
     })
 
-    // Update equipment status to IN_USE
-    await db.equipment.update({
-      where: { id: equipmentId },
-      data: { status: 'IN_USE' },
-    })
+    // NOTE: Equipment status is NOT changed to IN_USE here.
+    // Equipment status changes to IN_USE only when the order status becomes DELIVERED.
+    // This allows PENDING orders to be cancelled without affecting equipment status.
 
     return NextResponse.json(order, { status: 201 })
   } catch (error) {
@@ -126,6 +124,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
     }
 
+    const existing = await db.equipmentDeliveryOrder.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'أمر التوصيل غير موجود' }, { status: 404 })
+    }
+
     const order = await db.equipmentDeliveryOrder.update({
       where: { id },
       data: { status },
@@ -134,17 +137,25 @@ export async function PATCH(request: Request) {
           select: { id: true, code: true, name: true, nameAr: true },
         },
         rental: {
-          select: { id: true, rateType: true, rate: true, status: true },
+          select: { id: true, pricingType: true, status: true, hourlyRate: true },
         },
       },
     })
 
-    // If returned, set equipment back to AVAILABLE
-    if (status === 'RETURNED') {
+    // Handle equipment status changes based on delivery order status
+    if (status === 'DELIVERED') {
+      await db.equipment.update({
+        where: { id: order.equipmentId },
+        data: { status: 'IN_USE' },
+      })
+    } else if (status === 'RETURNED') {
       await db.equipment.update({
         where: { id: order.equipmentId },
         data: { status: 'AVAILABLE' },
       })
+    } else if (status === 'CANCELLED' && existing.status === 'PENDING') {
+      // Only revert if it was PENDING (not DELIVERED then cancelled)
+      // Equipment shouldn't have been set to IN_USE for PENDING orders
     }
 
     return NextResponse.json(order)

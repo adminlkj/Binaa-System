@@ -1,0 +1,618 @@
+     1→'use client'
+     2→
+     3→import React, { useState } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  FileCheck, Plus, Search, RefreshCw, Eye, ArrowRight,
+     7→  Download, Truck, CheckCircle2, RotateCcw, XCircle,
+     8→} from 'lucide-react'
+     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import {
+    14→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    15→} from '@/components/ui/table'
+    16→import {
+    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→} from '@/components/ui/select'
+    19→import { Label } from '@/components/ui/label'
+    20→import { Textarea } from '@/components/ui/textarea'
+    21→import { Separator } from '@/components/ui/separator'
+    22→import { useAppStore, formatDate as storeFormatDate } from '@/stores/app-store'
+    23→import { MoneyDisplay } from '@/components/ui/money-display'
+    24→import { PrintButton } from '@/components/shared/print-button'
+    25→
+    26→// ============ Types ============
+    27→interface EquipmentOption { id: string; code: string; name: string; nameAr?: string | null; hourlyRate: number; dailyRate: number; monthlyRate: number }
+    28→interface ClientOption { id: string; code: string; name: string; nameAr?: string | null }
+    29→interface ProjectOption { id: string; code: string; name: string; nameAr?: string | null }
+    30→
+    31→interface DeliveryOrder {
+    32→  id: string; orderNo: string; rentalId: string | null; equipmentId: string; clientId: string; projectId: string | null
+    33→  site: string | null; deliveryDate: string; returnDate: string | null; status: string; notes: string | null
+    34→  createdAt: string; updatedAt: string
+    35→  equipment: { id: string; code: string; name: string; nameAr?: string | null }
+    36→  rental?: { id: string; rateType: string; rate: number; status: string } | null
+    37→  client: { id: string; code: string; name: string; nameAr?: string | null }
+    38→  project?: { id: string; code: string; name: string; nameAr?: string | null } | null
+    39→}
+    40→
+    41→// ============ View State ============
+    42→type ViewState =
+    43→  | { type: 'list' }
+    44→  | { type: 'create' }
+    45→  | { type: 'detail'; orderId: string }
+    46→
+    47→function formatDate(dateStr: string, lang: 'ar' | 'en' = 'ar'): string {
+    48→  return storeFormatDate(dateStr, lang)
+    49→}
+    50→
+    51→const orderStatusLabels: Record<string, string> = {
+    52→  PENDING: 'في الانتظار', DELIVERED: 'تم التوصيل', RETURNED: 'تم الإرجاع', CANCELLED: 'ملغي',
+    53→}
+    54→const orderStatusLabelsEn: Record<string, string> = {
+    55→  PENDING: 'Pending', DELIVERED: 'Delivered', RETURNED: 'Returned', CANCELLED: 'Cancelled',
+    56→}
+    57→const orderStatusColors: Record<string, string> = {
+    58→  PENDING: 'bg-amber-100 text-amber-700 border-amber-200',
+    59→  DELIVERED: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    60→  RETURNED: 'bg-blue-100 text-blue-700 border-blue-200',
+    61→  CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
+    62→}
+    63→const orderStatusIcons: Record<string, React.ReactNode> = {
+    64→  PENDING: <Truck className="size-3.5" />,
+    65→  DELIVERED: <CheckCircle2 className="size-3.5" />,
+    66→  RETURNED: <RotateCcw className="size-3.5" />,
+    67→  CANCELLED: <XCircle className="size-3.5" />,
+    68→}
+    69→
+    70→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    71→  return (
+    72→    <div className="space-y-2">
+    73→      {Array.from({ length: rows }).map((_, i) => (
+    74→        <div key={i} className="flex gap-4 p-3">
+    75→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+    76→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+    77→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+    78→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+    79→        </div>
+    80→      ))}
+    81→    </div>
+    82→  )
+    83→}
+    84→
+    85→// ============ Delivery Order Creation Form ============
+    86→function DeliveryOrderFormPage({
+    87→  clients, projects, equipmentList, onBack,
+    88→}: {
+    89→  clients: ClientOption[]; projects: ProjectOption[]; equipmentList: EquipmentOption[]; onBack: () => void
+    90→}) {
+    91→  const queryClient = useQueryClient()
+    92→  const { lang } = useAppStore()
+    93→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+    94→
+    95→  const [equipmentId, setEquipmentId] = useState('')
+    96→  const [clientId, setClientId] = useState('')
+    97→  const [projectId, setProjectId] = useState('')
+    98→  const [site, setSite] = useState('')
+    99→  const [deliveryDate, setDeliveryDate] = useState('')
+   100→  const [returnDate, setReturnDate] = useState('')
+   101→  const [notes, setNotes] = useState('')
+   102→
+   103→  const createMutation = useMutation({
+   104→    mutationFn: (data: Record<string, unknown>) =>
+   105→      fetch('/api/delivery-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   106→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['delivery-orders'] }); onBack() },
+   107→  })
+   108→
+   109→  const handleSubmit = (e: React.FormEvent) => {
+   110→    e.preventDefault()
+   111→    createMutation.mutate({
+   112→      equipmentId, clientId, projectId: projectId || null,
+   113→      site: site || null, deliveryDate, returnDate: returnDate || null,
+   114→      notes: notes || null,
+   115→    })
+   116→  }
+   117→
+   118→  return (
+   119→    <div className="space-y-6">
+   120→      <div className="flex items-center gap-3 no-print">
+   121→        <Button variant="outline" size="icon" onClick={onBack}>
+   122→          <ArrowRight className="size-4" />
+   123→        </Button>
+   124→        <div className="flex-1">
+   125→          <h1 className="text-2xl font-bold text-gray-900">{t('أمر توصيل جديد', 'New Delivery Order')}</h1>
+   126→          <p className="text-sm text-muted-foreground">{t('إنشاء أمر توصيل معدات لموقع المشروع', 'Create equipment delivery order to project site')}</p>
+   127→        </div>
+   128→      </div>
+   129→
+   130→      <form onSubmit={handleSubmit} className="space-y-6">
+   131→        {/* Section 1: Equipment & Client */}
+   132→        <Card>
+   133→          <CardHeader className="pb-4">
+   134→            <CardTitle className="text-lg">{t('المعلومات الأساسية', 'Basic Information')}</CardTitle>
+   135→          </CardHeader>
+   136→          <CardContent className="space-y-4">
+   137→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   138→              <div className="space-y-2">
+   139→                <Label>{t('المعدة *', 'Equipment *')}</Label>
+   140→                <Select value={equipmentId} onValueChange={setEquipmentId}>
+   141→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المعدة', 'Select equipment')} /></SelectTrigger>
+   142→                  <SelectContent>
+   143→                    {equipmentList.map(e => <SelectItem key={e.id} value={e.id}>{e.name} ({e.code})</SelectItem>)}
+   144→                  </SelectContent>
+   145→                </Select>
+   146→              </div>
+   147→              <div className="space-y-2">
+   148→                <Label>{t('العميل *', 'Client *')}</Label>
+   149→                <Select value={clientId} onValueChange={setClientId}>
+   150→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر العميل', 'Select client')} /></SelectTrigger>
+   151→                  <SelectContent>
+   152→                    {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+   153→                  </SelectContent>
+   154→                </Select>
+   155→              </div>
+   156→              <div className="space-y-2">
+   157→                <Label>{t('المشروع', 'Project')}</Label>
+   158→                <Select value={projectId} onValueChange={setProjectId}>
+   159→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المشروع', 'Select project')} /></SelectTrigger>
+   160→                  <SelectContent>
+   161→                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   162→                  </SelectContent>
+   163→                </Select>
+   164→              </div>
+   165→            </div>
+   166→          </CardContent>
+   167→        </Card>
+   168→
+   169→        {/* Section 2: Delivery Details */}
+   170→        <Card>
+   171→          <CardHeader className="pb-4">
+   172→            <CardTitle className="text-lg">{t('تفاصيل التوصيل', 'Delivery Details')}</CardTitle>
+   173→          </CardHeader>
+   174→          <CardContent className="space-y-4">
+   175→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   176→              <div className="space-y-2">
+   177→                <Label>{t('موقع التوصيل', 'Delivery Site')}</Label>
+   178→                <Input value={site} onChange={e => setSite(e.target.value)} placeholder={t('موقع المشروع', 'Project site')} />
+   179→              </div>
+   180→              <div className="space-y-2">
+   181→                <Label>{t('تاريخ التوصيل *', 'Delivery Date *')}</Label>
+   182→                <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} required />
+   183→              </div>
+   184→              <div className="space-y-2">
+   185→                <Label>{t('تاريخ الإرجاع المتوقع', 'Expected Return Date')}</Label>
+   186→                <Input type="date" value={returnDate} onChange={e => setReturnDate(e.target.value)} />
+   187→              </div>
+   188→            </div>
+   189→          </CardContent>
+   190→        </Card>
+   191→
+   192→        {/* Section 3: Notes */}
+   193→        <Card>
+   194→          <CardHeader className="pb-4">
+   195→            <CardTitle className="text-lg">{t('ملاحظات', 'Notes')}</CardTitle>
+   196→          </CardHeader>
+   197→          <CardContent>
+   198→            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات إضافية', 'Additional notes')} rows={3} />
+   199→          </CardContent>
+   200→        </Card>
+   201→
+   202→        {/* Actions */}
+   203→        <div className="flex items-center justify-end gap-3 no-print">
+   204→          <Button type="button" variant="outline" onClick={onBack}>{t('إلغاء', 'Cancel')}</Button>
+   205→          <Button type="submit" disabled={createMutation.isPending || !equipmentId || !clientId || !deliveryDate} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+   206→            {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء أمر التوصيل', 'Create Delivery Order')}
+   207→          </Button>
+   208→        </div>
+   209→      </form>
+   210→    </div>
+   211→  )
+   212→}
+   213→
+   214→// ============ Main Delivery Orders Module ============
+   215→export function DeliveryOrdersModule() {
+   216→  const { lang } = useAppStore()
+   217→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   218→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+   219→  const [search, setSearch] = useState('')
+   220→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   221→
+   222→  const { data: orders = [], isLoading, isError, refetch } = useQuery<DeliveryOrder[]>({
+   223→    queryKey: ['delivery-orders'],
+   224→    queryFn: async () => {
+   225→      const res = await fetch('/api/delivery-orders')
+   226→      if (!res.ok) throw new Error('Failed to fetch')
+   227→      return res.json()
+   228→    },
+   229→  })
+   230→
+   231→  const { data: clients = [] } = useQuery<ClientOption[]>({
+   232→    queryKey: ['clients-simple'],
+   233→    queryFn: async () => {
+   234→      const res = await fetch('/api/clients?simple=true&active=true')
+   235→      if (!res.ok) return []
+   236→      return res.json()
+   237→    },
+   238→  })
+   239→
+   240→  const { data: projects = [] } = useQuery<ProjectOption[]>({
+   241→    queryKey: ['projects-list'],
+   242→    queryFn: async () => {
+   243→      const res = await fetch('/api/projects/list')
+   244→      if (!res.ok) return []
+   245→      return res.json()
+   246→    },
+   247→  })
+   248→
+   249→  const { data: equipmentList = [] } = useQuery<EquipmentOption[]>({
+   250→    queryKey: ['equipment-list-do'],
+   251→    queryFn: async () => {
+   252→      const res = await fetch('/api/equipment')
+   253→      if (!res.ok) return []
+   254→      return res.json()
+   255→    },
+   256→  })
+   257→
+   258→  // Status update mutation
+   259→  const queryClient = useQueryClient()
+   260→  const updateMutation = useMutation({
+   261→    mutationFn: ({ id, status }: { id: string; status: string }) =>
+   262→      fetch('/api/delivery-orders', {
+   263→        method: 'PATCH',
+   264→        headers: { 'Content-Type': 'application/json' },
+   265→        body: JSON.stringify({ id, status }),
+   266→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   267→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['delivery-orders'] }) },
+   268→  })
+   269→
+   270→  // ============ CREATE VIEW ============
+   271→  if (viewState.type === 'create') {
+   272→    return (
+   273→      <DeliveryOrderFormPage
+   274→        clients={clients}
+   275→        projects={projects}
+   276→        equipmentList={equipmentList}
+   277→        onBack={() => setViewState({ type: 'list' })}
+   278→      />
+   279→    )
+   280→  }
+   281→
+   282→  // ============ DETAIL VIEW ============
+   283→  if (viewState.type === 'detail') {
+   284→    const order = orders.find(o => o.id === viewState.orderId)
+   285→    if (!order) {
+   286→      return (
+   287→        <div className="flex flex-col items-center gap-3 py-10">
+   288→          <p className="text-rose-600">{t('لم يتم العثور على أمر التوصيل', 'Delivery order not found')}</p>
+   289→          <Button variant="outline" onClick={() => setViewState({ type: 'list' })}>{t('العودة للقائمة', 'Back to list')}</Button>
+   290→        </div>
+   291→      )
+   292→    }
+   293→
+   294→    return (
+   295→      <div className="space-y-6">
+   296→        <div className="flex items-center gap-3 no-print">
+   297→          <Button variant="outline" size="icon" onClick={() => setViewState({ type: 'list' })}>
+   298→            <ArrowRight className="size-4" />
+   299→          </Button>
+   300→          <div className="flex-1">
+   301→            <div className="flex items-center gap-3">
+   302→              <h2 className="text-xl font-bold">{t('أمر توصيل', 'Delivery Order')} {order.orderNo}</h2>
+   303→              <Badge variant="outline" className={orderStatusColors[order.status]}>
+   304→                <span className="flex items-center gap-1">
+   305→                  {orderStatusIcons[order.status]}
+   306→                  {orderStatusLabels[order.status]}
+   307→                </span>
+   308→              </Badge>
+   309→            </div>
+   310→            <p className="text-sm text-muted-foreground">{order.client.name} — {order.equipment.name}</p>
+   311→          </div>
+   312→          <PrintButton type="delivery-order" documentId={order.id} />
+   313→        </div>
+   314→
+   315→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   316→          <Card>
+   317→            <CardContent className="p-3">
+   318→              <p className="text-xs text-muted-foreground">{t('العميل', 'Client')}</p>
+   319→              <p className="text-sm font-medium truncate">{order.client.name}</p>
+   320→            </CardContent>
+   321→          </Card>
+   322→          <Card>
+   323→            <CardContent className="p-3">
+   324→              <p className="text-xs text-muted-foreground">{t('المعدة', 'Equipment')}</p>
+   325→              <p className="text-sm font-medium truncate">{order.equipment.name}</p>
+   326→            </CardContent>
+   327→          </Card>
+   328→          <Card>
+   329→            <CardContent className="p-3">
+   330→              <p className="text-xs text-muted-foreground">{t('تاريخ التوصيل', 'Delivery Date')}</p>
+   331→              <p className="text-sm font-medium">{formatDate(order.deliveryDate, lang)}</p>
+   332→            </CardContent>
+   333→          </Card>
+   334→          <Card>
+   335→            <CardContent className="p-3">
+   336→              <p className="text-xs text-muted-foreground">{t('تاريخ الإرجاع', 'Return Date')}</p>
+   337→              <p className="text-sm font-medium">{order.returnDate ? formatDate(order.returnDate, lang) : '—'}</p>
+   338→            </CardContent>
+   339→          </Card>
+   340→        </div>
+   341→
+   342→        <Card>
+   343→          <CardHeader>
+   344→            <CardTitle className="text-lg">{t('تفاصيل أمر التوصيل', 'Delivery Order Details')}</CardTitle>
+   345→          </CardHeader>
+   346→          <CardContent className="space-y-4">
+   347→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   348→              <div className="space-y-2">
+   349→                <Label className="text-xs text-muted-foreground">{t('رقم أمر التوصيل', 'Order No.')}</Label>
+   350→                <p className="text-sm font-mono font-medium" dir="ltr">{order.orderNo}</p>
+   351→              </div>
+   352→              <div className="space-y-2">
+   353→                <Label className="text-xs text-muted-foreground">{t('المشروع', 'Project')}</Label>
+   354→                <p className="text-sm font-medium">{order.project?.name || '—'}</p>
+   355→              </div>
+   356→              <div className="space-y-2">
+   357→                <Label className="text-xs text-muted-foreground">{t('موقع التوصيل', 'Delivery Site')}</Label>
+   358→                <p className="text-sm font-medium">{order.site || '—'}</p>
+   359→              </div>
+   360→              <div className="space-y-2">
+   361→                <Label className="text-xs text-muted-foreground">{t('الحالة', 'Status')}</Label>
+   362→                <Badge variant="outline" className={orderStatusColors[order.status]}>
+   363→                  <span className="flex items-center gap-1">
+   364→                    {orderStatusIcons[order.status]}
+   365→                    {orderStatusLabels[order.status]}
+   366→                  </span>
+   367→                </Badge>
+   368→              </div>
+   369→            </div>
+   370→
+   371→            {order.rental && (
+   372→              <>
+   373→                <Separator />
+   374→                <div>
+   375→                  <Label className="text-xs text-muted-foreground">{t('بيانات عقد الإيجار', 'Rental Contract Data')}</Label>
+   376→                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-4">
+   377→                    <div>
+   378→                      <p className="text-xs text-muted-foreground">{t('نوع السعر', 'Rate Type')}</p>
+   379→                      <p className="text-sm font-medium">{order.rental.rateType}</p>
+   380→                    </div>
+   381→                    <div>
+   382→                      <p className="text-xs text-muted-foreground">{t('السعر', 'Rate')}</p>
+   383→                      <MoneyDisplay value={order.rental.rate} lang={lang} size="sm" inline />
+   384→                    </div>
+   385→                    <div>
+   386→                      <p className="text-xs text-muted-foreground">{t('حالة العقد', 'Contract Status')}</p>
+   387→                      <p className="text-sm font-medium">{order.rental.status}</p>
+   388→                    </div>
+   389→                  </div>
+   390→                </div>
+   391→              </>
+   392→            )}
+   393→
+   394→            {order.notes && (
+   395→              <>
+   396→                <Separator />
+   397→                <div>
+   398→                  <Label className="text-xs text-muted-foreground">{t('ملاحظات', 'Notes')}</Label>
+   399→                  <p className="text-sm mt-1">{order.notes}</p>
+   400→                </div>
+   401→              </>
+   402→            )}
+   403→          </CardContent>
+   404→        </Card>
+   405→
+   406→        {/* Status Actions */}
+   407→        <Card className="no-print">
+   408→          <CardHeader>
+   409→            <CardTitle className="text-lg">{t('تحديث الحالة', 'Update Status')}</CardTitle>
+   410→          </CardHeader>
+   411→          <CardContent>
+   412→            <div className="flex flex-wrap gap-2">
+   413→              {order.status === 'PENDING' && (
+   414→                <Button
+   415→                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+   416→                  disabled={updateMutation.isPending}
+   417→                  onClick={() => updateMutation.mutate({ id: order.id, status: 'DELIVERED' })}
+   418→                >
+   419→                  <CheckCircle2 className="size-4" />
+   420→                  {t('تأكيد التوصيل', 'Confirm Delivery')}
+   421→                </Button>
+   422→              )}
+   423→              {order.status === 'DELIVERED' && (
+   424→                <Button
+   425→                  className="gap-2 bg-blue-600 hover:bg-blue-700"
+   426→                  disabled={updateMutation.isPending}
+   427→                  onClick={() => updateMutation.mutate({ id: order.id, status: 'RETURNED' })}
+   428→                >
+   429→                  <RotateCcw className="size-4" />
+   430→                  {t('تأكيد الإرجاع', 'Confirm Return')}
+   431→                </Button>
+   432→              )}
+   433→              {(order.status === 'PENDING' || order.status === 'DELIVERED') && (
+   434→                <Button
+   435→                  variant="outline"
+   436→                  className="gap-2 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+   437→                  disabled={updateMutation.isPending}
+   438→                  onClick={() => updateMutation.mutate({ id: order.id, status: 'CANCELLED' })}
+   439→                >
+   440→                  <XCircle className="size-4" />
+   441→                  {t('إلغاء', 'Cancel')}
+   442→                </Button>
+   443→              )}
+   444→            </div>
+   445→          </CardContent>
+   446→        </Card>
+   447→      </div>
+   448→    )
+   449→  }
+   450→
+   451→  // ============ LIST VIEW ============
+   452→  const filtered = orders.filter(order => {
+   453→    const matchSearch = !search || order.orderNo.toLowerCase().includes(search.toLowerCase()) ||
+   454→      order.client.name.toLowerCase().includes(search.toLowerCase()) ||
+   455→      order.equipment.name.toLowerCase().includes(search.toLowerCase()) ||
+   456→      (order.site?.toLowerCase().includes(search.toLowerCase()))
+   457→    const matchStatus = statusFilter === 'all' || order.status === statusFilter
+   458→    return matchSearch && matchStatus
+   459→  })
+   460→
+   461→  const pendingCount = orders.filter(o => o.status === 'PENDING').length
+   462→  const deliveredCount = orders.filter(o => o.status === 'DELIVERED').length
+   463→  const returnedCount = orders.filter(o => o.status === 'RETURNED').length
+   464→
+   465→  const handleExport = () => {
+   466→    const csv = [
+   467→      [t('رقم الأمر', 'Order No'), t('العميل', 'Client'), t('المعدة', 'Equipment'), t('الموقع', 'Site'), t('تاريخ التوصيل', 'Delivery Date'), t('تاريخ الإرجاع', 'Return Date'), t('الحالة', 'Status')].join(','),
+   468→      ...filtered.map(order => [order.orderNo, `"${order.client.name}"`, `"${order.equipment.name}"`, `"${order.site || ''}"`, formatDate(order.deliveryDate, lang), order.returnDate ? formatDate(order.returnDate, lang) : '', orderStatusLabels[order.status]].join(','))
+   469→    ].join('\n')
+   470→    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+   471→    const link = document.createElement('a')
+   472→    link.href = URL.createObjectURL(blob)
+   473→    link.download = `delivery-orders-${new Date().toISOString().split('T')[0]}.csv`
+   474→    link.click()
+   475→  }
+   476→
+   477→  return (
+   478→    <div className="space-y-6">
+   479→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   480→        <div>
+   481→          <h1 className="text-2xl font-bold text-gray-900">{t('أوامر التوصيل', 'Delivery Orders')}</h1>
+   482→          <p className="text-sm text-muted-foreground">{t('إدارة أوامر توصيل المعدات للمواقع', 'Manage equipment delivery orders to sites')}</p>
+   483→        </div>
+   484→        <div className="flex items-center gap-2">
+   485→          <PrintButton type="generic-table" size="icon" />
+   486→          <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير', 'Export')}>
+   487→            <Download className="size-4" />
+   488→          </Button>
+   489→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
+   490→            <RefreshCw className="size-4" />
+   491→          </Button>
+   492→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   493→            <Plus className="size-4" /> {t('أمر توصيل جديد', 'New Delivery Order')}
+   494→          </Button>
+   495→        </div>
+   496→      </div>
+   497→
+   498→      {/* Summary Cards */}
+   499→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   500→        <Card className="bg-amber-50 border-amber-200">
+   501→          <CardContent className="p-4">
+   502→            <p className="text-sm text-amber-600">{t('في الانتظار', 'Pending')}</p>
+   503→            <p className="text-xl font-bold text-amber-700">{pendingCount}</p>
+   504→          </CardContent>
+   505→        </Card>
+   506→        <Card className="bg-emerald-50 border-emerald-200">
+   507→          <CardContent className="p-4">
+   508→            <p className="text-sm text-emerald-600">{t('تم التوصيل', 'Delivered')}</p>
+   509→            <p className="text-xl font-bold text-emerald-700">{deliveredCount}</p>
+   510→          </CardContent>
+   511→        </Card>
+   512→        <Card className="bg-blue-50 border-blue-200">
+   513→          <CardContent className="p-4">
+   514→            <p className="text-sm text-blue-600">{t('تم الإرجاع', 'Returned')}</p>
+   515→            <p className="text-xl font-bold text-blue-700">{returnedCount}</p>
+   516→          </CardContent>
+   517→        </Card>
+   518→      </div>
+   519→
+   520→      {/* Filters */}
+   521→      <Card>
+   522→        <CardContent className="p-4">
+   523→          <div className="flex flex-col sm:flex-row gap-3">
+   524→            <div className="relative flex-1">
+   525→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   526→              <Input placeholder={t('بحث برقم الأمر أو العميل أو المعدة...', 'Search by order no., client or equipment...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   527→            </div>
+   528→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   529→              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t('كل الحالات', 'All Status')} /></SelectTrigger>
+   530→              <SelectContent>
+   531→                <SelectItem value="all">{t('كل الحالات', 'All Status')}</SelectItem>
+   532→                <SelectItem value="PENDING">{t('في الانتظار', 'Pending')}</SelectItem>
+   533→                <SelectItem value="DELIVERED">{t('تم التوصيل', 'Delivered')}</SelectItem>
+   534→                <SelectItem value="RETURNED">{t('تم الإرجاع', 'Returned')}</SelectItem>
+   535→                <SelectItem value="CANCELLED">{t('ملغي', 'Cancelled')}</SelectItem>
+   536→              </SelectContent>
+   537→            </Select>
+   538→          </div>
+   539→        </CardContent>
+   540→      </Card>
+   541→
+   542→      {/* Table */}
+   543→      <Card>
+   544→        <CardContent className="p-0">
+   545→          {isLoading ? (
+   546→            <div className="p-6"><TableSkeleton /></div>
+   547→          ) : isError ? (
+   548→            <div className="flex flex-col items-center gap-3 py-10">
+   549→              <p className="text-rose-600">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+   550→              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry')}</Button>
+   551→            </div>
+   552→          ) : filtered.length === 0 ? (
+   553→            <div className="flex flex-col items-center gap-3 py-10">
+   554→              <FileCheck className="size-12 text-gray-300" />
+   555→              <p className="text-muted-foreground">{t('لا توجد أوامر توصيل', 'No delivery orders')}</p>
+   556→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   557→                <Plus className="size-4 mr-1" /> {t('إنشاء أمر توصيل', 'Create Delivery Order')}
+   558→              </Button>
+   559→            </div>
+   560→          ) : (
+   561→            <div className="overflow-x-auto">
+   562→              <Table>
+   563→                <TableHeader>
+   564→                  <TableRow>
+   565→                    <TableHead className="text-right">{t('رقم الأمر', 'Order No')}</TableHead>
+   566→                    <TableHead className="text-right">{t('العميل', 'Client')}</TableHead>
+   567→                    <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
+   568→                    <TableHead className="text-right">{t('الموقع', 'Site')}</TableHead>
+   569→                    <TableHead className="text-right">{t('تاريخ التوصيل', 'Delivery Date')}</TableHead>
+   570→                    <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+   571→                    <TableHead className="text-right">{t('الإجراءات', 'Actions')}</TableHead>
+   572→                  </TableRow>
+   573→                </TableHeader>
+   574→                <TableBody>
+   575→                  {filtered.map(order => (
+   576→                    <TableRow key={order.id} className="cursor-pointer hover:bg-amber-50/50" onClick={() => setViewState({ type: 'detail', orderId: order.id })}>
+   577→                      <TableCell className="font-medium font-mono">{order.orderNo}</TableCell>
+   578→                      <TableCell>{order.client.name}</TableCell>
+   579→                      <TableCell>{order.equipment.name}</TableCell>
+   580→                      <TableCell className="text-sm">{order.site || '—'}</TableCell>
+   581→                      <TableCell>{formatDate(order.deliveryDate, lang)}</TableCell>
+   582→                      <TableCell>
+   583→                        <Badge variant="outline" className={orderStatusColors[order.status]}>
+   584→                          <span className="flex items-center gap-1">
+   585→                            {orderStatusIcons[order.status]}
+   586→                            {orderStatusLabels[order.status]}
+   587→                          </span>
+   588→                        </Badge>
+   589→                      </TableCell>
+   590→                      <TableCell>
+   591→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   592→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', orderId: order.id })} title={t('تفاصيل', 'Details')}>
+   593→                            <Eye className="size-4" />
+   594→                          </Button>
+   595→                          {order.status === 'PENDING' && (
+   596→                            <Button variant="ghost" size="icon" className="size-8 text-emerald-600" onClick={() => updateMutation.mutate({ id: order.id, status: 'DELIVERED' })} title={t('تأكيد التوصيل', 'Confirm Delivery')}>
+   597→                              <CheckCircle2 className="size-4" />
+   598→                            </Button>
+   599→                          )}
+   600→                          {order.status === 'DELIVERED' && (
+   601→                            <Button variant="ghost" size="icon" className="size-8 text-blue-600" onClick={() => updateMutation.mutate({ id: order.id, status: 'RETURNED' })} title={t('تأكيد الإرجاع', 'Confirm Return')}>
+   602→                              <RotateCcw className="size-4" />
+   603→                            </Button>
+   604→                          )}
+   605→                        </div>
+   606→                      </TableCell>
+   607→                    </TableRow>
+   608→                  ))}
+   609→                </TableBody>
+   610→              </Table>
+   611→            </div>
+   612→          )}
+   613→        </CardContent>
+   614→      </Card>
+   615→    </div>
+   616→  )
+   617→}
+   618→
