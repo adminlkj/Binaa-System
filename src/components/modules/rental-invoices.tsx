@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, RefreshCw, Eye, ArrowRight, Download, FileSpreadsheet, Trash2,
+  RotateCcw, Send, XCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -429,6 +430,8 @@ export function RentalInvoicesModule() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [actionId, setActionId] = useState<string | null>(null)
+  const [actionType, setActionType] = useState<'revert' | 'cancel' | null>(null)
 
   // Fetch rental invoices
   const { data: invoices = [], isLoading, isError, refetch } = useQuery<RentalInvoice[]>({
@@ -458,12 +461,54 @@ export function RentalInvoicesModule() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
-      fetch(`/api/sales-invoices/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+      fetch(`/api/sales-invoices/${id}`, { method: 'DELETE' }).then(async r => {
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error || 'فشل في الحذف') }
+        return r.json()
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['approved-timesheets'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
       setDeleteId(null)
     },
   })
+
+  // Status change mutation (revert to draft, cancel, send)
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      fetch(`/api/sales-invoices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      }).then(async r => {
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error || 'فشل في تحديث الحالة') }
+        return r.json()
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+      queryClient.invalidateQueries({ queryKey: ['approved-timesheets'] })
+      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
+      setActionId(null)
+      setActionType(null)
+    },
+  })
+
+  // Handle status actions
+  const handleRevertToDraft = (id: string) => {
+    setActionId(id)
+    setActionType('revert')
+  }
+
+  const handleCancel = (id: string) => {
+    setActionId(id)
+    setActionType('cancel')
+  }
+
+  const confirmAction = () => {
+    if (!actionId || !actionType) return
+    const status = actionType === 'revert' ? 'DRAFT' : 'CANCELLED'
+    statusMutation.mutate({ id: actionId, status })
+  }
 
   // Filters
   const filtered = invoices.filter(inv => {
@@ -525,7 +570,30 @@ export function RentalInvoicesModule() {
             </div>
             <p className="text-sm text-muted-foreground">{invoice.client.name}</p>
           </div>
-          <PrintButton type="rental-invoice" documentId={invoice.id} />
+          <div className="flex items-center gap-2">
+            <PrintButton type="rental-invoice" documentId={invoice.id} />
+            {/* Status Actions */}
+            {invoice.status === 'DRAFT' && (
+              <Button variant="outline" size="sm" className="gap-1 text-blue-600" onClick={() => statusMutation.mutate({ id: invoice.id, status: 'SENT' })} disabled={statusMutation.isPending}>
+                <Send className="size-4" /> {t('إرسال', 'Send')}
+              </Button>
+            )}
+            {invoice.status !== 'DRAFT' && invoice.status !== 'CANCELLED' && (
+              <Button variant="outline" size="sm" className="gap-1 text-amber-600" onClick={() => handleRevertToDraft(invoice.id)} disabled={statusMutation.isPending}>
+                <RotateCcw className="size-4" /> {t('إرجاع كمسودة', 'Revert to Draft')}
+              </Button>
+            )}
+            {invoice.status !== 'CANCELLED' && (
+              <Button variant="outline" size="sm" className="gap-1 text-rose-600" onClick={() => handleCancel(invoice.id)} disabled={statusMutation.isPending}>
+                <XCircle className="size-4" /> {t('إلغاء', 'Cancel')}
+              </Button>
+            )}
+            {(invoice.status === 'DRAFT' || invoice.status === 'CANCELLED') && (
+              <Button variant="outline" size="sm" className="gap-1 text-rose-600" onClick={() => setDeleteId(invoice.id)} disabled={deleteMutation.isPending}>
+                <Trash2 className="size-4" /> {t('حذف', 'Delete')}
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Info Cards */}
@@ -620,6 +688,31 @@ export function RentalInvoicesModule() {
             </CardContent>
           </Card>
         )}
+
+        {/* Status Change Confirmation */}
+        <AlertDialog open={!!actionId && !!actionType} onOpenChange={() => { setActionId(null); setActionType(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{actionType === 'revert' ? t('إرجاع الفاتورة كمسودة', 'Revert Invoice to Draft') : t('إلغاء الفاتورة', 'Cancel Invoice')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {actionType === 'revert'
+                  ? t('هل أنت متأكد من إرجاع هذه الفاتورة كمسودة؟ سيتم إعادة سجل الساعات إلى حالة معتمد ويمكن إنشاء فاتورة جديدة.', 'Are you sure you want to revert this invoice to draft? The timesheet will be reverted to Approved status and a new invoice can be created.')
+                  : t('هل أنت متأكد من إلغاء هذه الفاتورة؟ سيتم إعادة سجل الساعات إلى حالة معتمد.', 'Are you sure you want to cancel this invoice? The timesheet will be reverted to Approved status.')
+                }
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+              <AlertDialogAction
+                className={actionType === 'revert' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-rose-600 hover:bg-rose-700'}
+                onClick={confirmAction}
+                disabled={statusMutation.isPending}
+              >
+                {statusMutation.isPending ? t('جاري التنفيذ...', 'Processing...') : actionType === 'revert' ? t('إرجاع كمسودة', 'Revert to Draft') : t('إلغاء الفاتورة', 'Cancel Invoice')}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     )
   }
@@ -699,6 +792,7 @@ export function RentalInvoicesModule() {
                 <SelectItem value="PARTIALLY_PAID">{t('مدفوعة جزئياً', 'Partially Paid')}</SelectItem>
                 <SelectItem value="PAID">{t('مدفوعة', 'Paid')}</SelectItem>
                 <SelectItem value="OVERDUE">{t('متأخرة', 'Overdue')}</SelectItem>
+                <SelectItem value="CANCELLED">{t('ملغاة', 'Cancelled')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -755,7 +849,8 @@ export function RentalInvoicesModule() {
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })} title={t('عرض', 'View')}>
                             <Eye className="size-4" />
                           </Button>
-                          {inv.status === 'DRAFT' && (
+                          <PrintButton type="rental-invoice" documentId={inv.id} size="icon" variant="ghost" className="size-8" />
+                          {(inv.status === 'DRAFT' || inv.status === 'CANCELLED') && (
                             <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => setDeleteId(inv.id)} title={t('حذف', 'Delete')}>
                               <Trash2 className="size-4" />
                             </Button>

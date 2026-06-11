@@ -584,7 +584,6 @@ export function TimesheetsModule() {
       subtitle={labels.subtitle}
       actions={
         <>
-          <PrintButton type="timesheet-report" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>

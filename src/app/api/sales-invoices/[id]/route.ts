@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 
 const sourceIncludes = {
   progressClaim: {
@@ -62,8 +62,40 @@ export async function PATCH(
       return NextResponse.json({ error: 'حالة غير صالحة' }, { status: 400 })
     }
 
+    // Get current invoice state
+    const existing = await db.salesInvoice.findUnique({
+      where: { id },
+      select: { id: true, status: true, timesheetId: true, progressClaimId: true, invoiceType: true, sourceType: true },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 })
+    }
+
     const updateData: Record<string, unknown> = {}
     if (status) updateData.status = status
+
+    // When reverting to DRAFT or CANCELLING an invoice that was linked to a timesheet,
+    // update the timesheet status back to APPROVED so it can be re-invoiced
+    if ((status === 'DRAFT' || status === 'CANCELLED') && existing.timesheetId) {
+      if (existing.status !== 'DRAFT' && existing.status !== 'CANCELLED') {
+        await db.timesheet.update({
+          where: { id: existing.timesheetId },
+          data: { status: 'APPROVED' },
+        })
+      }
+    }
+
+    // When reverting to DRAFT or CANCELLING an invoice that was linked to a progress claim,
+    // update the claim's invoiced flag back to false
+    if ((status === 'DRAFT' || status === 'CANCELLED') && existing.progressClaimId) {
+      if (existing.status !== 'DRAFT' && existing.status !== 'CANCELLED') {
+        await db.progressClaim.update({
+          where: { id: existing.progressClaimId },
+          data: { invoiced: false },
+        })
+      }
+    }
 
     const invoice = await db.salesInvoice.update({
       where: { id },
@@ -81,5 +113,71 @@ export async function PATCH(
   } catch (error) {
     console.error('Error updating sales invoice:', error)
     return NextResponse.json({ error: 'فشل في تحديث الفاتورة' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    // Get the invoice first to handle linked records
+    const invoice = await db.salesInvoice.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        timesheetId: true,
+        progressClaimId: true,
+        invoiceType: true,
+        sourceType: true,
+      },
+    })
+
+    if (!invoice) {
+      return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 })
+    }
+
+    // Only allow deleting DRAFT invoices
+    // For non-DRAFT invoices, they must be cancelled first
+    if (invoice.status !== 'DRAFT' && invoice.status !== 'CANCELLED') {
+      return NextResponse.json(
+        { error: 'لا يمكن حذف فاتورة إلا في حالة المسودة أو الملغاة. يجب إلغاء الفاتورة أولاً' },
+        { status: 400 }
+      )
+    }
+
+    // If linked to a timesheet, revert its status to APPROVED
+    if (invoice.timesheetId) {
+      await db.timesheet.update({
+        where: { id: invoice.timesheetId },
+        data: { status: 'APPROVED' },
+      })
+    }
+
+    // If linked to a progress claim, revert its invoiced flag
+    if (invoice.progressClaimId) {
+      await db.progressClaim.update({
+        where: { id: invoice.progressClaimId },
+        data: { invoiced: false },
+      })
+    }
+
+    // Delete invoice items first (cascade should handle this, but be explicit)
+    await db.salesInvoiceItem.deleteMany({
+      where: { invoiceId: id },
+    })
+
+    // Delete the invoice
+    await db.salesInvoice.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({ success: true, message: 'تم حذف الفاتورة بنجاح' })
+  } catch (error) {
+    console.error('Error deleting sales invoice:', error)
+    return NextResponse.json({ error: 'فشل في حذف الفاتورة' }, { status: 500 })
   }
 }

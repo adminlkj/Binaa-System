@@ -6,6 +6,147 @@ import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/app-store'
 import type { PrintDocumentType } from '@/lib/print-service'
 
+// ============ Data Transformation ============
+/**
+ * Transforms nested API response data into the flat format expected by the print service.
+ * Each API endpoint returns nested objects (e.g. client: { name, taxNumber, address }),
+ * but print templates expect flat fields (e.g. clientName, clientTaxNumber, clientAddress).
+ */
+function transformDataForPrint(type: PrintDocumentType, data: Record<string, unknown>): Record<string, unknown> {
+  const d = { ...data }
+
+  // Helper: flatten a nested client object
+  const flattenClient = (obj: Record<string, unknown>) => {
+    const client = obj.client as Record<string, unknown> | undefined
+    if (client && typeof client === 'object') {
+      obj.clientName = obj.clientName || client.name || client.nameAr || ''
+      obj.clientNameAr = obj.clientNameAr || client.nameAr || ''
+      obj.clientTaxNumber = obj.clientTaxNumber || client.taxNumber || ''
+      obj.clientAddress = obj.clientAddress || client.address || ''
+      obj.clientPhone = obj.clientPhone || client.phone || ''
+      obj.clientEmail = obj.clientEmail || client.email || ''
+    }
+  }
+
+  // Helper: flatten a nested equipment object
+  const flattenEquipment = (obj: Record<string, unknown>) => {
+    const equipment = obj.equipment as Record<string, unknown> | undefined
+    if (equipment && typeof equipment === 'object') {
+      obj.equipmentName = obj.equipmentName || equipment.name || ''
+      obj.equipmentNameAr = obj.equipmentNameAr || equipment.nameAr || ''
+      obj.equipmentCode = obj.equipmentCode || equipment.code || ''
+    }
+  }
+
+  // Helper: flatten a nested project object
+  const flattenProject = (obj: Record<string, unknown>) => {
+    const project = obj.project as Record<string, unknown> | undefined
+    if (project && typeof project === 'object') {
+      obj.projectName = obj.projectName || project.name || ''
+      obj.projectNameAr = obj.projectNameAr || project.nameAr || ''
+      obj.projectCode = obj.projectCode || project.code || ''
+    }
+  }
+
+  // Helper: flatten a nested contract object
+  const flattenContract = (obj: Record<string, unknown>) => {
+    const contract = obj.contract as Record<string, unknown> | undefined
+    if (contract && typeof contract === 'object') {
+      obj.contractNo = obj.contractNo || contract.contractNo || ''
+      obj.contractHourlyRate = obj.contractHourlyRate || contract.hourlyRate || 0
+      obj.deliveryFees = obj.deliveryFees || contract.deliveryFees || 0
+      obj.deliveryFeesTaxable = obj.deliveryFeesTaxable ?? contract.deliveryFeesTaxable
+      obj.salesOrderNo = obj.salesOrderNo || contract.salesOrderNo || ''
+      obj.purchaseOrderNo = obj.purchaseOrderNo || contract.purchaseOrderNo || ''
+    }
+  }
+
+  switch (type) {
+    case 'service-invoice':
+    case 'rental-invoice': {
+      flattenClient(d)
+      flattenProject(d)
+      flattenContract(d)
+      // Items should already have the right structure, but ensure fields
+      const items = (d.items as Array<Record<string, unknown>>) || []
+      d.items = items.map(item => ({
+        description: item.description || '',
+        quantity: item.quantity || 0,
+        unitPrice: item.unitPrice || 0,
+        totalPrice: item.totalPrice || 0,
+      }))
+      break
+    }
+
+    case 'timesheet-report': {
+      flattenEquipment(d)
+      flattenProject(d)
+      flattenContract(d)
+      // Flatten rental info
+      const rental = d.rental as Record<string, unknown> | undefined
+      if (rental && typeof rental === 'object') {
+        d.hourlyRate = d.hourlyRate || rental.hourlyRate || 0
+        d.deliveryFees = d.deliveryFees || rental.deliveryFees || 0
+        d.deliveryFeesTaxable = d.deliveryFeesTaxable ?? rental.deliveryFeesTaxable
+        d.salesOrderNo = d.salesOrderNo || rental.salesOrderNo || ''
+      }
+      // Flatten invoice info
+      const invoice = d.invoice as Record<string, unknown> | undefined
+      if (invoice && typeof invoice === 'object') {
+        d.invoiceNo = d.invoiceNo || invoice.invoiceNo || ''
+        d.invoiceStatus = d.invoiceStatus || invoice.status || ''
+      }
+      // Compute billing values if not present
+      const operatingHours = Number(d.operatingHours) || 0
+      const hourlyRate = Number(d.hourlyRate || d.contractHourlyRate) || 0
+      const subtotal = operatingHours * hourlyRate
+      if (!d.subtotal) d.subtotal = subtotal
+      // VAT calculation
+      const vatRate = 0.15
+      const vatAmount = subtotal * vatRate
+      if (!d.vatAmount) d.vatAmount = vatAmount
+      // Delivery fees
+      const deliveryFees = Number(d.deliveryFees) || 0
+      const deliveryVat = (d.deliveryFeesTaxable === true || d.deliveryFeesTaxable === 'true') ? deliveryFees * vatRate : 0
+      // Total
+      if (!d.totalAmount) d.totalAmount = subtotal + vatAmount + deliveryFees + deliveryVat
+      break
+    }
+
+    case 'rental-contract': {
+      flattenClient(d)
+      flattenEquipment(d)
+      flattenProject(d)
+      flattenContract(d)
+      break
+    }
+
+    case 'equipment-report': {
+      flattenEquipment(d)
+      break
+    }
+
+    case 'supplier-invoice': {
+      const supplier = d.supplier as Record<string, unknown> | undefined
+      if (supplier && typeof supplier === 'object') {
+        d.supplierName = d.supplierName || supplier.name || ''
+        d.supplierTaxNumber = d.supplierTaxNumber || supplier.taxNumber || ''
+        d.supplierAddress = d.supplierAddress || supplier.address || ''
+      }
+      break
+    }
+
+    default:
+      // For other types, just do generic flattening of client/equipment/project if present
+      flattenClient(d)
+      flattenEquipment(d)
+      flattenProject(d)
+      break
+  }
+
+  return d
+}
+
 interface PrintButtonProps {
   type: PrintDocumentType
   documentId?: string
@@ -50,8 +191,8 @@ export function PrintButton({
           'service-invoice': `/api/sales-invoices/${documentId}`,
           'rental-invoice': `/api/sales-invoices/${documentId}`,
           'extract': `/api/progress-claims?id=${documentId}`,
-          'purchase-order': `/api/purchase-orders?id=${documentId}`,
-          'supplier-invoice': `/api/purchase-invoices?id=${documentId}`,
+          'purchase-order': `/api/purchase-orders/${documentId}`,
+          'supplier-invoice': `/api/supplier-invoices/${documentId}`,
           'tax-declaration': `/api/vat/${documentId}`,
           'delivery-order': `/api/delivery-orders/${documentId}`,
           'purchase-request': `/api/purchase-requests/${documentId}`,
@@ -60,15 +201,15 @@ export function PrintButton({
           'attendance-report': `/api/attendance/${documentId}`,
           'client-payment': `/api/client-payments/${documentId}`,
           'supplier-payment': `/api/supplier-payments/${documentId}`,
-          'rental-payment': `/api/rental-payments/${documentId}`,
+          'rental-payment': `/api/client-payments/${documentId}`,
           'expense-report': `/api/expenses/${documentId}`,
           'advance-voucher': `/api/advances/${documentId}`,
           'petty-cash-voucher': `/api/petty-cash/${documentId}`,
-          'rental-contract': `/api/rental-contracts/${documentId}`,
+          'rental-contract': `/api/equipment/rental-contracts/${documentId}`,
           'equipment-report': `/api/equipment/${documentId}`,
-          'fuel-report': `/api/fuel/${documentId}`,
-          'maintenance-report': `/api/equipment-maintenance/${documentId}`,
-          'timesheet-report': `/api/timesheets/${documentId}`,
+          'fuel-report': `/api/equipment/fuel/${documentId}`,
+          'maintenance-report': `/api/equipment/maintenance/${documentId}`,
+          'timesheet-report': `/api/equipment/timesheets/${documentId}`,
           'work-team-report': `/api/work-teams/${documentId}`,
           'resource-distribution': `/api/resource-distribution/${documentId}`,
           'journal-entry': `/api/journal-entries/${documentId}`,
@@ -90,11 +231,14 @@ export function PrintButton({
         return
       }
 
-      // 3. Generate print HTML using the professional print service
+      // 3. Transform data for print service (flatten nested objects)
+      const transformedData = transformDataForPrint(type, documentData)
+
+      // 4. Generate print HTML using the professional print service
       const { generatePrintHTML } = await import('@/lib/print-service')
       const html = generatePrintHTML({
         type,
-        data: documentData,
+        data: transformedData,
         settings: {
           nameAr: settings.nameAr || '',
           nameEn: settings.nameEn || '',
@@ -121,7 +265,7 @@ export function PrintButton({
         lang,
       })
 
-      // 4. Open in new window for printing
+      // 5. Open in new window for printing
       const printWindow = window.open('', '_blank', 'width=800,height=1000')
       if (printWindow) {
         printWindow.document.write(html)
