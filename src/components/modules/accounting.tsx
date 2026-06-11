@@ -894,7 +894,10 @@ function GeneralLedgerTab({ accounts }: { accounts: Account[] }) {
       if (dateTo) params.set('dateTo', dateTo)
       const res = await fetch(`/api/general-ledger?${params.toString()}`)
       if (!res.ok) throw new Error()
-      return res.json() as Promise<{ date: string; entryNo: string; description: string; debit: number; credit: number; balance: number }[]>
+      const data = await res.json()
+      // API returns { account, entries, currentBalance } - extract the entries array
+      const entries = Array.isArray(data) ? data : (data.entries || [])
+      return entries as { date: string; entryNo: string; description: string; debit: number; credit: number; balance: number }[]
     },
     enabled: !!selectedAccountCode,
   })
@@ -1038,7 +1041,8 @@ function TrialBalanceTab() {
       if (dateTo) params.set('dateTo', dateTo)
       const res = await fetch(`/api/trial-balance?${params.toString()}`)
       if (!res.ok) throw new Error()
-      return res.json()
+      const data = await res.json()
+      return Array.isArray(data) ? data : (data.data || [])
     },
   })
 
@@ -1177,7 +1181,8 @@ export function AccountingModule() {
     queryFn: async () => {
       const res = await fetch('/api/journal-entries')
       if (!res.ok) throw new Error()
-      return res.json()
+      const data = await res.json()
+      return Array.isArray(data) ? data : (data.entries || [])
     },
   })
 

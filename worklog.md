@@ -56,3 +56,24 @@ Stage Summary:
 - Fix pattern: Replace value="" with sentinel values ("ALL" for filters, "NONE" for optional fields)
 - Updated onValueChange handlers to convert sentinel values back to empty string in state
 - All 8 Select.Item empty value errors resolved across 6 files
+
+---
+Task ID: 3
+Agent: Main
+Task: Fix trialBalance.reduce and entries.forEach TypeError in accounting module
+
+Work Log:
+- Identified root cause: API endpoints return wrapped objects but frontend expects raw arrays
+- trial-balance API returns { data: [...], totals: {...}, byType: {...} } but frontend expected TrialBalanceItem[] directly
+- journal-entries API returns { entries: [...], sourceTypes: [...], pagination: {...} } but frontend expected JournalEntry[] directly
+- general-ledger API returns { account: {...}, entries: [...], currentBalance: number } but frontend expected array directly
+- Fixed TrialBalanceTab query: Added `Array.isArray(data) ? data : (data.data || [])` extraction
+- Fixed JournalEntriesTab query: Added `Array.isArray(data) ? data : (data.entries || [])` extraction
+- Fixed GeneralLedgerTab query: Added `Array.isArray(data) ? data : (data.entries || [])` extraction
+- Verified all 4 accounting tabs with Agent Browser: Chart of Accounts, Journal Entries, General Ledger, Trial Balance - all load without errors
+
+Stage Summary:
+- Root cause: API-Frontend contract mismatch - APIs wrap responses in objects, frontend expected plain arrays
+- Fix pattern: Defensive extraction `Array.isArray(data) ? data : (data.entries || [])` handles both formats
+- 3 API response extractions fixed in accounting.tsx
+- All accounting module tabs now render correctly with zero runtime errors
