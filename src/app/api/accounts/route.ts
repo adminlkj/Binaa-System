@@ -1,6 +1,5 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
 
 export async function GET(request: Request) {
   try {
@@ -28,33 +27,44 @@ export async function GET(request: Request) {
       orderBy: { code: 'asc' },
     })
 
-    // Efficiently compute all balances in a single aggregation query
+    // Compute balances efficiently using a single aggregation query
     let balanceMap = new Map<string, number>()
+    const normalBalanceMap: Record<string, 'DEBIT' | 'CREDIT'> = {
+      ASSET: 'DEBIT',
+      LIABILITY: 'CREDIT',
+      EQUITY: 'CREDIT',
+      REVENUE: 'CREDIT',
+      EXPENSE: 'DEBIT',
+    }
+
     if (withBalances) {
-      // Aggregate all journal line amounts by account in one query
-      const lines = await db.journalLine.findMany({
+      // Use a single efficient aggregation query
+      const aggregatedLines = await db.journalLine.groupBy({
+        by: ['accountId'],
+        _sum: { debit: true, credit: true },
         where: { journalEntry: { status: 'POSTED' } },
-        select: {
-          accountId: true,
-          debit: true,
-          credit: true,
-          account: { select: { type: true } },
-        },
       })
 
-      for (const line of lines) {
-        const normalBalance = NORMAL_BALANCE[line.account.type as AccountTypeValue] || 'DEBIT'
-        const amount = normalBalance === 'DEBIT'
-          ? line.debit - line.credit
-          : line.credit - line.debit
-        balanceMap.set(line.accountId, (balanceMap.get(line.accountId) || 0) + amount)
+      // Create a map from accountId to account type for normal balance calculation
+      const accountTypeMap = new Map<string, string>()
+      for (const account of accounts) {
+        accountTypeMap.set(account.id, account.type)
+      }
+
+      for (const line of aggregatedLines) {
+        const accountType = accountTypeMap.get(line.accountId) || 'ASSET'
+        const normalBalance = normalBalanceMap[accountType] || 'DEBIT'
+        const debit = line._sum.debit || 0
+        const credit = line._sum.credit || 0
+        const amount = normalBalance === 'DEBIT' ? debit - credit : credit - debit
+        balanceMap.set(line.accountId, amount)
       }
     }
 
     const accountsWithBalances = accounts.map((account) => ({
       ...account,
       balance: withBalances ? (balanceMap.get(account.id) || 0) : 0,
-      normalBalance: NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT',
+      normalBalance: normalBalanceMap[account.type] || 'DEBIT',
     }))
 
     // Build hierarchical tree structure
@@ -91,8 +101,26 @@ export async function GET(request: Request) {
     const tree = rootAccounts.map(buildTree)
 
     return NextResponse.json({
-      accounts: accountsWithBalances,
-      tree,
+      accounts: accountsWithBalances.map(a => ({
+        id: a.id,
+        code: a.code,
+        name: a.name,
+        nameAr: a.nameAr,
+        type: a.type,
+        parentId: a.parentId,
+        isActive: a.isActive,
+        activityType: a.activityType,
+        isSystem: a.isSystem,
+        allowPosting: a.allowPosting,
+        level: a.level,
+        description: a.description,
+        descriptionAr: a.descriptionAr,
+        parent: a.parent ? { id: a.parent.id, code: a.parent.code, name: a.parent.name, nameAr: a.parent.nameAr } : null,
+        children: a.children.map(c => ({ id: c.id, code: c.code, name: c.name, nameAr: c.nameAr, type: c.type, isActive: c.isActive })),
+        _count: a._count,
+        balance: a.balance,
+        normalBalance: a.normalBalance,
+      })),
       total: accountsWithBalances.length,
     })
   } catch (error) {

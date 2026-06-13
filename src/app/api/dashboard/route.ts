@@ -1,6 +1,28 @@
 import { db } from '@/lib/db'
-import { getAccountBalance } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
+
+// Inline account balance calculation to avoid importing the heavy accounting engine
+async function getAccountBalance(accountCode: string): Promise<number> {
+  const account = await db.account.findUnique({ where: { code: accountCode } })
+  if (!account) return 0
+
+  const result = await db.journalLine.aggregate({
+    _sum: { debit: true, credit: true },
+    where: {
+      accountId: account.id,
+      journalEntry: { status: 'POSTED' },
+    },
+  })
+
+  const totalDebit = result._sum.debit || 0
+  const totalCredit = result._sum.credit || 0
+  const normalBalanceMap: Record<string, 'DEBIT' | 'CREDIT'> = {
+    ASSET: 'DEBIT', LIABILITY: 'CREDIT', EQUITY: 'CREDIT', REVENUE: 'CREDIT', EXPENSE: 'DEBIT',
+  }
+  const normalBalance = normalBalanceMap[account.type] || 'DEBIT'
+
+  return normalBalance === 'DEBIT' ? totalDebit - totalCredit : totalCredit - totalDebit
+}
 
 export async function GET() {
   try {

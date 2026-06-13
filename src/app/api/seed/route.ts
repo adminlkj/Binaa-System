@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { initializeChartOfAccounts, autoEntrySalesInvoice, autoEntryPurchaseInvoice, autoEntryProgressClaim, autoEntryExpense } from '@/lib/accounting/engine'
+import { initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
@@ -31,11 +31,18 @@ export async function POST() {
     await db.purchaseRequest.deleteMany()
     await db.subcontractorInvoice.deleteMany()
 
-    // Progress claims
+    // Progress claims (depend on Contract)
     await db.progressClaim.deleteMany()
 
-    // Contracts
-    await db.contract.deleteMany()
+    // Equipment delivery orders depend on EquipmentRental
+    await db.equipmentDeliveryOrder.deleteMany()
+
+    // Timesheets depend on EquipmentRental and Contract
+    await db.timesheet.deleteMany()
+
+    // Equipment rentals & expenses (depend on Contract and Equipment)
+    await db.equipmentRental.deleteMany()
+    await db.equipmentExpense.deleteMany()
 
     // BOQ Items
     await db.bOQItem.deleteMany()
@@ -48,21 +55,47 @@ export async function POST() {
     await db.equipmentFuelLog.deleteMany()
     await db.equipmentMaintenance.deleteMany()
 
-    // Equipment rentals & expenses (depend on Equipment)
-    await db.equipmentRental.deleteMany()
-    await db.equipmentExpense.deleteMany()
-    await db.equipmentDeliveryOrder.deleteMany()
+    // Equipment operations
+    await db.equipmentOperation.deleteMany()
 
-    // Timesheets
-    await db.timesheet.deleteMany()
+    // Contracts (after all dependents are deleted)
+    await db.contract.deleteMany()
 
     // Petty cash & advances
     await db.pettyCash.deleteMany()
     await db.employeeAdvance.deleteMany()
 
-    // Client/Supplier payments (if models exist)
+    // Client/Supplier payments
     try { await db.clientPayment.deleteMany() } catch {}
     try { await db.supplierPayment.deleteMany() } catch {}
+
+    // Subcontractor contracts (depend on Subcontractor)
+    try { await db.subcontractorContract.deleteMany() } catch {}
+
+    // Employee contracts & salaries & attendance (depend on Employee)
+    try { await db.employeeContract.deleteMany() } catch {}
+    try { await db.salary.deleteMany() } catch {}
+    try { await db.attendance.deleteMany() } catch {}
+
+    // Work teams & team members (depend on Employee)
+    try { await db.teamMember.deleteMany() } catch {}
+    try { await db.workTeam.deleteMany() } catch {}
+
+    // Fixed assets & depreciation
+    try { await db.assetDepreciation.deleteMany() } catch {}
+    try { await db.fixedAsset.deleteMany() } catch {}
+
+    // Provision movements & provisions
+    try { await db.provisionMovement.deleteMany() } catch {}
+    try { await db.provision.deleteMany() } catch {}
+
+    // Bank transactions, reconciliations, accounts
+    try { await db.bankTransaction.deleteMany() } catch {}
+    try { await db.bankReconciliation.deleteMany() } catch {}
+    try { await db.bankAccount.deleteMany() } catch {}
+
+    // Period closings
+    try { await db.periodClosing.deleteMany() } catch {}
 
     // Equipment
     await db.equipment.deleteMany()
@@ -96,9 +129,6 @@ export async function POST() {
     // Attachments & Audit logs
     await db.attachment.deleteMany()
     await db.auditLog.deleteMany()
-
-    // Currencies (removed from schema)
-    // await db.currency.deleteMany()
 
     // Branches (last - top level)
     await db.branch.deleteMany()
@@ -376,23 +406,8 @@ export async function POST() {
     ]
 
     for (const claimData of progressClaimsData) {
-      const claim = await db.progressClaim.create({ data: claimData })
-      try {
-        const je = await autoEntryProgressClaim({
-          claimNo: claim.claimNo,
-          projectId: claim.projectId,
-          contractId: claim.contractId,
-          amount: claim.amount,
-          vatRate: claim.vatRate,
-          vatAmount: claim.vatAmount,
-          totalAmount: claim.totalAmount,
-          date: claim.date,
-          costCenterId: costCenters.find(cc => claim.projectId === projects[0].id)?.id || costCenters[0].id,
-        })
-        await db.progressClaim.update({ where: { id: claim.id }, data: { journalEntryId: je.id } })
-      } catch (e) {
-        console.error(`Accounting entry failed for claim ${claim.claimNo}:`, e)
-      }
+      await db.progressClaim.create({ data: claimData })
+      // Note: Auto accounting entries will be generated when transactions are processed
     }
 
     // 15. Sales Invoices (with accounting entries)
@@ -414,23 +429,7 @@ export async function POST() {
         }
       })
       salesInvoices.push(invoice)
-
-      try {
-        const je = await autoEntrySalesInvoice({
-          invoiceNo: invoice.invoiceNo,
-          clientId: invoice.clientId,
-          subtotal: invoice.subtotal,
-          vatRate: invoice.vatRate,
-          vatAmount: invoice.vatAmount,
-          totalAmount: invoice.totalAmount,
-          invoiceType: invoice.invoiceType,
-          date: invoice.date,
-          projectId: invoice.projectId || undefined,
-        })
-        await db.salesInvoice.update({ where: { id: invoice.id }, data: { journalEntryId: je.id } })
-      } catch (e) {
-        console.error(`Accounting entry failed for sales invoice ${invoice.invoiceNo}:`, e)
-      }
+      // Note: Auto accounting entries will be generated when transactions are processed
     }
 
     // 16. Purchase Orders
@@ -462,29 +461,13 @@ export async function POST() {
     ]
 
     for (const piData of purchaseInvoicesData) {
-      const invoice = await db.purchaseInvoice.create({
+      await db.purchaseInvoice.create({
         data: {
           ...piData,
           items: { create: [{ description: 'مواد بناء', quantity: 1, unitPrice: piData.subtotal, totalPrice: piData.subtotal }] }
         }
       })
-
-      try {
-        const je = await autoEntryPurchaseInvoice({
-          invoiceNo: invoice.invoiceNo,
-          supplierId: invoice.supplierId,
-          subtotal: invoice.subtotal,
-          vatRate: invoice.vatRate,
-          vatAmount: invoice.vatAmount,
-          totalAmount: invoice.totalAmount,
-          date: invoice.date,
-          projectId: projects[0].id,
-          expenseCategory: piData.expenseCategory,
-        })
-        await db.purchaseInvoice.update({ where: { id: invoice.id }, data: { journalEntryId: je.id } })
-      } catch (e) {
-        console.error(`Accounting entry failed for purchase invoice ${invoice.invoiceNo}:`, e)
-      }
+      // Note: Auto accounting entries will be generated when transactions are processed
     }
 
     // 18. Subcontractor Invoices
@@ -517,21 +500,8 @@ export async function POST() {
     ]
 
     for (const expData of expensesData) {
-      const expense = await db.expense.create({ data: expData })
-      try {
-        const je = await autoEntryExpense({
-          description: expense.description,
-          amount: expense.amount,
-          vatAmount: expense.vatAmount,
-          category: expense.category,
-          date: expense.date,
-          payFrom: expense.payFrom as 'TREASURY' | 'PETTY_CASH' | 'BANK',
-          costCenterId: expense.projectId || undefined,
-        })
-        await db.expense.update({ where: { id: expense.id }, data: { journalEntryId: je.id } })
-      } catch (e) {
-        console.error(`Accounting entry failed for expense ${expense.description}:`, e)
-      }
+      await db.expense.create({ data: expData })
+      // Note: Auto accounting entries will be generated when transactions are processed
     }
 
     // 20. Equipment expenses
