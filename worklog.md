@@ -415,3 +415,58 @@ Stage Summary:
 - Print service properly shows currency symbol next to ALL amounts
 - All 28 sections tested in browser: 0 runtime errors
 - Lint: clean (0 errors)
+
+---
+Task ID: 2
+Agent: Accounting API Routes Developer
+Task: Create 8 missing accounting API routes for Binaa ERP
+
+Work Log:
+
+**Prisma Schema Additions:**
+1. Added FixedAsset model (assetCode, name, nameAr, category, acquisitionDate/Cost, residualValue, usefulLifeMonths, depreciationMethod, accumulatedDepreciation, netBookValue, status, accountId, depExpenseAccountId, accumDepAccountId, journalEntryId)
+2. Added AssetDepreciation model (fixedAssetId, year, month, depreciationAmount, journalEntryId)
+3. Added Provision model (code, name, nameAr, type, totalAmount, currentBalance, startDate/endDate, status, journalEntryId)
+4. Added ProvisionMovement model (provisionId, amount, movementType, date, description, journalEntryId)
+5. Added BankAccount model (bankName, accountName, accountNumber, iban, currency, accountId, isActive)
+6. Added BankTransaction model (bankAccountId, date, description, reference, amount, transactionType, reconciled, journalEntryId)
+7. Added BankReconciliation model (bankAccountId, year, month, bookBalance, bankBalance, difference, status, completedAt, notes)
+8. Added PeriodClosing model (year, month, type, status, closingEntryId, closedAt, closedBy) with @@unique([year, month, type])
+9. Ran `bun run db:push` successfully
+
+**API Routes Created:**
+
+1. `/api/financial-reports/route.ts` - GET handler with `type` query param (income-statement | balance-sheet | cash-flow)
+   - Income Statement: Revenue by account code prefix (61=Construction, 62=Rental, 63=Other), Project Costs (71), Rental Costs (72), Operating Expenses (8) with sub-categorization (Salaries 811-813, GOSI 821, Depreciation 831-834, Other Admin 85-86)
+   - Balance Sheet: Current Assets (1xxx), Non-Current Assets (2xxx), Current Liabilities (3xxx excl 37xx), Non-Current Liabilities (37xx + 4xxx), Equity (5xxx), Current Year Profit, verification check
+   - Cash Flow (indirect method): Net Profit, depreciation/provision adjustments, working capital changes (receivables, payables, inventory), investing (asset purchases/sales), financing (capital, loans), opening/closing cash
+
+2. `/api/account-statement/route.ts` - GET with entityType (customer|vendor|project|equipment), entityId, dateFrom, dateTo
+   - Customer: SalesInvoice + ClientPayment running balance
+   - Vendor: PurchaseInvoice + SupplierPayment running balance
+   - Project: JournalLines by CostCenter + SalesInvoices + ProgressClaims, categorized by revenue/cost
+   - Equipment: EquipmentRental + EquipmentExpense + EquipmentFuelLog + EquipmentMaintenance profitability
+
+3. `/api/period-closing/route.ts` - GET (list all) + POST (close/reopen)
+   - Close: creates PeriodClosing record, yearly closing creates journal entry debiting revenue accounts, crediting expense accounts, difference to Retained Earnings (5200)
+   - Reopen: updates status to REOPENED, creates reversal journal entry for closing entry
+
+4. `/api/fixed-assets/route.ts` - GET (list with depreciations) + POST (register new asset)
+   - POST: creates FixedAsset, determines GL accounts by category (EQUIPMENT→2110/8310/2210, VEHICLE→2130/8320/2230, OFFICE→2140/8330/2240, SOFTWARE→2410/8340/2240), creates acquisition journal entry (Dr Asset / Cr Cash 1110)
+
+5. `/api/fixed-assets/depreciate/route.ts` - POST with year/month
+   - For each active asset: calculates monthly depreciation = (cost - residual) / usefulLifeMonths, checks for duplicates, creates AssetDepreciation record, creates journal entry (Dr Dep Expense / Cr Accum Dep), updates accumulatedDepreciation and netBookValue, sets FULLY_DEPRECIATED when complete
+
+6. `/api/provisions/route.ts` - GET (list with movements) + POST (create provision)
+   - POST: creates Provision, maps type to accounts (END_OF_SERVICE→8110/3710, WARRANTY→7400/3720, MAINTENANCE→7220/3730), creates journal entry (Dr Expense / Cr Provision), creates initial ProvisionMovement
+
+7. `/api/bank-accounts/route.ts` - GET (list with calculated balance from journal lines) + POST (create)
+   - GET: calculates balance from journal lines for each bank account's linked GL account
+   - POST: creates BankAccount record
+
+8. `/api/bank-reconciliation/route.ts` - GET (reconciliation data) + POST (create/complete)
+   - GET: returns book balance (from journal lines), bank statement balance (from BankTransactions), difference, unreconciled transactions
+   - POST: draft or complete reconciliation, marks transactions as reconciled on completion
+
+**Lint Result:** Clean (0 errors, 1 pre-existing warning in business-flow/validate)
+**Dev Server:** Running normally, no errors

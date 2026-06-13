@@ -1294,3 +1294,141 @@ model ResourceAllocation {
 
   project Project @relation(fields: [projectId], references: [id])
 }
+
+// ============ FIXED ASSETS ============
+
+model FixedAsset {
+  id                    String   @id @default(cuid())
+  assetCode             String   @unique
+  name                  String
+  nameAr                String?
+  category              String   // EQUIPMENT, VEHICLE, OFFICE_EQUIPMENT, SOFTWARE, OTHER
+  acquisitionDate       DateTime
+  acquisitionCost       Float
+  residualValue         Float    @default(0)
+  usefulLifeMonths      Int
+  depreciationMethod    String   @default("STRAIGHT_LINE")
+  accumulatedDepreciation Float  @default(0)
+  netBookValue          Float
+  status                String   @default("ACTIVE") // ACTIVE, SOLD, DISPOSED, FULLY_DEPRECIATED
+  accountId             String?  // Fixed Asset Account
+  depExpenseAccountId   String?  // Depreciation Expense Account
+  accumDepAccountId     String?  // Accumulated Depreciation Account
+  journalEntryId        String?  // Acquisition journal entry
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  depreciations AssetDepreciation[]
+}
+
+model AssetDepreciation {
+  id              String   @id @default(cuid())
+  fixedAssetId    String
+  year            Int
+  month           Int
+  depreciationAmount Float
+  journalEntryId  String?
+  createdAt       DateTime @default(now())
+
+  fixedAsset FixedAsset @relation(fields: [fixedAssetId], references: [id])
+}
+
+// ============ PROVISIONS ============
+
+model Provision {
+  id          String   @id @default(cuid())
+  code        String   @unique
+  name        String
+  nameAr      String?
+  type        String   // END_OF_SERVICE, WARRANTY, MAINTENANCE, OTHER
+  totalAmount Float
+  currentBalance Float @default(0)
+  startDate   DateTime
+  endDate     DateTime?
+  status      String   @default("ACTIVE") // ACTIVE, RELEASED, CLOSED
+  journalEntryId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  movements ProvisionMovement[]
+}
+
+model ProvisionMovement {
+  id           String   @id @default(cuid())
+  provisionId  String
+  amount       Float
+  movementType String   // INCREASE, DECREASE, RELEASE
+  date         DateTime
+  description  String?
+  journalEntryId String?
+  createdAt    DateTime @default(now())
+
+  provision Provision @relation(fields: [provisionId], references: [id])
+}
+
+// ============ BANK ACCOUNTS & RECONCILIATION ============
+
+model BankAccount {
+  id            String   @id @default(cuid())
+  bankName      String
+  accountName   String
+  accountNumber String
+  iban          String?
+  currency      String   @default("SAR")
+  accountId     String?  // Link to Chart of Accounts
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactions    BankTransaction[]
+  reconciliations BankReconciliation[]
+}
+
+model BankTransaction {
+  id             String   @id @default(cuid())
+  bankAccountId  String
+  date           DateTime
+  description    String?
+  reference      String?
+  amount         Float
+  transactionType String  // DEPOSIT, WITHDRAWAL
+  reconciled     Boolean  @default(false)
+  journalEntryId String?
+  createdAt      DateTime @default(now())
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+}
+
+model BankReconciliation {
+  id              String   @id @default(cuid())
+  bankAccountId   String
+  year            Int
+  month           Int
+  bookBalance     Float    @default(0)
+  bankBalance     Float    @default(0)
+  difference      Float    @default(0)
+  status          String   @default("DRAFT") // DRAFT, COMPLETED
+  completedAt     DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+}
+
+// ============ PERIOD CLOSING ============
+
+model PeriodClosing {
+  id              String   @id @default(cuid())
+  year            Int
+  month           Int
+  type            String   @default("MONTHLY") // MONTHLY, YEARLY
+  status          String   @default("CLOSED") // CLOSED, OPEN, REOPENED
+  closingEntryId  String?  // Journal entry for closing
+  closedAt        DateTime @default(now())
+  closedBy        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([year, month, type])
+}
