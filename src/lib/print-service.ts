@@ -58,6 +58,48 @@ export type PrintDocumentType =
   | 'account-statement'
   | 'generic-table'
 
+// ============ Document Category System ============
+type DocumentCategory = 'invoice' | 'voucher' | 'report' | 'contract' | 'order'
+
+function getDocumentCategory(type: PrintDocumentType): DocumentCategory {
+  switch (type) {
+    case 'service-invoice':
+    case 'rental-invoice':
+    case 'supplier-invoice':
+    case 'extract':
+      return 'invoice'
+    case 'client-payment':
+    case 'supplier-payment':
+    case 'rental-payment':
+    case 'expense-report':
+    case 'advance-voucher':
+    case 'petty-cash-voucher':
+    case 'salary-slip':
+      return 'voucher'
+    case 'tax-declaration':
+    case 'attendance-report':
+    case 'equipment-report':
+    case 'fuel-report':
+    case 'maintenance-report':
+    case 'work-team-report':
+    case 'resource-distribution':
+    case 'journal-entry':
+    case 'trial-balance':
+    case 'account-statement':
+    case 'generic-table':
+      return 'report'
+    case 'rental-contract':
+      return 'contract'
+    case 'purchase-order':
+    case 'delivery-order':
+    case 'purchase-request':
+    case 'goods-receipt':
+      return 'order'
+    default:
+      return 'report'
+  }
+}
+
 export interface PrintOptions {
   type: PrintDocumentType
   data: Record<string, unknown>
@@ -156,11 +198,55 @@ function getAmountInWords(amount: number, lang: 'ar' | 'en'): string {
 }
 
 // ============ Shared CSS ============
-function getSharedCSS(lang: 'ar' | 'en'): string {
+function getSharedCSS(lang: 'ar' | 'en', category: DocumentCategory = 'invoice'): string {
   const dir = lang === 'ar' ? 'rtl' : 'ltr'
   const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
   const textAlign = lang === 'ar' ? 'right' : 'left'
   const amountAlign = lang === 'ar' ? 'left' : 'right'
+
+  // Category-specific color themes
+  const headerBg = category === 'invoice' ? 'linear-gradient(135deg, #065f46 0%, #047857 50%, #059669 100%)'
+    : category === 'voucher' ? 'linear-gradient(135deg, #92400e 0%, #b45309 50%, #d97706 100%)'
+    : category === 'report' ? 'linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%)'
+    : category === 'contract' ? 'linear-gradient(135deg, #134e4a 0%, #115e59 50%, #0f766e 100%)'
+    : category === 'order' ? 'linear-gradient(135deg, #1e3a5f 0%, #1e40af 50%, #2563eb 100%)'
+    : 'linear-gradient(135deg, #065f46 0%, #047857 50%, #059669 100%)'
+
+  const theadBg = category === 'invoice' ? 'linear-gradient(135deg, #065f46, #047857)'
+    : category === 'voucher' ? 'linear-gradient(135deg, #92400e, #b45309)'
+    : category === 'report' ? 'linear-gradient(135deg, #1e293b, #334155)'
+    : category === 'contract' ? 'linear-gradient(135deg, #134e4a, #115e59)'
+    : category === 'order' ? 'linear-gradient(135deg, #1e3a5f, #1e40af)'
+    : 'linear-gradient(135deg, #065f46, #047857)'
+
+  const grandBg = category === 'invoice' ? 'linear-gradient(135deg, #065f46, #047857)'
+    : category === 'voucher' ? 'linear-gradient(135deg, #92400e, #b45309)'
+    : category === 'report' ? 'linear-gradient(135deg, #1e293b, #334155)'
+    : category === 'contract' ? 'linear-gradient(135deg, #134e4a, #115e59)'
+    : category === 'order' ? 'linear-gradient(135deg, #1e3a5f, #1e40af)'
+    : 'linear-gradient(135deg, #065f46, #047857)'
+
+  const accentColor = category === 'invoice' ? '#059669'
+    : category === 'voucher' ? '#d97706'
+    : category === 'report' ? '#475569'
+    : category === 'contract' ? '#0f766e'
+    : category === 'order' ? '#2563eb'
+    : '#059669'
+
+  // Category-specific extra CSS
+  const categoryExtraCSS = category === 'report' ? `
+    .report-meta { display: flex; justify-content: space-between; margin: 10px 0; padding: 8px 12px; background: #f8fafc; border-radius: 4px; font-size: 9px; color: #64748b; }
+    .report-note { margin-top: 15px; padding: 10px 14px; background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 9px; color: #64748b; font-style: italic; }
+  ` : category === 'contract' ? `
+    .contract-clauses { margin: 15px 0; padding: 12px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; }
+    .contract-clause-title { font-size: 10px; font-weight: 700; color: #065f46; margin-bottom: 6px; }
+    .contract-clause-item { font-size: 9px; color: #374151; margin: 3px 0; padding-right: 12px; }
+  ` : ''
+
+  // Contract header gold accent
+  const headerAfterBg = category === 'contract'
+    ? 'background: linear-gradient(90deg, #d97706, #fbbf24, #d97706);'
+    : 'background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24);'
 
   return `
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -194,7 +280,7 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
     }
     /* ──── HEADER ──── */
     .doc-header {
-      background: linear-gradient(135deg, #065f46 0%, #047857 50%, #059669 100%);
+      background: ${headerBg};
       color: white;
       padding: 18px 25px;
       display: flex;
@@ -209,7 +295,7 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
       left: 0;
       right: 0;
       height: 4px;
-      background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24);
+      ${headerAfterBg}
     }
     .header-logo {
       width: 60px;
@@ -285,12 +371,12 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
       padding: 6px 10px;
       background: #f9fafb;
       border-radius: 4px;
-      border-right: 3px solid #059669;
+      border-right: 3px solid ${accentColor};
       border-left: none;
     }
     [dir="ltr"] .info-item {
       border-right: none;
-      border-left: 3px solid #059669;
+      border-left: 3px solid ${accentColor};
     }
     .info-label {
       font-size: 8px;
@@ -343,7 +429,7 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
     .party-card-title {
       font-size: 9px;
       font-weight: 700;
-      color: #059669;
+      color: ${accentColor};
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin-bottom: 8px;
@@ -368,7 +454,7 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
       border: 1px solid #e5e7eb;
     }
     .doc-table thead {
-      background: linear-gradient(135deg, #065f46, #047857);
+      background: ${theadBg};
     }
     .doc-table thead th {
       padding: 10px 12px;
@@ -443,7 +529,7 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
     .total-row .label { color: #6b7280; }
     .total-row .value { font-weight: 600; direction: ltr; }
     .total-row.grand {
-      background: linear-gradient(135deg, #065f46, #047857);
+      background: ${grandBg};
       color: white;
       font-size: 13px;
       font-weight: 700;
@@ -542,7 +628,7 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
       left: 0;
       right: 0;
       background: #f9fafb;
-      border-top: 2px solid #059669;
+      border-top: 2px solid ${accentColor};
       padding: 8px 25px;
       display: flex;
       justify-content: space-between;
@@ -631,6 +717,8 @@ function getSharedCSS(lang: 'ar' | 'en'): string {
       pointer-events: none;
       white-space: nowrap;
     }
+    /* ──── CATEGORY EXTRA ──── */
+    ${categoryExtraCSS}
   `
 }
 
@@ -2377,6 +2465,1211 @@ function generateTimesheetBody(data: Record<string, unknown>, settings: PrintOpt
   `
 }
 
+// ============ Delivery Order Body ============
+function generateDeliveryOrderBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return generateGenericTableBody(data, settings, lang)
+  }
+
+  return `
+    <div class="parties-section">
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '📦 الشاحن / Shipper' : '📦 Shipper'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+        ${settings.address ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
+      </div>
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '🏢 المستلم / Consignee' : '🏢 Consignee'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${data.clientName || ''}</span></div>
+        ${data.clientAddress ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${data.clientAddress}</span></div>` : ''}
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رقم أمر التسليم' : 'DO No'}</div>
+        <div class="info-value">${data.orderNo || data.id || ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رقم أمر الشراء' : 'PO Reference'}</div>
+        <div class="info-value">${data.purchaseOrderNo || data.poReference || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+        <div class="info-value">${data.projectName || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Delivery Status'}</div>
+        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'الصنف' : 'Item'}</th>
+          <th>${lang === 'ar' ? 'الوصف' : 'Description'}</th>
+          <th>${lang === 'ar' ? 'الكمية' : 'Qty'}</th>
+          <th>${lang === 'ar' ? 'الوحدة' : 'Unit'}</th>
+          <th>${lang === 'ar' ? 'ملاحظات' : 'Notes'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.item || item.description || ''}</td>
+            <td>${item.description || item.details || ''}</td>
+            <td style="text-align:center;">${item.quantity || 0}</td>
+            <td>${(item.unit as string) || '-'}</td>
+            <td>${(item.notes as string) || (item.condition as string) || '-'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    ${data.deliveryNotes || data.notes ? `
+    <div style="margin-top:12px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;">
+      <div style="font-weight:700;color:#374151;margin-bottom:4px;">${lang === 'ar' ? '📝 ملاحظات التسليم' : '📝 Delivery Notes'}</div>
+      ${(data.deliveryNotes as string) || (data.notes as string) || ''}
+    </div>` : ''}
+
+    <div class="signatures-section">
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'استلم بواسطة / Received by' : 'Received by'}</div>
+      </div>
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'اعتمد بواسطة / Approved by' : 'Approved by'}</div>
+      </div>
+    </div>
+  `
+}
+
+// ============ Purchase Request Body ============
+function generatePurchaseRequestBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return generateGenericTableBody(data, settings, lang)
+  }
+
+  const priorityMap: Record<string, { ar: string; en: string; cls: string }> = {
+    'LOW': { ar: 'منخفض', en: 'Low', cls: 'status-draft' },
+    'MEDIUM': { ar: 'متوسط', en: 'Medium', cls: 'status-partial' },
+    'HIGH': { ar: 'مرتفع', en: 'High', cls: 'status-overdue' },
+    'URGENT': { ar: 'عاجل', en: 'Urgent', cls: 'status-overdue' },
+  }
+  const priority = data.priority as string
+  const priorityInfo = priorityMap[priority]
+  const priorityBadge = priorityInfo
+    ? `<span class="status-badge ${priorityInfo.cls}">${lang === 'ar' ? priorityInfo.ar : priorityInfo.en}</span>`
+    : (priority || '-')
+
+  return `
+    <div class="parties-section">
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '🏢 القسم الطالب / Requesting Dept' : '🏢 Requesting Dept'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+        ${data.department ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'القسم' : 'Department'}</span><span class="value">${data.department}</span></div>` : ''}
+      </div>
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '🏭 المورد / Supplier' : '🏭 Supplier'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.supplierName || '-'}</span></div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رقم طلب الشراء' : 'PR No'}</div>
+        <div class="info-value">${data.requestNo || data.orderNo || data.id || ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الأولوية' : 'Priority'}</div>
+        <div class="info-value">${priorityBadge}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'تاريخ الاستلام المطلوب' : 'Required Date'}</div>
+        <div class="info-value">${data.requiredDate ? new Date(data.requiredDate as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+        <div class="info-value">${data.projectName || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'الصنف' : 'Item'}</th>
+          <th>${lang === 'ar' ? 'الوصف' : 'Description'}</th>
+          <th>${lang === 'ar' ? 'الكمية' : 'Qty'}</th>
+          <th>${lang === 'ar' ? 'الوحدة' : 'Unit'}</th>
+          <th class="amount-header">${lang === 'ar' ? 'السعر التقديري' : 'Est. Price'} (${currency})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.item || item.description || ''}</td>
+            <td>${item.description || item.details || ''}</td>
+            <td style="text-align:center;">${item.quantity || 0}</td>
+            <td>${(item.unit as string) || '-'}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.estimatedPrice || item.unitPrice) || 0, settings, lang)}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    ${data.justification || data.notes ? `
+    <div style="margin-top:12px;padding:10px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;font-size:9px;">
+      <div style="font-weight:700;color:#374151;margin-bottom:4px;">${lang === 'ar' ? '📝 المبرر / Justification' : '📝 Justification'}</div>
+      ${(data.justification as string) || (data.notes as string) || ''}
+    </div>` : ''}
+
+    <div class="signatures-section">
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'طُلب بواسطة / Requested by' : 'Requested by'}</div>
+      </div>
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'اعتمد بواسطة / Approved by' : 'Approved by'}</div>
+      </div>
+    </div>
+  `
+}
+
+// ============ Goods Receipt Body ============
+function generateGoodsReceiptBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return generateGenericTableBody(data, settings, lang)
+  }
+
+  return `
+    <div class="parties-section">
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '🏭 المورد / Supplier' : '🏭 Supplier'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.supplierName || ''}</span></div>
+      </div>
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '🏪 المستودع المستلم / Receiving Warehouse' : '🏪 Receiving Warehouse'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'المستودع' : 'Warehouse'}</span><span class="value">${data.warehouse || (lang === 'ar' ? settings.nameAr : settings.nameEn)}</span></div>
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رقم محضر الاستلام' : 'GR No'}</div>
+        <div class="info-value">${data.receiptNo || data.orderNo || data.id || ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رقم أمر الشراء' : 'PO Reference'}</div>
+        <div class="info-value">${data.purchaseOrderNo || data.poReference || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'الصنف' : 'Item'}</th>
+          <th>${lang === 'ar' ? 'الوصف' : 'Description'}</th>
+          <th>${lang === 'ar' ? 'الكمية المطلوبة' : 'Qty Ordered'}</th>
+          <th>${lang === 'ar' ? 'الكمية المستلمة' : 'Qty Received'}</th>
+          <th>${lang === 'ar' ? 'الحالة' : 'Condition'}</th>
+          <th>${lang === 'ar' ? 'ملاحظات' : 'Notes'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.item || item.description || ''}</td>
+            <td>${item.description || item.details || ''}</td>
+            <td style="text-align:center;">${item.quantityOrdered || item.quantity || 0}</td>
+            <td style="text-align:center;">${item.quantityReceived || item.quantity || 0}</td>
+            <td>${(item.condition as string) || '-'}</td>
+            <td>${(item.notes as string) || '-'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    ${data.discrepancyNotes || data.notes ? `
+    <div style="margin-top:12px;padding:10px 14px;background:#fefce8;border:1px solid #fbbf24;border-radius:6px;font-size:9px;">
+      <div style="font-weight:700;color:#92400e;margin-bottom:4px;">${lang === 'ar' ? '⚠️ ملاحظات الفروقات / Discrepancy Notes' : '⚠️ Discrepancy Notes'}</div>
+      ${(data.discrepancyNotes as string) || (data.notes as string) || ''}
+    </div>` : ''}
+
+    <div class="signatures-section">
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'استلم بواسطة / Received by' : 'Received by'}</div>
+      </div>
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'فحص بواسطة / Inspected by' : 'Inspected by'}</div>
+      </div>
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'اعتمد بواسطة / Approved by' : 'Approved by'}</div>
+      </div>
+    </div>
+  `
+}
+
+// ============ Attendance Report Body ============
+function generateAttendanceReportBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const totalPresent = items.reduce((s, i) => s + (Number(i.presentDays) || 0), 0)
+  const totalAbsent = items.reduce((s, i) => s + (Number(i.absentDays) || 0), 0)
+  const totalLate = items.reduce((s, i) => s + (Number(i.lateDays) || 0), 0)
+  const totalOvertime = items.reduce((s, i) => s + (Number(i.overtimeHours) || 0), 0)
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الفترة' : 'Period'}</div>
+        <div class="info-value">${(data.period as string) || (data.month && data.year ? `${data.month}/${data.year}` : '-')}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'القسم' : 'Department'}</div>
+        <div class="info-value">${(data.department as string) || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'إجمالي الموظفين' : 'Total Employees'}</div>
+        <div class="info-value">${data.totalEmployees || items.length || '-'}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'الموظف' : 'Employee'}</th>
+          <th>${lang === 'ar' ? 'القسم' : 'Department'}</th>
+          <th>${lang === 'ar' ? 'أيام الحضور' : 'Present'}</th>
+          <th>${lang === 'ar' ? 'أيام الغياب' : 'Absent'}</th>
+          <th>${lang === 'ar' ? 'أيام التأخير' : 'Late'}</th>
+          <th>${lang === 'ar' ? 'ساعات إضافية' : 'Overtime'}</th>
+          <th>${lang === 'ar' ? 'نسبة الحضور' : 'Rate %'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.employee || item.name || ''}</td>
+            <td>${item.department || '-'}</td>
+            <td style="text-align:center;">${item.presentDays || 0}</td>
+            <td style="text-align:center;">${item.absentDays || 0}</td>
+            <td style="text-align:center;">${item.lateDays || 0}</td>
+            <td style="text-align:center;">${item.overtimeHours || 0}</td>
+            <td style="text-align:center;">${item.attendanceRate || '-'}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="3">${lang === 'ar' ? 'الإجمالي' : 'Total'}</td>
+          <td style="text-align:center;">${totalPresent}</td>
+          <td style="text-align:center;">${totalAbsent}</td>
+          <td style="text-align:center;">${totalLate}</td>
+          <td style="text-align:center;">${totalOvertime}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Rental Contract Body ============
+function generateRentalContractBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+
+  return `
+    <div class="parties-section">
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '🏗️ المؤجر / Lessor' : '🏗️ Lessor'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+        ${settings.address ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
+        ${settings.taxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'Tax No'}</span><span class="value">${settings.taxNumber}</span></div>` : ''}
+        ${settings.commercialReg ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'سجل تجاري' : 'CR No'}</span><span class="value">${settings.commercialReg}</span></div>` : ''}
+      </div>
+      <div class="party-card">
+        <div class="party-card-title">${lang === 'ar' ? '👤 المستأجر / Lessee' : '👤 Lessee'}</div>
+        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${data.clientName || ''}</span></div>
+        ${data.clientAddress ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${data.clientAddress}</span></div>` : ''}
+        ${data.clientTaxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'Tax No'}</span><span class="value">${data.clientTaxNumber}</span></div>` : ''}
+      </div>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رقم العقد' : 'Contract No'}</div>
+        <div class="info-value">${data.contractNo || data.id || ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'تاريخ العقد' : 'Contract Date'}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'تاريخ البدء' : 'Start Date'}</div>
+        <div class="info-value">${data.startDate ? new Date(data.startDate as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'تاريخ الانتهاء' : 'End Date'}</div>
+        <div class="info-value">${data.endDate ? new Date(data.endDate as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المدة' : 'Duration'}</div>
+        <div class="info-value">${(data.duration as string) || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+      </div>
+    </div>
+
+    ${items.length > 0 || data.equipmentName ? `
+    <div class="rental-equipment-section">
+      <div class="section-title">${lang === 'ar' ? '⚙️ بيانات المعدة / Equipment Details' : '⚙️ Equipment Details'}</div>
+      <div class="info-grid">
+        ${data.equipmentName ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</div>
+          <div class="info-value">${data.equipmentName}</div>
+        </div>` : ''}
+        ${data.equipmentCode ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'الكود' : 'Code'}</div>
+          <div class="info-value">${data.equipmentCode}</div>
+        </div>` : ''}
+        ${data.hourlyRate || data.rate ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'سعر الإيجار' : 'Rental Rate'}</div>
+          <div class="info-value">${fmtMoney(Number(data.hourlyRate || data.rate) || 0, settings, lang)}</div>
+        </div>` : ''}
+        ${data.paymentTerms ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'شروط السداد' : 'Payment Terms'}</div>
+          <div class="info-value">${data.paymentTerms}</div>
+        </div>` : ''}
+        ${data.deposit ? `<div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'التأمين' : 'Deposit'}</div>
+          <div class="info-value">${fmtMoney(Number(data.deposit) || 0, settings, lang)}</div>
+        </div>` : ''}
+      </div>
+    </div>` : ''}
+
+    ${data.clauses || data.contractClauses ? `
+    <div class="contract-clauses">
+      <div class="contract-clause-title">${lang === 'ar' ? '📋 بنود العقد / Contract Clauses' : '📋 Contract Clauses'}</div>
+      ${(() => {
+        const clauses = data.clauses || data.contractClauses
+        if (Array.isArray(clauses)) {
+          return clauses.map((c: unknown, i: number) => `<div class="contract-clause-item">${i + 1}. ${c}</div>`).join('')
+        }
+        return `<div class="contract-clause-item">${clauses}</div>`
+      })()}
+    </div>` : ''}
+
+    ${data.terms || settings.invoiceTerms ? `
+    <div class="terms-section">
+      <div class="terms-title">${lang === 'ar' ? '📝 الشروط والأحكام' : '📝 Terms & Conditions'}</div>
+      ${(data.terms as string) || settings.invoiceTerms || ''}
+    </div>` : ''}
+
+    <div class="signatures-section">
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'توقيع المؤجر / Lessor' : 'Lessor Signature'}</div>
+      </div>
+      <div class="stamp-area">
+        ${settings.stamp ? `<img src="${settings.stamp}" alt="${lang === 'ar' ? 'ختم' : 'Stamp'}" />` : ''}
+      </div>
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'توقيع المستأجر / Lessee' : 'Lessee Signature'}</div>
+      </div>
+    </div>
+  `
+}
+
+// ============ Equipment Report Body ============
+function generateEquipmentReportBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  // Equipment detail view (single equipment)
+  if (data.equipmentName && !items.length) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'اسم المعدة' : 'Equipment Name'}</div>
+          <div class="info-value">${data.equipmentName}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'الكود' : 'Code'}</div>
+          <div class="info-value">${data.equipmentCode || '-'}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'الفئة' : 'Category'}</div>
+          <div class="info-value">${data.category || '-'}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+          <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">${lang === 'ar' ? 'الموقع' : 'Location'}</div>
+          <div class="info-value">${data.location || '-'}</div>
+        </div>
+      </div>
+
+      ${data.parameters ? `
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>${lang === 'ar' ? 'المعيار' : 'Parameter'}</th>
+            <th>${lang === 'ar' ? 'القيمة' : 'Value'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${(data.parameters as Array<Record<string, string>>).map((p, i) => `
+            <tr>
+              <td class="row-num">${i + 1}</td>
+              <td>${p.parameter || p.name || ''}</td>
+              <td>${p.value || ''}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>` : ''}
+
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  // Equipment list view (multiple items)
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'عدد المعدات' : 'Equipment Count'}</div>
+        <div class="info-value">${items.length}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+        <div class="info-value">${data.projectName || '-'}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'المعدة' : 'Equipment'}</th>
+          <th>${lang === 'ar' ? 'الكود' : 'Code'}</th>
+          <th>${lang === 'ar' ? 'الفئة' : 'Category'}</th>
+          <th>${lang === 'ar' ? 'الحالة' : 'Status'}</th>
+          <th>${lang === 'ar' ? 'الموقع' : 'Location'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.equipment || item.name || ''}</td>
+            <td>${item.code || '-'}</td>
+            <td>${item.category || '-'}</td>
+            <td>${statusBadge((item.status as string), lang)}</td>
+            <td>${item.location || '-'}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Fuel Report Body ============
+function generateFuelReportBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const totalFuel = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)
+  const totalCost = items.reduce((s, i) => s + (Number(i.cost) || 0), 0)
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الفترة' : 'Period'}</div>
+        <div class="info-value">${(data.period as string) || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</div>
+        <div class="info-value">${data.equipmentName || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'إجمالي الوقود' : 'Total Fuel'}</div>
+        <div class="info-value">${totalFuel} ${lang === 'ar' ? 'لتر' : 'L'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'إجمالي التكلفة' : 'Total Cost'}</div>
+        <div class="info-value">${fmtMoney(totalCost, settings, lang)}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+          <th>${lang === 'ar' ? 'المعدة' : 'Equipment'}</th>
+          <th>${lang === 'ar' ? 'نوع الوقود' : 'Fuel Type'}</th>
+          <th>${lang === 'ar' ? 'الكمية' : 'Quantity'}</th>
+          <th class="amount-header">${lang === 'ar' ? 'التكلفة' : 'Cost'} (${currency})</th>
+          <th>${lang === 'ar' ? 'العداد' : 'Odometer'}</th>
+          <th>${lang === 'ar' ? 'ملاحظات' : 'Notes'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.date ? new Date(item.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</td>
+            <td>${item.equipment || '-'}</td>
+            <td>${item.fuelType || '-'}</td>
+            <td style="text-align:center;">${item.quantity || 0}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.cost) || 0, settings, lang)}</td>
+            <td>${item.odometer || '-'}</td>
+            <td>${(item.notes as string) || '-'}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="4">${lang === 'ar' ? 'الإجمالي' : 'Total'}</td>
+          <td style="text-align:center;">${totalFuel}</td>
+          <td class="amount-cell">${fmtMoney(totalCost, settings, lang)}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Maintenance Report Body ============
+function generateMaintenanceReportBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const totalCost = items.reduce((s, i) => s + (Number(i.cost) || 0), 0)
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</div>
+        <div class="info-value">${data.equipmentName || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'نوع الصيانة' : 'Maintenance Type'}</div>
+        <div class="info-value">${data.maintenanceType || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'نطاق التاريخ' : 'Date Range'}</div>
+        <div class="info-value">${(data.dateRange as string) || '-'}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+          <th>${lang === 'ar' ? 'المعدة' : 'Equipment'}</th>
+          <th>${lang === 'ar' ? 'النوع' : 'Type'}</th>
+          <th>${lang === 'ar' ? 'الوصف' : 'Description'}</th>
+          <th class="amount-header">${lang === 'ar' ? 'التكلفة' : 'Cost'} (${currency})</th>
+          <th>${lang === 'ar' ? 'الحالة' : 'Status'}</th>
+          <th>${lang === 'ar' ? 'الفني' : 'Technician'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.date ? new Date(item.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</td>
+            <td>${item.equipment || '-'}</td>
+            <td>${item.type || '-'}</td>
+            <td>${item.description || ''}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.cost) || 0, settings, lang)}</td>
+            <td>${statusBadge((item.status as string), lang)}</td>
+            <td>${item.technician || '-'}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="5">${lang === 'ar' ? 'إجمالي التكلفة' : 'Total Cost'}</td>
+          <td class="amount-cell">${fmtMoney(totalCost, settings, lang)}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Work Team Report Body ============
+function generateWorkTeamReportBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const totalHours = items.reduce((s, i) => s + (Number(i.hours) || 0), 0)
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+        <div class="info-value">${data.projectName || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الفترة' : 'Period'}</div>
+        <div class="info-value">${(data.period as string) || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'قائد الفريق' : 'Team Leader'}</div>
+        <div class="info-value">${data.teamLeader || '-'}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'العضو' : 'Member'}</th>
+          <th>${lang === 'ar' ? 'الدور' : 'Role'}</th>
+          <th>${lang === 'ar' ? 'المشروع' : 'Project'}</th>
+          <th>${lang === 'ar' ? 'الساعات' : 'Hours'}</th>
+          <th>${lang === 'ar' ? 'الإنتاجية' : 'Productivity'}</th>
+          <th>${lang === 'ar' ? 'الحالة' : 'Status'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.member || item.name || ''}</td>
+            <td>${item.role || '-'}</td>
+            <td>${item.project || '-'}</td>
+            <td style="text-align:center;">${item.hours || 0}</td>
+            <td style="text-align:center;">${item.productivity || '-'}</td>
+            <td>${statusBadge((item.status as string), lang)}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="4">${lang === 'ar' ? 'إجمالي الساعات' : 'Total Hours'}</td>
+          <td style="text-align:center;">${totalHours}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Resource Distribution Body ============
+function generateResourceDistributionBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const totalQuantity = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)
+  const totalCost = items.reduce((s, i) => s + (Number(i.cost) || 0), 0)
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+        <div class="info-value">${data.projectName || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الفترة' : 'Period'}</div>
+        <div class="info-value">${(data.period as string) || '-'}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'المورد' : 'Resource'}</th>
+          <th>${lang === 'ar' ? 'النوع' : 'Type'}</th>
+          <th>${lang === 'ar' ? 'المشروع' : 'Project'}</th>
+          <th>${lang === 'ar' ? 'الكمية' : 'Quantity'}</th>
+          <th class="amount-header">${lang === 'ar' ? 'التكلفة' : 'Cost'} (${currency})</th>
+          <th>${lang === 'ar' ? 'الفترة' : 'Period'}</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.resource || item.name || ''}</td>
+            <td>${item.type || '-'}</td>
+            <td>${item.project || '-'}</td>
+            <td style="text-align:center;">${item.quantity || 0}</td>
+            <td class="amount-cell">${fmtMoney(Number(item.cost) || 0, settings, lang)}</td>
+            <td>${item.period || '-'}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="4">${lang === 'ar' ? 'الإجمالي' : 'Total'}</td>
+          <td style="text-align:center;">${totalQuantity}</td>
+          <td class="amount-cell">${fmtMoney(totalCost, settings, lang)}</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Journal Entry Body ============
+function generateJournalEntryBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const totalDebit = items.reduce((s, i) => s + (Number(i.debit) || 0), 0)
+  const totalCredit = items.reduce((s, i) => s + (Number(i.credit) || 0), 0)
+  const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رقم القيد' : 'Entry No'}</div>
+        <div class="info-value">${data.entryNo || data.id || ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'البيان' : 'Description'}</div>
+        <div class="info-value">${data.description || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'المرجع' : 'Reference'}</div>
+        <div class="info-value">${data.reference || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'رمز الحساب' : 'Account Code'}</th>
+          <th>${lang === 'ar' ? 'اسم الحساب' : 'Account Name'}</th>
+          <th class="amount-header">${lang === 'ar' ? 'مدين' : 'Debit'} (${currency})</th>
+          <th class="amount-header">${lang === 'ar' ? 'دائن' : 'Credit'} (${currency})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.accountCode || item.code || ''}</td>
+            <td>${item.accountName || item.name || ''}</td>
+            <td class="amount-cell">${Number(item.debit) ? fmtMoney(Number(item.debit), settings, lang) : ''}</td>
+            <td class="amount-cell">${Number(item.credit) ? fmtMoney(Number(item.credit), settings, lang) : ''}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="3">${lang === 'ar' ? 'الإجمالي' : 'Total'}</td>
+          <td class="amount-cell">${fmtMoney(totalDebit, settings, lang)}</td>
+          <td class="amount-cell">${fmtMoney(totalCredit, settings, lang)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:8px;padding:8px 12px;background:${isBalanced ? '#f0fdf4' : '#fef2f2'};border:1px solid ${isBalanced ? '#bbf7d0' : '#fecaca'};border-radius:4px;font-size:9px;text-align:center;">
+      ${isBalanced
+        ? (lang === 'ar' ? '✅ القيد متوازن - المدين = الدائن' : '✅ Entry is balanced - Debit = Credit')
+        : (lang === 'ar' ? '⚠️ القيد غير متوازن - المدين ≠ الدائن' : '⚠️ Entry is NOT balanced - Debit ≠ Credit')
+      }
+    </div>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Trial Balance Body ============
+function generateTrialBalanceBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const totalDebit = items.reduce((s, i) => s + (Number(i.debitBalance) || Number(i.debit) || 0), 0)
+  const totalCredit = items.reduce((s, i) => s + (Number(i.creditBalance) || Number(i.credit) || 0), 0)
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'حتى تاريخ' : 'As of Date'}</div>
+        <div class="info-value">${data.asOfDate ? new Date(data.asOfDate as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : (data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : '-')}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'عدد الحسابات' : 'Accounts Count'}</div>
+        <div class="info-value">${data.accountsCount || items.length}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'رمز الحساب' : 'Account Code'}</th>
+          <th>${lang === 'ar' ? 'اسم الحساب' : 'Account Name'}</th>
+          <th class="amount-header">${lang === 'ar' ? 'رصيد مدين' : 'Debit Balance'} (${currency})</th>
+          <th class="amount-header">${lang === 'ar' ? 'رصيد دائن' : 'Credit Balance'} (${currency})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.accountCode || item.code || ''}</td>
+            <td>${item.accountName || item.name || ''}</td>
+            <td class="amount-cell">${Number(item.debitBalance || item.debit) ? fmtMoney(Number(item.debitBalance || item.debit), settings, lang) : ''}</td>
+            <td class="amount-cell">${Number(item.creditBalance || item.credit) ? fmtMoney(Number(item.creditBalance || item.credit), settings, lang) : ''}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="3">${lang === 'ar' ? 'الإجمالي' : 'Total'}</td>
+          <td class="amount-cell">${fmtMoney(totalDebit, settings, lang)}</td>
+          <td class="amount-cell">${fmtMoney(totalCredit, settings, lang)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
+// ============ Account Statement Body ============
+function generateAccountStatementBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  const items = (data.items as Array<Record<string, unknown>>) || []
+  const currency = getCurrencySymbol(settings, lang)
+  const now = new Date()
+  const genDate = now.toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const genTime = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })
+
+  // Fallback to generic table if structured data not available
+  if (!items.length && data.columns) {
+    return `
+      <div class="report-meta">
+        <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+        <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+      </div>
+      ${generateGenericTableBody(data, settings, lang)}
+      <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+    `
+  }
+
+  const openingBalance = Number(data.openingBalance) || 0
+  const totalDebit = items.reduce((s, i) => s + (Number(i.debit) || 0), 0)
+  const totalCredit = items.reduce((s, i) => s + (Number(i.credit) || 0), 0)
+  const closingBalance = Number(data.closingBalance) || (openingBalance + totalDebit - totalCredit)
+
+  return `
+    <div class="report-meta">
+      <span>${lang === 'ar' ? `تاريخ الإنشاء: ${genDate}` : `Generated: ${genDate}`}</span>
+      <span>${lang === 'ar' ? `الحساب: ${data.accountName || '-'}` : `Account: ${data.accountName || '-'}`}</span>
+      <span>${lang === 'ar' ? `الوقت: ${genTime}` : `Time: ${genTime}`}</span>
+    </div>
+
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'اسم الحساب' : 'Account Name'}</div>
+        <div class="info-value">${data.accountName || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رمز الحساب' : 'Account Code'}</div>
+        <div class="info-value">${data.accountCode || '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'من تاريخ' : 'Period From'}</div>
+        <div class="info-value">${data.periodFrom ? new Date(data.periodFrom as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'إلى تاريخ' : 'Period To'}</div>
+        <div class="info-value">${data.periodTo ? new Date(data.periodTo as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : '-'}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">${lang === 'ar' ? 'رصيد الافتتاح' : 'Opening Balance'}</div>
+        <div class="info-value">${fmtMoney(openingBalance, settings, lang)}</div>
+      </div>
+    </div>
+
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${lang === 'ar' ? 'التاريخ' : 'Date'}</th>
+          <th>${lang === 'ar' ? 'المرجع' : 'Reference'}</th>
+          <th>${lang === 'ar' ? 'البيان' : 'Description'}</th>
+          <th class="amount-header">${lang === 'ar' ? 'مدين' : 'Debit'} (${currency})</th>
+          <th class="amount-header">${lang === 'ar' ? 'دائن' : 'Credit'} (${currency})</th>
+          <th class="amount-header">${lang === 'ar' ? 'الرصيد' : 'Balance'} (${currency})</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${openingBalance ? `
+        <tr style="background:#f8fafc;">
+          <td></td>
+          <td></td>
+          <td></td>
+          <td style="font-weight:600;">${lang === 'ar' ? 'رصيد الافتتاح' : 'Opening Balance'}</td>
+          <td></td>
+          <td></td>
+          <td class="amount-cell" style="font-weight:600;">${fmtMoney(openingBalance, settings, lang)}</td>
+        </tr>` : ''}
+        ${items.map((item, i) => `
+          <tr>
+            <td class="row-num">${i + 1}</td>
+            <td>${item.date ? new Date(item.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</td>
+            <td>${item.reference || '-'}</td>
+            <td>${item.description || ''}</td>
+            <td class="amount-cell">${Number(item.debit) ? fmtMoney(Number(item.debit), settings, lang) : ''}</td>
+            <td class="amount-cell">${Number(item.credit) ? fmtMoney(Number(item.credit), settings, lang) : ''}</td>
+            <td class="amount-cell" style="font-weight:500;">${Number(item.balance) ? fmtMoney(Number(item.balance), settings, lang) : '-'}</td>
+          </tr>
+        `).join('')}
+        <tr style="font-weight:700;background:#f8fafc;">
+          <td colspan="4">${lang === 'ar' ? 'رصيد الإقفال' : 'Closing Balance'}</td>
+          <td class="amount-cell">${fmtMoney(totalDebit, settings, lang)}</td>
+          <td class="amount-cell">${fmtMoney(totalCredit, settings, lang)}</td>
+          <td class="amount-cell">${fmtMoney(closingBalance, settings, lang)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top:12px;display:flex;justify-content:flex-end;">
+      <div style="width:280px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+        <div class="total-row">
+          <span class="label">${lang === 'ar' ? 'إجمالي المدين' : 'Total Debit'}</span>
+          <span class="value">${fmtMoney(totalDebit, settings, lang)}</span>
+        </div>
+        <div class="total-row">
+          <span class="label">${lang === 'ar' ? 'إجمالي الدائن' : 'Total Credit'}</span>
+          <span class="value">${fmtMoney(totalCredit, settings, lang)}</span>
+        </div>
+        <div class="total-row grand">
+          <span class="label">${lang === 'ar' ? 'رصيد الإقفال' : 'Closing Balance'}</span>
+          <span class="value">${fmtMoney(closingBalance, settings, lang)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="report-note">${lang === 'ar' ? 'هذا التقرير تم إنشاؤه تلقائياً بواسطة نظام بِنَاء ERP' : 'This report was auto-generated by Binaa ERP'}</div>
+  `
+}
+
 // ============ Dispatch Body Generator ============
 function generateDocumentBody(
   type: PrintDocumentType,
@@ -2408,21 +3701,33 @@ function generateDocumentBody(
       return generateSalarySlipBody(data, settings, lang)
     case 'timesheet-report':
       return generateTimesheetBody(data, settings, lang)
-    case 'generic-table':
     case 'delivery-order':
+      return generateDeliveryOrderBody(data, settings, lang)
     case 'purchase-request':
+      return generatePurchaseRequestBody(data, settings, lang)
     case 'goods-receipt':
+      return generateGoodsReceiptBody(data, settings, lang)
     case 'attendance-report':
+      return generateAttendanceReportBody(data, settings, lang)
     case 'rental-contract':
+      return generateRentalContractBody(data, settings, lang)
     case 'equipment-report':
+      return generateEquipmentReportBody(data, settings, lang)
     case 'fuel-report':
+      return generateFuelReportBody(data, settings, lang)
     case 'maintenance-report':
+      return generateMaintenanceReportBody(data, settings, lang)
     case 'work-team-report':
+      return generateWorkTeamReportBody(data, settings, lang)
     case 'resource-distribution':
+      return generateResourceDistributionBody(data, settings, lang)
     case 'journal-entry':
+      return generateJournalEntryBody(data, settings, lang)
     case 'trial-balance':
+      return generateTrialBalanceBody(data, settings, lang)
     case 'account-statement':
-      return generateGenericTableBody(data, settings, lang)
+      return generateAccountStatementBody(data, settings, lang)
+    case 'generic-table':
     default:
       return generateGenericTableBody(data, settings, lang)
   }
@@ -2514,10 +3819,11 @@ export function generatePrintHTML(options: PrintOptions): string {
   }
 
   // Default template for other document types
+  const category = getDocumentCategory(type)
   const header = generateHeader(settings, lang, title, subtitle)
   const footer = generateFooter(settings, lang)
   const body = generateDocumentBody(type, data, settings, lang)
-  const css = getSharedCSS(lang)
+  const css = getSharedCSS(lang, category)
 
   return `<!DOCTYPE html>
 <html lang="${lang === 'ar' ? 'ar' : 'en'}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
