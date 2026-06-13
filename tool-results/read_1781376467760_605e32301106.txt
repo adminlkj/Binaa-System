@@ -1,0 +1,639 @@
+     1→     1→import { db } from '@/lib/db'
+     2→     2→import { NextResponse } from 'next/server'
+     3→     3→
+     4→     4→export async function GET(request: Request) {
+     5→     5→  try {
+     6→     6→    const { searchParams } = new URL(request.url)
+     7→     7→    const type = searchParams.get('type')
+     8→     8→
+     9→     9→    switch (type) {
+    10→    10→      case 'projects': {
+    11→    11→        const projects = await db.project.findMany({
+    12→    12→          include: {
+    13→    13→            client: { select: { name: true } },
+    14→    14→            contracts: { select: { totalValue: true } },
+    15→    15→            expenses: { select: { amount: true } },
+    16→    16→            laborCosts: { select: { totalAmount: true } },
+    17→    17→            equipmentCosts: { select: { amount: true } },
+    18→    18→            purchaseOrders: { select: { totalAmount: true } },
+    19→    19→            progressClaims: { select: { totalAmount: true, status: true } },
+    20→    20→            subcontractorInvoices: { select: { totalAmount: true } },
+    21→    21→          },
+    22→    22→          orderBy: { code: 'asc' },
+    23→    23→        })
+    24→    24→        const data = projects.map(p => {
+    25→    25→          const contractValue = p.contracts.reduce((s, c) => s + c.totalValue, 0)
+    26→    26→          const totalCosts = p.expenses.reduce((s, e) => s + e.amount, 0) +
+    27→    27→            p.laborCosts.reduce((s, l) => s + l.totalAmount, 0) +
+    28→    28→            p.equipmentCosts.reduce((s, e) => s + e.amount, 0) +
+    29→    29→            p.purchaseOrders.reduce((s, po) => s + po.totalAmount, 0) +
+    30→    30→            p.subcontractorInvoices.reduce((s, si) => s + si.totalAmount, 0)
+    31→    31→          const totalRevenue = p.progressClaims.reduce((s, c) => s + c.totalAmount, 0)
+    32→    32→          return {
+    33→    33→            id: p.id, code: p.code, name: p.name, status: p.status,
+    34→    34→            client: p.client.name, contractValue, totalCosts, totalRevenue,
+    35→    35→            profit: totalRevenue - totalCosts,
+    36→    36→            margin: totalRevenue > 0 ? ((totalRevenue - totalCosts) / totalRevenue) * 100 : 0,
+    37→    37→          }
+    38→    38→        })
+    39→    39→        return NextResponse.json(data)
+    40→    40→      }
+    41→    41→
+    42→    42→      case 'claims': {
+    43→    43→        const claims = await db.progressClaim.findMany({
+    44→    44→          include: {
+    45→    45→            project: { select: { code: true, name: true } },
+    46→    46→            contract: { select: { contractNo: true, totalValue: true } },
+    47→    47→          },
+    48→    48→          orderBy: { date: 'desc' },
+    49→    49→        })
+    50→    50→        return NextResponse.json(claims)
+    51→    51→      }
+    52→    52→
+    53→    53→      case 'expenses': {
+    54→    54→        const expenses = await db.expense.findMany({
+    55→    55→          include: {
+    56→    56→            project: { select: { code: true, name: true } },
+    57→    57→          },
+    58→    58→          orderBy: { date: 'desc' },
+    59→    59→        })
+    60→    60→        const byCategory: Record<string, number> = {}
+    61→    61→        expenses.forEach(e => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount })
+    62→    62→        const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
+    63→    63→        return NextResponse.json({ expenses, byCategory, totalExpenses })
+    64→    64→      }
+    65→    65→
+    66→    66→      case 'sales': {
+    67→    67→        const invoices = await db.salesInvoice.findMany({
+    68→    68→          include: {
+    69→    69→            client: { select: { name: true } },
+    70→    70→            project: { select: { name: true } },
+    71→    71→            items: true,
+    72→    72→          },
+    73→    73→          orderBy: { date: 'desc' },
+    74→    74→        })
+    75→    75→        const totalSales = invoices.reduce((s, i) => s + i.totalAmount, 0)
+    76→    76→        const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+    77→    77→        return NextResponse.json({ invoices, totalSales, totalPaid, totalOutstanding: totalSales - totalPaid })
+    78→    78→      }
+    79→    79→
+    80→    80→      case 'purchases': {
+    81→    81→        const pos = await db.purchaseOrder.findMany({
+    82→    82→          include: {
+    83→    83→            supplier: { select: { name: true } },
+    84→    84→            project: { select: { name: true } },
+    85→    85→          },
+    86→    86→          orderBy: { date: 'desc' },
+    87→    87→        })
+    88→    88→        const pis = await db.purchaseInvoice.findMany({
+    89→    89→          include: {
+    90→    90→            supplier: { select: { name: true } },
+    91→    91→          },
+    92→    92→          orderBy: { date: 'desc' },
+    93→    93→        })
+    94→    94→        const totalPOs = pos.reduce((s, p) => s + p.totalAmount, 0)
+    95→    95→        const totalPIs = pis.reduce((s, p) => s + p.totalAmount, 0)
+    96→    96→        const totalPaid = pis.reduce((s, p) => s + p.paidAmount, 0)
+    97→    97→        return NextResponse.json({ purchaseOrders: pos, purchaseInvoices: pis, totalPOs, totalPIs, totalPaid, totalOutstanding: totalPIs - totalPaid })
+    98→    98→      }
+    99→    99→
+   100→   100→      case 'inventory': {
+   101→   101→        const items = await db.inventoryItem.findMany({
+   102→   102→          where: { isActive: true },
+   103→   103→          include: {
+   104→   104→            warehouse: { select: { code: true, name: true } },
+   105→   105→          },
+   106→   106→          orderBy: { code: 'asc' },
+   107→   107→        })
+   108→   108→        const totalValue = items.reduce((s, i) => s + (i.quantity * i.purchasePrice), 0)
+   109→   109→        const lowStock = items.filter(i => i.quantity <= i.minQuantity)
+   110→   110→        return NextResponse.json({ items, totalValue, lowStockCount: lowStock.length, totalItems: items.length })
+   111→   111→      }
+   112→   112→
+   113→   113→      case 'balance-sheet': {
+   114→   114→        const accounts = await db.account.findMany({
+   115→   115→          where: { type: { in: ['ASSET', 'LIABILITY', 'EQUITY'] }, isActive: true },
+   116→   116→          include: {
+   117→   117→            journalLines: true,
+   118→   118→          },
+   119→   119→          orderBy: { code: 'asc' },
+   120→   120→        })
+   121→   121→        const data = accounts.map(a => {
+   122→   122→          const debit = a.journalLines.reduce((s, l) => s + l.debit, 0)
+   123→   123→          const credit = a.journalLines.reduce((s, l) => s + l.credit, 0)
+   124→   124→          const balance = a.type === 'ASSET' ? debit - credit : credit - debit
+   125→   125→          return { id: a.id, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance }
+   126→   126→        })
+   127→   127→        const totalAssets = data.filter(a => a.type === 'ASSET').reduce((s, a) => s + a.balance, 0)
+   128→   128→        const totalLiabilities = data.filter(a => a.type === 'LIABILITY').reduce((s, a) => s + a.balance, 0)
+   129→   129→        const totalEquity = data.filter(a => a.type === 'EQUITY').reduce((s, a) => s + a.balance, 0)
+   130→   130→        return NextResponse.json({ accounts: data, totalAssets, totalLiabilities, totalEquity })
+   131→   131→      }
+   132→   132→
+   133→   133→      case 'income-statement': {
+   134→   134→        const accounts = await db.account.findMany({
+   135→   135→          where: { type: { in: ['REVENUE', 'EXPENSE'] }, isActive: true },
+   136→   136→          include: {
+   137→   137→            journalLines: true,
+   138→   138→          },
+   139→   139→          orderBy: { code: 'asc' },
+   140→   140→        })
+   141→   141→        const data = accounts.map(a => {
+   142→   142→          const debit = a.journalLines.reduce((s, l) => s + l.debit, 0)
+   143→   143→          const credit = a.journalLines.reduce((s, l) => s + l.credit, 0)
+   144→   144→          const balance = a.type === 'REVENUE' ? credit - debit : debit - credit
+   145→   145→          return { id: a.id, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance }
+   146→   146→        })
+   147→   147→        const totalRevenue = data.filter(a => a.type === 'REVENUE').reduce((s, a) => s + a.balance, 0)
+   148→   148→        const totalExpenses = data.filter(a => a.type === 'EXPENSE').reduce((s, a) => s + a.balance, 0)
+   149→   149→        const netIncome = totalRevenue - totalExpenses
+   150→   150→        return NextResponse.json({ accounts: data, totalRevenue, totalExpenses, netIncome })
+   151→   151→      }
+   152→   152→
+   153→   153→      case 'project-card': {
+   154→   154→        const projects = await db.project.findMany({
+   155→   155→          include: {
+   156→   156→            client: { select: { name: true } },
+   157→   157→            contracts: { select: { totalValue: true } },
+   158→   158→            expenses: { select: { amount: true, category: true } },
+   159→   159→            laborCosts: { select: { totalAmount: true } },
+   160→   160→            equipmentCosts: { select: { amount: true } },
+   161→   161→            purchaseOrders: { select: { totalAmount: true } },
+   162→   162→            progressClaims: { select: { totalAmount: true, status: true } },
+   163→   163→            subcontractorInvoices: { select: { totalAmount: true } },
+   164→   164→          },
+   165→   165→          orderBy: { code: 'asc' },
+   166→   166→        })
+   167→   167→        const projectCards = projects.map(p => {
+   168→   168→          const contractValue = p.contracts.reduce((s, c) => s + c.totalValue, 0)
+   169→   169→          const issuedExtracts = p.progressClaims.reduce((s, c) => s + c.totalAmount, 0)
+   170→   170→          const purchases = p.purchaseOrders.reduce((s, po) => s + po.totalAmount, 0) +
+   171→   171→            p.subcontractorInvoices.reduce((s, si) => s + si.totalAmount, 0)
+   172→   172→          const projectExpenses = p.expenses.reduce((s, e) => s + e.amount, 0) +
+   173→   173→            p.laborCosts.reduce((s, l) => s + l.totalAmount, 0) +
+   174→   174→            p.equipmentCosts.reduce((s, e) => s + e.amount, 0)
+   175→   175→          const totalCost = purchases + projectExpenses
+   176→   176→          const profit = contractValue - totalCost
+   177→   177→          const profitMargin = contractValue > 0 ? (profit / contractValue) * 100 : 0
+   178→   178→          return {
+   179→   179→            id: p.id,
+   180→   180→            code: p.code,
+   181→   181→            name: p.name,
+   182→   182→            nameAr: p.nameAr,
+   183→   183→            client: p.client.name,
+   184→   184→            status: p.status,
+   185→   185→            projectType: p.projectType,
+   186→   186→            contractValue,
+   187→   187→            issuedExtracts,
+   188→   188→            purchases,
+   189→   189→            projectExpenses,
+   190→   190→            totalCost,
+   191→   191→            profit,
+   192→   192→            profitMargin,
+   193→   193→          }
+   194→   194→        })
+   195→   195→        const totals = {
+   196→   196→          contractValue: projectCards.reduce((s, p) => s + p.contractValue, 0),
+   197→   197→          issuedExtracts: projectCards.reduce((s, p) => s + p.issuedExtracts, 0),
+   198→   198→          purchases: projectCards.reduce((s, p) => s + p.purchases, 0),
+   199→   199→          projectExpenses: projectCards.reduce((s, p) => s + p.projectExpenses, 0),
+   200→   200→          totalCost: projectCards.reduce((s, p) => s + p.totalCost, 0),
+   201→   201→          profit: projectCards.reduce((s, p) => s + p.profit, 0),
+   202→   202→          profitMargin: 0,
+   203→   203→        }
+   204→   204→        totals.profitMargin = totals.contractValue > 0
+   205→   205→          ? (totals.profit / totals.contractValue) * 100
+   206→   206→          : 0
+   207→   207→        return NextResponse.json({ projects: projectCards, totals })
+   208→   208→      }
+   209→   209→
+   210→   210→      case 'activity-summary': {
+   211→   211→        // ===== CONSTRUCTION PROJECTS =====
+   212→   212→        const constructionProjects = await db.project.findMany({
+   213→   213→          where: { projectType: 'CONSTRUCTION' },
+   214→   214→          select: {
+   215→   215→            id: true,
+   216→   216→            status: true,
+   217→   217→            contractValue: true,
+   218→   218→            contracts: { select: { totalValue: true } },
+   219→   219→            progressClaims: { select: { totalAmount: true, status: true } },
+   220→   220→            purchaseOrders: { select: { totalAmount: true } },
+   221→   221→            subcontractorInvoices: { select: { totalAmount: true } },
+   222→   222→            expenses: { select: { amount: true, category: true } },
+   223→   223→            laborCosts: { select: { totalAmount: true } },
+   224→   224→            equipmentCosts: { select: { amount: true } },
+   225→   225→            equipmentUsages: { select: { cost: true } },
+   226→   226→          },
+   227→   227→        })
+   228→   228→
+   229→   229→        const constructionProjectCount = constructionProjects.length
+   230→   230→        const constructionActiveProjectCount = constructionProjects.filter(p => p.status === 'ACTIVE').length
+   231→   231→        const constructionTotalContractValue = constructionProjects.reduce((s, p) => {
+   232→   232→          const cv = p.contracts.reduce((s2, c) => s2 + c.totalValue, 0)
+   233→   233→          return s + (cv > 0 ? cv : p.contractValue)
+   234→   234→        }, 0)
+   235→   235→
+   236→   236→        // Construction revenue: progress claims + construction sales invoices
+   237→   237→        const constructionProgressClaimRevenue = constructionProjects.reduce(
+   238→   238→          (s, p) => s + p.progressClaims.reduce((s2, c) => s2 + c.totalAmount, 0), 0
+   239→   239→        )
+   240→   240→        const constructionSalesInvoices = await db.salesInvoice.findMany({
+   241→   241→          where: {
+   242→   242→            project: { projectType: 'CONSTRUCTION' },
+   243→   243→            sourceType: 'EXTRACT',
+   244→   244→          },
+   245→   245→          select: { totalAmount: true },
+   246→   246→        })
+   247→   247→        const constructionSalesInvoiceRevenue = constructionSalesInvoices.reduce((s, i) => s + i.totalAmount, 0)
+   248→   248→        const constructionTotalRevenue = constructionProgressClaimRevenue + constructionSalesInvoiceRevenue
+   249→   249→
+   250→   250→        // Construction cost breakdown
+   251→   251→        const constructionMaterialCosts = constructionProjects.reduce(
+   252→   252→          (s, p) => s + p.purchaseOrders.reduce((s2, po) => s2 + po.totalAmount, 0), 0
+   253→   253→        )
+   254→   254→        const constructionLaborCosts = constructionProjects.reduce(
+   255→   255→          (s, p) => s + p.laborCosts.reduce((s2, l) => s2 + l.totalAmount, 0), 0
+   256→   256→        )
+   257→   257→        const constructionSubcontractorCosts = constructionProjects.reduce(
+   258→   258→          (s, p) => s + p.subcontractorInvoices.reduce((s2, si) => s2 + si.totalAmount, 0), 0
+   259→   259→        )
+   260→   260→        const constructionEquipmentCosts = constructionProjects.reduce(
+   261→   261→          (s, p) => s + p.equipmentCosts.reduce((s2, e) => s2 + e.amount, 0) +
+   262→   262→            p.equipmentUsages.reduce((s2, u) => s2 + u.cost, 0), 0
+   263→   263→        )
+   264→   264→        const constructionProjectExpenses = constructionProjects.reduce(
+   265→   265→          (s, p) => s + p.expenses.reduce((s2, e) => s2 + e.amount, 0), 0
+   266→   266→        )
+   267→   267→        const constructionTotalCosts = constructionMaterialCosts + constructionLaborCosts +
+   268→   268→          constructionSubcontractorCosts + constructionEquipmentCosts + constructionProjectExpenses
+   269→   269→        const constructionProfit = constructionTotalRevenue - constructionTotalCosts
+   270→   270→        const constructionProfitMargin = constructionTotalRevenue > 0
+   271→   271→          ? (constructionProfit / constructionTotalRevenue) * 100 : 0
+   272→   272→
+   273→   273→        // ===== RENTAL PROJECTS =====
+   274→   274→        const rentalProjects = await db.project.findMany({
+   275→   275→          where: { projectType: 'EQUIPMENT_RENTAL' },
+   276→   276→          select: {
+   277→   277→            id: true,
+   278→   278→            status: true,
+   279→   279→            expenses: { select: { amount: true, category: true } },
+   280→   280→            equipmentCosts: { select: { amount: true } },
+   281→   281→            equipmentUsages: { select: { cost: true } },
+   282→   282→            timesheets: { select: { id: true, operatingHours: true } },
+   283→   283→          },
+   284→   284→        })
+   285→   285→
+   286→   286→        const rentalProjectCount = rentalProjects.length
+   287→   287→        const rentalActiveProjectCount = rentalProjects.filter(p => p.status === 'ACTIVE').length
+   288→   288→
+   289→   289→        // Rental revenue: timesheet-based sales invoices
+   290→   290→        const rentalSalesInvoices = await db.salesInvoice.findMany({
+   291→   291→          where: {
+   292→   292→            project: { projectType: 'EQUIPMENT_RENTAL' },
+   293→   293→            sourceType: 'TIMESHEET',
+   294→   294→          },
+   295→   295→          select: { totalAmount: true },
+   296→   296→        })
+   297→   297→        const rentalTotalRevenue = rentalSalesInvoices.reduce((s, i) => s + i.totalAmount, 0)
+   298→   298→
+   299→   299→        // Rental costs: maintenance + fuel + equipment expenses for rental projects
+   300→   300→        const rentalProjectIds = rentalProjects.map(p => p.id)
+   301→   301→
+   302→   302→        // Equipment used in rental projects
+   303→   303→        const rentalEquipments = await db.equipmentRental.findMany({
+   304→   304→          where: { projectId: { in: rentalProjectIds } },
+   305→   305→          select: { equipmentId: true },
+   306→   306→        })
+   307→   307→        const rentalEquipmentIds = [...new Set(rentalEquipments.map(r => r.equipmentId))]
+   308→   308→        const rentedEquipmentCount = rentalEquipmentIds.length
+   309→   309→
+   310→   310→        // Maintenance costs for equipment used in rental projects
+   311→   311→        const rentalMaintenanceCosts = rentalEquipmentIds.length > 0
+   312→   312→          ? (await db.equipmentMaintenance.findMany({
+   313→   313→              where: { equipmentId: { in: rentalEquipmentIds } },
+   314→   314→              select: { cost: true },
+   315→   315→            })).reduce((s, m) => s + m.cost, 0)
+   316→   316→          : 0
+   317→   317→
+   318→   318→        // Fuel costs for rental projects
+   319→   319→        const rentalFuelCosts = rentalProjectIds.length > 0
+   320→   320→          ? (await db.equipmentFuelLog.findMany({
+   321→   321→              where: { projectId: { in: rentalProjectIds } },
+   322→   322→              select: { totalCost: true },
+   323→   323→            })).reduce((s, f) => s + f.totalCost, 0)
+   324→   324→          : 0
+   325→   325→
+   326→   326→        // Operation costs (equipment usages for rental projects)
+   327→   327→        const rentalOperationCosts = rentalProjects.reduce(
+   328→   328→          (s, p) => s + p.equipmentUsages.reduce((s2, u) => s2 + u.cost, 0), 0
+   329→   329→        )
+   330→   330→
+   331→   331→        // Rental expenses
+   332→   332→        const rentalExpenses = rentalProjects.reduce(
+   333→   333→          (s, p) => s + p.expenses.reduce((s2, e) => s2 + e.amount, 0) +
+   334→   334→            p.equipmentCosts.reduce((s2, e) => s2 + e.amount, 0), 0
+   335→   335→        )
+   336→   336→
+   337→   337→        const rentalTotalCosts = rentalMaintenanceCosts + rentalFuelCosts + rentalOperationCosts + rentalExpenses
+   338→   338→        const rentalProfit = rentalTotalRevenue - rentalTotalCosts
+   339→   339→        const rentalProfitMargin = rentalTotalRevenue > 0
+   340→   340→          ? (rentalProfit / rentalTotalRevenue) * 100 : 0
+   341→   341→
+   342→   342→        return NextResponse.json({
+   343→   343→          construction: {
+   344→   344→            projectCount: constructionProjectCount,
+   345→   345→            activeProjectCount: constructionActiveProjectCount,
+   346→   346→            totalContractValue: constructionTotalContractValue,
+   347→   347→            totalRevenue: constructionTotalRevenue,
+   348→   348→            totalCosts: constructionTotalCosts,
+   349→   349→            profit: constructionProfit,
+   350→   350→            profitMargin: constructionProfitMargin,
+   351→   351→            materialCosts: constructionMaterialCosts,
+   352→   352→            laborCosts: constructionLaborCosts,
+   353→   353→            subcontractorCosts: constructionSubcontractorCosts,
+   354→   354→            equipmentCosts: constructionEquipmentCosts,
+   355→   355→            projectExpenses: constructionProjectExpenses,
+   356→   356→          },
+   357→   357→          rental: {
+   358→   358→            projectCount: rentalProjectCount,
+   359→   359→            activeProjectCount: rentalActiveProjectCount,
+   360→   360→            totalRentalRevenue: rentalTotalRevenue,
+   361→   361→            totalRentalCosts: rentalTotalCosts,
+   362→   362→            profit: rentalProfit,
+   363→   363→            profitMargin: rentalProfitMargin,
+   364→   364→            maintenanceCosts: rentalMaintenanceCosts,
+   365→   365→            fuelCosts: rentalFuelCosts,
+   366→   366→            operationCosts: rentalOperationCosts,
+   367→   367→            rentalExpenses: rentalExpenses,
+   368→   368→            rentedEquipmentCount: rentedEquipmentCount,
+   369→   369→          },
+   370→   370→        })
+   371→   371→      }
+   372→   372→
+   373→   373→      case 'project-profitability': {
+   374→   374→        const projects = await db.project.findMany({
+   375→   375→          include: {
+   376→   376→            client: { select: { name: true } },
+   377→   377→            contracts: { select: { totalValue: true } },
+   378→   378→            progressClaims: { select: { totalAmount: true, status: true, invoiced: true } },
+   379→   379→            salesInvoices: { select: { totalAmount: true, paidAmount: true, status: true } },
+   380→   380→            purchaseOrders: { select: { totalAmount: true } },
+   381→   381→            subcontractorInvoices: { select: { totalAmount: true, status: true } },
+   382→   382→            expenses: { select: { amount: true, category: true } },
+   383→   383→            laborCosts: { select: { totalAmount: true } },
+   384→   384→            equipmentCosts: { select: { amount: true } },
+   385→   385→            equipmentUsages: { select: { cost: true } },
+   386→   386→          },
+   387→   387→          orderBy: { code: 'asc' },
+   388→   388→        })
+   389→   389→        const projectProfitability = projects.map(p => {
+   390→   390→          const contractValue = p.contracts.reduce((s, c) => s + c.totalValue, 0) || p.contractValue
+   391→   391→          const invoiced = p.progressClaims.reduce((s, c) => s + c.totalAmount, 0) +
+   392→   392→            p.salesInvoices.reduce((s, i) => s + i.totalAmount, 0)
+   393→   393→          const collected = p.salesInvoices.reduce((s, i) => s + i.paidAmount, 0)
+   394→   394→          const materialCosts = p.purchaseOrders.reduce((s, po) => s + po.totalAmount, 0)
+   395→   395→          const subcontractorCosts = p.subcontractorInvoices.reduce((s, si) => s + si.totalAmount, 0)
+   396→   396→          const laborCosts = p.laborCosts.reduce((s, l) => s + l.totalAmount, 0)
+   397→   397→          const equipmentCosts = p.equipmentCosts.reduce((s, e) => s + e.amount, 0) +
+   398→   398→            p.equipmentUsages.reduce((s, u) => s + u.cost, 0)
+   399→   399→          const projectExpenses = p.expenses.reduce((s, e) => s + e.amount, 0)
+   400→   400→          const totalCosts = materialCosts + subcontractorCosts + laborCosts + equipmentCosts + projectExpenses
+   401→   401→          const grossProfit = contractValue - totalCosts
+   402→   402→          const profitMargin = contractValue > 0 ? (grossProfit / contractValue) * 100 : 0
+   403→   403→          return {
+   404→   404→            id: p.id, code: p.code, name: p.name, nameAr: p.nameAr,
+   405→   405→            status: p.status, projectType: p.projectType,
+   406→   406→            client: p.client.name, contractValue, invoiced, collected,
+   407→   407→            materialCosts, subcontractorCosts, laborCosts, equipmentCosts, projectExpenses,
+   408→   408→            totalCosts, grossProfit, profitMargin,
+   409→   409→          }
+   410→   410→        })
+   411→   411→        const totals = {
+   412→   412→          contractValue: projectProfitability.reduce((s, p) => s + p.contractValue, 0),
+   413→   413→          invoiced: projectProfitability.reduce((s, p) => s + p.invoiced, 0),
+   414→   414→          collected: projectProfitability.reduce((s, p) => s + p.collected, 0),
+   415→   415→          totalCosts: projectProfitability.reduce((s, p) => s + p.totalCosts, 0),
+   416→   416→          grossProfit: projectProfitability.reduce((s, p) => s + p.grossProfit, 0),
+   417→   417→          profitMargin: 0,
+   418→   418→        }
+   419→   419→        totals.profitMargin = totals.contractValue > 0 ? (totals.grossProfit / totals.contractValue) * 100 : 0
+   420→   420→        return NextResponse.json({ projects: projectProfitability, totals })
+   421→   421→      }
+   422→   422→
+   423→   423→      case 'equipment-utilization': {
+   424→   424→        const equipment = await db.equipment.findMany({
+   425→   425→          where: { isActive: true },
+   426→   426→          include: {
+   427→   427→            operatorLogs: { select: { hours: true, date: true } },
+   428→   428→            maintenance: { select: { cost: true } },
+   429→   429→            fuelLogs: { select: { totalCost: true } },
+   430→   430→            usages: { select: { cost: true } },
+   431→   431→            rentals: { select: { hourlyRate: true, pricingType: true, deliveryFees: true } },
+   432→   432→          },
+   433→   433→          orderBy: { code: 'asc' },
+   434→   434→        })
+   435→   435→        const equipmentUtilization = equipment.map(eq => {
+   436→   436→          const totalHoursRented = eq.operatorLogs.reduce((s, o) => s + o.hours, 0)
+   437→   437→          const revenueGenerated = eq.rentals.reduce((s, r) => {
+   438→   438→            const rate = r.hourlyRate || eq.hourlyRate
+   439→   439→            return s + (rate * totalHoursRented) + (r.deliveryFees || 0)
+   440→   440→          }, 0)
+   441→   441→          const maintenanceCosts = eq.maintenance.reduce((s, m) => s + m.cost, 0)
+   442→   442→          const fuelCosts = eq.fuelLogs.reduce((s, f) => s + f.totalCost, 0)
+   443→   443→          const operationCosts = eq.usages.reduce((s, u) => s + u.cost, 0)
+   444→   444→          const totalCosts = maintenanceCosts + fuelCosts + operationCosts
+   445→   445→          const netProfit = revenueGenerated - totalCosts
+   446→   446→          return {
+   447→   447→            id: eq.id, code: eq.code, name: eq.name, nameAr: eq.nameAr,
+   448→   448→            status: eq.status, type: eq.type,
+   449→   449→            totalHoursRented, revenueGenerated,
+   450→   450→            maintenanceCosts, fuelCosts, operationCosts, totalCosts, netProfit,
+   451→   451→          }
+   452→   452→        })
+   453→   453→        const totals = {
+   454→   454→          totalHoursRented: equipmentUtilization.reduce((s, e) => s + e.totalHoursRented, 0),
+   455→   455→          revenueGenerated: equipmentUtilization.reduce((s, e) => s + e.revenueGenerated, 0),
+   456→   456→          maintenanceCosts: equipmentUtilization.reduce((s, e) => s + e.maintenanceCosts, 0),
+   457→   457→          fuelCosts: equipmentUtilization.reduce((s, e) => s + e.fuelCosts, 0),
+   458→   458→          totalCosts: equipmentUtilization.reduce((s, e) => s + e.totalCosts, 0),
+   459→   459→          netProfit: equipmentUtilization.reduce((s, e) => s + e.netProfit, 0),
+   460→   460→        }
+   461→   461→        return NextResponse.json({ equipment: equipmentUtilization, totals })
+   462→   462→      }
+   463→   463→
+   464→   464→      case 'rental-revenue-by-client': {
+   465→   465→        const rentalInvoices = await db.salesInvoice.findMany({
+   466→   466→          where: { sourceType: 'TIMESHEET', status: { not: 'CANCELLED' } },
+   467→   467→          include: {
+   468→   468→            client: { select: { id: true, code: true, name: true, nameAr: true } },
+   469→   469→          },
+   470→   470→          orderBy: { date: 'desc' },
+   471→   471→        })
+   472→   472→        const byClient: Record<string, { id: string; code: string; name: string; nameAr: string | null; revenue: number; invoiceCount: number }> = {}
+   473→   473→        for (const inv of rentalInvoices) {
+   474→   474→          const cid = inv.client.id
+   475→   475→          if (!byClient[cid]) {
+   476→   476→            byClient[cid] = { id: cid, code: inv.client.code, name: inv.client.name, nameAr: inv.client.nameAr, revenue: 0, invoiceCount: 0 }
+   477→   477→          }
+   478→   478→          byClient[cid].revenue += inv.totalAmount
+   479→   479→          byClient[cid].invoiceCount += 1
+   480→   480→        }
+   481→   481→        const clients = Object.values(byClient)
+   482→   482→        const totalRevenue = clients.reduce((s, c) => s + c.revenue, 0)
+   483→   483→        return NextResponse.json({ clients, totalRevenue })
+   484→   484→      }
+   485→   485→
+   486→   486→      case 'equipment-status': {
+   487→   487→        const equipment = await db.equipment.findMany({
+   488→   488→          where: { isActive: true },
+   489→   489→          select: { status: true, type: true },
+   490→   490→        })
+   491→   491→        const byStatus: Record<string, number> = {}
+   492→   492→        const byType: Record<string, { count: number; byStatus: Record<string, number> }> = {}
+   493→   493→        for (const eq of equipment) {
+   494→   494→          byStatus[eq.status] = (byStatus[eq.status] || 0) + 1
+   495→   495→          const eqType = eq.type || 'OTHER'
+   496→   496→          if (!byType[eqType]) byType[eqType] = { count: 0, byStatus: {} }
+   497→   497→          byType[eqType].count += 1
+   498→   498→          byType[eqType].byStatus[eq.status] = (byType[eqType].byStatus[eq.status] || 0) + 1
+   499→   499→        }
+   500→   500→        return NextResponse.json({ byStatus, byCategory: byType, total: equipment.length })
+   501→   501→      }
+   502→   502→
+   503→   503→      case 'purchase-summary': {
+   504→   504→        const supplierInvoices = await db.purchaseInvoice.findMany({
+   505→   505→          where: { status: { not: 'CANCELLED' } },
+   506→   506→          include: {
+   507→   507→            supplier: { select: { id: true, code: true, name: true } },
+   508→   508→            project: { select: { id: true, code: true, name: true, projectType: true } },
+   509→   509→          },
+   510→   510→          orderBy: { date: 'desc' },
+   511→   511→        })
+   512→   512→        const bySupplier: Record<string, { id: string; code: string; name: string; total: number; invoiceCount: number }> = {}
+   513→   513→        const byProject: Record<string, { id: string; code: string; name: string; projectType: string; total: number; invoiceCount: number }> = {}
+   514→   514→        for (const inv of supplierInvoices) {
+   515→   515→          // By supplier
+   516→   516→          const sid = inv.supplier?.id || 'unknown'
+   517→   517→          if (!bySupplier[sid]) bySupplier[sid] = { id: sid, code: inv.supplier?.code || '', name: inv.supplier?.name || 'Unknown', total: 0, invoiceCount: 0 }
+   518→   518→          bySupplier[sid].total += inv.totalAmount
+   519→   519→          bySupplier[sid].invoiceCount += 1
+   520→   520→          // By project
+   521→   521→          if (inv.project) {
+   522→   522→            const pid = inv.project.id
+   523→   523→            if (!byProject[pid]) byProject[pid] = { id: pid, code: inv.project.code, name: inv.project.name, projectType: inv.project.projectType, total: 0, invoiceCount: 0 }
+   524→   524→            byProject[pid].total += inv.totalAmount
+   525→   525→            byProject[pid].invoiceCount += 1
+   526→   526→          }
+   527→   527→        }
+   528→   528→        const totalPurchases = supplierInvoices.reduce((s, i) => s + i.totalAmount, 0)
+   529→   529→        return NextResponse.json({ bySupplier: Object.values(bySupplier), byProject: Object.values(byProject), totalPurchases, invoiceCount: supplierInvoices.length })
+   530→   530→      }
+   531→   531→
+   532→   532→      case 'revenue-summary': {
+   533→   533→        // Construction revenue from sales invoices (EXTRACT source)
+   534→   534→        const constructionInvoices = await db.salesInvoice.findMany({
+   535→   535→          where: { sourceType: 'EXTRACT', status: { not: 'CANCELLED' } },
+   536→   536→          select: { totalAmount: true, date: true },
+   537→   537→        })
+   538→   538→        // Rental revenue from sales invoices (TIMESHEET source)
+   539→   539→        const rentalInvoices = await db.salesInvoice.findMany({
+   540→   540→          where: { sourceType: 'TIMESHEET', status: { not: 'CANCELLED' } },
+   541→   541→          select: { totalAmount: true, date: true },
+   542→   542→        })
+   543→   543→        const totalConstructionRevenue = constructionInvoices.reduce((s, i) => s + i.totalAmount, 0)
+   544→   544→        const totalRentalRevenue = rentalInvoices.reduce((s, i) => s + i.totalAmount, 0)
+   545→   545→        // Monthly breakdown
+   546→   546→        const monthlyData: Record<string, { month: string; construction: number; rental: number }> = {}
+   547→   547→        for (const inv of constructionInvoices) {
+   548→   548→          const month = new Date(inv.date).toISOString().slice(0, 7)
+   549→   549→          if (!monthlyData[month]) monthlyData[month] = { month, construction: 0, rental: 0 }
+   550→   550→          monthlyData[month].construction += inv.totalAmount
+   551→   551→        }
+   552→   552→        for (const inv of rentalInvoices) {
+   553→   553→          const month = new Date(inv.date).toISOString().slice(0, 7)
+   554→   554→          if (!monthlyData[month]) monthlyData[month] = { month, construction: 0, rental: 0 }
+   555→   555→          monthlyData[month].rental += inv.totalAmount
+   556→   556→        }
+   557→   557→        const monthly = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month))
+   558→   558→        return NextResponse.json({
+   559→   559→          totalConstructionRevenue, totalRentalRevenue, totalRevenue: totalConstructionRevenue + totalRentalRevenue,
+   560→   560→          monthly,
+   561→   561→        })
+   562→   562→      }
+   563→   563→
+   564→   564→      case 'expense-summary': {
+   565→   565→        // Direct costs: expenses with projectId
+   566→   566→        const directExpenses = await db.expense.findMany({
+   567→   567→          where: { projectId: { not: null } },
+   568→   568→          select: { amount: true, category: true, vatAmount: true },
+   569→   569→        })
+   570→   570→        // Indirect costs: expenses without projectId
+   571→   571→        const indirectExpenses = await db.expense.findMany({
+   572→   572→          where: { projectId: null },
+   573→   573→          select: { amount: true, category: true, vatAmount: true },
+   574→   574→        })
+   575→   575→        const directByCategory: Record<string, number> = {}
+   576→   576→        for (const e of directExpenses) { directByCategory[e.category] = (directByCategory[e.category] || 0) + e.amount }
+   577→   577→        const indirectByCategory: Record<string, number> = {}
+   578→   578→        for (const e of indirectExpenses) { indirectByCategory[e.category] = (indirectByCategory[e.category] || 0) + e.amount }
+   579→   579→        const totalDirect = directExpenses.reduce((s, e) => s + e.amount, 0)
+   580→   580→        const totalIndirect = indirectExpenses.reduce((s, e) => s + e.amount, 0)
+   581→   581→        return NextResponse.json({
+   582→   582→          totalDirect, totalIndirect, totalExpenses: totalDirect + totalIndirect,
+   583→   583→          directByCategory, indirectByCategory,
+   584→   584→        })
+   585→   585→      }
+   586→   586→
+   587→   587→      case 'cash-flow-summary': {
+   588→   588→        // Cash inflows: client payments
+   589→   589→        const clientPayments = await db.clientPayment.findMany({
+   590→   590→          select: { amount: true, date: true },
+   591→   591→        })
+   592→   592→        // Cash outflows: supplier payments
+   593→   593→        const supplierPayments = await db.supplierPayment.findMany({
+   594→   594→          select: { amount: true, date: true },
+   595→   595→        })
+   596→   596→        // Salary payments (use month/year for date since Salary model has no date field)
+   597→   597→        const salaryPayments = await db.salary.findMany({
+   598→   598→          where: { status: 'PAID' },
+   599→   599→          select: { netSalary: true, month: true, year: true, createdAt: true },
+   600→   600→        })
+   601→   601→        const totalInflows = clientPayments.reduce((s, p) => s + p.amount, 0)
+   602→   602→        const salaryTotal = salaryPayments.reduce((s, s2) => s + s2.netSalary, 0)
+   603→   603→        const totalOutflows = supplierPayments.reduce((s, p) => s + p.amount, 0) + salaryTotal
+   604→   604→        // Monthly breakdown
+   605→   605→        const monthlyData: Record<string, { month: string; inflows: number; outflows: number }> = {}
+   606→   606→        for (const p of clientPayments) {
+   607→   607→          const month = new Date(p.date).toISOString().slice(0, 7)
+   608→   608→          if (!monthlyData[month]) monthlyData[month] = { month, inflows: 0, outflows: 0 }
+   609→   609→          monthlyData[month].inflows += p.amount
+   610→   610→        }
+   611→   611→        for (const p of supplierPayments) {
+   612→   612→          const month = new Date(p.date).toISOString().slice(0, 7)
+   613→   613→          if (!monthlyData[month]) monthlyData[month] = { month, inflows: 0, outflows: 0 }
+   614→   614→          monthlyData[month].outflows += p.amount
+   615→   615→        }
+   616→   616→        for (const s of salaryPayments) {
+   617→   617→          const month = `${s.year}-${String(s.month).padStart(2, '0')}`
+   618→   618→          if (!monthlyData[month]) monthlyData[month] = { month, inflows: 0, outflows: 0 }
+   619→   619→          monthlyData[month].outflows += s.netSalary
+   620→   620→        }
+   621→   621→        const monthly = Object.values(monthlyData).sort((a, b) => a.month.localeCompare(b.month))
+   622→   622→        return NextResponse.json({
+   623→   623→          totalInflows, totalOutflows, netCashFlow: totalInflows - totalOutflows,
+   624→   624→          clientPaymentsTotal: clientPayments.reduce((s, p) => s + p.amount, 0),
+   625→   625→          supplierPaymentsTotal: supplierPayments.reduce((s, p) => s + p.amount, 0),
+   626→   626→          salaryPaymentsTotal: salaryTotal,
+   627→   627→          monthly,
+   628→   628→        })
+   629→   629→      }
+   630→   630→
+   631→   631→      default:
+   632→   632→        return NextResponse.json({ error: 'نوع التقرير غير معروف' }, { status: 400 })
+   633→   633→    }
+   634→   634→  } catch (error) {
+   635→   635→    console.error('Error generating report:', error)
+   636→   636→    return NextResponse.json({ error: 'فشل في إنشاء التقرير' }, { status: 500 })
+   637→   637→  }
+   638→   638→}
+   639→   639→

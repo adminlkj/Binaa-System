@@ -1,0 +1,1190 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useEffect, useRef, useCallback } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins,
+     7→     7→  Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon, Hash,
+     8→     8→  Upload, X, Loader2,
+     9→     9→} from 'lucide-react'
+    10→    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→    11→import { Button } from '@/components/ui/button'
+    12→    12→import { Input } from '@/components/ui/input'
+    13→    13→import { Badge } from '@/components/ui/badge'
+    14→    14→import { Textarea } from '@/components/ui/textarea'
+    15→    15→import {
+    16→    16→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    17→    17→} from '@/components/ui/table'
+    18→    18→import {
+    19→    19→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    20→    20→} from '@/components/ui/dialog'
+    21→    21→import {
+    22→    22→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    23→    23→} from '@/components/ui/select'
+    24→    24→import { Label } from '@/components/ui/label'
+    25→    25→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    26→    26→import { useAppStore, formatNumber } from '@/stores/app-store'
+    27→    27→import { MoneyDisplay } from '@/components/ui/money-display'
+    28→    28→import { Switch } from '@/components/ui/switch'
+    29→    29→
+    30→    30→// ============ Types ============
+    31→    31→interface Branch { id: string; code: string; name: string; address: string | null; isActive: boolean }
+    32→    32→interface Warehouse { id: string; code: string; name: string; branchId: string; isActive: boolean; branch: { id: string; code: string; name: string } }
+    33→    33→interface CostCenter { id: string; code: string; name: string; parentId: string | null; parent: { id: string; code: string; name: string } | null; children: { id: string; code: string; name: string }[] }
+    34→    34→interface Currency { id: string; code: string; name: string; symbol: string; rate: number; isActive: boolean }
+    35→    35→
+    36→    36→interface CompanySettings {
+    37→    37→  id?: string
+    38→    38→  nameAr: string
+    39→    39→  nameEn: string
+    40→    40→  taxNumber: string | null
+    41→    41→  commercialReg: string | null
+    42→    42→  address: string | null
+    43→    43→  phone: string | null
+    44→    44→  email: string | null
+    45→    45→  website: string | null
+    46→    46→  bankName: string | null
+    47→    47→  bankIban: string | null
+    48→    48→  bankAccountName: string | null
+    49→    49→  defaultVatRate: number
+    50→    50→  currencySymbol: string
+    51→    51→  currencySymbolEn: string
+    52→    52→  currencySymbolAr: string
+    53→    53→  useThousandSeparatorsSystem: boolean
+    54→    54→  useThousandSeparatorsOfficial: boolean
+    55→    55→  invoiceTerms: string | null
+    56→    56→  logoUrl: string | null
+    57→    57→  stamp: string | null
+    58→    58→  currencySymbolImage: string | null
+    59→    59→  headerImage: string | null
+    60→    60→  footerImage: string | null
+    61→    61→}
+    62→    62→
+    63→    63→// ============ ImageUploadField Component ============
+    64→    64→function ImageUploadField({ 
+    65→    65→  value, 
+    66→    66→  onChange, 
+    67→    67→  label, 
+    68→    68→  labelAr,
+    69→    69→  lang,
+    70→    70→  hint,
+    71→    71→  hintAr,
+    72→    72→  previewHeight = 'h-24',
+    73→    73→  accept = 'image/svg+xml,image/png,image/jpeg,image/webp',
+    74→    74→}: {
+    75→    75→  value: string | null
+    76→    76→  onChange: (url: string | null) => void
+    77→    77→  label: string
+    78→    78→  labelAr: string
+    79→    79→  lang: 'ar' | 'en'
+    80→    80→  hint?: string
+    81→    81→  hintAr?: string
+    82→    82→  previewHeight?: string
+    83→    83→  accept?: string
+    84→    84→}) {
+    85→    85→  const [uploading, setUploading] = useState(false)
+    86→    86→  const [dragOver, setDragOver] = useState(false)
+    87→    87→  const fileInputRef = useRef<HTMLInputElement>(null)
+    88→    88→
+    89→    89→  const [error, setError] = useState<string | null>(null)
+    90→    90→
+    91→    91→  const uploadFile = useCallback(async (file: File) => {
+    92→    92→    if (file.size > 5 * 1024 * 1024) {
+    93→    93→      setError(lang === 'ar' ? 'حجم الملف يتجاوز 5 ميجابايت' : 'File size exceeds 5MB')
+    94→    94→      return
+    95→    95→    }
+    96→    96→    setUploading(true)
+    97→    97→    setError(null)
+    98→    98→    try {
+    99→    99→      const formData = new FormData()
+   100→   100→      formData.append('file', file)
+   101→   101→      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+   102→   102→      if (!res.ok) {
+   103→   103→        const errData = await res.json().catch(() => ({}))
+   104→   104→        throw new Error(errData.error || 'Upload failed')
+   105→   105→      }
+   106→   106→      const data = await res.json()
+   107→   107→      onChange(data.url)
+   108→   108→    } catch (err) {
+   109→   109→      const msg = err instanceof Error ? err.message : 'Unknown error'
+   110→   110→      setError(lang === 'ar' ? `فشل في رفع الملف: ${msg}` : `Failed to upload file: ${msg}`)
+   111→   111→    } finally {
+   112→   112→      setUploading(false)
+   113→   113→    }
+   114→   114→  }, [lang, onChange])
+   115→   115→
+   116→   116→  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+   117→   117→    const file = e.target.files?.[0]
+   118→   118→    if (file) {
+   119→   119→      setError(null)
+   120→   120→      uploadFile(file)
+   121→   121→    }
+   122→   122→    // Reset input so same file can be re-selected
+   123→   123→    setTimeout(() => { if (fileInputRef.current) fileInputRef.current.value = '' }, 100)
+   124→   124→  }
+   125→   125→
+   126→   126→  const handleDrop = (e: React.DragEvent) => {
+   127→   127→    e.preventDefault()
+   128→   128→    setDragOver(false)
+   129→   129→    const file = e.dataTransfer.files?.[0]
+   130→   130→    if (file) uploadFile(file)
+   131→   131→  }
+   132→   132→
+   133→   133→  const handleDragOver = (e: React.DragEvent) => {
+   134→   134→    e.preventDefault()
+   135→   135→    setDragOver(true)
+   136→   136→  }
+   137→   137→
+   138→   138→  const handleDragLeave = () => setDragOver(false)
+   139→   139→
+   140→   140→  const displayLabel = lang === 'ar' ? labelAr : label
+   141→   141→  const displayHint = lang === 'ar' ? hintAr : hint
+   142→   142→
+   143→   143→  return (
+   144→   144→    <div className="space-y-2">
+   145→   145→      <Label>{displayLabel}</Label>
+   146→   146→      {value ? (
+   147→   147→        <div className={`relative rounded-lg border bg-white p-2 ${previewHeight} flex items-center justify-center group overflow-hidden`}>
+   148→   148→          <img
+   149→   149→            src={value}
+   150→   150→            alt={displayLabel}
+   151→   151→            className="max-h-20 max-w-full object-contain"
+   152→   152→          />
+   153→   153→          <Button
+   154→   154→            variant="destructive"
+   155→   155→            size="icon"
+   156→   156→            className="absolute top-1 left-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+   157→   157→            onClick={() => { setError(null); onChange(null) }}
+   158→   158→            type="button"
+   159→   159→          >
+   160→   160→            <X className="size-3" />
+   161→   161→          </Button>
+   162→   162→        </div>
+   163→   163→      ) : (
+   164→   164→        <div
+   165→   165→          className={`rounded-lg border-2 border-dashed transition-colors cursor-pointer ${
+   166→   166→            dragOver ? 'border-emerald-400 bg-emerald-50' : 'border-gray-300 bg-gray-50 hover:border-emerald-300 hover:bg-emerald-50/50'
+   167→   167→          } ${previewHeight} flex flex-col items-center justify-center gap-1`}
+   168→   168→          onClick={() => fileInputRef.current?.click()}
+   169→   169→          onDrop={handleDrop}
+   170→   170→          onDragOver={handleDragOver}
+   171→   171→          onDragLeave={handleDragLeave}
+   172→   172→        >
+   173→   173→          {uploading ? (
+   174→   174→            <>
+   175→   175→              <Loader2 className="size-5 text-emerald-500 animate-spin" />
+   176→   176→              <span className="text-xs text-muted-foreground">
+   177→   177→                {lang === 'ar' ? 'جاري الرفع...' : 'Uploading...'}
+   178→   178→              </span>
+   179→   179→            </>
+   180→   180→          ) : (
+   181→   181→            <>
+   182→   182→              <Upload className="size-5 text-gray-400" />
+   183→   183→              <span className="text-xs text-muted-foreground">
+   184→   184→                {lang === 'ar' ? 'اسحب الملف هنا أو انقر للاختيار' : 'Drag & drop or click to upload'}
+   185→   185→              </span>
+   186→   186→              <span className="text-[10px] text-muted-foreground">
+   187→   187→                {lang === 'ar' ? 'SVG, PNG, JPG - حد أقصى 5MB' : 'SVG, PNG, JPG - Max 5MB'}
+   188→   188→              </span>
+   189→   189→            </>
+   190→   190→          )}
+   191→   191→        </div>
+   192→   192→      )}
+   193→   193→      <input
+   194→   194→        ref={fileInputRef}
+   195→   195→        type="file"
+   196→   196→        accept={accept}
+   197→   197→        onChange={handleFileChange}
+   198→   198→        className="hidden"
+   199→   199→      />
+   200→   200→      {error && (
+   201→   201→        <p className="text-xs text-red-600">{error}</p>
+   202→   202→      )}
+   203→   203→      {displayHint && !error && (
+   204→   204→        <p className="text-xs text-muted-foreground">{displayHint}</p>
+   205→   205→      )}
+   206→   206→    </div>
+   207→   207→  )
+   208→   208→}
+   209→   209→
+   210→   210→function TableSkeleton({ rows = 3 }: { rows?: number }) {
+   211→   211→  return (
+   212→   212→    <div className="space-y-2">
+   213→   213→      {Array.from({ length: rows }).map((_, i) => (
+   214→   214→        <div key={i} className="flex gap-4 p-3">
+   215→   215→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   216→   216→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+   217→   217→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   218→   218→        </div>
+   219→   219→      ))}
+   220→   220→    </div>
+   221→   221→  )
+   222→   222→}
+   223→   223→
+   224→   224→// ============ Company Settings Tab ============
+   225→   225→function CompanySettingsTab() {
+   226→   226→  const { lang, setCurrencySymbolImage, setThousandSeparatorSettings: updateStoreSeparators } = useAppStore()
+   227→   227→  const queryClient = useQueryClient()
+   228→   228→  const [form, setForm] = useState<CompanySettings>({
+   229→   229→    nameAr: '',
+   230→   230→    nameEn: '',
+   231→   231→    taxNumber: '',
+   232→   232→    commercialReg: '',
+   233→   233→    address: '',
+   234→   234→    phone: '',
+   235→   235→    email: '',
+   236→   236→    website: '',
+   237→   237→    bankName: '',
+   238→   238→    bankIban: '',
+   239→   239→    bankAccountName: '',
+   240→   240→    defaultVatRate: 0.15,
+   241→   241→    currencySymbol: '\uFDFC',
+   242→   242→    currencySymbolEn: 'SAR',
+   243→   243→    currencySymbolAr: 'ر.س',
+   244→   244→    useThousandSeparatorsSystem: true,
+   245→   245→    useThousandSeparatorsOfficial: false,
+   246→   246→    invoiceTerms: '',
+   247→   247→    logoUrl: '',
+   248→   248→    stamp: '',
+   249→   249→    currencySymbolImage: '',
+   250→   250→    headerImage: '',
+   251→   251→    footerImage: '',
+   252→   252→  })
+   253→   253→
+   254→   254→  const { data: settings, isLoading } = useQuery<CompanySettings>({
+   255→   255→    queryKey: ['company-settings'],
+   256→   256→    queryFn: async () => {
+   257→   257→      const r = await fetch('/api/company-settings')
+   258→   258→      if (!r.ok) throw new Error('Failed to fetch')
+   259→   259→      return r.json()
+   260→   260→    },
+   261→   261→  })
+   262→   262→
+   263→   263→  const settingsData = settings ? {
+   264→   264→    nameAr: settings.nameAr || '',
+   265→   265→    nameEn: settings.nameEn || '',
+   266→   266→    taxNumber: settings.taxNumber || '',
+   267→   267→    commercialReg: settings.commercialReg || '',
+   268→   268→    address: settings.address || '',
+   269→   269→    phone: settings.phone || '',
+   270→   270→    email: settings.email || '',
+   271→   271→    website: settings.website || '',
+   272→   272→    bankName: settings.bankName || '',
+   273→   273→    bankIban: settings.bankIban || '',
+   274→   274→    bankAccountName: settings.bankAccountName || '',
+   275→   275→    defaultVatRate: settings.defaultVatRate ?? 0.15,
+   276→   276→    currencySymbol: settings.currencySymbol || '\uFDFC',
+   277→   277→    currencySymbolEn: settings.currencySymbolEn || 'SAR',
+   278→   278→    currencySymbolAr: settings.currencySymbolAr || 'ر.س',
+   279→   279→    useThousandSeparatorsSystem: settings.useThousandSeparatorsSystem ?? true,
+   280→   280→    useThousandSeparatorsOfficial: settings.useThousandSeparatorsOfficial ?? false,
+   281→   281→    invoiceTerms: settings.invoiceTerms || '',
+   282→   282→    logoUrl: settings.logoUrl || '',
+   283→   283→    stamp: settings.stamp || '',
+   284→   284→    currencySymbolImage: settings.currencySymbolImage || '',
+   285→   285→    headerImage: settings.headerImage || '',
+   286→   286→    footerImage: settings.footerImage || '',
+   287→   287→  } : null
+   288→   288→
+   289→   289→  // Sync form when settings load (only once)
+   290→   290→  const settingsLoadedRef = React.useRef(false)
+   291→   291→  React.useEffect(() => {
+   292→   292→    if (settingsData && !settingsLoadedRef.current) {
+   293→   293→      settingsLoadedRef.current = true
+   294→   294→      setForm(settingsData)
+   295→   295→    }
+   296→   296→  }, [settingsData])
+   297→   297→
+   298→   298→  const saveMutation = useMutation({
+   299→   299→    mutationFn: (data: CompanySettings) =>
+   300→   300→      fetch('/api/company-settings', {
+   301→   301→        method: 'PUT',
+   302→   302→        headers: { 'Content-Type': 'application/json' },
+   303→   303→        body: JSON.stringify(data),
+   304→   304→      }).then(r => {
+   305→   305→        if (!r.ok) throw new Error('Failed to save')
+   306→   306→        return r.json()
+   307→   307→      }),
+   308→   308→    onSuccess: (data) => {
+   309→   309→      // Reset the loaded ref so form will re-sync with fresh data
+   310→   310→      settingsLoadedRef.current = false
+   311→   311→      queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+   312→   312→      // Update currency symbol image in global store
+   313→   313→      setCurrencySymbolImage(data.currencySymbolImage || null)
+   314→   314→      // Update thousand separator settings in global store
+   315→   315→      updateStoreSeparators(
+   316→   316→        data.useThousandSeparatorsSystem ?? true,
+   317→   317→        data.useThousandSeparatorsOfficial ?? false
+   318→   318→      )
+   319→   319→    },
+   320→   320→  })
+   321→   321→
+   322→   322→  const handleSave = () => {
+   323→   323→    saveMutation.mutate(form)
+   324→   324→  }
+   325→   325→
+   326→   326→  const updateField = (field: keyof CompanySettings, value: string | number | null) => {
+   327→   327→    setForm(prev => ({ ...prev, [field]: value }))
+   328→   328→  }
+   329→   329→
+   330→   330→  if (isLoading) {
+   331→   331→    return (
+   332→   332→      <div className="space-y-4">
+   333→   333→        {Array.from({ length: 4 }).map((_, i) => (
+   334→   334→          <div key={i} className="h-24 animate-pulse rounded-lg bg-gray-100" />
+   335→   335→        ))}
+   336→   336→      </div>
+   337→   337→    )
+   338→   338→  }
+   339→   339→
+   340→   340→  return (
+   341→   341→    <div className="space-y-6">
+   342→   342→      {/* Save Button */}
+   343→   343→      <div className="flex justify-end">
+   344→   344→        <Button
+   345→   345→          onClick={handleSave}
+   346→   346→          disabled={saveMutation.isPending}
+   347→   347→          className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+   348→   348→        >
+   349→   349→          <Save className="size-4" />
+   350→   350→          {saveMutation.isPending
+   351→   351→            ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...')
+   352→   352→            : (lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes')}
+   353→   353→        </Button>
+   354→   354→      </div>
+   355→   355→
+   356→   356→      {saveMutation.isSuccess && (
+   357→   357→        <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-emerald-700 text-sm">
+   358→   358→          {lang === 'ar' ? 'تم حفظ الإعدادات بنجاح' : 'Settings saved successfully'}
+   359→   359→        </div>
+   360→   360→      )}
+   361→   361→
+   362→   362→      {saveMutation.isError && (
+   363→   363→        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-red-700 text-sm">
+   364→   364→          {lang === 'ar' ? 'فشل في حفظ الإعدادات' : 'Failed to save settings'}
+   365→   365→        </div>
+   366→   366→      )}
+   367→   367→
+   368→   368→      {/* Company Names */}
+   369→   369→      <Card>
+   370→   370→        <CardHeader className="pb-3">
+   371→   371→          <CardTitle className="flex items-center gap-2 text-base">
+   372→   372→            <Building2 className="size-4 text-emerald-600" />
+   373→   373→            {lang === 'ar' ? 'أسماء الشركة' : 'Company Names'}
+   374→   374→          </CardTitle>
+   375→   375→        </CardHeader>
+   376→   376→        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   377→   377→          <div className="space-y-2">
+   378→   378→            <Label>{lang === 'ar' ? 'الاسم بالعربية *' : 'Arabic Name *'}</Label>
+   379→   379→            <Input
+   380→   380→              value={form.nameAr}
+   381→   381→              onChange={e => updateField('nameAr', e.target.value)}
+   382→   382→              placeholder={lang === 'ar' ? 'شركة البناء الحديثة للمقاولات' : 'Al Binaa Al Haditha Contracting Co.'}
+   383→   383→            />
+   384→   384→          </div>
+   385→   385→          <div className="space-y-2">
+   386→   386→            <Label>{lang === 'ar' ? 'الاسم بالإنجليزية *' : 'English Name *'}</Label>
+   387→   387→            <Input
+   388→   388→              value={form.nameEn}
+   389→   389→              onChange={e => updateField('nameEn', e.target.value)}
+   390→   390→              placeholder="Al Binaa Al Haditha Contracting Co."
+   391→   391→              dir="ltr"
+   392→   392→            />
+   393→   393→          </div>
+   394→   394→        </CardContent>
+   395→   395→      </Card>
+   396→   396→
+   397→   397→      {/* Registration & Contact */}
+   398→   398→      <Card>
+   399→   399→        <CardHeader className="pb-3">
+   400→   400→          <CardTitle className="flex items-center gap-2 text-base">
+   401→   401→            <FileText className="size-4 text-emerald-600" />
+   402→   402→            {lang === 'ar' ? 'التسجيل والتواصل' : 'Registration & Contact'}
+   403→   403→          </CardTitle>
+   404→   404→        </CardHeader>
+   405→   405→        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   406→   406→          <div className="space-y-2">
+   407→   407→            <Label>{lang === 'ar' ? 'الرقم الضريبي' : 'Tax Number'}</Label>
+   408→   408→            <Input
+   409→   409→              value={form.taxNumber || ''}
+   410→   410→              onChange={e => updateField('taxNumber', e.target.value)}
+   411→   411→              placeholder="300123456700003"
+   412→   412→              dir="ltr"
+   413→   413→            />
+   414→   414→          </div>
+   415→   415→          <div className="space-y-2">
+   416→   416→            <Label>{lang === 'ar' ? 'السجل التجاري' : 'Commercial Registration'}</Label>
+   417→   417→            <Input
+   418→   418→              value={form.commercialReg || ''}
+   419→   419→              onChange={e => updateField('commercialReg', e.target.value)}
+   420→   420→              placeholder="1234567890"
+   421→   421→              dir="ltr"
+   422→   422→            />
+   423→   423→          </div>
+   424→   424→          <div className="space-y-2 md:col-span-2">
+   425→   425→            <Label>{lang === 'ar' ? 'العنوان' : 'Address'}</Label>
+   426→   426→            <Input
+   427→   427→              value={form.address || ''}
+   428→   428→              onChange={e => updateField('address', e.target.value)}
+   429→   429→              placeholder={lang === 'ar' ? 'الدمام - المملكة العربية السعودية' : 'Dammam - Saudi Arabia'}
+   430→   430→            />
+   431→   431→          </div>
+   432→   432→          <div className="space-y-2">
+   433→   433→            <Label className="flex items-center gap-1"><Phone className="size-3" /> {lang === 'ar' ? 'الهاتف' : 'Phone'}</Label>
+   434→   434→            <Input
+   435→   435→              value={form.phone || ''}
+   436→   436→              onChange={e => updateField('phone', e.target.value)}
+   437→   437→              placeholder="0500000000"
+   438→   438→              dir="ltr"
+   439→   439→            />
+   440→   440→          </div>
+   441→   441→          <div className="space-y-2">
+   442→   442→            <Label className="flex items-center gap-1"><Mail className="size-3" /> {lang === 'ar' ? 'البريد الإلكتروني' : 'Email'}</Label>
+   443→   443→            <Input
+   444→   444→              type="email"
+   445→   445→              value={form.email || ''}
+   446→   446→              onChange={e => updateField('email', e.target.value)}
+   447→   447→              placeholder="info@company.com"
+   448→   448→              dir="ltr"
+   449→   449→            />
+   450→   450→          </div>
+   451→   451→          <div className="space-y-2">
+   452→   452→            <Label className="flex items-center gap-1"><Globe className="size-3" /> {lang === 'ar' ? 'الموقع الإلكتروني' : 'Website'}</Label>
+   453→   453→            <Input
+   454→   454→              value={form.website || ''}
+   455→   455→              onChange={e => updateField('website', e.target.value)}
+   456→   456→              placeholder="www.company.com"
+   457→   457→              dir="ltr"
+   458→   458→            />
+   459→   459→          </div>
+   460→   460→        </CardContent>
+   461→   461→      </Card>
+   462→   462→
+   463→   463→      {/* Bank Information */}
+   464→   464→      <Card>
+   465→   465→        <CardHeader className="pb-3">
+   466→   466→          <CardTitle className="flex items-center gap-2 text-base">
+   467→   467→            <CreditCard className="size-4 text-emerald-600" />
+   468→   468→            {lang === 'ar' ? 'بيانات البنك' : 'Bank Information'}
+   469→   469→          </CardTitle>
+   470→   470→        </CardHeader>
+   471→   471→        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   472→   472→          <div className="space-y-2">
+   473→   473→            <Label>{lang === 'ar' ? 'اسم البنك' : 'Bank Name'}</Label>
+   474→   474→            <Input
+   475→   475→              value={form.bankName || ''}
+   476→   476→              onChange={e => updateField('bankName', e.target.value)}
+   477→   477→              placeholder={lang === 'ar' ? 'الراجحي' : 'Al Rajhi Bank'}
+   478→   478→            />
+   479→   479→          </div>
+   480→   480→          <div className="space-y-2">
+   481→   481→            <Label>{lang === 'ar' ? 'IBAN' : 'IBAN'}</Label>
+   482→   482→            <Input
+   483→   483→              value={form.bankIban || ''}
+   484→   484→              onChange={e => updateField('bankIban', e.target.value)}
+   485→   485→              placeholder="SA00 8000 0000 6080 1016 7519"
+   486→   486→              dir="ltr"
+   487→   487→            />
+   488→   488→          </div>
+   489→   489→          <div className="space-y-2 md:col-span-2">
+   490→   490→            <Label>{lang === 'ar' ? 'اسم الحساب' : 'Account Name'}</Label>
+   491→   491→            <Input
+   492→   492→              value={form.bankAccountName || ''}
+   493→   493→              onChange={e => updateField('bankAccountName', e.target.value)}
+   494→   494→              placeholder={lang === 'ar' ? 'شركة البناء الحديثة للمقاولات' : 'Company Account Name'}
+   495→   495→            />
+   496→   496→          </div>
+   497→   497→        </CardContent>
+   498→   498→      </Card>
+   499→   499→
+   500→   500→      {/* Currency & VAT */}
+   501→   501→      <Card>
+   502→   502→        <CardHeader className="pb-3">
+   503→   503→          <CardTitle className="flex items-center gap-2 text-base">
+   504→   504→            <Coins className="size-4 text-emerald-600" />
+   505→   505→            {lang === 'ar' ? 'العملة والضريبة' : 'Currency & VAT'}
+   506→   506→          </CardTitle>
+   507→   507→        </CardHeader>
+   508→   508→        <CardContent className="space-y-4">
+   509→   509→          {/* Currency Symbol Image Upload */}
+   510→   510→          <ImageUploadField
+   511→   511→            value={form.currencySymbolImage}
+   512→   512→            onChange={url => updateField('currencySymbolImage', url)}
+   513→   513→            label="Currency Symbol Image"
+   514→   514→            labelAr="صورة رمز العملة"
+   515→   515→            lang={lang}
+   516→   516→            hint="When set, this image replaces text currency symbols in MoneyDisplay. SVG/PNG recommended."
+   517→   517→            hintAr="عند التعيين، تحل هذه الصورة محل رموز العملة النصية في عرض المبالغ. يُفضل SVG/PNG."
+   518→   518→            previewHeight="h-28"
+   519→   519→          />
+   520→   520→
+   521→   521→          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+   522→   522→            <div className="space-y-2">
+   523→   523→              <Label>{lang === 'ar' ? 'رمز العملة (عربي)' : 'Currency Symbol (Arabic)'}</Label>
+   524→   524→              <Input
+   525→   525→                value={form.currencySymbol}
+   526→   526→                onChange={e => updateField('currencySymbol', e.target.value)}
+   527→   527→                placeholder="﷼"
+   528→   528→              />
+   529→   529→              <p className="text-xs text-muted-foreground">
+   530→   530→                {lang === 'ar' ? 'الافتراضي: ﷼' : 'Default: ﷼'}
+   531→   531→              </p>
+   532→   532→            </div>
+   533→   533→            <div className="space-y-2">
+   534→   534→              <Label>{lang === 'ar' ? 'رمز العملة (إنجليزي)' : 'Currency Symbol (English)'}</Label>
+   535→   535→              <Input
+   536→   536→                value={form.currencySymbolEn}
+   537→   537→                onChange={e => updateField('currencySymbolEn', e.target.value)}
+   538→   538→                placeholder="SAR"
+   539→   539→                dir="ltr"
+   540→   540→              />
+   541→   541→              <p className="text-xs text-muted-foreground">
+   542→   542→                {lang === 'ar' ? 'الافتراضي: SAR' : 'Default: SAR'}
+   543→   543→              </p>
+   544→   544→            </div>
+   545→   545→            <div className="space-y-2">
+   546→   546→              <Label>{lang === 'ar' ? 'رمز العملة (اختصار عربي)' : 'Currency Symbol (Arabic Abbr.)'}</Label>
+   547→   547→              <Input
+   548→   548→                value={form.currencySymbolAr}
+   549→   549→                onChange={e => updateField('currencySymbolAr', e.target.value)}
+   550→   550→                placeholder="ر.س"
+   551→   551→              />
+   552→   552→              <p className="text-xs text-muted-foreground">
+   553→   553→                {lang === 'ar' ? 'الافتراضي: ر.س' : 'Default: ر.س'}
+   554→   554→              </p>
+   555→   555→            </div>
+   556→   556→          </div>
+   557→   557→
+   558→   558→          {/* Live Preview */}
+   559→   559→          <div className="rounded-lg border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-4">
+   560→   560→            <div className="flex items-center gap-2 mb-3">
+   561→   561→              <Eye className="size-4 text-emerald-600" />
+   562→   562→              <span className="text-sm font-semibold text-emerald-700">
+   563→   563→                {lang === 'ar' ? 'معاينة مباشرة' : 'Live Preview'}
+   564→   564→              </span>
+   565→   565→            </div>
+   566→   566→            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+   567→   567→              <div className="rounded-md bg-white p-3 text-center border">
+   568→   568→                <p className="text-xs text-muted-foreground mb-1">
+   569→   569→                  {lang === 'ar' ? 'عرض عربي' : 'Arabic Display'}
+   570→   570→                </p>
+   571→   571→                <MoneyDisplay
+   572→   572→                  value={150000}
+   573→   573→                  mode="system"
+   574→   574→                  lang="ar"
+   575→   575→                  symbolAr={form.currencySymbol}
+   576→   576→                  symbolEn={form.currencySymbolEn}
+   577→   577→                  symbolImage={form.currencySymbolImage}
+   578→   578→                  size="lg"
+   579→   579→                  bold
+   580→   580→                />
+   581→   581→              </div>
+   582→   582→              <div className="rounded-md bg-white p-3 text-center border">
+   583→   583→                <p className="text-xs text-muted-foreground mb-1">
+   584→   584→                  {lang === 'ar' ? 'عرض إنجليزي' : 'English Display'}
+   585→   585→                </p>
+   586→   586→                <MoneyDisplay
+   587→   587→                  value={150000}
+   588→   588→                  mode="system"
+   589→   589→                  lang="en"
+   590→   590→                  symbolAr={form.currencySymbol}
+   591→   591→                  symbolEn={form.currencySymbolEn}
+   592→   592→                  symbolImage={form.currencySymbolImage}
+   593→   593→                  size="lg"
+   594→   594→                  bold
+   595→   595→                />
+   596→   596→              </div>
+   597→   597→              <div className="rounded-md bg-white p-3 text-center border">
+   598→   598→                <p className="text-xs text-muted-foreground mb-1">
+   599→   599→                  {lang === 'ar' ? 'اختصار عربي' : 'Arabic Abbreviation'}
+   600→   600→                </p>
+   601→   601→                <MoneyDisplay
+   602→   602→                  value={150000}
+   603→   603→                  mode="system"
+   604→   604→                  lang="ar"
+   605→   605→                  symbolAr={form.currencySymbolAr}
+   606→   606→                  symbolEn={form.currencySymbolEn}
+   607→   607→                  symbolImage={form.currencySymbolImage}
+   608→   608→                  size="lg"
+   609→   609→                  bold
+   610→   610→                />
+   611→   611→              </div>
+   612→   612→            </div>
+   613→   613→          </div>
+   614→   614→
+   615→   615→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   616→   616→            <div className="space-y-2">
+   617→   617→              <Label>{lang === 'ar' ? 'نسبة ضريبة القيمة المضافة الافتراضية' : 'Default VAT Rate'}</Label>
+   618→   618→              <div className="flex items-center gap-2">
+   619→   619→                <Input
+   620→   620→                  type="number"
+   621→   621→                  step="0.01"
+   622→   622→                  min="0"
+   623→   623→                  max="1"
+   624→   624→                  value={form.defaultVatRate}
+   625→   625→                  onChange={e => updateField('defaultVatRate', parseFloat(e.target.value) || 0)}
+   626→   626→                  dir="ltr"
+   627→   627→                />
+   628→   628→                <span className="text-sm text-muted-foreground whitespace-nowrap">
+   629→   629→                  ({((form.defaultVatRate ?? 0) * 100).toFixed(0)}%)
+   630→   630→                </span>
+   631→   631→              </div>
+   632→   632→            </div>
+   633→   633→          </div>
+   634→   634→        </CardContent>
+   635→   635→      </Card>
+   636→   636→
+   637→   637→      {/* Number Format / تنسيق المبالغ */}
+   638→   638→      <Card>
+   639→   639→        <CardHeader className="pb-3">
+   640→   640→          <CardTitle className="flex items-center gap-2 text-base">
+   641→   641→            <Hash className="size-4 text-emerald-600" />
+   642→   642→            {lang === 'ar' ? 'تنسيق المبالغ' : 'Number Format'}
+   643→   643→          </CardTitle>
+   644→   644→        </CardHeader>
+   645→   645→        <CardContent className="space-y-4">
+   646→   646→          {/* System thousand separators toggle */}
+   647→   647→          <div className="flex items-center justify-between rounded-lg border p-4">
+   648→   648→            <div className="space-y-0.5">
+   649→   649→              <Label className="text-sm font-medium">
+   650→   650→                {lang === 'ar' ? 'استخدام فواصل الآلاف داخل النظام' : 'Use thousand separators in system'}
+   651→   651→              </Label>
+   652→   652→              <p className="text-xs text-muted-foreground">
+   653→   653→                {lang === 'ar'
+   654→   654→                  ? 'عرض المبالغ بفواصل الآلاف في شاشات النظام الداخلية'
+   655→   655→                  : 'Display amounts with thousand separators in system screens'}
+   656→   656→              </p>
+   657→   657→            </div>
+   658→   658→            <Switch
+   659→   659→              checked={form.useThousandSeparatorsSystem}
+   660→   660→              onCheckedChange={(checked: boolean) =>
+   661→   661→                setForm(prev => ({ ...prev, useThousandSeparatorsSystem: checked }))
+   662→   662→              }
+   663→   663→            />
+   664→   664→          </div>
+   665→   665→
+   666→   666→          {/* Official documents thousand separators toggle */}
+   667→   667→          <div className="flex items-center justify-between rounded-lg border p-4">
+   668→   668→            <div className="space-y-0.5">
+   669→   669→              <Label className="text-sm font-medium">
+   670→   670→                {lang === 'ar' ? 'استخدام فواصل الآلاف في المستندات الرسمية' : 'Use thousand separators in official documents'}
+   671→   671→              </Label>
+   672→   672→              <p className="text-xs text-muted-foreground">
+   673→   673→                {lang === 'ar'
+   674→   674→                  ? 'عرض المبالغ بفواصل الآلاف في الفواتير والمستندات الرسمية (فاتورة ضريبية، مستخلصات...)'
+   675→   675→                  : 'Display amounts with thousand separators in invoices and official documents (tax invoices, claims...)'}
+   676→   676→              </p>
+   677→   677→            </div>
+   678→   678→            <Switch
+   679→   679→              checked={form.useThousandSeparatorsOfficial}
+   680→   680→              onCheckedChange={(checked: boolean) =>
+   681→   681→                setForm(prev => ({ ...prev, useThousandSeparatorsOfficial: checked }))
+   682→   682→              }
+   683→   683→            />
+   684→   684→          </div>
+   685→   685→
+   686→   686→          {/* Live Preview */}
+   687→   687→          <div className="rounded-lg border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-4">
+   688→   688→            <div className="flex items-center gap-2 mb-3">
+   689→   689→              <Eye className="size-4 text-emerald-600" />
+   690→   690→              <span className="text-sm font-semibold text-emerald-700">
+   691→   691→                {lang === 'ar' ? 'معاينة مباشرة' : 'Live Preview'}
+   692→   692→              </span>
+   693→   693→            </div>
+   694→   694→            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+   695→   695→              <div className="rounded-md bg-white p-3 text-center border">
+   696→   696→                <p className="text-xs text-muted-foreground mb-2">
+   697→   697→                  {lang === 'ar' ? 'داخل النظام' : 'Inside System'}
+   698→   698→                </p>
+   699→   699→                <MoneyDisplay
+   700→   700→                  value={42514.85}
+   701→   701→                  mode={form.useThousandSeparatorsSystem ? 'system' : 'official'}
+   702→   702→                  lang={lang}
+   703→   703→                  symbolAr={form.currencySymbol}
+   704→   704→                  symbolEn={form.currencySymbolEn}
+   705→   705→                  symbolImage={form.currencySymbolImage}
+   706→   706→                  size="lg"
+   707→   707→                  bold
+   708→   708→                />
+   709→   709→              </div>
+   710→   710→              <div className="rounded-md bg-white p-3 text-center border">
+   711→   711→                <p className="text-xs text-muted-foreground mb-2">
+   712→   712→                  {lang === 'ar' ? 'المستندات الرسمية' : 'Official Documents'}
+   713→   713→                </p>
+   714→   714→                <MoneyDisplay
+   715→   715→                  value={42514.85}
+   716→   716→                  mode={form.useThousandSeparatorsOfficial ? 'system' : 'official'}
+   717→   717→                  lang={lang}
+   718→   718→                  symbolAr={form.currencySymbol}
+   719→   719→                  symbolEn={form.currencySymbolEn}
+   720→   720→                  symbolImage={form.currencySymbolImage}
+   721→   721→                  size="lg"
+   722→   722→                  bold
+   723→   723→                />
+   724→   724→              </div>
+   725→   725→            </div>
+   726→   726→          </div>
+   727→   727→        </CardContent>
+   728→   728→      </Card>
+   729→   729→
+   730→   730→      {/* Invoice Settings */}
+   731→   731→      <Card>
+   732→   732→        <CardHeader className="pb-3">
+   733→   733→          <CardTitle className="flex items-center gap-2 text-base">
+   734→   734→            <FileText className="size-4 text-emerald-600" />
+   735→   735→            {lang === 'ar' ? 'إعدادات الفاتورة' : 'Invoice Settings'}
+   736→   736→          </CardTitle>
+   737→   737→        </CardHeader>
+   738→   738→        <CardContent className="space-y-4">
+   739→   739→          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   740→   740→            <ImageUploadField
+   741→   741→              value={form.headerImage}
+   742→   742→              onChange={url => updateField('headerImage', url)}
+   743→   743→              label="Invoice Header Image"
+   744→   744→              labelAr="صورة رأس الفاتورة"
+   745→   745→              lang={lang}
+   746→   746→              hint="Displayed at the top of invoices. SVG/PNG recommended."
+   747→   747→              hintAr="تعرض في أعلى الفاتورة. يُفضل SVG/PNG."
+   748→   748→              previewHeight="h-28"
+   749→   749→            />
+   750→   750→            <ImageUploadField
+   751→   751→              value={form.footerImage}
+   752→   752→              onChange={url => updateField('footerImage', url)}
+   753→   753→              label="Invoice Footer Image"
+   754→   754→              labelAr="صورة تذييل الفاتورة"
+   755→   755→              lang={lang}
+   756→   756→              hint="Displayed at the bottom of invoices. SVG/PNG recommended."
+   757→   757→              hintAr="تعرض في أسفل الفاتورة. يُفضل SVG/PNG."
+   758→   758→              previewHeight="h-28"
+   759→   759→            />
+   760→   760→          </div>
+   761→   761→          <div className="space-y-2">
+   762→   762→            <Label>{lang === 'ar' ? 'شروط الفاتورة' : 'Invoice Terms'}</Label>
+   763→   763→            <Textarea
+   764→   764→              value={form.invoiceTerms || ''}
+   765→   765→              onChange={e => updateField('invoiceTerms', e.target.value)}
+   766→   766→              placeholder={lang === 'ar'
+   767→   767→                ? 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً'
+   768→   768→                : 'Payment due within 30 days\nThis is an electronically generated invoice'}
+   769→   769→              rows={4}
+   770→   770→            />
+   771→   771→          </div>
+   772→   772→        </CardContent>
+   773→   773→      </Card>
+   774→   774→
+   775→   775→      {/* Logo & Stamp */}
+   776→   776→      <Card>
+   777→   777→        <CardHeader className="pb-3">
+   778→   778→          <CardTitle className="flex items-center gap-2 text-base">
+   779→   779→            <ImageIcon className="size-4 text-emerald-600" />
+   780→   780→            {lang === 'ar' ? 'الشعار والختم' : 'Logo & Stamp'}
+   781→   781→          </CardTitle>
+   782→   782→        </CardHeader>
+   783→   783→        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+   784→   784→          <ImageUploadField
+   785→   785→            value={form.logoUrl}
+   786→   786→            onChange={url => updateField('logoUrl', url)}
+   787→   787→            label="Company Logo"
+   788→   788→            labelAr="شعار الشركة"
+   789→   789→            lang={lang}
+   790→   790→            hint="SVG/PNG/JPG. Used in invoices and official documents."
+   791→   791→            hintAr="SVG/PNG/JPG. يُستخدم في الفواتير والمستندات الرسمية."
+   792→   792→            previewHeight="h-28"
+   793→   793→          />
+   794→   794→          <ImageUploadField
+   795→   795→            value={form.stamp}
+   796→   796→            onChange={url => updateField('stamp', url)}
+   797→   797→            label="Company Stamp"
+   798→   798→            labelAr="ختم الشركة"
+   799→   799→            lang={lang}
+   800→   800→            hint="SVG preferred, PNG/JPG. Recommended size: 120-160px."
+   801→   801→            hintAr="يُفضل SVG، PNG/JPG. الحجم الموصى به: 120-160 بكسل."
+   802→   802→            previewHeight="h-28"
+   803→   803→          />
+   804→   804→        </CardContent>
+   805→   805→      </Card>
+   806→   806→    </div>
+   807→   807→  )
+   808→   808→}
+   809→   809→
+   810→   810→// ============ Branch Dialog ============
+   811→   811→function BranchDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+   812→   812→  const { lang } = useAppStore()
+   813→   813→  const queryClient = useQueryClient()
+   814→   814→  const [name, setName] = useState('')
+   815→   815→  const [address, setAddress] = useState('')
+   816→   816→
+   817→   817→  React.useEffect(() => { if (open) { setName(''); setAddress('') } }, [open])
+   818→   818→
+   819→   819→  const createMutation = useMutation({
+   820→   820→    mutationFn: (data: Record<string, unknown>) =>
+   821→   821→      fetch('/api/branches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   822→   822→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   823→   823→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['branches'] }); onOpenChange(false) },
+   824→   824→  })
+   825→   825→
+   826→   826→  const handleSubmit = (e: React.FormEvent) => {
+   827→   827→    e.preventDefault()
+   828→   828→    createMutation.mutate({ name, address: address || null })
+   829→   829→  }
+   830→   830→
+   831→   831→  return (
+   832→   832→    <Dialog open={open} onOpenChange={onOpenChange}>
+   833→   833→      <DialogContent className="max-w-md">
+   834→   834→        <DialogHeader>
+   835→   835→          <DialogTitle>{lang === 'ar' ? 'فرع جديد' : 'New Branch'}</DialogTitle>
+   836→   836→          <DialogDescription>{lang === 'ar' ? 'إضافة فرع جديد' : 'Add new branch'}</DialogDescription>
+   837→   837→        </DialogHeader>
+   838→   838→        <form onSubmit={handleSubmit} className="space-y-4">
+   839→   839→          <div className="space-y-2">
+   840→   840→            <Label>{lang === 'ar' ? 'اسم الفرع *' : 'Branch Name *'}</Label>
+   841→   841→            <Input value={name} onChange={e => setName(e.target.value)} required />
+   842→   842→          </div>
+   843→   843→          <div className="space-y-2">
+   844→   844→            <Label>{lang === 'ar' ? 'العنوان' : 'Address'}</Label>
+   845→   845→            <Input value={address} onChange={e => setAddress(e.target.value)} />
+   846→   846→          </div>
+   847→   847→          <DialogFooter>
+   848→   848→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
+   849→   849→            <Button type="submit" disabled={createMutation.isPending || !name} className="bg-emerald-600 hover:bg-emerald-700">
+   850→   850→              {createMutation.isPending ? (lang === 'ar' ? 'جاري الإنشاء...' : 'Creating...') : (lang === 'ar' ? 'إضافة' : 'Add')}
+   851→   851→            </Button>
+   852→   852→          </DialogFooter>
+   853→   853→        </form>
+   854→   854→      </DialogContent>
+   855→   855→    </Dialog>
+   856→   856→  )
+   857→   857→}
+   858→   858→
+   859→   859→// ============ Warehouse Dialog ============
+   860→   860→function WarehouseDialog({ open, onOpenChange, branches }: { open: boolean; onOpenChange: (v: boolean) => void; branches: Branch[] }) {
+   861→   861→  const { lang } = useAppStore()
+   862→   862→  const queryClient = useQueryClient()
+   863→   863→  const [name, setName] = useState('')
+   864→   864→  const [branchId, setBranchId] = useState('')
+   865→   865→
+   866→   866→  React.useEffect(() => { if (open) { setName(''); setBranchId('') } }, [open])
+   867→   867→
+   868→   868→  const createMutation = useMutation({
+   869→   869→    mutationFn: (data: Record<string, unknown>) =>
+   870→   870→      fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   871→   871→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   872→   872→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['warehouses'] }); onOpenChange(false) },
+   873→   873→  })
+   874→   874→
+   875→   875→  const handleSubmit = (e: React.FormEvent) => {
+   876→   876→    e.preventDefault()
+   877→   877→    createMutation.mutate({ name, branchId })
+   878→   878→  }
+   879→   879→
+   880→   880→  return (
+   881→   881→    <Dialog open={open} onOpenChange={onOpenChange}>
+   882→   882→      <DialogContent className="max-w-md">
+   883→   883→        <DialogHeader>
+   884→   884→          <DialogTitle>{lang === 'ar' ? 'مستودع جديد' : 'New Warehouse'}</DialogTitle>
+   885→   885→          <DialogDescription>{lang === 'ar' ? 'إضافة مستودع جديد' : 'Add new warehouse'}</DialogDescription>
+   886→   886→        </DialogHeader>
+   887→   887→        <form onSubmit={handleSubmit} className="space-y-4">
+   888→   888→          <div className="space-y-2">
+   889→   889→            <Label>{lang === 'ar' ? 'اسم المستودع *' : 'Warehouse Name *'}</Label>
+   890→   890→            <Input value={name} onChange={e => setName(e.target.value)} required />
+   891→   891→          </div>
+   892→   892→          <div className="space-y-2">
+   893→   893→            <Label>{lang === 'ar' ? 'الفرع *' : 'Branch *'}</Label>
+   894→   894→            <Select value={branchId} onValueChange={setBranchId}>
+   895→   895→              <SelectTrigger><SelectValue placeholder={lang === 'ar' ? 'اختر الفرع' : 'Select branch'} /></SelectTrigger>
+   896→   896→              <SelectContent>
+   897→   897→                {branches.filter(b => b.isActive).map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+   898→   898→              </SelectContent>
+   899→   899→            </Select>
+   900→   900→          </div>
+   901→   901→          <DialogFooter>
+   902→   902→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
+   903→   903→            <Button type="submit" disabled={createMutation.isPending || !name || !branchId} className="bg-emerald-600 hover:bg-emerald-700">
+   904→   904→              {createMutation.isPending ? (lang === 'ar' ? 'جاري الإنشاء...' : 'Creating...') : (lang === 'ar' ? 'إضافة' : 'Add')}
+   905→   905→            </Button>
+   906→   906→          </DialogFooter>
+   907→   907→        </form>
+   908→   908→      </DialogContent>
+   909→   909→    </Dialog>
+   910→   910→  )
+   911→   911→}
+   912→   912→
+   913→   913→// ============ Cost Center Dialog ============
+   914→   914→function CostCenterDialog({ open, onOpenChange, costCenters }: { open: boolean; onOpenChange: (v: boolean) => void; costCenters: CostCenter[] }) {
+   915→   915→  const { lang } = useAppStore()
+   916→   916→  const queryClient = useQueryClient()
+   917→   917→  const [name, setName] = useState('')
+   918→   918→  const [parentId, setParentId] = useState('')
+   919→   919→
+   920→   920→  React.useEffect(() => { if (open) { setName(''); setParentId('') } }, [open])
+   921→   921→
+   922→   922→  const createMutation = useMutation({
+   923→   923→    mutationFn: (data: Record<string, unknown>) =>
+   924→   924→      fetch('/api/cost-centers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   925→   925→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   926→   926→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cost-centers'] }); onOpenChange(false) },
+   927→   927→  })
+   928→   928→
+   929→   929→  const handleSubmit = (e: React.FormEvent) => {
+   930→   930→    e.preventDefault()
+   931→   931→    createMutation.mutate({ name, parentId: parentId || null })
+   932→   932→  }
+   933→   933→
+   934→   934→  return (
+   935→   935→    <Dialog open={open} onOpenChange={onOpenChange}>
+   936→   936→      <DialogContent className="max-w-md">
+   937→   937→        <DialogHeader>
+   938→   938→          <DialogTitle>{lang === 'ar' ? 'مركز تكلفة جديد' : 'New Cost Center'}</DialogTitle>
+   939→   939→          <DialogDescription>{lang === 'ar' ? 'إضافة مركز تكلفة جديد' : 'Add new cost center'}</DialogDescription>
+   940→   940→        </DialogHeader>
+   941→   941→        <form onSubmit={handleSubmit} className="space-y-4">
+   942→   942→          <div className="space-y-2">
+   943→   943→            <Label>{lang === 'ar' ? 'الاسم *' : 'Name *'}</Label>
+   944→   944→            <Input value={name} onChange={e => setName(e.target.value)} required />
+   945→   945→          </div>
+   946→   946→          <div className="space-y-2">
+   947→   947→            <Label>{lang === 'ar' ? 'مركز أب' : 'Parent Center'}</Label>
+   948→   948→            <Select value={parentId} onValueChange={setParentId}>
+   949→   949→              <SelectTrigger><SelectValue placeholder={lang === 'ar' ? 'مركز رئيسي' : 'Root center'} /></SelectTrigger>
+   950→   950→              <SelectContent>
+   951→   951→                <SelectItem value="none">{lang === 'ar' ? 'رئيسي (بدون أب)' : 'Root (no parent)'}</SelectItem>
+   952→   952→                {costCenters.filter(cc => !cc.parentId).map(cc => (
+   953→   953→                  <SelectItem key={cc.id} value={cc.id}>{cc.code} - {cc.name}</SelectItem>
+   954→   954→                ))}
+   955→   955→              </SelectContent>
+   956→   956→            </Select>
+   957→   957→          </div>
+   958→   958→          <DialogFooter>
+   959→   959→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</Button>
+   960→   960→            <Button type="submit" disabled={createMutation.isPending || !name} className="bg-emerald-600 hover:bg-emerald-700">
+   961→   961→              {createMutation.isPending ? (lang === 'ar' ? 'جاري الإنشاء...' : 'Creating...') : (lang === 'ar' ? 'إضافة' : 'Add')}
+   962→   962→            </Button>
+   963→   963→          </DialogFooter>
+   964→   964→        </form>
+   965→   965→      </DialogContent>
+   966→   966→    </Dialog>
+   967→   967→  )
+   968→   968→}
+   969→   969→
+   970→   970→// ============ Main Settings Module ============
+   971→   971→export function SettingsModule() {
+   972→   972→  const { lang } = useAppStore()
+   973→   973→  const [activeTab, setActiveTab] = useState('company')
+   974→   974→  const [branchDialogOpen, setBranchDialogOpen] = useState(false)
+   975→   975→  const [warehouseDialogOpen, setWarehouseDialogOpen] = useState(false)
+   976→   976→  const [costCenterDialogOpen, setCostCenterDialogOpen] = useState(false)
+   977→   977→
+   978→   978→  // Fetch data
+   979→   979→  const { data: branches = [], isLoading: loadingBranches, refetch: refetchBranches } = useQuery<Branch[]>({
+   980→   980→    queryKey: ['branches'],
+   981→   981→    queryFn: async () => { const r = await fetch('/api/branches'); if (!r.ok) return []; return r.json() },
+   982→   982→  })
+   983→   983→
+   984→   984→  const { data: warehouses = [], isLoading: loadingWarehouses, refetch: refetchWarehouses } = useQuery<Warehouse[]>({
+   985→   985→    queryKey: ['warehouses'],
+   986→   986→    queryFn: async () => { const r = await fetch('/api/warehouses'); if (!r.ok) return []; return r.json() },
+   987→   987→  })
+   988→   988→
+   989→   989→  const { data: costCenters = [], isLoading: loadingCC, refetch: refetchCC } = useQuery<CostCenter[]>({
+   990→   990→    queryKey: ['cost-centers'],
+   991→   991→    queryFn: async () => { const r = await fetch('/api/cost-centers'); if (!r.ok) return []; return r.json() },
+   992→   992→  })
+   993→   993→
+   994→   994→  const { data: currencies = [], isLoading: loadingCurrencies } = useQuery<Currency[]>({
+   995→   995→    queryKey: ['currencies'],
+   996→   996→    queryFn: async () => { const r = await fetch('/api/currencies'); if (!r.ok) return []; return r.json() },
+   997→   997→  })
+   998→   998→
+   999→   999→  const refetchAll = () => { refetchBranches(); refetchWarehouses(); refetchCC() }
+  1000→  1000→
+  1001→  1001→  return (
+  1002→  1002→    <div className="space-y-6">
+  1003→  1003→      {/* Header */}
+  1004→  1004→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  1005→  1005→        <div>
+  1006→  1006→          <h1 className="text-2xl font-bold text-gray-900">{lang === 'ar' ? 'الإعدادات' : 'Settings'}</h1>
+  1007→  1007→          <p className="text-sm text-muted-foreground">{lang === 'ar' ? 'إعدادات النظام والبيانات الأساسية' : 'System settings and master data'}</p>
+  1008→  1008→        </div>
+  1009→  1009→        <Button variant="outline" size="icon" onClick={refetchAll}><RefreshCw className="size-4" /></Button>
+  1010→  1010→      </div>
+  1011→  1011→
+  1012→  1012→      {/* Tabs */}
+  1013→  1013→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+  1014→  1014→        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+  1015→  1015→          <TabsTrigger value="company" className="gap-1 text-xs"><Settings className="size-3" /> {lang === 'ar' ? 'بيانات الشركة' : 'Company'}</TabsTrigger>
+  1016→  1016→          <TabsTrigger value="branches" className="gap-1 text-xs"><Building2 className="size-3" /> {lang === 'ar' ? 'الفروع' : 'Branches'}</TabsTrigger>
+  1017→  1017→          <TabsTrigger value="warehouses" className="gap-1 text-xs"><Warehouse className="size-3" /> {lang === 'ar' ? 'المستودعات' : 'Warehouses'}</TabsTrigger>
+  1018→  1018→          <TabsTrigger value="cost-centers" className="gap-1 text-xs"><Target className="size-3" /> {lang === 'ar' ? 'التكلفة' : 'Cost Ctrs'}</TabsTrigger>
+  1019→  1019→          <TabsTrigger value="currencies" className="gap-1 text-xs"><Coins className="size-3" /> {lang === 'ar' ? 'العملات' : 'Currencies'}</TabsTrigger>
+  1020→  1020→        </TabsList>
+  1021→  1021→
+  1022→  1022→        {/* Company Settings Tab */}
+  1023→  1023→        <TabsContent value="company" className="space-y-3">
+  1024→  1024→          <CompanySettingsTab />
+  1025→  1025→        </TabsContent>
+  1026→  1026→
+  1027→  1027→        {/* Branches Tab */}
+  1028→  1028→        <TabsContent value="branches" className="space-y-3">
+  1029→  1029→          <div className="flex justify-end">
+  1030→  1030→            <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setBranchDialogOpen(true)}>
+  1031→  1031→              <Plus className="size-3.5" /> {lang === 'ar' ? 'فرع جديد' : 'New Branch'}
+  1032→  1032→            </Button>
+  1033→  1033→          </div>
+  1034→  1034→          {loadingBranches ? <TableSkeleton /> : (
+  1035→  1035→            <Card>
+  1036→  1036→              <CardContent className="p-0">
+  1037→  1037→                <div className="overflow-x-auto">
+  1038→  1038→                  <Table>
+  1039→  1039→                    <TableHeader>
+  1040→  1040→                      <TableRow>
+  1041→  1041→                        <TableHead className="text-right">{lang === 'ar' ? 'الكود' : 'Code'}</TableHead>
+  1042→  1042→                        <TableHead className="text-right">{lang === 'ar' ? 'الاسم' : 'Name'}</TableHead>
+  1043→  1043→                        <TableHead className="text-right">{lang === 'ar' ? 'العنوان' : 'Address'}</TableHead>
+  1044→  1044→                        <TableHead className="text-right">{lang === 'ar' ? 'الحالة' : 'Status'}</TableHead>
+  1045→  1045→                      </TableRow>
+  1046→  1046→                    </TableHeader>
+  1047→  1047→                    <TableBody>
+  1048→  1048→                      {branches.map(b => (
+  1049→  1049→                        <TableRow key={b.id}>
+  1050→  1050→                          <TableCell className="font-mono">{b.code}</TableCell>
+  1051→  1051→                          <TableCell className="font-medium">{b.name}</TableCell>
+  1052→  1052→                          <TableCell className="text-muted-foreground">{b.address || '—'}</TableCell>
+  1053→  1053→                          <TableCell>
+  1054→  1054→                            <Badge className={b.isActive ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>
+  1055→  1055→                              {b.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'غير نشط' : 'Inactive')}
+  1056→  1056→                            </Badge>
+  1057→  1057→                          </TableCell>
+  1058→  1058→                        </TableRow>
+  1059→  1059→                      ))}
+  1060→  1060→                    </TableBody>
+  1061→  1061→                  </Table>
+  1062→  1062→                </div>
+  1063→  1063→              </CardContent>
+  1064→  1064→            </Card>
+  1065→  1065→          )}
+  1066→  1066→        </TabsContent>
+  1067→  1067→
+  1068→  1068→        {/* Warehouses Tab */}
+  1069→  1069→        <TabsContent value="warehouses" className="space-y-3">
+  1070→  1070→          <div className="flex justify-end">
+  1071→  1071→            <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setWarehouseDialogOpen(true)}>
+  1072→  1072→              <Plus className="size-3.5" /> {lang === 'ar' ? 'مستودع جديد' : 'New Warehouse'}
+  1073→  1073→            </Button>
+  1074→  1074→          </div>
+  1075→  1075→          {loadingWarehouses ? <TableSkeleton /> : (
+  1076→  1076→            <Card>
+  1077→  1077→              <CardContent className="p-0">
+  1078→  1078→                <div className="overflow-x-auto">
+  1079→  1079→                  <Table>
+  1080→  1080→                    <TableHeader>
+  1081→  1081→                      <TableRow>
+  1082→  1082→                        <TableHead className="text-right">{lang === 'ar' ? 'الكود' : 'Code'}</TableHead>
+  1083→  1083→                        <TableHead className="text-right">{lang === 'ar' ? 'الاسم' : 'Name'}</TableHead>
+  1084→  1084→                        <TableHead className="text-right">{lang === 'ar' ? 'الفرع' : 'Branch'}</TableHead>
+  1085→  1085→                        <TableHead className="text-right">{lang === 'ar' ? 'الحالة' : 'Status'}</TableHead>
+  1086→  1086→                      </TableRow>
+  1087→  1087→                    </TableHeader>
+  1088→  1088→                    <TableBody>
+  1089→  1089→                      {warehouses.map(w => (
+  1090→  1090→                        <TableRow key={w.id}>
+  1091→  1091→                          <TableCell className="font-mono">{w.code}</TableCell>
+  1092→  1092→                          <TableCell className="font-medium">{w.name}</TableCell>
+  1093→  1093→                          <TableCell className="text-muted-foreground">{w.branch.name}</TableCell>
+  1094→  1094→                          <TableCell>
+  1095→  1095→                            <Badge className={w.isActive ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>
+  1096→  1096→                              {w.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'غير نشط' : 'Inactive')}
+  1097→  1097→                            </Badge>
+  1098→  1098→                          </TableCell>
+  1099→  1099→                        </TableRow>
+  1100→  1100→                      ))}
+  1101→  1101→                    </TableBody>
+  1102→  1102→                  </Table>
+  1103→  1103→                </div>
+  1104→  1104→              </CardContent>
+  1105→  1105→            </Card>
+  1106→  1106→          )}
+  1107→  1107→        </TabsContent>
+  1108→  1108→
+  1109→  1109→        {/* Cost Centers Tab */}
+  1110→  1110→        <TabsContent value="cost-centers" className="space-y-3">
+  1111→  1111→          <div className="flex justify-end">
+  1112→  1112→            <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setCostCenterDialogOpen(true)}>
+  1113→  1113→              <Plus className="size-3.5" /> {lang === 'ar' ? 'مركز تكلفة جديد' : 'New Cost Center'}
+  1114→  1114→            </Button>
+  1115→  1115→          </div>
+  1116→  1116→          {loadingCC ? <TableSkeleton /> : (
+  1117→  1117→            <Card>
+  1118→  1118→              <CardContent className="p-0">
+  1119→  1119→                <div className="overflow-x-auto">
+  1120→  1120→                  <Table>
+  1121→  1121→                    <TableHeader>
+  1122→  1122→                      <TableRow>
+  1123→  1123→                        <TableHead className="text-right">{lang === 'ar' ? 'الكود' : 'Code'}</TableHead>
+  1124→  1124→                        <TableHead className="text-right">{lang === 'ar' ? 'الاسم' : 'Name'}</TableHead>
+  1125→  1125→                        <TableHead className="text-right">{lang === 'ar' ? 'مركز أب' : 'Parent'}</TableHead>
+  1126→  1126→                      </TableRow>
+  1127→  1127→                    </TableHeader>
+  1128→  1128→                    <TableBody>
+  1129→  1129→                      {costCenters.map(cc => (
+  1130→  1130→                        <TableRow key={cc.id}>
+  1131→  1131→                          <TableCell className="font-mono">{cc.code}</TableCell>
+  1132→  1132→                          <TableCell className="font-medium">{cc.name}</TableCell>
+  1133→  1133→                          <TableCell className="text-muted-foreground">{cc.parent ? `${cc.parent.code} - ${cc.parent.name}` : '—'}</TableCell>
+  1134→  1134→                        </TableRow>
+  1135→  1135→                      ))}
+  1136→  1136→                    </TableBody>
+  1137→  1137→                  </Table>
+  1138→  1138→                </div>
+  1139→  1139→              </CardContent>
+  1140→  1140→            </Card>
+  1141→  1141→          )}
+  1142→  1142→        </TabsContent>
+  1143→  1143→
+  1144→  1144→        {/* Currencies Tab */}
+  1145→  1145→        <TabsContent value="currencies" className="space-y-3">
+  1146→  1146→          {loadingCurrencies ? <TableSkeleton /> : (
+  1147→  1147→            <Card>
+  1148→  1148→              <CardContent className="p-0">
+  1149→  1149→                <div className="overflow-x-auto">
+  1150→  1150→                  <Table>
+  1151→  1151→                    <TableHeader>
+  1152→  1152→                      <TableRow>
+  1153→  1153→                        <TableHead className="text-right">{lang === 'ar' ? 'الكود' : 'Code'}</TableHead>
+  1154→  1154→                        <TableHead className="text-right">{lang === 'ar' ? 'الاسم' : 'Name'}</TableHead>
+  1155→  1155→                        <TableHead className="text-right">{lang === 'ar' ? 'الرمز' : 'Symbol'}</TableHead>
+  1156→  1156→                        <TableHead className="text-right">{lang === 'ar' ? 'السعر' : 'Rate'}</TableHead>
+  1157→  1157→                        <TableHead className="text-right">{lang === 'ar' ? 'الحالة' : 'Status'}</TableHead>
+  1158→  1158→                      </TableRow>
+  1159→  1159→                    </TableHeader>
+  1160→  1160→                    <TableBody>
+  1161→  1161→                      {currencies.map(c => (
+  1162→  1162→                        <TableRow key={c.id}>
+  1163→  1163→                          <TableCell className="font-mono">{c.code}</TableCell>
+  1164→  1164→                          <TableCell className="font-medium">{c.name}</TableCell>
+  1165→  1165→                          <TableCell>{c.symbol}</TableCell>
+  1166→  1166→                          <TableCell dir="ltr">{formatNumber(c.rate)}</TableCell>
+  1167→  1167→                          <TableCell>
+  1168→  1168→                            <Badge className={c.isActive ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>
+  1169→  1169→                              {c.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'غير نشط' : 'Inactive')}
+  1170→  1170→                            </Badge>
+  1171→  1171→                          </TableCell>
+  1172→  1172→                        </TableRow>
+  1173→  1173→                      ))}
+  1174→  1174→                    </TableBody>
+  1175→  1175→                  </Table>
+  1176→  1176→                </div>
+  1177→  1177→              </CardContent>
+  1178→  1178→            </Card>
+  1179→  1179→          )}
+  1180→  1180→        </TabsContent>
+  1181→  1181→      </Tabs>
+  1182→  1182→
+  1183→  1183→      {/* Dialogs */}
+  1184→  1184→      <BranchDialog open={branchDialogOpen} onOpenChange={setBranchDialogOpen} />
+  1185→  1185→      <WarehouseDialog open={warehouseDialogOpen} onOpenChange={setWarehouseDialogOpen} branches={branches} />
+  1186→  1186→      <CostCenterDialog open={costCenterDialogOpen} onOpenChange={setCostCenterDialogOpen} costCenters={costCenters} />
+  1187→  1187→    </div>
+  1188→  1188→  )
+  1189→  1189→}
+  1190→  1190→
