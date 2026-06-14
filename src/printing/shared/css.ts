@@ -297,6 +297,37 @@ export function getDefaultCSS(lang: 'ar' | 'en'): string {
     .total-row.grand .value { color: white; font-size: 12px; }
 
     /* ════════════════════════════════════════════
+       TOTALS + QR WRAPPER (for invoices with ZATCA QR)
+    ════════════════════════════════════════════ */
+    .doc-totals-qr-wrapper {
+      display: flex;
+      gap: 12px;
+      margin-top: 10px;
+      align-items: flex-start;
+    }
+    .doc-totals-qr-wrapper .totals-section {
+      flex: 1;
+      margin-top: 0;
+    }
+    .doc-qr-box {
+      width: 110px; flex-shrink: 0;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 6px;
+      text-align: center;
+      background: #fafbfc;
+    }
+    .doc-qr-image {
+      width: 90px; height: 90px;
+      display: block; margin: 0 auto 4px;
+      object-fit: contain;
+    }
+    .doc-qr-label {
+      font-size: 5.5px; color: #94a3b8;
+      line-height: 1.3;
+    }
+
+    /* ════════════════════════════════════════════
        AMOUNT IN WORDS
     ════════════════════════════════════════════ */
     .amount-words {

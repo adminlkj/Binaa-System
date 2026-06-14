@@ -8,6 +8,11 @@
 // ============================================================================
 
 import { db } from '@/lib/db'
+import { PrismaClient } from '@prisma/client'
+import { toNumber } from '@/lib/decimal'
+
+// Transaction client type - used for $transaction callbacks
+export type PrismaTransaction = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
 // ============ ACCOUNT TYPE DEFINITIONS ============
 
@@ -251,12 +256,13 @@ export interface JournalEntryTemplate {
 
 // ============ ACCOUNT LOOKUP HELPERS ============
 
-export async function getAccountByCode(code: string) {
-  return db.account.findUnique({ where: { code } })
+export async function getAccountByCode(code: string, tx?: PrismaTransaction) {
+  return (tx || db).account.findUnique({ where: { code } })
 }
 
-export async function ensureAccountExists(template: AccountTemplate) {
-  const existing = await db.account.findUnique({ where: { code: template.code } })
+export async function ensureAccountExists(template: AccountTemplate, tx?: PrismaTransaction) {
+  const client = tx || db
+  const existing = await client.account.findUnique({ where: { code: template.code } })
   if (existing) {
     // Update existing account with new fields if they are missing
     if (
@@ -265,7 +271,7 @@ export async function ensureAccountExists(template: AccountTemplate) {
       existing.allowPosting !== (template.allowPosting || false) ||
       existing.level !== (template.level || 0)
     ) {
-      await db.account.update({
+      await client.account.update({
         where: { code: template.code },
         data: {
           name: template.name,
@@ -278,16 +284,16 @@ export async function ensureAccountExists(template: AccountTemplate) {
         },
       })
     }
-    return db.account.findUnique({ where: { code: template.code } })
+    return client.account.findUnique({ where: { code: template.code } })
   }
 
   let parentId: string | undefined
   if (template.parentId) {
-    const parent = await db.account.findUnique({ where: { code: template.parentId } })
+    const parent = await client.account.findUnique({ where: { code: template.parentId } })
     if (parent) parentId = parent.id
   }
 
-  return db.account.create({
+  return client.account.create({
     data: {
       code: template.code,
       name: template.name,
@@ -355,7 +361,8 @@ export async function initializeChartOfAccounts() {
 
 // ============ JOURNAL ENTRY CREATION ============
 
-export async function createJournalEntry(template: JournalEntryTemplate) {
+export async function createJournalEntry(template: JournalEntryTemplate, tx?: PrismaTransaction) {
+  const client = tx || db
   // Validate: total debits must equal total credits
   const totalDebit = template.lines.reduce((sum, l) => sum + l.debit, 0)
   const totalCredit = template.lines.reduce((sum, l) => sum + l.credit, 0)
@@ -368,14 +375,14 @@ export async function createJournalEntry(template: JournalEntryTemplate) {
 
   // Ensure all referenced accounts exist
   for (const line of template.lines) {
-    const account = await getAccountByCode(line.accountCode)
+    const account = await getAccountByCode(line.accountCode, tx)
     if (!account) {
       throw new Error(`Account not found: ${line.accountCode}`)
     }
   }
 
   // Create the journal entry with lines
-  const entry = await db.journalEntry.create({
+  const entry = await client.journalEntry.create({
     data: {
       entryNo: template.entryNo,
       date: template.date,
@@ -384,14 +391,14 @@ export async function createJournalEntry(template: JournalEntryTemplate) {
       lines: {
         create: await Promise.all(
           template.lines.map(async (line) => {
-            const account = await getAccountByCode(line.accountCode)
+            const account = await getAccountByCode(line.accountCode, tx)
             return {
               accountId: account!.id,
               costCenterId: line.costCenterId,
               debit: line.debit,
               credit: line.credit,
               description: line.description,
-            }
+            };
           })
         ),
       },
@@ -422,7 +429,7 @@ export async function autoEntrySalesInvoice(data: {
   date: Date
   projectId?: string
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   // Determine revenue account based on invoice type
   let revenueAccountCode: string
   switch (data.invoiceType) {
@@ -454,7 +461,7 @@ export async function autoEntrySalesInvoice(data: {
     lines,
     sourceType: 'SALES_INVOICE',
     sourceId: data.invoiceNo,
-  })
+  }, tx)
 }
 
 /**
@@ -475,7 +482,7 @@ export async function autoEntryPurchaseInvoice(data: {
   costCenterId?: string
   expenseCategory?: string
   activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL' | 'BOTH'
-}) {
+}, tx?: PrismaTransaction) {
   // Determine expense account based on context
   let expenseAccountCode = '7110' // Default: Material Costs
   if (data.expenseCategory) {
@@ -520,7 +527,7 @@ export async function autoEntryPurchaseInvoice(data: {
     lines,
     sourceType: 'PURCHASE_INVOICE',
     sourceId: data.invoiceNo,
-  })
+  }, tx)
 }
 
 /**
@@ -539,7 +546,7 @@ export async function autoEntryProgressClaim(data: {
   totalAmount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const lines = [
     { accountCode: '1210', debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId }, // Clients Receivable
     { accountCode: '6110', debit: 0, credit: data.amount, costCenterId: data.costCenterId }, // Progress Claims Revenue
@@ -557,7 +564,7 @@ export async function autoEntryProgressClaim(data: {
     lines,
     sourceType: 'PROGRESS_CLAIM',
     sourceId: data.claimNo,
-  })
+  }, tx)
 }
 
 /**
@@ -574,7 +581,7 @@ export async function autoEntryExpense(data: {
   date: Date
   payFrom: 'TREASURY' | 'PETTY_CASH' | 'BANK'
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const categoryMap: Record<string, string> = {
     'CONSUMABLES': '7110',
     'SERVICES': '7130',
@@ -618,7 +625,7 @@ export async function autoEntryExpense(data: {
     lines,
     sourceType: 'EXPENSE',
     sourceId: `EXP-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -632,7 +639,7 @@ export async function autoEntryClientPayment(data: {
   date: Date
   receivedIn: 'TREASURY' | 'BANK'
   reference?: string
-}) {
+}, tx?: PrismaTransaction) {
   const cashAccountCode = data.receivedIn === 'BANK' ? '1120' : '1110'
 
   return createJournalEntry({
@@ -646,7 +653,7 @@ export async function autoEntryClientPayment(data: {
     ],
     sourceType: 'CLIENT_PAYMENT',
     sourceId: data.reference || `CP-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -660,7 +667,7 @@ export async function autoEntrySupplierPayment(data: {
   date: Date
   paidFrom: 'TREASURY' | 'BANK'
   reference?: string
-}) {
+}, tx?: PrismaTransaction) {
   const cashAccountCode = data.paidFrom === 'BANK' ? '1120' : '1110'
 
   return createJournalEntry({
@@ -674,7 +681,7 @@ export async function autoEntrySupplierPayment(data: {
     ],
     sourceType: 'SUPPLIER_PAYMENT',
     sourceId: data.reference || `SP-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -686,7 +693,7 @@ export async function autoEntryEmployeeAdvance(data: {
   employeeName: string
   amount: number
   date: Date
-}) {
+}, tx?: PrismaTransaction) {
   return createJournalEntry({
     entryNo: `JE-EA-${Date.now()}`,
     date: data.date,
@@ -698,7 +705,7 @@ export async function autoEntryEmployeeAdvance(data: {
     ],
     sourceType: 'EMPLOYEE_ADVANCE',
     sourceId: `EA-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -710,7 +717,7 @@ export async function autoEntryAdvanceSettlement(data: {
   employeeName: string
   settledAmount: number
   date: Date
-}) {
+}, tx?: PrismaTransaction) {
   return createJournalEntry({
     entryNo: `JE-AS-${Date.now()}`,
     date: data.date,
@@ -722,7 +729,7 @@ export async function autoEntryAdvanceSettlement(data: {
     ],
     sourceType: 'ADVANCE_SETTLEMENT',
     sourceId: `AS-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -740,7 +747,7 @@ export async function autoEntrySubcontractorInvoice(data: {
   totalAmount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const lines = [
     { accountCode: '7130', debit: data.amount, credit: 0, costCenterId: data.costCenterId }, // Subcontractor Costs
   ]
@@ -759,7 +766,7 @@ export async function autoEntrySubcontractorInvoice(data: {
     lines,
     sourceType: 'SUBCONTRACTOR_INVOICE',
     sourceId: data.invoiceNo,
-  })
+  }, tx)
 }
 
 /**
@@ -774,7 +781,7 @@ export async function autoEntryEquipmentCost(data: {
   date: Date
   payFrom: 'CASH' | 'AP'
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const accountMap: Record<string, string> = {
     'OPERATION': '7210',  // Equipment Operation Costs
     'MAINTENANCE': '7220', // Equipment Maintenance
@@ -794,7 +801,7 @@ export async function autoEntryEquipmentCost(data: {
     ],
     sourceType: 'EQUIPMENT_COST',
     sourceId: `EQC-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -810,7 +817,7 @@ export async function autoEntryRentalInvoice(data: {
   totalAmount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const lines = [
     { accountCode: '1210', debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId }, // Clients Receivable
     { accountCode: '6210', debit: 0, credit: data.subtotal, costCenterId: data.costCenterId }, // Equipment Rental Revenue
@@ -828,7 +835,7 @@ export async function autoEntryRentalInvoice(data: {
     lines,
     sourceType: 'RENTAL_INVOICE',
     sourceId: data.invoiceNo,
-  })
+  }, tx)
 }
 
 /**
@@ -842,7 +849,7 @@ export async function autoEntryPettyCash(data: {
   category: string
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const categoryMap: Record<string, string> = {
     'OFFICE': '8140',
     'TRANSPORT': '7240',
@@ -863,7 +870,7 @@ export async function autoEntryPettyCash(data: {
     ],
     sourceType: 'PETTY_CASH',
     sourceId: `PTC-${Date.now()}`,
-  })
+  }, tx)
 }
 
 // ============================================================================
@@ -885,7 +892,7 @@ export async function autoEntrySalary(data: {
   date: Date
   payFrom: 'TREASURY' | 'BANK'
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const cashAccountCode = data.payFrom === 'BANK' ? '1120' : '1110'
   const netCashPaid = data.grossSalary - data.gosiEmployeeDeduction
 
@@ -909,7 +916,7 @@ export async function autoEntrySalary(data: {
     lines,
     sourceType: 'SALARY',
     sourceId: `SAL-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -922,7 +929,7 @@ export async function autoEntryGOSI(data: {
   employerContribution: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const totalGOSI = data.employeeContribution + data.employerContribution
 
   return createJournalEntry({
@@ -936,7 +943,7 @@ export async function autoEntryGOSI(data: {
     ],
     sourceType: 'GOSI',
     sourceId: `GOSI-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -949,7 +956,7 @@ export async function autoEntryDepreciation(data: {
   amount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const depreciationMap: Record<string, { expense: string; accumulated: string }> = {
     'CONSTRUCTION_EQUIPMENT': { expense: '8310', accumulated: '2210' },
     'VEHICLES': { expense: '8320', accumulated: '2230' },
@@ -970,7 +977,7 @@ export async function autoEntryDepreciation(data: {
     ],
     sourceType: 'DEPRECIATION',
     sourceId: `DEP-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -982,7 +989,7 @@ export async function autoEntryRentalDepreciation(data: {
   amount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   return createJournalEntry({
     entryNo: `JE-RDEP-${Date.now()}`,
     date: data.date,
@@ -994,7 +1001,7 @@ export async function autoEntryRentalDepreciation(data: {
     ],
     sourceType: 'RENTAL_DEPRECIATION',
     sourceId: `RDEP-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -1010,7 +1017,7 @@ export async function autoEntryDeliveryFees(data: {
   totalAmount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   const lines = [
     { accountCode: '1210', debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId }, // Clients Receivable
     { accountCode: '6220', debit: 0, credit: data.amount, costCenterId: data.costCenterId }, // Delivery Fees Revenue
@@ -1028,7 +1035,7 @@ export async function autoEntryDeliveryFees(data: {
     lines,
     sourceType: 'DELIVERY_FEES',
     sourceId: `DF-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -1043,7 +1050,7 @@ export async function autoEntryContractAdvance(data: {
   receivedIn: 'TREASURY' | 'BANK'
   activityType: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL'
   reference?: string
-}) {
+}, tx?: PrismaTransaction) {
   const cashAccountCode = data.receivedIn === 'BANK' ? '1120' : '1110'
   const advanceAccountCode = data.activityType === 'CONSTRUCTION' ? '3410' : '3420'
 
@@ -1058,7 +1065,7 @@ export async function autoEntryContractAdvance(data: {
     ],
     sourceType: 'CONTRACT_ADVANCE',
     sourceId: data.reference || `CA-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -1071,7 +1078,7 @@ export async function autoEntryRetention(data: {
   retentionAmount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   return createJournalEntry({
     entryNo: `JE-RET-${Date.now()}`,
     date: data.date,
@@ -1083,7 +1090,7 @@ export async function autoEntryRetention(data: {
     ],
     sourceType: 'RETENTION',
     sourceId: `RET-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -1094,7 +1101,7 @@ export async function autoEntryRetention(data: {
 export async function autoEntryZakat(data: {
   amount: number
   date: Date
-}) {
+}, tx?: PrismaTransaction) {
   return createJournalEntry({
     entryNo: `JE-ZAK-${Date.now()}`,
     date: data.date,
@@ -1106,7 +1113,7 @@ export async function autoEntryZakat(data: {
     ],
     sourceType: 'ZAKAT',
     sourceId: `ZAK-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -1118,7 +1125,7 @@ export async function autoEntryEndOfService(data: {
   amount: number
   date: Date
   costCenterId?: string
-}) {
+}, tx?: PrismaTransaction) {
   return createJournalEntry({
     entryNo: `JE-EOS-${Date.now()}`,
     date: data.date,
@@ -1130,7 +1137,7 @@ export async function autoEntryEndOfService(data: {
     ],
     sourceType: 'END_OF_SERVICE',
     sourceId: `EOS-${Date.now()}`,
-  })
+  }, tx)
 }
 
 /**
@@ -1147,7 +1154,7 @@ export async function autoEntryAssetDisposal(data: {
   salePrice: number
   date: Date
   receivedIn: 'TREASURY' | 'BANK'
-}) {
+}, tx?: PrismaTransaction) {
   const cashAccountCode = data.receivedIn === 'BANK' ? '1120' : '1110'
   const netBookValue = data.originalCost - data.accumulatedDepreciation
   const gainLoss = data.salePrice - netBookValue
@@ -1173,10 +1180,8 @@ export async function autoEntryAssetDisposal(data: {
     lines,
     sourceType: 'ASSET_DISPOSAL',
     sourceId: `DSP-${Date.now()}`,
-  })
+  }, tx)
 }
-
-// ============ VAT DECLARATION & PAYMENT ============
 
 /**
  * إقرار ضريبي - VAT Declaration
@@ -1194,7 +1199,7 @@ export async function autoEntryVATDeclaration(data: {
   inputVat: number
   netVat: number // positive = payable, negative = refundable
   date: Date
-}) {
+}, tx?: PrismaTransaction) {
   const lines: { accountCode: string; debit: number; credit: number }[] = []
 
   // Close Output VAT (3110) - debit to zero it out
@@ -1220,7 +1225,7 @@ export async function autoEntryVATDeclaration(data: {
     lines,
     sourceType: 'VAT_DECLARATION',
     sourceId: `VAT-${data.period}`,
-  })
+  }, tx)
 }
 
 /**
@@ -1233,7 +1238,7 @@ export async function autoEntryVATPayment(data: {
   amount: number
   date: Date
   reference?: string
-}) {
+}, tx?: PrismaTransaction) {
   return createJournalEntry({
     entryNo: `JE-VTP-${Date.now()}`,
     date: data.date,
@@ -1245,7 +1250,7 @@ export async function autoEntryVATPayment(data: {
     ],
     sourceType: 'VAT_PAYMENT',
     sourceId: `VTP-${data.period}`,
-  })
+  }, tx)
 }
 
 // ============ TRIAL BALANCE ============
@@ -1290,8 +1295,8 @@ export async function getTrialBalance(dateFrom?: Date, dateTo?: Date) {
         })
       }
       const bal = accountBalances.get(key)!
-      bal.totalDebit += line.debit
-      bal.totalCredit += line.credit
+      bal.totalDebit += toNumber(line.debit)
+      bal.totalCredit += toNumber(line.credit)
     }
   }
 
@@ -1324,6 +1329,25 @@ export async function getTrialBalance(dateFrom?: Date, dateTo?: Date) {
   return results
 }
 
+// ============ SALARY ACCOUNT HELPER ============
+
+/**
+ * Get the salary expense account code based on activity type
+ * PROJECT: Salaries & Wages (8110)
+ * RENTAL: Equipment Operation Costs (7210)
+ * ADMIN: Salaries & Wages (8110)
+ */
+export function getSalaryAccountCode(activity: 'PROJECT' | 'RENTAL' | 'ADMIN'): string {
+  switch (activity) {
+    case 'RENTAL':
+      return '7210' // Equipment Operation Costs (تكاليف تشغيل معدات)
+    case 'PROJECT':
+    case 'ADMIN':
+    default:
+      return '8110' // Salaries & Wages (رواتب وأجور)
+  }
+}
+
 // ============ ACCOUNT BALANCE HELPERS ============
 
 export async function getAccountBalance(accountCode: string): Promise<number> {
@@ -1337,8 +1361,8 @@ export async function getAccountBalance(accountCode: string): Promise<number> {
     },
   })
 
-  const totalDebit = lines.reduce((sum, l) => sum + l.debit, 0)
-  const totalCredit = lines.reduce((sum, l) => sum + l.credit, 0)
+  const totalDebit = lines.reduce((sum, l) => sum + toNumber(l.debit), 0)
+  const totalCredit = lines.reduce((sum, l) => sum + toNumber(l.credit), 0)
 
   const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
 
@@ -1376,18 +1400,20 @@ export async function getGeneralLedger(accountCode: string, dateFrom?: Date, dat
   const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
 
   return lines.map(line => {
+    const debit = toNumber(line.debit)
+    const credit = toNumber(line.credit)
     if (normalBalance === 'DEBIT') {
-      runningBalance += line.debit - line.credit
+      runningBalance += debit - credit
     } else {
-      runningBalance += line.credit - line.debit
+      runningBalance += credit - debit
     }
 
     return {
       date: line.journalEntry.date,
       entryNo: line.journalEntry.entryNo,
       description: line.journalEntry.description,
-      debit: line.debit,
-      credit: line.credit,
+      debit,
+      credit,
       balance: runningBalance,
     }
   })

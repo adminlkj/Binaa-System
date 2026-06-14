@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import type { PrismaTransaction } from '@/lib/accounting/engine'
 
 export async function POST(request: NextRequest) {
   try {
@@ -21,111 +22,114 @@ export async function POST(request: NextRequest) {
 
     const results: { assetId: string; assetCode: string; depreciationAmount: number; journalEntryId?: string }[] = []
 
-    for (const asset of assets) {
-      // Check if depreciation already exists for this month/year
-      const existingDep = await db.assetDepreciation.findFirst({
-        where: { fixedAssetId: asset.id, year, month },
-      })
-
-      if (existingDep) {
-        results.push({
-          assetId: asset.id,
-          assetCode: asset.assetCode,
-          depreciationAmount: 0,
-          journalEntryId: existingDep.journalEntryId || undefined,
+    // Process all assets in a single transaction
+    await db.$transaction(async (tx: PrismaTransaction) => {
+      for (const asset of assets) {
+        // Check if depreciation already exists for this month/year
+        const existingDep = await tx.assetDepreciation.findFirst({
+          where: { fixedAssetId: asset.id, year, month },
         })
-        continue
-      }
 
-      // Calculate monthly depreciation
-      const monthlyDepreciation = (asset.acquisitionCost - asset.residualValue) / asset.usefulLifeMonths
-
-      // Check if asset is fully depreciated
-      const newAccumDep = asset.accumulatedDepreciation + monthlyDepreciation
-      if (newAccumDep > asset.acquisitionCost - asset.residualValue) {
-        // Skip if fully depreciated
-        if (asset.accumulatedDepreciation >= asset.acquisitionCost - asset.residualValue) {
-          await db.fixedAsset.update({
-            where: { id: asset.id },
-            data: { status: 'FULLY_DEPRECIATED' },
+        if (existingDep) {
+          results.push({
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            depreciationAmount: 0,
+            journalEntryId: existingDep.journalEntryId || undefined,
           })
           continue
         }
-      }
 
-      // Get depreciation expense and accumulated depreciation accounts
-      const depExpenseAccount = asset.depExpenseAccountId
-        ? await db.account.findUnique({ where: { id: asset.depExpenseAccountId } })
-        : null
-      const accumDepAccount = asset.accumDepAccountId
-        ? await db.account.findUnique({ where: { id: asset.accumDepAccountId } })
-        : null
+        // Calculate monthly depreciation
+        const monthlyDepreciation = (asset.acquisitionCost - asset.residualValue) / asset.usefulLifeMonths
 
-      let journalEntryId: string | null = null
+        // Check if asset is fully depreciated
+        const newAccumDep = asset.accumulatedDepreciation + monthlyDepreciation
+        if (newAccumDep > asset.acquisitionCost - asset.residualValue) {
+          // Skip if fully depreciated
+          if (asset.accumulatedDepreciation >= asset.acquisitionCost - asset.residualValue) {
+            await tx.fixedAsset.update({
+              where: { id: asset.id },
+              data: { status: 'FULLY_DEPRECIATED' },
+            })
+            continue
+          }
+        }
 
-      // Create journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation
-      if (depExpenseAccount && accumDepAccount) {
-        const depDate = new Date(year, month - 1, 28) // Last day of the month
-        const entry = await db.journalEntry.create({
-          data: {
-            entryNo: `JE-DEP-${year}${month}-${Date.now()}-${asset.assetCode}`,
-            date: depDate,
-            description: `Depreciation for ${asset.name} (${asset.assetCode}) - ${year}/${month}`,
-            status: 'POSTED',
-            sourceType: 'ASSET_DEPRECIATION',
-            sourceId: asset.id,
-            lines: {
-              create: [
-                {
-                  accountId: depExpenseAccount.id,
-                  debit: monthlyDepreciation,
-                  credit: 0,
-                  description: `Depreciation expense - ${asset.name}`,
-                },
-                {
-                  accountId: accumDepAccount.id,
-                  debit: 0,
-                  credit: monthlyDepreciation,
-                  description: `Accumulated depreciation - ${asset.name}`,
-                },
-              ],
+        // Get depreciation expense and accumulated depreciation accounts
+        const depExpenseAccount = asset.depExpenseAccountId
+          ? await tx.account.findUnique({ where: { id: asset.depExpenseAccountId } })
+          : null
+        const accumDepAccount = asset.accumDepAccountId
+          ? await tx.account.findUnique({ where: { id: asset.accumDepAccountId } })
+          : null
+
+        let journalEntryId: string | null = null
+
+        // Create journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation
+        if (depExpenseAccount && accumDepAccount) {
+          const depDate = new Date(year, month - 1, 28) // Last day of the month
+          const entry = await tx.journalEntry.create({
+            data: {
+              entryNo: `JE-DEP-${year}${month}-${Date.now()}-${asset.assetCode}`,
+              date: depDate,
+              description: `Depreciation for ${asset.name} (${asset.assetCode}) - ${year}/${month}`,
+              status: 'POSTED',
+              sourceType: 'ASSET_DEPRECIATION',
+              sourceId: asset.id,
+              lines: {
+                create: [
+                  {
+                    accountId: depExpenseAccount.id,
+                    debit: monthlyDepreciation,
+                    credit: 0,
+                    description: `Depreciation expense - ${asset.name}`,
+                  },
+                  {
+                    accountId: accumDepAccount.id,
+                    debit: 0,
+                    credit: monthlyDepreciation,
+                    description: `Accumulated depreciation - ${asset.name}`,
+                  },
+                ],
+              },
             },
+          })
+          journalEntryId = entry.id
+        }
+
+        // Create AssetDepreciation record
+        await tx.assetDepreciation.create({
+          data: {
+            fixedAssetId: asset.id,
+            year,
+            month,
+            depreciationAmount: monthlyDepreciation,
+            journalEntryId,
           },
         })
-        journalEntryId = entry.id
-      }
 
-      // Create AssetDepreciation record
-      await db.assetDepreciation.create({
-        data: {
-          fixedAssetId: asset.id,
-          year,
-          month,
+        // Update FixedAsset accumulatedDepreciation and netBookValue
+        const finalAccumDep = Math.min(asset.accumulatedDepreciation + monthlyDepreciation, asset.acquisitionCost - asset.residualValue)
+        const netBookValue = asset.acquisitionCost - finalAccumDep
+
+        await tx.fixedAsset.update({
+          where: { id: asset.id },
+          data: {
+            accumulatedDepreciation: finalAccumDep,
+            netBookValue: Math.max(netBookValue, asset.residualValue),
+            status: netBookValue <= asset.residualValue ? 'FULLY_DEPRECIATED' : 'ACTIVE',
+          },
+        })
+
+        results.push({
+          assetId: asset.id,
+          assetCode: asset.assetCode,
           depreciationAmount: monthlyDepreciation,
-          journalEntryId,
-        },
-      })
-
-      // Update FixedAsset accumulatedDepreciation and netBookValue
-      const finalAccumDep = Math.min(asset.accumulatedDepreciation + monthlyDepreciation, asset.acquisitionCost - asset.residualValue)
-      const netBookValue = asset.acquisitionCost - finalAccumDep
-
-      await db.fixedAsset.update({
-        where: { id: asset.id },
-        data: {
-          accumulatedDepreciation: finalAccumDep,
-          netBookValue: Math.max(netBookValue, asset.residualValue),
-          status: netBookValue <= asset.residualValue ? 'FULLY_DEPRECIATED' : 'ACTIVE',
-        },
-      })
-
-      results.push({
-        assetId: asset.id,
-        assetCode: asset.assetCode,
-        depreciationAmount: monthlyDepreciation,
-        journalEntryId: journalEntryId || undefined,
-      })
-    }
+          journalEntryId: journalEntryId || undefined,
+        })
+      }
+    })
 
     return NextResponse.json({
       message: `Depreciation processed for ${results.filter((r) => r.depreciationAmount > 0).length} assets`,

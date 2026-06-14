@@ -3,15 +3,14 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  CreditCard, Plus, Search, RefreshCw, Eye, Trash2,
-  Landmark, Building2, FileText, ArrowRight,
+  CreditCard, Plus, Search, RefreshCw, Eye, Trash2, Download,
+  Landmark, Building2, FileText, Pencil,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -26,11 +25,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { Skeleton } from '@/components/ui/skeleton'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
+import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { useToast } from '@/hooks/use-toast'
 
 // ============ Types ============
 
@@ -88,6 +88,7 @@ const labels = {
   project: { ar: 'المشروع', en: 'Project' },
   balance: { ar: 'الرصيد المتبقي', en: 'Remaining Balance' },
   autoFill: { ar: 'تم تعبئة المبلغ تلقائياً من الفاتورة', en: 'Amount auto-filled from invoice' },
+  editPayment: { ar: 'تعديل التحصيل', en: 'Edit Payment' },
 }
 
 // ============ Helpers ============
@@ -133,6 +134,7 @@ function AddPaymentDialog({
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [clientId, setClientId] = useState('')
@@ -206,7 +208,11 @@ function AddPaymentDialog({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client-payments'] })
+      toast({ title: tt('تم تسجيل التحصيل', 'Payment recorded'), description: tt('تم تسجيل التحصيل بنجاح', 'Payment has been recorded successfully') })
       onClose()
+    },
+    onError: () => {
+      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تسجيل التحصيل', 'Failed to record payment'), variant: 'destructive' })
     },
   })
 
@@ -356,7 +362,7 @@ function AddPaymentDialog({
           {/* Notes */}
           <div className="space-y-2">
             <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
-            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes', lang)} rows={2} />
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes', lang)} />
           </div>
 
           <DialogFooter>
@@ -369,6 +375,141 @@ function AddPaymentDialog({
               className="bg-emerald-600 hover:bg-emerald-700 min-w-[140px]"
             >
               {createMutation.isPending ? tt('جاري الحفظ...', 'Saving...') : tt('تسجيل التحصيل', 'Record Payment')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============ Edit Payment Dialog ============
+
+function EditPaymentDialog({
+  payment,
+  open,
+  onClose,
+}: {
+  payment: ClientPaymentItem | null
+  open: boolean
+  onClose: () => void
+}) {
+  const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const tt = (ar: string, en: string) => t(ar, en, lang)
+
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState('')
+  const [receivedIn, setReceivedIn] = useState('TREASURY')
+  const [reference, setReference] = useState('')
+  const [notes, setNotes] = useState('')
+
+  React.useEffect(() => {
+    if (payment && open) {
+      setAmount(String(payment.amount))
+      setDate(payment.date ? new Date(payment.date).toISOString().split('T')[0] : '')
+      setReceivedIn(payment.receivedIn || 'TREASURY')
+      setReference(payment.reference || '')
+      setNotes(payment.notes || '')
+    }
+  }, [payment, open])
+
+  const editMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      fetch(`/api/client-payments/${payment?.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['client-payments'] })
+      toast({ title: tt('تم تحديث التحصيل', 'Payment updated'), description: tt('تم تحديث التحصيل بنجاح', 'Payment has been updated successfully') })
+      onClose()
+    },
+    onError: () => {
+      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تحديث التحصيل', 'Failed to update payment'), variant: 'destructive' })
+    },
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    editMutation.mutate({
+      amount: parseFloat(amount) || 0,
+      date,
+      receivedIn,
+      reference: reference || null,
+      notes: notes || null,
+    })
+  }
+
+  if (!payment) return null
+
+  const isPosted = !!payment.journalEntryId
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="size-5 text-emerald-600" />
+            {tt(labels.editPayment.ar, labels.editPayment.en)}
+          </DialogTitle>
+        </DialogHeader>
+
+        {isPosted && (
+          <div className="p-3 rounded-lg border bg-amber-50 text-amber-700 text-sm">
+            {tt('هذا التحصيل مرحّل محاسبياً - التعديل محدود', 'This payment is posted - editing is limited')}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="p-3 rounded-lg bg-gray-50 text-sm">
+            <span className="text-muted-foreground">{tt('العميل:', 'Client:')}</span>{' '}
+            <span className="font-medium">{payment.client.name}</span>
+            {payment.invoice && (
+              <><span className="text-muted-foreground mx-2">|</span>
+              <span className="text-muted-foreground">{tt('الفاتورة:', 'Invoice:')}</span>{' '}
+              <span className="font-medium">{payment.invoice.invoiceNo}</span></>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>{tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *</Label>
+            <Input type="number" step="0.01" min="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required disabled={isPosted} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
+              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required disabled={isPosted} />
+            </div>
+            <div className="space-y-2">
+              <Label>{tt(labels.receivedIn.ar, labels.receivedIn.en)}</Label>
+              <Select value={receivedIn} onValueChange={setReceivedIn} disabled={isPosted}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TREASURY">{tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}</SelectItem>
+                  <SelectItem value="BANK">{tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>{tt(labels.reference.ar, labels.reference.en)}</Label>
+            <Input value={reference} onChange={e => setReference(e.target.value)} disabled={isPosted} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
+            <Input value={notes} onChange={e => setNotes(e.target.value)} disabled={isPosted} />
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>{commonText.cancel[lang]}</Button>
+            <Button type="submit" disabled={editMutation.isPending || isPosted} className="bg-emerald-600 hover:bg-emerald-700 min-w-[140px]">
+              {editMutation.isPending ? tt('جاري الحفظ...', 'Saving...') : tt('حفظ التعديلات', 'Save Changes')}
             </Button>
           </DialogFooter>
         </form>
@@ -492,6 +633,7 @@ function PaymentDetailDialog({
 export function ClientPaymentsModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
+  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [search, setSearch] = useState('')
@@ -499,6 +641,7 @@ export function ClientPaymentsModule() {
   const [receivedInFilter, setReceivedInFilter] = useState<string>('all')
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [detailPayment, setDetailPayment] = useState<ClientPaymentItem | null>(null)
+  const [editPayment, setEditPayment] = useState<ClientPaymentItem | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
 
   // Fetch payments
@@ -531,7 +674,11 @@ export function ClientPaymentsModule() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client-payments'] })
+      toast({ title: tt('تم الحذف', 'Deleted'), description: tt('تم حذف التحصيل بنجاح', 'Payment has been deleted') })
       setDeleteId(null)
+    },
+    onError: () => {
+      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في حذف التحصيل', 'Failed to delete payment'), variant: 'destructive' })
     },
   })
 
@@ -553,6 +700,31 @@ export function ClientPaymentsModule() {
   const treasuryPayments = filtered.filter(p => p.receivedIn === 'TREASURY').reduce((s, p) => s + p.amount, 0)
   const bankPayments = filtered.filter(p => p.receivedIn === 'BANK').reduce((s, p) => s + p.amount, 0)
 
+  // CSV Export
+  const handleExport = () => {
+    const columns: CSVColumn[] = [
+      { key: 'date', label: tt('التاريخ', 'Date') },
+      { key: 'clientName', label: tt('العميل', 'Client') },
+      { key: 'invoiceNo', label: tt('الفاتورة', 'Invoice') },
+      { key: 'projectName', label: tt('المشروع', 'Project') },
+      { key: 'amount', label: tt('المبلغ', 'Amount'), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'receivedIn', label: tt('عن طريق', 'Via'), format: (v) => receivedInLabels[v as string]?.[lang] || String(v) },
+      { key: 'reference', label: tt('المرجع', 'Reference') },
+      { key: 'notes', label: tt('ملاحظات', 'Notes') },
+    ]
+    const rows = filtered.map(p => ({
+      date: formatDate(p.date, lang),
+      clientName: p.client.name,
+      invoiceNo: p.invoice?.invoiceNo || '',
+      projectName: p.invoice?.project?.name || '',
+      amount: p.amount,
+      receivedIn: p.receivedIn,
+      reference: p.reference || '',
+      notes: p.notes || '',
+    }))
+    exportToCSV(rows, `client-payments-${new Date().toISOString().slice(0, 10)}`, columns)
+  }
+
   return (
     <ModuleLayout
       title={labels.title}
@@ -560,6 +732,9 @@ export function ClientPaymentsModule() {
       actions={
         <>
           <PrintButton type="client-payment" size="icon" />
+          <Button variant="outline" size="icon" onClick={handleExport} title={tt('تصدير CSV', 'Export CSV')}>
+            <Download className="size-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} title={tt('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
@@ -701,6 +876,9 @@ export function ClientPaymentsModule() {
                       <TableCell>
                         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                           <PrintButton type="client-payment" documentId={p.id} size="icon" />
+                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditPayment(p)} title={tt('تعديل', 'Edit')}>
+                            <Pencil className="size-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetailPayment(p)} title={tt('عرض', 'View')}>
                             <Eye className="size-4" />
                           </Button>
@@ -720,6 +898,9 @@ export function ClientPaymentsModule() {
 
       {/* Add Payment Dialog */}
       <AddPaymentDialog open={showAddDialog} onClose={() => setShowAddDialog(false)} />
+
+      {/* Edit Dialog */}
+      <EditPaymentDialog payment={editPayment} open={!!editPayment} onClose={() => setEditPayment(null)} />
 
       {/* Detail Dialog */}
       <PaymentDetailDialog payment={detailPayment} open={!!detailPayment} onClose={() => setDetailPayment(null)} />

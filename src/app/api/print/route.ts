@@ -3,10 +3,8 @@ import {
   generatePrintHTML,
   type PrintDocumentType,
   type PrintOptions,
-} from '@/lib/print-service'
+} from '@/printing'
 import { db } from '@/lib/db'
-import path from 'path'
-import fs from 'fs/promises'
 
 /**
  * GET /api/print?type=<type>&id=<id>&format=<html|json>
@@ -29,16 +27,56 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Validate document type
+    // Validate document type against the new printing system's supported types
     const validTypes: PrintDocumentType[] = [
+      // فواتير
       'service-invoice',
       'rental-invoice',
-      'extract',
-      'purchase-order',
       'supplier-invoice',
-      'tax-declaration',
+      // مشاريع
+      'progress-claim',
+      // مشتريات
+      'purchase-order',
+      'delivery-order',
+      // عمليات
+      'timesheet',
+      // محاسبة
+      'trial-balance',
+      'general-ledger',
+      'income-statement',
+      'balance-sheet',
+      // ضريبي
+      'vat-return',
+      // مالي
+      'client-payment',
+      'supplier-payment',
+      'rental-payment',
+      'expense-report',
+      'advance-voucher',
+      'petty-cash-voucher',
+      'salary-slip',
+      'rental-contract',
+      // تقارير
+      'equipment-report',
+      'fuel-report',
+      'maintenance-report',
+      'work-team-report',
+      'resource-distribution',
+      'attendance-report',
+      'purchase-request',
+      'goods-receipt',
+      'journal-entry',
+      'account-statement',
+      'generic-table',
     ]
-    if (!validTypes.includes(type)) {
+    // Backward compatibility: map old type names to new ones
+    const typeAliases: Record<string, PrintDocumentType> = {
+      'extract': 'progress-claim',
+      'timesheet-report': 'timesheet',
+      'tax-declaration': 'vat-return',
+    }
+    const resolvedType = (typeAliases[type] || type) as PrintDocumentType
+    if (!validTypes.includes(resolvedType) && !typeAliases[type]) {
       return NextResponse.json(
         { error: `Invalid document type: ${type}. Valid types: ${validTypes.join(', ')}` },
         { status: 400 },
@@ -95,7 +133,10 @@ export async function GET(request: NextRequest) {
     // Fetch document data based on type
     let data: Record<string, unknown> = {}
 
-    if (type === 'service-invoice' || type === 'rental-invoice') {
+    // Use resolved type for data fetching (handles backward compat aliases)
+    const fetchType = resolvedType
+
+    if (fetchType === 'service-invoice' || fetchType === 'rental-invoice') {
       const invoice = await db.salesInvoice.findUnique({
         where: { id },
         include: { client: true, items: true, project: true, contract: true },
@@ -120,7 +161,7 @@ export async function GET(request: NextRequest) {
           terms: invoice.notes,
         }
       }
-    } else if (type === 'extract') {
+    } else if (fetchType === 'progress-claim') {
       const claim = await db.progressClaim.findUnique({
         where: { id },
         include: { project: true, contract: true },
@@ -137,7 +178,7 @@ export async function GET(request: NextRequest) {
           contractValue: claim.contract.totalValue,
         }
       }
-    } else if (type === 'supplier-invoice') {
+    } else if (fetchType === 'supplier-invoice') {
       const invoice = await db.purchaseInvoice.findUnique({
         where: { id },
         include: { supplier: true, items: true },
@@ -158,7 +199,7 @@ export async function GET(request: NextRequest) {
           })),
         }
       }
-    } else if (type === 'purchase-order') {
+    } else if (fetchType === 'purchase-order') {
       const po = await db.purchaseOrder.findUnique({
         where: { id },
         include: { supplier: true, items: true },
@@ -178,7 +219,7 @@ export async function GET(request: NextRequest) {
           })),
         }
       }
-    } else if (type === 'tax-declaration') {
+    } else if (fetchType === 'vat-return') {
       const vatReturn = await db.vATReturn.findUnique({ where: { id } })
       if (vatReturn) {
         data = {
@@ -194,7 +235,7 @@ export async function GET(request: NextRequest) {
     }
 
     // For invoice types, generate QR code server-side (ZATCA compliance)
-    if ((type === 'rental-invoice' || type === 'service-invoice') && printSettings.taxNumber) {
+    if ((fetchType === 'rental-invoice' || fetchType === 'service-invoice' || fetchType === 'supplier-invoice') && printSettings.taxNumber) {
       try {
         const sellerName = printSettings.nameAr || ''
         const vatNumber = printSettings.taxNumber
@@ -224,9 +265,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data, settings: printSettings })
     }
 
-    // Default: Return complete HTML document
+    // Default: Return complete HTML document using the new modular printing system
     const html = generatePrintHTML({
-      type,
+      type: resolvedType,
       data,
       settings: printSettings,
     })

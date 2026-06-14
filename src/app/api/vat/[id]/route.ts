@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 // PATCH: Update VAT return status and/or record payment
@@ -16,11 +17,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'الإقرار الضريبي غير موجود' }, { status: 404 })
     }
 
-    // Validate status transitions: DRAFT → CREATED → DUE → PAID
+    // Validate status transitions: DRAFT → FILED → PAID
     const validTransitions: Record<string, string[]> = {
-      DRAFT: ['CREATED'],
-      CREATED: ['DUE'],
-      DUE: ['PAID'],
+      DRAFT: ['FILED'],
+      FILED: ['PAID'],
       PAID: [],
     }
 
@@ -30,7 +30,7 @@ export async function PATCH(
       const allowed = validTransitions[existing.status] || []
       if (!allowed.includes(newStatus)) {
         return NextResponse.json(
-          { error: `لا يمكن تغيير الحالة من ${existing.status} إلى ${newStatus}` },
+          { error: `لا يمكن تغيير الحالة من ${existing.status} إلى ${newStatus}. الانتقالات المسموحة: ${allowed.join(', ') || 'لا يوجد'}` },
           { status: 400 }
         )
       }
@@ -43,15 +43,21 @@ export async function PATCH(
       updateData.status = newStatus
     }
 
+    // Filing: record filed date when transitioning to FILED
+    if (newStatus === 'FILED') {
+      updateData.filedDate = new Date()
+    }
+
     // Payment recording (only when transitioning to PAID)
-    if (body.paymentDate) {
-      updateData.paymentDate = new Date(body.paymentDate)
-    }
-    if (body.paymentMethod) {
-      updateData.paymentMethod = body.paymentMethod
-    }
-    if (body.referenceNumber) {
-      updateData.referenceNumber = body.referenceNumber
+    if (newStatus === 'PAID') {
+      if (body.paymentDate) {
+        updateData.paymentDate = new Date(body.paymentDate)
+      } else {
+        updateData.paymentDate = new Date()
+      }
+      if (body.paymentReference) {
+        updateData.paymentReference = body.paymentReference
+      }
     }
 
     const updated = await db.vATReturn.update({
@@ -59,10 +65,9 @@ export async function PATCH(
       data: updateData,
     })
 
-    return NextResponse.json(updated)
+    return NextResponse.json(serializeDecimal(updated))
   } catch (error) {
     console.error('Error updating VAT return:', error)
-    return NextResponse.json({ error: 'فشل في تحديث الإقرار الضريبي' }, { status: 500 })
   }
 }
 
@@ -77,9 +82,8 @@ export async function GET(
     if (!vatReturn) {
       return NextResponse.json({ error: 'الإقرار الضريبي غير موجود' }, { status: 404 })
     }
-    return NextResponse.json(vatReturn)
+    return NextResponse.json(serializeDecimal(vatReturn))
   } catch (error) {
     console.error('Error fetching VAT return:', error)
-    return NextResponse.json({ error: 'فشل في تحميل الإقرار الضريبي' }, { status: 500 })
   }
 }

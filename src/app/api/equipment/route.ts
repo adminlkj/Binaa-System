@@ -1,18 +1,58 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const equipment = await db.equipment.findMany({
-      where: { isActive: true },
-      include: {
-        supplier: {
-          select: { id: true, code: true, name: true, nameAr: true },
-        },
+    const { searchParams } = new URL(request.url)
+    const activeOnly = searchParams.get('active') !== 'false' // default true
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
+    const search = searchParams.get('search') || ''
+
+    const where: Record<string, unknown> = {}
+    if (activeOnly) where.isActive = true
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { nameAr: { contains: search } },
+        { code: { contains: search } },
+        { type: { contains: search } },
+        { model: { contains: search } },
+        { serialNumber: { contains: search } },
+      ]
+    }
+
+    const include = {
+      supplier: {
+        select: { id: true, code: true, name: true, nameAr: true },
       },
-      orderBy: { code: 'asc' },
-    })
-    return NextResponse.json(equipment)
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const equipment = await db.equipment.findMany({
+        where: whereClause,
+        include,
+        orderBy: { code: 'asc' },
+      })
+      return NextResponse.json(equipment)
+    }
+
+    const [data, total] = await Promise.all([
+      db.equipment.findMany({
+        where: whereClause,
+        include,
+        orderBy: { code: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.equipment.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('Error fetching equipment:', error)
     return NextResponse.json({ error: 'فشل في تحميل المعدات' }, { status: 500 })

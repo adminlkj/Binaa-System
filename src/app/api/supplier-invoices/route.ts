@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryPurchaseInvoice, initializeChartOfAccounts } from '@/lib/accounting/engine'
+import { autoEntryPurchaseInvoice, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +12,10 @@ export async function GET(request: Request) {
     const goodsReceiptId = searchParams.get('goodsReceiptId')
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
+    const search = searchParams.get('search') || ''
 
     const where: Record<string, unknown> = {}
     if (supplierId) where.supplierId = supplierId
@@ -19,19 +23,45 @@ export async function GET(request: Request) {
     if (goodsReceiptId) where.goodsReceiptId = goodsReceiptId
     if (projectId) where.projectId = projectId
     if (status) where.status = status
+    if (search) {
+      where.OR = [
+        { invoiceNo: { contains: search } },
+        { notes: { contains: search } },
+      ]
+    }
 
-    const invoices = await db.purchaseInvoice.findMany({
-      where: Object.keys(where).length > 0 ? where : undefined,
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        purchaseOrder: { select: { id: true, orderNo: true, status: true } },
-        goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        items: true,
-      },
-      orderBy: { date: 'desc' },
-    })
-    return NextResponse.json(invoices)
+    const include = {
+      supplier: { select: { id: true, name: true, code: true } },
+      purchaseOrder: { select: { id: true, orderNo: true, status: true } },
+      goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
+      project: { select: { id: true, name: true, code: true, projectType: true } },
+      items: true,
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const invoices = await db.purchaseInvoice.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+      })
+      return NextResponse.json(invoices)
+    }
+
+    const [data, total] = await Promise.all([
+      db.purchaseInvoice.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.purchaseInvoice.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('Error fetching supplier invoices:', error)
     return NextResponse.json({ error: 'فشل في تحميل فواتير الموردين' }, { status: 500 })
@@ -116,73 +146,76 @@ export async function POST(request: Request) {
       totalPrice: item.quantityReceived * item.unitPrice,
     }))
 
-    const invoice = await db.purchaseInvoice.create({
-      data: {
-        invoiceNo,
-        supplierId,
-        purchaseOrderId,
-        goodsReceiptId,
-        projectId,
-        date: new Date(date),
-        dueDate: new Date(dueDate),
-        supplierInvoiceNo: supplierInvoiceNo || null,
-        supplierInvoiceDate: supplierInvoiceDate ? new Date(supplierInvoiceDate) : null,
-        attachmentPath: attachmentPath || null,
-        subtotal,
-        vatRate,
-        vatAmount,
-        totalAmount,
-        paidAmount: 0,
-        status: 'DRAFT',
-        notes: notes || null,
-        items: {
-          create: invoiceItems,
+    // Create invoice + accounting entry in transaction
+    const result = await db.$transaction(async (tx: PrismaTransaction) => {
+      const invoice = await tx.purchaseInvoice.create({
+        data: {
+          invoiceNo,
+          supplierId,
+          purchaseOrderId,
+          goodsReceiptId,
+          projectId,
+          date: new Date(date),
+          dueDate: new Date(dueDate),
+          supplierInvoiceNo: supplierInvoiceNo || null,
+          supplierInvoiceDate: supplierInvoiceDate ? new Date(supplierInvoiceDate) : null,
+          attachmentPath: attachmentPath || null,
+          subtotal,
+          vatRate,
+          vatAmount,
+          totalAmount,
+          paidAmount: 0,
+          status: 'DRAFT',
+          notes: notes || null,
+          items: {
+            create: invoiceItems,
+          },
         },
-      },
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        purchaseOrder: { select: { id: true, orderNo: true, status: true } },
-        goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        items: true,
-      },
-    })
-
-    // Auto-create accounting journal entry
-    try {
-      await initializeChartOfAccounts()
-      const journalEntry = await autoEntryPurchaseInvoice({
-        invoiceNo: invoice.invoiceNo,
-        supplierId: invoice.supplierId,
-        subtotal: invoice.subtotal,
-        vatRate: invoice.vatRate,
-        vatAmount: invoice.vatAmount,
-        totalAmount: invoice.totalAmount,
-        date: invoice.date,
-        projectId: invoice.projectId || undefined,
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
+          purchaseOrder: { select: { id: true, orderNo: true, status: true } },
+          goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
+          project: { select: { id: true, name: true, code: true, projectType: true } },
+          items: true,
+        },
       })
 
-      await db.purchaseInvoice.update({
+      // Auto-create accounting journal entry
+      try {
+        await initializeChartOfAccounts()
+        const journalEntry = await autoEntryPurchaseInvoice({
+          invoiceNo: invoice.invoiceNo,
+          supplierId: invoice.supplierId,
+          subtotal: invoice.subtotal,
+          vatRate: invoice.vatRate,
+          vatAmount: invoice.vatAmount,
+          totalAmount: invoice.totalAmount,
+          date: invoice.date,
+          projectId: invoice.projectId || undefined,
+        }, tx)
+
+        await tx.purchaseInvoice.update({
+          where: { id: invoice.id },
+          data: { journalEntryId: journalEntry.id },
+        })
+      } catch (accountingError) {
+        console.error('Accounting entry failed for supplier invoice:', accountingError)
+      }
+
+      // Re-fetch to include journalEntryId
+      return await tx.purchaseInvoice.findUnique({
         where: { id: invoice.id },
-        data: { journalEntryId: journalEntry.id },
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
+          purchaseOrder: { select: { id: true, orderNo: true, status: true } },
+          goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
+          project: { select: { id: true, name: true, code: true, projectType: true } },
+          items: true,
+        },
       })
-    } catch (accountingError) {
-      console.error('Accounting entry failed for supplier invoice:', accountingError)
-    }
-
-    // Re-fetch to include journalEntryId
-    const updatedInvoice = await db.purchaseInvoice.findUnique({
-      where: { id: invoice.id },
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        purchaseOrder: { select: { id: true, orderNo: true, status: true } },
-        goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        items: true,
-      },
     })
 
-    return NextResponse.json(updatedInvoice, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('Error creating supplier invoice:', error)
     return NextResponse.json({ error: 'فشل في إنشاء فاتورة المورد' }, { status: 500 })

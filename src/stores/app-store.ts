@@ -229,11 +229,113 @@ export const PURCHASE_WORKFLOW = [
 // Accounting sub-tabs
 export type AccountingTab = 'chart-of-accounts' | 'journal-entries' | 'general-ledger' | 'trial-balance' | 'receivables' | 'payables'
 
+// ============ SUB-MODULE KEYS ============
+// Union of all sub-module keys used across section tab bars
+
+export type SubModuleKey =
+  // Admin
+  | 'users' | 'permissions' | 'workflow' | 'settings'
+  // Reports
+  | 'report-projects' | 'report-rental' | 'report-finance' | 'report-purchases' | 'report-clients' | 'report-tax'
+  // Rental
+  | 'rental-contracts' | 'rental-delivery-orders' | 'rental-timesheets' | 'rental-invoices' | 'rental-collections'
+  // Warehouses
+  | 'warehouse-list' | 'warehouse-items' | 'warehouse-movements' | 'warehouse-inventory' | 'warehouse-transfers'
+  // Finance
+  | 'treasury' | 'banks' | 'checks' | 'journal-entries' | 'chart-of-accounts' | 'general-ledger'
+  | 'receivables' | 'payables' | 'fixed-assets' | 'depreciation' | 'vat' | 'budgets' | 'cash-flow'
+  // CRM
+  | 'clients' | 'opportunities' | 'quotations' | 'follow-ups'
+  // Projects
+  | 'project-list' | 'project-overview' | 'project-contracts' | 'project-extracts'
+  | 'project-invoices' | 'project-costs' | 'project-collections' | 'project-boq' | 'project-documents'
+  // Supply Chain
+  | 'suppliers' | 'subcontractors' | 'purchase-requests' | 'purchase-orders' | 'goods-receipt' | 'supplier-invoices'
+  // Resources
+  | 'employees' | 'employee-contracts' | 'employee-attendance' | 'employee-salaries'
+  | 'equipment-list' | 'equipment-operations' | 'equipment-maintenance' | 'equipment-fuel'
+  | 'teams' | 'team-assignments'
+
+export const subModuleLabels: Record<SubModuleKey, { ar: string; en: string }> = {
+  // Admin
+  'users': { ar: 'المستخدمون', en: 'Users' },
+  'permissions': { ar: 'الصلاحيات', en: 'Permissions' },
+  'workflow': { ar: 'سير العمل', en: 'Workflow' },
+  'settings': { ar: 'الإعدادات', en: 'Settings' },
+  // Reports
+  'report-projects': { ar: 'تقارير المشاريع', en: 'Project Reports' },
+  'report-rental': { ar: 'تقارير التأجير', en: 'Rental Reports' },
+  'report-finance': { ar: 'التقارير المالية', en: 'Financial Reports' },
+  'report-purchases': { ar: 'تقارير المشتريات', en: 'Purchase Reports' },
+  'report-clients': { ar: 'تقارير العملاء', en: 'Client Reports' },
+  'report-tax': { ar: 'تقارير الضريبة', en: 'Tax Reports' },
+  // Rental
+  'rental-contracts': { ar: 'عقود التأجير', en: 'Rental Contracts' },
+  'rental-delivery-orders': { ar: 'أوامر التوصيل', en: 'Delivery Orders' },
+  'rental-timesheets': { ar: 'ساعات التشغيل', en: 'Timesheets' },
+  'rental-invoices': { ar: 'فواتير التأجير', en: 'Rental Invoices' },
+  'rental-collections': { ar: 'تحصيلات التأجير', en: 'Rental Collections' },
+  // Warehouses
+  'warehouse-list': { ar: 'المستودعات', en: 'Warehouses' },
+  'warehouse-items': { ar: 'الأصناف', en: 'Items' },
+  'warehouse-movements': { ar: 'الحركات', en: 'Movements' },
+  'warehouse-inventory': { ar: 'الجرد', en: 'Inventory' },
+  'warehouse-transfers': { ar: 'التحويلات', en: 'Transfers' },
+  // Finance
+  'treasury': { ar: 'الخزينة', en: 'Treasury' },
+  'banks': { ar: 'البنوك', en: 'Banks' },
+  'checks': { ar: 'الشيكات', en: 'Checks' },
+  'journal-entries': { ar: 'القيود اليومية', en: 'Journal Entries' },
+  'chart-of-accounts': { ar: 'شجرة الحسابات', en: 'Chart of Accounts' },
+  'general-ledger': { ar: 'دفتر الأستاذ', en: 'General Ledger' },
+  'receivables': { ar: 'المدينون', en: 'Receivables' },
+  'payables': { ar: 'الدائنون', en: 'Payables' },
+  'fixed-assets': { ar: 'الأصول الثابتة', en: 'Fixed Assets' },
+  'depreciation': { ar: 'الإهلاك', en: 'Depreciation' },
+  'vat': { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
+  'budgets': { ar: 'الميزانيات', en: 'Budgets' },
+  'cash-flow': { ar: 'التدفق النقدي', en: 'Cash Flow' },
+  // CRM
+  'clients': { ar: 'العملاء', en: 'Clients' },
+  'opportunities': { ar: 'الفرص', en: 'Opportunities' },
+  'quotations': { ar: 'عروض الأسعار', en: 'Quotations' },
+  'follow-ups': { ar: 'المتابعات', en: 'Follow-ups' },
+  // Projects
+  'project-list': { ar: 'قائمة المشاريع', en: 'Project List' },
+  'project-overview': { ar: 'نظرة عامة', en: 'Overview' },
+  'project-contracts': { ar: 'العقود', en: 'Contracts' },
+  'project-extracts': { ar: 'المستخلصات', en: 'Extracts' },
+  'project-invoices': { ar: 'الفواتير', en: 'Invoices' },
+  'project-costs': { ar: 'التكاليف', en: 'Costs' },
+  'project-collections': { ar: 'التحصيلات', en: 'Collections' },
+  'project-boq': { ar: 'BOQ', en: 'BOQ' },
+  'project-documents': { ar: 'الوثائق', en: 'Documents' },
+  // Supply Chain
+  'suppliers': { ar: 'الموردون', en: 'Suppliers' },
+  'subcontractors': { ar: 'مقاولو الباطن', en: 'Subcontractors' },
+  'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
+  'purchase-orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },
+  'goods-receipt': { ar: 'استلام البضائع', en: 'Goods Receipt' },
+  'supplier-invoices': { ar: 'فواتير الموردين', en: 'Supplier Invoices' },
+  // Resources
+  'employees': { ar: 'الموظفون', en: 'Employees' },
+  'employee-contracts': { ar: 'عقود الموظفين', en: 'Employee Contracts' },
+  'employee-attendance': { ar: 'الحضور', en: 'Attendance' },
+  'employee-salaries': { ar: 'الرواتب', en: 'Salaries' },
+  'equipment-list': { ar: 'المعدات', en: 'Equipment' },
+  'equipment-operations': { ar: 'التشغيل', en: 'Operations' },
+  'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
+  'equipment-fuel': { ar: 'الوقود', en: 'Fuel' },
+  'teams': { ar: 'فرق العمل', en: 'Teams' },
+  'team-assignments': { ar: 'توزيع الفرق', en: 'Team Assignments' },
+}
+
 // ============ APP STORE ============
 
 interface AppState {
   // Navigation
   activeItem: NavItem
+  activeSubModule: SubModuleKey | null
   sidebarOpen: boolean
   sidebarCollapsed: boolean
   lang: Lang
@@ -247,6 +349,7 @@ interface AppState {
   useThousandSeparatorsOfficial: boolean
   // Actions
   setActiveItem: (item: NavItem) => void
+  setActiveSubModule: (key: SubModuleKey | null) => void
   setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -260,6 +363,7 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set) => ({
   activeItem: 'dashboard',
+  activeSubModule: null,
   sidebarOpen: false,
   sidebarCollapsed: false,
   lang: 'ar',
@@ -269,6 +373,7 @@ export const useAppStore = create<AppState>((set) => ({
   useThousandSeparatorsSystem: true,
   useThousandSeparatorsOfficial: false,
   setActiveItem: (item) => set({ activeItem: item }),
+  setActiveSubModule: (key) => set({ activeSubModule: key }),
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
@@ -285,20 +390,25 @@ export const useAppStore = create<AppState>((set) => ({
 
 // ============ FORMAT HELPERS ============
 
-export function formatAmount(value: number, mode: 'system' | 'official' = 'system'): string {
+export function formatAmount(value: number | string, mode: 'system' | 'official' = 'system'): string {
+  const safeValue = typeof value === 'string' ? parseFloat(value) : value
+  const num = isNaN(safeValue) ? 0 : safeValue
   if (mode === 'official') {
-    return value.toFixed(2)
+    return num.toFixed(2)
   }
-  return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export function formatNumber(value: number | undefined | null): string {
-  if (value == null || isNaN(value)) return '0'
-  return value.toLocaleString('en-US')
+export function formatNumber(value: number | string | undefined | null): string {
+  if (value == null) return '0'
+  const num = typeof value === 'string' ? parseFloat(value) : value
+  if (isNaN(num)) return '0'
+  return num.toLocaleString('en-US')
 }
 
-export function formatSAR(value: number | undefined | null, lang: Lang = 'ar'): string {
-  const safeValue = value == null || isNaN(value) ? 0 : value
+export function formatSAR(value: number | string | undefined | null, lang: Lang = 'ar'): string {
+  const num = typeof value === 'string' ? parseFloat(value) : value
+  const safeValue = num == null || isNaN(num as number) ? 0 : num as number
   const formatted = safeValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return lang === 'ar' ? `${formatted} ﷼` : `SAR ${formatted}`
 }

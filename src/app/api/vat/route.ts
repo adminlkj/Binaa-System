@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 // GET: List VAT returns with optional breakdown
@@ -115,22 +116,22 @@ export async function GET(request: Request) {
       })
 
       // Auto-calculate totals
-      const outputVat = salesInvoices.reduce((s, i) => s + (i.vatAmount || 0), 0) +
-        progressClaims.reduce((s, c) => s + (c.vatAmount || 0), 0)
-      const totalSales = salesInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0) +
-        progressClaims.reduce((s, c) => s + (c.totalAmount || 0), 0)
+      const outputVat = salesInvoices.reduce((s, i) => s + toNumber(i.vatAmount), 0) +
+        progressClaims.reduce((s, c) => s + toNumber(c.vatAmount), 0)
+      const totalSales = salesInvoices.reduce((s, i) => s + toNumber(i.totalAmount), 0) +
+        progressClaims.reduce((s, c) => s + toNumber(c.totalAmount), 0)
 
-      const inputVatFromPurchases = purchaseInvoices.reduce((s, i) => s + (i.vatAmount || 0), 0)
-      const inputVatFromSub = subcontractorInvoices.reduce((s, i) => s + (i.vatAmount || 0), 0)
-      const inputVatFromExpenses = expenses.reduce((s, e) => s + (e.vatAmount || 0), 0)
+      const inputVatFromPurchases = purchaseInvoices.reduce((s, i) => s + toNumber(i.vatAmount), 0)
+      const inputVatFromSub = subcontractorInvoices.reduce((s, i) => s + toNumber(i.vatAmount), 0)
+      const inputVatFromExpenses = expenses.reduce((s, e) => s + toNumber(e.vatAmount), 0)
       const inputVat = inputVatFromPurchases + inputVatFromSub + inputVatFromExpenses
-      const totalPurchases = purchaseInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0) +
-        subcontractorInvoices.reduce((s, i) => s + (i.totalAmount || 0), 0) +
-        expenses.reduce((s, e) => s + (e.amount || 0), 0)
+      const totalPurchases = purchaseInvoices.reduce((s, i) => s + toNumber(i.totalAmount), 0) +
+        subcontractorInvoices.reduce((s, i) => s + toNumber(i.totalAmount), 0) +
+        expenses.reduce((s, e) => s + toNumber(e.amount), 0)
 
       const netVat = outputVat - inputVat
 
-      return NextResponse.json({
+      return NextResponse.json(serializeDecimal({
         declaration: vatReturns[0] || null,
         autoCalc: {
           outputVat,
@@ -146,10 +147,10 @@ export async function GET(request: Request) {
           subcontractorInvoices,
           expenses,
         },
-      })
+      }))
     }
 
-    return NextResponse.json(vatReturns)
+    return NextResponse.json(serializeDecimal(vatReturns))
   } catch (error) {
     console.error('Error fetching VAT returns:', error)
     return NextResponse.json({ error: 'فشل في تحميل إقرارات الضريبة' }, { status: 500 })
@@ -193,8 +194,8 @@ export async function POST(request: Request) {
       },
       select: { id: true, totalAmount: true, vatAmount: true },
     })
-    const totalSales = salesInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0)
-    const outputVatFromSales = salesInvoices.reduce((sum, inv) => sum + (inv.vatAmount || 0), 0)
+    const totalSales = salesInvoices.reduce((sum, inv) => sum + toNumber(inv.totalAmount), 0)
+    const outputVatFromSales = salesInvoices.reduce((sum, inv) => sum + toNumber(inv.vatAmount), 0)
     const salesInvoiceIds = JSON.stringify(salesInvoices.map(inv => inv.id))
 
     // Progress Claims
@@ -205,8 +206,8 @@ export async function POST(request: Request) {
       },
       select: { id: true, totalAmount: true, vatAmount: true },
     })
-    const outputVatFromClaims = progressClaims.reduce((sum, c) => sum + (c.vatAmount || 0), 0)
-    const totalSalesWithClaims = totalSales + progressClaims.reduce((s, c) => s + (c.totalAmount || 0), 0)
+    const outputVatFromClaims = progressClaims.reduce((sum, c) => sum + toNumber(c.vatAmount), 0)
+    const totalSalesWithClaims = totalSales + progressClaims.reduce((s, c) => s + toNumber(c.totalAmount), 0)
     const outputVat = outputVatFromSales + outputVatFromClaims
 
     // ===== INPUT VAT: Purchase Invoices =====
@@ -219,8 +220,8 @@ export async function POST(request: Request) {
     })
     const purchaseTotals = purchaseInvoices.reduce(
       (acc, inv) => ({
-        amount: acc.amount + (inv.totalAmount || 0),
-        vat: acc.vat + (inv.vatAmount || 0),
+        amount: acc.amount + toNumber(inv.totalAmount),
+        vat: acc.vat + toNumber(inv.vatAmount),
       }),
       { amount: 0, vat: 0 }
     )
@@ -236,8 +237,8 @@ export async function POST(request: Request) {
     })
     const subTotals = subcontractorInvoices.reduce(
       (acc, inv) => ({
-        amount: acc.amount + (inv.totalAmount || 0),
-        vat: acc.vat + (inv.vatAmount || 0),
+        amount: acc.amount + toNumber(inv.totalAmount),
+        vat: acc.vat + toNumber(inv.vatAmount),
       }),
       { amount: 0, vat: 0 }
     )
@@ -252,8 +253,8 @@ export async function POST(request: Request) {
     })
     const expenseTotals = expenses.reduce(
       (acc, exp) => ({
-        amount: acc.amount + (exp.amount || 0),
-        vat: acc.vat + (exp.vatAmount || 0),
+        amount: acc.amount + toNumber(exp.amount),
+        vat: acc.vat + toNumber(exp.vatAmount),
       }),
       { amount: 0, vat: 0 }
     )
@@ -284,7 +285,7 @@ export async function POST(request: Request) {
       },
     })
 
-    return NextResponse.json({
+    return NextResponse.json(serializeDecimal({
       ...vatReturn,
       _meta: {
         message: 'VAT return created as a fixed snapshot. Numbers are frozen and will not change.',
@@ -294,7 +295,7 @@ export async function POST(request: Request) {
         subcontractorInvoiceCount: subcontractorInvoices.length,
         expenseCount: expenses.length,
       }
-    }, { status: 201 })
+    }), { status: 201 })
   } catch (error) {
     console.error('Error creating VAT return:', error)
     return NextResponse.json(
@@ -341,7 +342,7 @@ export async function PATCH(request: Request) {
           filedDate: new Date(),
         },
       })
-      return NextResponse.json(vatReturn)
+      return NextResponse.json(serializeDecimal(vatReturn))
     }
 
     if (action === 'PAY') {
@@ -368,7 +369,7 @@ export async function PATCH(request: Request) {
           paymentReference,
         },
       })
-      return NextResponse.json(vatReturn)
+      return NextResponse.json(serializeDecimal(vatReturn))
     }
 
     return NextResponse.json({ error: 'إجراء غير معروف. الإجراءات المتاحة: FILE, PAY' }, { status: 400 })

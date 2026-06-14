@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -53,7 +54,7 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
   for (const line of revenueLines) {
     const code = line.account.code
     // Revenue: credit normal balance, so credits - debits
-    const amount = line.credit - line.debit
+    const amount = toNumber(line.credit) - toNumber(line.debit)
     if (amount === 0) continue
 
     let category: string
@@ -81,7 +82,7 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
 
   for (const line of projectCostLines) {
     // Expense: debit normal balance, so debits - credits
-    const amount = line.debit - line.credit
+    const amount = toNumber(line.debit) - toNumber(line.credit)
     if (amount === 0) continue
 
     const subCategory = line.account.name
@@ -96,7 +97,7 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
   let totalRentalCosts = 0
 
   for (const line of rentalCostLines) {
-    const amount = line.debit - line.credit
+    const amount = toNumber(line.debit) - toNumber(line.credit)
     if (amount === 0) continue
 
     const subCategory = line.account.name
@@ -113,7 +114,7 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
   let totalOperatingExpenses = 0
 
   for (const line of opexLines) {
-    const amount = line.debit - line.credit
+    const amount = toNumber(line.debit) - toNumber(line.credit)
     if (amount === 0) continue
 
     const code = line.account.code
@@ -138,7 +139,7 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
 
   const netProfit = grossProfit - totalOperatingExpenses
 
-  return NextResponse.json({
+  return NextResponse.json(serializeDecimal({
     revenues,
     projectCosts,
     rentalCosts,
@@ -149,7 +150,7 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
     grossProfit,
     totalOperatingExpenses,
     netProfit,
-  })
+  }))
 }
 
 // ============ BALANCE SHEET ============
@@ -183,10 +184,12 @@ async function getBalanceSheet(dateTo: string | null) {
 
     // Normal balance: ASSET/EXPENSE = DEBIT, LIABILITY/EQUITY/REVENUE = CREDIT
     const isDebitNormal = line.account.type === 'ASSET' || line.account.type === 'EXPENSE'
+    const debit = toNumber(line.debit)
+    const credit = toNumber(line.credit)
     if (isDebitNormal) {
-      accountBalances[accId].balance += line.debit - line.credit
+      accountBalances[accId].balance += debit - credit
     } else {
-      accountBalances[accId].balance += line.credit - line.debit
+      accountBalances[accId].balance += credit - debit
     }
   }
 
@@ -249,7 +252,7 @@ async function getBalanceSheet(dateTo: string | null) {
   const totalAssets = totalCurrentAssets + totalNonCurrentAssets
   const totalLiabilities = totalCurrentLiabilities + totalNonCurrentLiabilities
 
-  return NextResponse.json({
+  return NextResponse.json(serializeDecimal({
     currentAssets,
     nonCurrentAssets,
     currentLiabilities,
@@ -267,7 +270,7 @@ async function getBalanceSheet(dateTo: string | null) {
       difference: totalAssets - (totalLiabilities + totalEquity),
     },
     currentYearProfit,
-  })
+  }))
 }
 
 // ============ CASH FLOW (INDIRECT METHOD) ============
@@ -295,8 +298,8 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
 
   const revenueLines = periodLines.filter((l) => l.account.type === 'REVENUE')
   const expenseLines = periodLines.filter((l) => l.account.type === 'EXPENSE')
-  const totalPeriodRevenue = revenueLines.reduce((s, l) => s + l.credit - l.debit, 0)
-  const totalPeriodExpense = expenseLines.reduce((s, l) => s + l.debit - l.credit, 0)
+  const totalPeriodRevenue = revenueLines.reduce((s, l) => s + toNumber(l.credit) - toNumber(l.debit), 0)
+  const totalPeriodExpense = expenseLines.reduce((s, l) => s + toNumber(l.debit) - toNumber(l.credit), 0)
   const netProfit = totalPeriodRevenue - totalPeriodExpense
 
   // Add back non-cash items: Depreciation (8310-8340 + 7250)
@@ -304,11 +307,11 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
   const depreciationLines = periodLines.filter((l) =>
     depreciationCodes.some((c) => l.account.code.startsWith(c))
   )
-  const depreciation = depreciationLines.reduce((s, l) => s + l.debit - l.credit, 0)
+  const depreciation = depreciationLines.reduce((s, l) => s + toNumber(l.debit) - toNumber(l.credit), 0)
 
   // Provisions change (37xx)
   const provisionLines = periodLines.filter((l) => l.account.code.startsWith('37'))
-  const provisionsChange = provisionLines.reduce((s, l) => s + l.credit - l.debit, 0)
+  const provisionsChange = provisionLines.reduce((s, l) => s + toNumber(l.credit) - toNumber(l.debit), 0)
 
   // Working capital changes - compare balances at start vs end of period
   const beforePeriodLines = await db.journalLine.findMany({
@@ -331,7 +334,7 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
   ) => {
     const filtered = allLines.filter((l) => l.account.code.startsWith(prefix))
     return filtered.reduce((s, l) => {
-      return s + (isDebitNormal ? l.debit - l.credit : l.credit - l.debit)
+      return s + (isDebitNormal ? toNumber(l.debit) - toNumber(l.credit) : toNumber(l.credit) - toNumber(l.debit))
     }, 0)
   }
 
@@ -357,15 +360,15 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
 
   // Investing activities: Asset purchases (2xxx debit increases), Asset sales
   const investingLines = periodLines.filter((l) => l.account.code.startsWith('2'))
-  const assetPurchases = investingLines.filter((l) => l.debit > 0 && l.account.code.startsWith('21')).reduce((s, l) => s + l.debit, 0)
-  const assetSales = investingLines.filter((l) => l.credit > 0 && l.account.code.startsWith('21')).reduce((s, l) => s + l.credit, 0)
+  const assetPurchases = investingLines.filter((l) => toNumber(l.debit) > 0 && l.account.code.startsWith('21')).reduce((s, l) => s + toNumber(l.debit), 0)
+  const assetSales = investingLines.filter((l) => toNumber(l.credit) > 0 && l.account.code.startsWith('21')).reduce((s, l) => s + toNumber(l.credit), 0)
   const investingCashFlow = -assetPurchases + assetSales
 
   // Financing: Capital changes (5xxx), Loan changes (39xx, 41xx)
   const capitalLines = periodLines.filter((l) => l.account.code.startsWith('5'))
-  const capitalChange = capitalLines.reduce((s, l) => s + l.credit - l.debit, 0)
+  const capitalChange = capitalLines.reduce((s, l) => s + toNumber(l.credit) - toNumber(l.debit), 0)
   const loanLines = periodLines.filter((l) => l.account.code.startsWith('39') || l.account.code.startsWith('41'))
-  const loanChange = loanLines.reduce((s, l) => s + l.credit - l.debit, 0)
+  const loanChange = loanLines.reduce((s, l) => s + toNumber(l.credit) - toNumber(l.debit), 0)
   const financingCashFlow = capitalChange + loanChange
 
   const netChange = operatingCashFlow + investingCashFlow + financingCashFlow
@@ -374,10 +377,10 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
   const cashCodes = ['1110', '1120', '1130']
   const openingCash = beforePeriodLines
     .filter((l) => cashCodes.some((c) => l.account.code.startsWith(c)))
-    .reduce((s, l) => s + l.debit - l.credit, 0)
+    .reduce((s, l) => s + toNumber(l.debit) - toNumber(l.credit), 0)
   const closingCash = openingCash + netChange
 
-  return NextResponse.json({
+  return NextResponse.json(serializeDecimal({
     netProfit,
     adjustments: {
       depreciation,
@@ -400,5 +403,5 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
     netChange,
     openingCash,
     closingCash,
-  })
+  }))
 }

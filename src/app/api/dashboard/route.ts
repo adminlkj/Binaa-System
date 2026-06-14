@@ -433,9 +433,11 @@ export async function GET() {
     const netVAT = outputVat - inputVat
 
     // ===== 14. Low Inventory Items =====
-    const lowInventoryItems = await db.inventoryItem.count({
-      where: { quantity: { lte: db.inventoryItem.fields.minQuantity } },
-    })
+    // Use $queryRaw to compare quantity against minQuantity (column-to-column comparison)
+    const lowInventoryResult = await db.$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*) as count FROM InventoryItem WHERE quantity <= minQuantity AND isActive = 1
+    `
+    const lowInventoryItems = Number(lowInventoryResult[0]?.count || 0)
 
     // ===== 15. Project Status Distribution =====
     const statusCounts = await db.project.groupBy({

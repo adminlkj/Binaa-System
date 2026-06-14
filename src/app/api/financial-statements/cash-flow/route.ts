@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
 
@@ -33,24 +34,7 @@ async function getBalancesByPrefixes(
     }
   }
 
-  const result = await db.journalLine.aggregate({
-    _sum: { debit: true, credit: true },
-    where: {
-      accountId: { in: accountIds },
-      journalEntry: {
-        status: 'POSTED',
-        ...dateFilter,
-      },
-    },
-  })
-
-  const totalDebit = result._sum.debit || 0
-  const totalCredit = result._sum.credit || 0
-
-  // Determine the normal balance from the first account type
-  // For a mix of account types, we need to handle each separately
-  // But since we group by similar type prefixes, this is generally okay
-  // Let's calculate per account type instead
+  // Calculate per account type for correct normal balance
   let balance = 0
   for (const account of accounts) {
     const lines = await db.journalLine.aggregate({
@@ -63,8 +47,8 @@ async function getBalancesByPrefixes(
         },
       },
     })
-    const d = lines._sum.debit || 0
-    const c = lines._sum.credit || 0
+    const d = toNumber(lines._sum.debit)
+    const c = toNumber(lines._sum.credit)
     const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
     balance += normalBalance === 'DEBIT' ? d - c : c - d
   }
@@ -94,35 +78,11 @@ async function getBalanceChange(
   const toDateFilter: { date?: { lte?: Date } } = {}
   if (dateTo) toDateFilter.date = { lte: dateTo }
 
-  const upToEnd = await db.journalLine.aggregate({
-    _sum: { debit: true, credit: true },
-    _count: true,
-    where: {
-      accountId: { in: accountIds },
-      journalEntry: {
-        status: 'POSTED',
-        ...toDateFilter,
-      },
-    },
-  })
-
   // Get balance up to dateFrom (exclusive)
   const fromDateFilter: { date?: { lt?: Date } } = {}
   if (dateFrom) fromDateFilter.date = { lt: dateFrom }
 
-  const upToStart = await db.journalLine.aggregate({
-    _sum: { debit: true, credit: true },
-    where: {
-      accountId: { in: accountIds },
-      journalEntry: {
-        status: 'POSTED',
-        ...fromDateFilter,
-      },
-    },
-  })
-
   // Calculate net balance for each account type
-  // Since we have a mix of types, compute per account
   let balanceEnd = 0
   let balanceStart = 0
 
@@ -136,8 +96,8 @@ async function getBalanceChange(
         journalEntry: { status: 'POSTED', ...toDateFilter },
       },
     })
-    const endD = endLines._sum.debit || 0
-    const endC = endLines._sum.credit || 0
+    const endD = toNumber(endLines._sum.debit)
+    const endC = toNumber(endLines._sum.credit)
     balanceEnd += normalBalance === 'DEBIT' ? endD - endC : endC - endD
 
     const startLines = await db.journalLine.aggregate({
@@ -147,8 +107,8 @@ async function getBalanceChange(
         journalEntry: { status: 'POSTED', ...fromDateFilter },
       },
     })
-    const startD = startLines._sum.debit || 0
-    const startC = startLines._sum.credit || 0
+    const startD = toNumber(startLines._sum.debit)
+    const startC = toNumber(startLines._sum.credit)
     balanceStart += normalBalance === 'DEBIT' ? startD - startC : startC - startD
   }
 
@@ -166,10 +126,8 @@ export async function GET(request: Request) {
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
 
     // ---- Cash/Bank account balances ----
-    // Cash accounts: 1110 (Treasury), 1120 (Banks), 1130 (Petty Cash), 1140 (Cheques)
     const cashPrefixes = ['1110', '1120', '1130', '1140']
 
-    // Beginning cash balance (before dateFrom)
     const beginDateFilter: { date?: { lt?: Date } } = {}
     if (dateFrom) beginDateFilter.date = { lt: dateFrom }
 
@@ -199,7 +157,7 @@ export async function GET(request: Request) {
           },
         },
       })
-      beginningCash += (begLines._sum.debit || 0) - (begLines._sum.credit || 0) // Assets: debit normal
+      beginningCash += toNumber(begLines._sum.debit) - toNumber(begLines._sum.credit) // Assets: debit normal
 
       // Ending balance
       const endLines = await db.journalLine.aggregate({
@@ -212,7 +170,7 @@ export async function GET(request: Request) {
           },
         },
       })
-      endingCash += (endLines._sum.debit || 0) - (endLines._sum.credit || 0)
+      endingCash += toNumber(endLines._sum.debit) - toNumber(endLines._sum.credit)
     }
 
     beginningCash = r4(beginningCash)
@@ -220,7 +178,6 @@ export async function GET(request: Request) {
     const netCashChange = r4(endingCash - beginningCash)
 
     // ---- Operating Activities ----
-    // Net Income (Revenue - Expenses for the period)
     const revenueAccounts = await db.account.findMany({
       where: { isActive: true, code: { startsWith: '6' } },
       select: { id: true, type: true },
@@ -249,7 +206,7 @@ export async function GET(request: Request) {
           journalEntry: { status: 'POSTED', ...periodDateFilter },
         },
       })
-      totalRevenue += ((agg._sum.credit || 0) - (agg._sum.debit || 0)) // Revenue: credit normal
+      totalRevenue += toNumber(agg._sum.credit) - toNumber(agg._sum.debit) // Revenue: credit normal
     }
 
     for (const acc of expenseAccounts) {
@@ -260,7 +217,7 @@ export async function GET(request: Request) {
           journalEntry: { status: 'POSTED', ...periodDateFilter },
         },
       })
-      totalExpenses += ((agg._sum.debit || 0) - (agg._sum.credit || 0)) // Expense: debit normal
+      totalExpenses += toNumber(agg._sum.debit) - toNumber(agg._sum.credit) // Expense: debit normal
     }
 
     const netIncome = r4(totalRevenue - totalExpenses)
@@ -269,42 +226,27 @@ export async function GET(request: Request) {
     const depreciationChange = await getBalanceChange(['8300'], dateFrom, dateTo)
 
     // Changes in working capital
-    // Receivables change (1200-1290): Asset, increase = negative cash flow
     const receivablesChange = await getBalanceChange(['12'], dateFrom, dateTo)
-    // Inventory change (1300-1390): Asset
     const inventoryChange = await getBalanceChange(['13'], dateFrom, dateTo)
-    // Prepayments change (1400-1490): Asset
     const prepaymentsChange = await getBalanceChange(['14'], dateFrom, dateTo)
-    // Payables change (3100-3190, 3200-3290): Liability, increase = positive cash flow
-    const payablesChange = await getBalanceChange(['3'], dateFrom, dateTo)
-    // Accruals/other current liabilities
     const accrualsChange = await getBalanceChange(['31', '32', '33', '34', '35', '36', '37', '38', '39'], dateFrom, dateTo)
 
-    // For operating activities:
-    // Receivables increase → cash outflow (negative adjustment)
-    // Inventory increase → cash outflow (negative adjustment)
-    // Payables increase → cash inflow (positive adjustment)
     const operatingAdjustments = r4(
-      -receivablesChange +    // Asset increase = cash decrease
-      -inventoryChange +      // Asset increase = cash decrease
-      -prepaymentsChange +    // Asset increase = cash decrease
-      accrualsChange          // Liability increase = cash increase
+      -receivablesChange +
+      -inventoryChange +
+      -prepaymentsChange +
+      accrualsChange
     )
 
     const netCashFromOperating = r4(netIncome + depreciationChange + operatingAdjustments)
 
     // ---- Investing Activities ----
-    // Changes in non-current assets (2xxx) excluding accumulated depreciation
-    // Fixed assets purchase/sale
     const fixedAssetsChange = await getBalanceChange(['2'], dateFrom, dateTo)
-    // For investing: Asset increase = cash outflow (negative)
     const netCashFromInvesting = r4(-fixedAssetsChange)
 
     // ---- Financing Activities ----
-    // Changes in long-term liabilities (4xxx) and equity (5xxx)
     const longTermLiabilitiesChange = await getBalanceChange(['4'], dateFrom, dateTo)
     const equityChange = await getBalanceChange(['5'], dateFrom, dateTo)
-    // Liability increase = cash inflow, Equity increase = cash inflow
     const netCashFromFinancing = r4(longTermLiabilitiesChange + equityChange)
 
     // Verification

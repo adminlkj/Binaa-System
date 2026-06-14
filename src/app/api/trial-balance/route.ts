@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getTrialBalance } from '@/lib/accounting/engine'
+import { serializeDecimal } from '@/lib/decimal'
 
 export async function GET(request: Request) {
   try {
@@ -28,7 +29,7 @@ export async function GET(request: Request) {
       return acc
     }, {} as Record<string, { totalDebit: number; totalCredit: number; count: number }>)
 
-    return NextResponse.json({
+    return NextResponse.json(serializeDecimal({
       data: trialBalance,
       totals: {
         totalDebit,
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
         dateFrom: from?.toISOString() || null,
         dateTo: to?.toISOString() || null,
       },
-    })
+    }))
   } catch (error) {
     console.error('Error fetching trial balance:', error)
     return NextResponse.json(

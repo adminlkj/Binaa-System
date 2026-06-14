@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import type { PrismaTransaction } from '@/lib/accounting/engine'
 
 const sourceIncludes = {
   progressClaim: {
@@ -75,38 +76,41 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {}
     if (status) updateData.status = status
 
-    // When reverting to DRAFT or CANCELLING an invoice that was linked to a timesheet,
-    // update the timesheet status back to APPROVED so it can be re-invoiced
-    if ((status === 'DRAFT' || status === 'CANCELLED') && existing.timesheetId) {
-      if (existing.status !== 'DRAFT' && existing.status !== 'CANCELLED') {
-        await db.timesheet.update({
-          where: { id: existing.timesheetId },
-          data: { status: 'APPROVED' },
-        })
+    // Perform multi-step updates in a transaction
+    const invoice = await db.$transaction(async (tx: PrismaTransaction) => {
+      // When reverting to DRAFT or CANCELLING an invoice that was linked to a timesheet,
+      // update the timesheet status back to APPROVED so it can be re-invoiced
+      if ((status === 'DRAFT' || status === 'CANCELLED') && existing.timesheetId) {
+        if (existing.status !== 'DRAFT' && existing.status !== 'CANCELLED') {
+          await tx.timesheet.update({
+            where: { id: existing.timesheetId },
+            data: { status: 'APPROVED' },
+          })
+        }
       }
-    }
 
-    // When reverting to DRAFT or CANCELLING an invoice that was linked to a progress claim,
-    // update the claim's invoiced flag back to false
-    if ((status === 'DRAFT' || status === 'CANCELLED') && existing.progressClaimId) {
-      if (existing.status !== 'DRAFT' && existing.status !== 'CANCELLED') {
-        await db.progressClaim.update({
-          where: { id: existing.progressClaimId },
-          data: { invoiced: false },
-        })
+      // When reverting to DRAFT or CANCELLING an invoice that was linked to a progress claim,
+      // update the claim's invoiced flag back to false
+      if ((status === 'DRAFT' || status === 'CANCELLED') && existing.progressClaimId) {
+        if (existing.status !== 'DRAFT' && existing.status !== 'CANCELLED') {
+          await tx.progressClaim.update({
+            where: { id: existing.progressClaimId },
+            data: { invoiced: false },
+          })
+        }
       }
-    }
 
-    const invoice = await db.salesInvoice.update({
-      where: { id },
-      data: updateData,
-      include: {
-        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
-        project: { select: { id: true, name: true, nameAr: true, code: true } },
-        contract: { select: { id: true, contractNo: true } },
-        items: true,
-        ...sourceIncludes,
-      },
+      return await tx.salesInvoice.update({
+        where: { id },
+        data: updateData,
+        include: {
+          client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+          project: { select: { id: true, name: true, nameAr: true, code: true } },
+          contract: { select: { id: true, contractNo: true } },
+          items: true,
+          ...sourceIncludes,
+        },
+      })
     })
 
     return NextResponse.json(invoice)
@@ -149,30 +153,33 @@ export async function DELETE(
       )
     }
 
-    // If linked to a timesheet, revert its status to APPROVED
-    if (invoice.timesheetId) {
-      await db.timesheet.update({
-        where: { id: invoice.timesheetId },
-        data: { status: 'APPROVED' },
+    // Perform all deletions in a transaction
+    await db.$transaction(async (tx: PrismaTransaction) => {
+      // If linked to a timesheet, revert its status to APPROVED
+      if (invoice.timesheetId) {
+        await tx.timesheet.update({
+          where: { id: invoice.timesheetId },
+          data: { status: 'APPROVED' },
+        })
+      }
+
+      // If linked to a progress claim, revert its invoiced flag
+      if (invoice.progressClaimId) {
+        await tx.progressClaim.update({
+          where: { id: invoice.progressClaimId },
+          data: { invoiced: false },
+        })
+      }
+
+      // Delete invoice items first (cascade should handle this, but be explicit)
+      await tx.salesInvoiceItem.deleteMany({
+        where: { invoiceId: id },
       })
-    }
 
-    // If linked to a progress claim, revert its invoiced flag
-    if (invoice.progressClaimId) {
-      await db.progressClaim.update({
-        where: { id: invoice.progressClaimId },
-        data: { invoiced: false },
+      // Delete the invoice
+      await tx.salesInvoice.delete({
+        where: { id },
       })
-    }
-
-    // Delete invoice items first (cascade should handle this, but be explicit)
-    await db.salesInvoiceItem.deleteMany({
-      where: { invoiceId: id },
-    })
-
-    // Delete the invoice
-    await db.salesInvoice.delete({
-      where: { id },
     })
 
     return NextResponse.json({ success: true, message: 'تم حذف الفاتورة بنجاح' })

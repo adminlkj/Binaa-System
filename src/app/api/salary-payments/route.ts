@@ -1,35 +1,58 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { createJournalEntry } from '@/lib/accounting/engine'
+import { createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const payrollRunId = searchParams.get('payrollRunId')
-    const paymentMethod = searchParams.get('paymentMethod')
+    const employeeId = searchParams.get('employeeId')
+    const month = searchParams.get('month')
+    const year = searchParams.get('year')
+    const status = searchParams.get('status')
 
     const where: Record<string, unknown> = {}
-    if (payrollRunId) where.payrollRunId = payrollRunId
-    if (paymentMethod) where.paymentMethod = paymentMethod
+    if (employeeId) where.employeeId = employeeId
+    if (month) where.month = parseInt(month)
+    if (year) where.year = parseInt(year)
+    if (status) where.status = status
 
-    const salaryPayments = await db.salaryPayment.findMany({
+    const salaries = await db.salary.findMany({
       where: Object.keys(where).length > 0 ? where : undefined,
       include: {
-        payrollRun: {
+        employee: {
           select: {
             id: true,
             code: true,
-            month: true,
-            year: true,
-            status: true,
-            totalNet: true,
+            name: true,
+            nameAr: true,
+            profession: true,
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            nameAr: true,
+            code: true,
           },
         },
       },
-      orderBy: { paymentDate: 'desc' },
+      orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json(salaryPayments)
+    // Convert Decimal values to numbers for JSON serialization
+    const serialized = salaries.map(s => ({
+      ...s,
+      basicSalary: Number(s.basicSalary),
+      housingAllowance: Number(s.housingAllowance),
+      transportAllowance: Number(s.transportAllowance),
+      otherAllowances: Number(s.otherAllowances),
+      overtimeAmount: Number(s.overtimeAmount),
+      deductions: Number(s.deductions),
+      netSalary: Number(s.netSalary),
+    }))
+
+    return NextResponse.json(serialized)
   } catch (error) {
     console.error('Error fetching salary payments:', error)
     return NextResponse.json({ error: 'فشل في تحميل سداد الرواتب' }, { status: 500 })
@@ -39,138 +62,189 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const payrollRunId = body.payrollRunId
+    const employeeId = body.employeeId
+    const month = body.month
+    const year = body.year
     const paymentMethod = body.paymentMethod || 'BANK'
-    const amount = parseFloat(body.amount)
-    const referenceNumber = body.referenceNumber || null
-    const paymentDate = body.paymentDate ? new Date(body.paymentDate) : new Date()
     const notes = body.notes || null
 
     // Validate required fields
-    if (!payrollRunId) {
-      return NextResponse.json({ error: 'رقم مسير الرواتب مطلوب' }, { status: 400 })
+    if (!employeeId) {
+      return NextResponse.json({ error: 'رقم الموظف مطلوب' }, { status: 400 })
     }
-    if (!amount || amount <= 0) {
-      return NextResponse.json({ error: 'المبلغ يجب أن يكون أكبر من صفر' }, { status: 400 })
-    }
-    if (!['BANK', 'CASH'].includes(paymentMethod)) {
-      return NextResponse.json({ error: 'طريقة السداد غير صالحة' }, { status: 400 })
+    if (!month || !year) {
+      return NextResponse.json({ error: 'الشهر والسنة مطلوبان' }, { status: 400 })
     }
 
-    // Validate payroll run exists and is eligible for payment
-    const payrollRun = await db.payrollRun.findUnique({
-      where: { id: payrollRunId },
+    // Find or create the salary record
+    const existingSalary = await db.salary.findFirst({
+      where: { employeeId, month, year },
     })
 
-    if (!payrollRun) {
-      return NextResponse.json({ error: 'مسير الرواتب غير موجود' }, { status: 404 })
-    }
-
-    if (!['APPROVED', 'PARTIALLY_PAID'].includes(payrollRun.status)) {
-      return NextResponse.json(
-        { error: 'مسير الرواتب يجب أن يكون معتمداً أو مدفوعاً جزئياً لسداد الرواتب' },
-        { status: 400 }
-      )
-    }
-
-    // Calculate total paid so far
-    const paidResult = await db.salaryPayment.aggregate({
-      where: { payrollRunId },
-      _sum: { amount: true },
-    })
-    const totalPaidSoFar = paidResult._sum.amount || 0
-    const remaining = payrollRun.totalNet - totalPaidSoFar
-
-    // Validate amount doesn't exceed remaining
-    if (amount > remaining + 0.01) {
-      return NextResponse.json(
-        { error: `المبلغ يتجاوز المتبقي (${remaining.toFixed(2)})` },
-        { status: 400 }
-      )
-    }
-
-    // Create the salary payment
-    const salaryPayment = await db.salaryPayment.create({
-      data: {
-        payrollRunId,
-        paymentMethod,
-        amount,
-        referenceNumber,
-        paymentDate,
-        notes,
-      },
-      include: {
-        payrollRun: {
-          select: {
-            id: true,
-            code: true,
-            month: true,
-            year: true,
-            status: true,
-            totalNet: true,
-          },
-        },
-      },
-    })
-
-    // Create accounting journal entry
-    // Debit 3310 (رواتب مستحقة - Accrued Salaries) / Credit 1121 (بنك الراجحي) or 1110 (الصندوق)
-    // Note: 1120 is now a parent account; we use 1121 (بنك الراجحي) as default bank
-    // TODO: Allow user to select specific bank account (1121-1124)
-    const creditAccountCode = paymentMethod === 'BANK' ? '1121' : '1110'
-    const creditAccountName = paymentMethod === 'BANK' ? 'بنك الراجحي' : 'الصندوق (الخزينة)'
-
-    try {
-      const entry = await createJournalEntry({
-        entryNo: `JE-SALPAY-${payrollRun.code}-${salaryPayment.id.slice(-6)}`,
-        date: paymentDate,
-        description: `سداد رواتب مسير ${payrollRun.code} - ${payrollRun.month}/${payrollRun.year}`,
-        descriptionAr: `سداد رواتب مسير ${payrollRun.code} - ${payrollRun.month}/${payrollRun.year}`,
-        lines: [
-          { accountCode: '3310', debit: amount, credit: 0, description: 'رواتب مستحقة' },
-          { accountCode: creditAccountCode, debit: 0, credit: amount, description: creditAccountName },
-        ],
-        sourceType: 'SALARY_PAYMENT',
-        sourceId: salaryPayment.id,
+    if (!existingSalary) {
+      // Get employee details to calculate salary
+      const employee = await db.employee.findUnique({
+        where: { id: employeeId },
       })
 
-      // Update salary payment with journal entry id
-      await db.salaryPayment.update({
-        where: { id: salaryPayment.id },
-        data: { journalEntryId: entry.id },
-      })
-    } catch (entryError) {
-      console.error('Error creating salary payment journal entry:', entryError)
-      // Continue without journal entry - don't block the payment
-    }
+      if (!employee) {
+        return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 })
+      }
 
-    // Update payroll run status
-    const newTotalPaid = totalPaidSoFar + amount
-    const newStatus = newTotalPaid >= payrollRun.totalNet - 0.01 ? 'PAID' : 'PARTIALLY_PAID'
+      // Create salary payment + journal entry in transaction
+      const result = await db.$transaction(async (tx: PrismaTransaction) => {
+        const basicSalary = Number(employee.basicSalary || 0)
+        const housingAllowance = Number(employee.housingAllowance || 0)
+        const transportAllowance = Number(employee.transportAllowance || 0)
+        const otherAllowances = Number(employee.otherAllowances || 0)
+        const deductions = Number(body.deductions || 0)
+        const netSalary = basicSalary + housingAllowance + transportAllowance + otherAllowances - deductions
 
-    await db.payrollRun.update({
-      where: { id: payrollRunId },
-      data: { status: newStatus },
-    })
-
-    // Re-fetch with updated payroll run
-    const result = await db.salaryPayment.findUnique({
-      where: { id: salaryPayment.id },
-      include: {
-        payrollRun: {
-          select: {
-            id: true,
-            code: true,
-            month: true,
-            year: true,
-            status: true,
-            totalNet: true,
+        const salary = await tx.salary.create({
+          data: {
+            employeeId,
+            projectId: body.projectId || null,
+            activityType: body.activityType || 'GENERAL',
+            month,
+            year,
+            basicSalary,
+            housingAllowance,
+            transportAllowance,
+            otherAllowances,
+            overtimeAmount: Number(body.overtimeAmount || 0),
+            deductions,
+            netSalary,
+            status: 'PAID',
           },
-        },
-      },
-    })
+          include: {
+            employee: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                nameAr: true,
+                profession: true,
+              },
+            },
+            project: {
+              select: {
+                id: true,
+                name: true,
+                nameAr: true,
+                code: true,
+              },
+            },
+          },
+        })
 
-    return NextResponse.json(result, { status: 201 })
+        // Create accounting journal entry
+        const creditAccountCode = paymentMethod === 'BANK' ? '1121' : '1110'
+        const creditAccountName = paymentMethod === 'BANK' ? 'بنك الراجحي' : 'الصندوق (الخزينة)'
+
+        try {
+          const entry = await createJournalEntry({
+            entryNo: `JE-SAL-${employee.code}-${month}${year}`,
+            date: new Date(),
+            description: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
+            descriptionAr: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
+            lines: [
+              { accountCode: '3310', debit: netSalary, credit: 0, description: 'رواتب مستحقة' },
+              { accountCode: creditAccountCode, debit: 0, credit: netSalary, description: creditAccountName },
+            ],
+            sourceType: 'SALARY_PAYMENT',
+            sourceId: salary.id,
+          }, tx)
+
+          // Update salary with journal entry id
+          await tx.salary.update({
+            where: { id: salary.id },
+            data: { journalEntryId: entry.id },
+          })
+        } catch (entryError) {
+          console.error('Error creating salary payment journal entry:', entryError)
+        }
+
+        return salary
+      })
+
+      return NextResponse.json({
+        ...result,
+        basicSalary: Number(result.basicSalary),
+        housingAllowance: Number(result.housingAllowance),
+        transportAllowance: Number(result.transportAllowance),
+        otherAllowances: Number(result.otherAllowances),
+        overtimeAmount: Number(result.overtimeAmount),
+        deductions: Number(result.deductions),
+        netSalary: Number(result.netSalary),
+      }, { status: 201 })
+    } else {
+      // Update existing salary to PAID status
+      const result = await db.$transaction(async (tx: PrismaTransaction) => {
+        const salary = await tx.salary.update({
+          where: { id: existingSalary.id },
+          data: { status: 'PAID' },
+          include: {
+            employee: {
+              select: {
+                id: true,
+                code: true,
+                name: true,
+                nameAr: true,
+                profession: true,
+              },
+            },
+            project: {
+              select: {
+                id: true,
+                name: true,
+                nameAr: true,
+                code: true,
+              },
+            },
+          },
+        })
+
+        // Create journal entry
+        const netSalary = Number(salary.netSalary)
+        const creditAccountCode = paymentMethod === 'BANK' ? '1121' : '1110'
+        const creditAccountName = paymentMethod === 'BANK' ? 'بنك الراجحي' : 'الصندوق (الخزينة)'
+
+        try {
+          const entry = await createJournalEntry({
+            entryNo: `JE-SAL-${salary.employee?.code || 'EMP'}-${month}${year}`,
+            date: new Date(),
+            description: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
+            descriptionAr: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
+            lines: [
+              { accountCode: '3310', debit: netSalary, credit: 0, description: 'رواتب مستحقة' },
+              { accountCode: creditAccountCode, debit: 0, credit: netSalary, description: creditAccountName },
+            ],
+            sourceType: 'SALARY_PAYMENT',
+            sourceId: salary.id,
+          }, tx)
+
+          await tx.salary.update({
+            where: { id: salary.id },
+            data: { journalEntryId: entry.id },
+          })
+        } catch (entryError) {
+          console.error('Error creating salary payment journal entry:', entryError)
+        }
+
+        return salary
+      })
+
+      return NextResponse.json({
+        ...result,
+        basicSalary: Number(result.basicSalary),
+        housingAllowance: Number(result.housingAllowance),
+        transportAllowance: Number(result.transportAllowance),
+        otherAllowances: Number(result.otherAllowances),
+        overtimeAmount: Number(result.overtimeAmount),
+        deductions: Number(result.deductions),
+        netSalary: Number(result.netSalary),
+      }, { status: 201 })
+    }
   } catch (error) {
     console.error('Error creating salary payment:', error)
     return NextResponse.json({ error: 'فشل في تسجيل سداد الرواتب' }, { status: 500 })

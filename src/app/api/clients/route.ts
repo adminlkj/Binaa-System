@@ -6,24 +6,60 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const activeOnly = searchParams.get('active') === 'true'
     const simple = searchParams.get('simple') === 'true'
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
+    const search = searchParams.get('search') || ''
+
+    const where: Record<string, unknown> = {}
+    if (activeOnly) where.isActive = true
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { nameAr: { contains: search } },
+        { code: { contains: search } },
+        { phone: { contains: search } },
+        { email: { contains: search } },
+      ]
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
 
     if (simple) {
       const clients = await db.client.findMany({
-        where: activeOnly ? { isActive: true } : undefined,
+        where: whereClause,
         select: { id: true, code: true, name: true },
         orderBy: { name: 'asc' },
       })
       return NextResponse.json(clients)
     }
 
-    const clients = await db.client.findMany({
-      where: activeOnly ? { isActive: true } : undefined,
-      include: {
-        _count: { select: { projects: true, salesInvoices: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-    return NextResponse.json(clients)
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const clients = await db.client.findMany({
+        where: whereClause,
+        include: {
+          _count: { select: { projects: true, salesInvoices: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+      return NextResponse.json(clients)
+    }
+
+    const [data, total] = await Promise.all([
+      db.client.findMany({
+        where: whereClause,
+        include: {
+          _count: { select: { projects: true, salesInvoices: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.client.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('Error fetching clients:', error)
     return NextResponse.json({ error: 'فشل في تحميل العملاء' }, { status: 500 })

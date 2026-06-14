@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryProgressClaim, initializeChartOfAccounts, createJournalEntry } from '@/lib/accounting/engine'
+import { autoEntryProgressClaim, initializeChartOfAccounts, createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -48,61 +48,64 @@ export async function POST(request: Request) {
     const vatAmount = Math.round(parseFloat(amount) * rate * 100) / 100
     const totalAmount = Math.round((parseFloat(amount) + vatAmount) * 100) / 100
 
-    const claim = await db.progressClaim.create({
-      data: {
-        projectId,
-        contractId,
-        claimNo,
-        date: new Date(date),
-        percentage: parseFloat(percentage),
-        amount: parseFloat(amount),
-        vatRate: rate,
-        vatAmount,
-        totalAmount,
-        status: status || 'DRAFT',
-        approvedDate: approvedDate ? new Date(approvedDate) : null,
-        notes: notes || null,
-        invoiced: false,
-      },
-      include: {
-        project: { select: { id: true, name: true, code: true } },
-        contract: { select: { id: true, contractNo: true, totalValue: true } },
-      },
-    })
-
-    // Auto-create accounting journal entry and store journalEntryId
-    try {
-      await initializeChartOfAccounts()
-      const journalEntry = await autoEntryProgressClaim({
-        claimNo: claim.claimNo,
-        projectId: claim.projectId,
-        contractId: claim.contractId,
-        amount: claim.amount,
-        vatRate: claim.vatRate,
-        vatAmount: claim.vatAmount,
-        totalAmount: claim.totalAmount,
-        date: claim.date,
+    // Create claim + accounting entry in transaction
+    const result = await db.$transaction(async (tx: PrismaTransaction) => {
+      const claim = await tx.progressClaim.create({
+        data: {
+          projectId,
+          contractId,
+          claimNo,
+          date: new Date(date),
+          percentage: parseFloat(percentage),
+          amount: parseFloat(amount),
+          vatRate: rate,
+          vatAmount,
+          totalAmount,
+          status: status || 'DRAFT',
+          approvedDate: approvedDate ? new Date(approvedDate) : null,
+          notes: notes || null,
+          invoiced: false,
+        },
+        include: {
+          project: { select: { id: true, name: true, code: true } },
+          contract: { select: { id: true, contractNo: true, totalValue: true } },
+        },
       })
 
-      // Store the journalEntryId on the claim
-      await db.progressClaim.update({
+      // Auto-create accounting journal entry and store journalEntryId
+      try {
+        await initializeChartOfAccounts()
+        const journalEntry = await autoEntryProgressClaim({
+          claimNo: claim.claimNo,
+          projectId: claim.projectId,
+          contractId: claim.contractId,
+          amount: claim.amount,
+          vatRate: claim.vatRate,
+          vatAmount: claim.vatAmount,
+          totalAmount: claim.totalAmount,
+          date: claim.date,
+        }, tx)
+
+        // Store the journalEntryId on the claim
+        await tx.progressClaim.update({
+          where: { id: claim.id },
+          data: { journalEntryId: journalEntry.id },
+        })
+      } catch (accountingError) {
+        console.error('Accounting entry failed for progress claim:', accountingError)
+      }
+
+      // Re-fetch to include journalEntryId
+      return await tx.progressClaim.findUnique({
         where: { id: claim.id },
-        data: { journalEntryId: journalEntry.id },
+        include: {
+          project: { select: { id: true, name: true, code: true } },
+          contract: { select: { id: true, contractNo: true, totalValue: true } },
+        },
       })
-    } catch (accountingError) {
-      console.error('Accounting entry failed for progress claim:', accountingError)
-    }
-
-    // Re-fetch to include journalEntryId
-    const updatedClaim = await db.progressClaim.findUnique({
-      where: { id: claim.id },
-      include: {
-        project: { select: { id: true, name: true, code: true } },
-        contract: { select: { id: true, contractNo: true, totalValue: true } },
-      },
     })
 
-    return NextResponse.json(updatedClaim, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('Error creating progress claim:', error)
     return NextResponse.json({ error: 'فشل في إنشاء المستخلص' }, { status: 500 })
@@ -136,59 +139,61 @@ export async function PUT(request: Request) {
 
     // If the claim has a journal entry and amounts are changing, create reversal + new entry
     if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
-      const originalEntry = await db.journalEntry.findUnique({
-        where: { id: existing.journalEntryId },
-        include: { lines: true },
-      })
-
-      if (originalEntry) {
-        const accountIds = originalEntry.lines.map(l => l.accountId)
-        const accounts = await db.account.findMany({ where: { id: { in: accountIds } } })
-        const accountMap = new Map(accounts.map(a => [a.id, a.code]))
-
-        const resolvedReversalLines = originalEntry.lines.map(line => ({
-          accountCode: accountMap.get(line.accountId) || '',
-          debit: line.credit,
-          credit: line.debit,
-          costCenterId: line.costCenterId || undefined,
-          description: `Reversal: ${line.description || ''}`,
-        }))
-
-        await createJournalEntry({
-          entryNo: `JE-REV-PC-${Date.now()}`,
-          date: new Date(),
-          description: `Reversal for Progress Claim ${existing.claimNo}`,
-          descriptionAr: `قيد عكسي لمستخلص ${existing.claimNo}`,
-          lines: resolvedReversalLines,
-          sourceType: 'PROGRESS_CLAIM_REVERSAL',
-          sourceId: existing.claimNo,
+      await db.$transaction(async (tx: PrismaTransaction) => {
+        const originalEntry = await tx.journalEntry.findUnique({
+          where: { id: existing.journalEntryId! },
+          include: { lines: true },
         })
 
-        await db.journalEntry.update({
-          where: { id: existing.journalEntryId },
-          data: { status: 'CANCELLED' },
-        })
-      }
+        if (originalEntry) {
+          const accountIds = originalEntry.lines.map(l => l.accountId)
+          const accounts = await tx.account.findMany({ where: { id: { in: accountIds } } })
+          const accountMap = new Map(accounts.map(a => [a.id, a.code]))
 
-      // Create new entry with updated values
-      const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : existing.amount
-      const newVatAmount = updateData.vatAmount !== undefined ? parseFloat(updateData.vatAmount) : existing.vatAmount
-      const newTotalAmount = updateData.totalAmount !== undefined ? parseFloat(updateData.totalAmount) : existing.totalAmount
-      const newDate = updateData.date ? new Date(updateData.date) : existing.date
+          const resolvedReversalLines = originalEntry.lines.map(line => ({
+            accountCode: accountMap.get(line.accountId) || '',
+            debit: line.credit,
+            credit: line.debit,
+            costCenterId: line.costCenterId || undefined,
+            description: `Reversal: ${line.description || ''}`,
+          }))
 
-      await initializeChartOfAccounts()
-      const newJournalEntry = await autoEntryProgressClaim({
-        claimNo: existing.claimNo,
-        projectId: existing.projectId,
-        contractId: existing.contractId,
-        amount: newAmount,
-        vatRate: existing.vatRate,
-        vatAmount: newVatAmount,
-        totalAmount: newTotalAmount,
-        date: newDate,
+          await createJournalEntry({
+            entryNo: `JE-REV-PC-${Date.now()}`,
+            date: new Date(),
+            description: `Reversal for Progress Claim ${existing.claimNo}`,
+            descriptionAr: `قيد عكسي لمستخلص ${existing.claimNo}`,
+            lines: resolvedReversalLines,
+            sourceType: 'PROGRESS_CLAIM_REVERSAL',
+            sourceId: existing.claimNo,
+          }, tx)
+
+          await tx.journalEntry.update({
+            where: { id: existing.journalEntryId! },
+            data: { status: 'CANCELLED' },
+          })
+        }
+
+        // Create new entry with updated values
+        const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : existing.amount
+        const newVatAmount = updateData.vatAmount !== undefined ? parseFloat(updateData.vatAmount) : existing.vatAmount
+        const newTotalAmount = updateData.totalAmount !== undefined ? parseFloat(updateData.totalAmount) : existing.totalAmount
+        const newDate = updateData.date ? new Date(updateData.date) : existing.date
+
+        await initializeChartOfAccounts()
+        const newJournalEntry = await autoEntryProgressClaim({
+          claimNo: existing.claimNo,
+          projectId: existing.projectId,
+          contractId: existing.contractId,
+          amount: newAmount,
+          vatRate: existing.vatRate,
+          vatAmount: newVatAmount,
+          totalAmount: newTotalAmount,
+          date: newDate,
+        }, tx)
+
+        updateData.journalEntryId = newJournalEntry.id
       })
-
-      updateData.journalEntryId = newJournalEntry.id
     }
 
     // Recalculate amounts if amount changed

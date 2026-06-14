@@ -37,8 +37,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { action } = body
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let result: any
+    let result: ValidationResult | Record<string, unknown>
 
     switch (action) {
       // ============ WORKFLOW VALIDATION ============

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
 
@@ -61,8 +62,8 @@ async function getAccountBalancesByPrefix(
   const balanceMap = new Map<string, { totalDebit: number; totalCredit: number }>()
   for (const line of lines) {
     const existing = balanceMap.get(line.accountId) || { totalDebit: 0, totalCredit: 0 }
-    existing.totalDebit += line.debit
-    existing.totalCredit += line.credit
+    existing.totalDebit += toNumber(line.debit)
+    existing.totalCredit += toNumber(line.credit)
     balanceMap.set(line.accountId, existing)
   }
 

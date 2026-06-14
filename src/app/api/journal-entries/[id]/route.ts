@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -29,14 +30,14 @@ export async function GET(
     }
 
     // Add computed totals
-    const totalDebit = entry.lines.reduce((s, l) => s + l.debit, 0)
-    const totalCredit = entry.lines.reduce((s, l) => s + l.credit, 0)
+    const totalDebit = entry.lines.reduce((s, l) => s + toNumber(l.debit), 0)
+    const totalCredit = entry.lines.reduce((s, l) => s + toNumber(l.credit), 0)
 
-    return NextResponse.json({
+    return NextResponse.json(serializeDecimal({
       ...entry,
       totalDebit,
       totalCredit,
-    })
+    }))
   } catch (error) {
     console.error('Error fetching journal entry:', error)
     return NextResponse.json(

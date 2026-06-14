@@ -143,9 +143,9 @@ enum AccountActivityType {
 
 // Activity type for business flow - every record knows which hub it belongs to
 enum ActivityType {
-  EXECUTION    // مشاريع تنفيذية
-  RENTAL       // تأجير معدات
-  GENERAL      // مشترك / عام
+  EXECUTION // مشاريع تنفيذية
+  RENTAL // تأجير معدات
+  GENERAL // مشترك / عام
 }
 
 enum VATReturnStatus {
@@ -177,34 +177,34 @@ enum GoodsReceiptStatus {
 // ============ COMPANY SETTINGS ============
 
 model CompanySetting {
-  id              String   @id @default(cuid())
-  nameAr          String
-  nameEn          String
-  logo            String?
-  logoUrl         String?
-  commercialReg   String?
-  taxNumber       String?
-  address         String?
-  phone           String?
-  email           String?
-  website         String?
-  bankName        String?
-  bankIban        String?
-  bankAccountName String?
-  stamp           String?
-  defaultVatRate  Float    @default(0.15)
-  currency        String   @default("SAR")
-  currencySymbol    String?
-  currencySymbolEn  String?
-  currencySymbolAr  String?
-  invoiceTerms    String?
-  currencySymbolImage String?
-  headerImage         String?
-  footerImage         String?
-  useThousandSeparatorsSystem  Boolean  @default(true)
-  useThousandSeparatorsOfficial Boolean @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                            String   @id @default(cuid())
+  nameAr                        String
+  nameEn                        String
+  logo                          String?
+  logoUrl                       String?
+  commercialReg                 String?
+  taxNumber                     String?
+  address                       String?
+  phone                         String?
+  email                         String?
+  website                       String?
+  bankName                      String?
+  bankIban                      String?
+  bankAccountName               String?
+  stamp                         String?
+  defaultVatRate                Decimal  @default(0.15)
+  currency                      String   @default("SAR")
+  currencySymbol                String?
+  currencySymbolEn              String?
+  currencySymbolAr              String?
+  invoiceTerms                  String?
+  currencySymbolImage           String?
+  headerImage                   String?
+  footerImage                   String?
+  useThousandSeparatorsSystem   Boolean  @default(true)
+  useThousandSeparatorsOfficial Boolean  @default(false)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
 }
 
 // ============ CORE / SETTINGS ============
@@ -218,21 +218,25 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects     Project[]
-  warehouses   Warehouse[]
-  employees    Employee[]
-  pettyCashes  PettyCash[]
+  projects    Project[]
+  warehouses  Warehouse[]
+  employees   Employee[]
+  pettyCashes PettyCash[]
 }
 
 model Warehouse {
-  id       String  @id @default(cuid())
-  code     String  @unique
-  name     String
-  branchId String
-  isActive Boolean @default(true)
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  branchId  String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  branch         Branch       @relation(fields: [branchId], references: [id])
+  branch         Branch          @relation(fields: [branchId], references: [id])
   inventoryItems InventoryItem[]
+
+  @@index([branchId])
 }
 
 model Currency {
@@ -241,21 +245,25 @@ model Currency {
   name      String
   nameAr    String?
   symbol    String
-  rate      Float    @default(1)
+  rate      Decimal  @default(1)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model CostCenter {
-  id       String  @id @default(cuid())
-  code     String  @unique
-  name     String
-  parentId String?
+  id        String  @id @default(cuid())
+  code      String  @unique
+  name      String
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  parent    CostCenter?  @relation("CostCenterHierarchy", fields: [parentId], references: [id])
-  children  CostCenter[] @relation("CostCenterHierarchy")
+  parent       CostCenter?   @relation("CostCenterHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children     CostCenter[]  @relation("CostCenterHierarchy")
   journalLines JournalLine[]
+
+  @@index([parentId])
 }
 
 model Attachment {
@@ -267,6 +275,9 @@ model Attachment {
   fileSize   Int
   mimeType   String
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([entityType, entityId])
 }
 
 model AuditLog {
@@ -277,6 +288,10 @@ model AuditLog {
   entityId  String?
   details   String?
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([entity, entityId])
+  @@index([userId])
 }
 
 // ============ CLIENTS & SUPPLIERS ============
@@ -296,38 +311,42 @@ model Client {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  projects      Project[]
-  contracts     Contract[]
-  salesInvoices SalesInvoice[]
+  projects        Project[]
+  contracts       Contract[]
+  salesInvoices   SalesInvoice[]
   rentalContracts EquipmentRental[]
-  deliveryOrders EquipmentDeliveryOrder[]
-  clientPayments ClientPayment[]
+  deliveryOrders  EquipmentDeliveryOrder[]
+  clientPayments  ClientPayment[]
+
+  @@index([isActive])
 }
 
 model Supplier {
-  id              String   @id @default(cuid())
-  code            String   @unique
-  name            String
-  nameAr          String?
-  nameEn          String?
-  contactPerson   String?
-  email           String?
-  phone           String?
-  address         String?
-  taxNumber       String?
-  commercialReg   String?
-  paymentTerms    String?
-  creditLimit     Float    @default(0)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  nameAr        String?
+  nameEn        String?
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  taxNumber     String?
+  commercialReg String?
+  paymentTerms  String?
+  creditLimit   Decimal  @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  purchaseOrders  PurchaseOrder[]
-  purchaseInvoices PurchaseInvoice[]
-  equipment       Equipment[]
-  goodsReceipts   GoodsReceipt[]
-  supplierPayments SupplierPayment[]
+  purchaseOrders       PurchaseOrder[]
+  purchaseInvoices     PurchaseInvoice[]
+  equipment            Equipment[]
+  goodsReceipts        GoodsReceipt[]
+  supplierPayments     SupplierPayment[]
   equipmentMaintenance EquipmentMaintenance[]
+
+  @@index([isActive])
 }
 
 model Subcontractor {
@@ -347,118 +366,143 @@ model Subcontractor {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  invoices SubcontractorInvoice[]
+  invoices  SubcontractorInvoice[]
   contracts SubcontractorContract[]
+
+  @@index([isActive])
 }
 
 // ============ EMPLOYEES ============
 
 model Employee {
-  id                String         @id @default(cuid())
-  code              String         @unique
-  name              String
-  nameAr            String?
-  nationality       String?
-  profession        String?
-  residenceNumber   String?
-  residenceExpiry   DateTime?
-  hireDate          DateTime?
-  basicSalary       Float          @default(0)
-  status            EmployeeStatus @default(ACTIVE)
-  branchId          String
-  phone             String?
-  email             String?
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  id              String         @id @default(cuid())
+  code            String         @unique
+  name            String
+  nameAr          String?
+  nationality     String?
+  profession      String?
+  residenceNumber String?
+  residenceExpiry DateTime?
+  hireDate        DateTime?
+  basicSalary     Decimal        @default(0)
+  status          EmployeeStatus @default(ACTIVE)
+  branchId        String
+  phone           String?
+  email           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  branch           Branch            @relation(fields: [branchId], references: [id])
-  advances         EmployeeAdvance[]
-  contracts        EmployeeContract[]
-  attendance       Attendance[]
-  salaries         Salary[]
-  teamMemberships  TeamMember[]
-  operatorLogs     EquipmentOperation[]
+  branch          Branch               @relation(fields: [branchId], references: [id])
+  advances        EmployeeAdvance[]
+  contracts       EmployeeContract[]
+  attendance      Attendance[]
+  salaries        Salary[]
+  teamMemberships TeamMember[]
+  operatorLogs    EquipmentOperation[]
+
+  @@index([branchId])
+  @@index([status])
+  @@index([isActive])
 }
 
 model EmployeeContract {
-  id              String   @id @default(cuid())
-  employeeId      String
-  startDate       DateTime
-  endDate         DateTime?
-  basicSalary     Float
-  housingAllowance Float   @default(0)
-  transportAllowance Float @default(0)
-  otherAllowances Float   @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String    @id @default(cuid())
+  employeeId         String
+  startDate          DateTime
+  endDate            DateTime?
+  basicSalary        Decimal   @default(0)
+  housingAllowance   Decimal   @default(0)
+  transportAllowance Decimal   @default(0)
+  otherAllowances    Decimal   @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
 }
 
 model Attendance {
-  id           String   @id @default(cuid())
-  employeeId   String
-  date         DateTime
-  checkIn      DateTime?
-  checkOut     DateTime?
-  workHours    Float    @default(0)
-  overtimeHours Float   @default(0)
-  notes        String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String    @id @default(cuid())
+  employeeId    String
+  date          DateTime
+  checkIn       DateTime?
+  checkOut      DateTime?
+  workHours     Float     @default(0)
+  overtimeHours Float     @default(0)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@index([date])
+  @@index([employeeId, date])
 }
 
 model Salary {
-  id              String       @id @default(cuid())
-  employeeId      String
-  projectId       String?      // ربط بالمشروع
-  activityType    String       @default("GENERAL") // EXECUTION, RENTAL, GENERAL
-  month           Int          // 1-12
-  year            Int
-  basicSalary     Float
-  housingAllowance Float      @default(0)
-  transportAllowance Float    @default(0)
-  otherAllowances Float       @default(0)
-  overtimeAmount  Float       @default(0)
-  deductions      Float       @default(0)
-  netSalary       Float       @default(0)
-  status          SalaryStatus @default(DRAFT)
-  journalEntryId  String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id                 String       @id @default(cuid())
+  employeeId         String
+  projectId          String? // ربط بالمشروع
+  activityType       String       @default("GENERAL") // EXECUTION, RENTAL, GENERAL
+  month              Int // 1-12
+  year               Int
+  basicSalary        Decimal      @default(0)
+  housingAllowance   Decimal      @default(0)
+  transportAllowance Decimal      @default(0)
+  otherAllowances    Decimal      @default(0)
+  overtimeAmount     Decimal      @default(0)
+  deductions         Decimal      @default(0)
+  netSalary          Decimal      @default(0)
+  status             SalaryStatus @default(DRAFT)
+  journalEntryId     String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  deletedAt          DateTime?
 
-  employee Employee @relation(fields: [employeeId], references: [id])
-  project  Project? @relation(fields: [projectId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([projectId])
+  @@index([status])
+  @@index([year, month])
 }
 
 model WorkTeam {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  nameAr      String?
-  specialty   String?
-  projectId   String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  nameAr    String?
+  specialty String?
+  projectId String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  project     Project?     @relation(fields: [projectId], references: [id])
-  members     TeamMember[]
+  project Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  members TeamMember[]
+
+  @@index([projectId])
+  @@index([isActive])
 }
 
 model TeamMember {
-  id        String   @id @default(cuid())
-  teamId    String
+  id         String   @id @default(cuid())
+  teamId     String
   employeeId String
-  role      String?
-  isLeader  Boolean  @default(false)
-  createdAt DateTime @default(now())
+  role       String?
+  isLeader   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   team     WorkTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([teamId])
+  @@index([employeeId])
 }
 
 // ============ PROJECTS ============
@@ -474,83 +518,97 @@ model Project {
   projectType   ProjectType   @default(CONSTRUCTION)
   startDate     DateTime
   endDate       DateTime?
-  contractValue Float         @default(0)
+  contractValue Decimal       @default(0)
   status        ProjectStatus @default(PLANNING)
   description   String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  branch         Branch           @relation(fields: [branchId], references: [id])
-  client         Client           @relation(fields: [clientId], references: [id])
-  contracts      Contract[]
-  boqItems       BOQItem[]
-  progressClaims ProgressClaim[]
-  salesInvoices  SalesInvoice[]
-  purchaseOrders PurchaseOrder[]
-  purchaseRequests PurchaseRequest[]
-  expenses       Expense[]
-  laborCosts     LaborCost[]
-  equipmentCosts EquipmentCost[]
-  equipmentUsages EquipmentUsage[]
-  subcontractorInvoices SubcontractorInvoice[]
-  timesheets     Timesheet[]
-  rentalContracts EquipmentRental[]
-  workTeams      WorkTeam[]
-  goodsReceipts  GoodsReceipt[]
-  purchaseInvoices PurchaseInvoice[]
-  fuelLogs       EquipmentFuelLog[]
-  resourceAllocations ResourceAllocation[]
-  equipmentOperations EquipmentOperation[]
-  salaries       Salary[]             // الرواتب المرتبطة بالمشروع
+  branch                 Branch                   @relation(fields: [branchId], references: [id])
+  client                 Client                   @relation(fields: [clientId], references: [id])
+  contracts              Contract[]
+  boqItems               BOQItem[]
+  progressClaims         ProgressClaim[]
+  salesInvoices          SalesInvoice[]
+  purchaseOrders         PurchaseOrder[]
+  purchaseRequests       PurchaseRequest[]
+  expenses               Expense[]
+  laborCosts             LaborCost[]
+  equipmentCosts         EquipmentCost[]
+  equipmentUsages        EquipmentUsage[]
+  subcontractorInvoices  SubcontractorInvoice[]
+  subcontractorContracts SubcontractorContract[]
+  timesheets             Timesheet[]
+  rentalContracts        EquipmentRental[]
+  workTeams              WorkTeam[]
+  goodsReceipts          GoodsReceipt[]
+  purchaseInvoices       PurchaseInvoice[]
+  fuelLogs               EquipmentFuelLog[]
+  resourceAllocations    ResourceAllocation[]
+  equipmentOperations    EquipmentOperation[]
+  salaries               Salary[] // الرواتب المرتبطة بالمشروع
+  deliveryOrders         EquipmentDeliveryOrder[]
+
+  @@index([branchId])
+  @@index([clientId])
+  @@index([status])
+  @@index([projectType])
+  @@index([clientId, status])
 }
 
 model Contract {
-  id              String         @id @default(cuid())
-  projectId       String
-  contractNo      String         @unique
-  date            DateTime
-  value           Float
-  vatRate         Float          @default(0.15)
-  vatAmount       Float          @default(0)
-  totalValue      Float          @default(0)
-  startDate       DateTime
-  endDate         DateTime?
-  status          ContractStatus @default(DRAFT)
-  description     String?
-  contractType    String?        // PROJECT, RENTAL, SERVICE
-  clientId        String?
-  equipmentId     String?
-  hourlyRate      Float?
-  deliveryFees    Float          @default(0)
-  deliveryFeesTaxable Boolean    @default(true)
-  paymentTerms    String?
-  salesOrderNo    String?
-  journalEntryId  String?
+  id                    String         @id @default(cuid())
+  projectId             String
+  contractNo            String         @unique
+  date                  DateTime
+  value                 Decimal        @default(0)
+  vatRate               Decimal        @default(0.15)
+  vatAmount             Decimal        @default(0)
+  totalValue            Decimal        @default(0)
+  startDate             DateTime
+  endDate               DateTime?
+  status                ContractStatus @default(DRAFT)
+  description           String?
+  contractType          String? // PROJECT, RENTAL, SERVICE
+  clientId              String?
+  equipmentId           String?
+  hourlyRate            Decimal?
+  deliveryFees          Decimal        @default(0)
+  deliveryFeesTaxable   Boolean        @default(true)
+  paymentTerms          String?
+  salesOrderNo          String?
+  journalEntryId        String?
   // ─── Project Contract Fields ───
-  quotationNo     String?        // رقم عرض السعر
-  loaNo           String?        // رقم أمر الترسية
-  purchaseOrderNo String?        // رقم أمر الشراء PO
-  projectDuration String?        // مدة المشروع
-  warrantyPeriod  String?        // مدة الضمان
-  maintenancePeriod String?      // مدة الصيانة
-  billingMethod   String?        // PROGRESS_CLAIMS, MILESTONES
-  firstClaimNo    String?        // رقم أول مستخلص
-  advancePaymentPercent Float?   @default(0) // نسبة الدفعة المقدمة
-  retentionPercent Float?        @default(0) // نسبة الاحتجاز
-  projectManager  String?        // مدير المشروع
-  projectEngineer String?        // مهندس المشروع
-  projectLocation String?        // الموقع
-  projectCity     String?        // المدينة
-  projectType     String?        // RESIDENTIAL, COMMERCIAL, GOVERNMENT, INFRASTRUCTURE, MAINTENANCE_OPS
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  quotationNo           String? // رقم عرض السعر
+  loaNo                 String? // رقم أمر الترسية
+  purchaseOrderNo       String? // رقم أمر الشراء PO
+  projectDuration       String? // مدة المشروع
+  warrantyPeriod        String? // مدة الضمان
+  maintenancePeriod     String? // مدة الصيانة
+  billingMethod         String? // PROGRESS_CLAIMS, MILESTONES
+  firstClaimNo          String? // رقم أول مستخلص
+  advancePaymentPercent Decimal?       @default(0) // نسبة الدفعة المقدمة
+  retentionPercent      Decimal?       @default(0) // نسبة الاحتجاز
+  projectManager        String? // مدير المشروع
+  projectEngineer       String? // مهندس المشروع
+  projectLocation       String? // الموقع
+  projectCity           String? // المدينة
+  projectType           String? // RESIDENTIAL, COMMERCIAL, GOVERNMENT, INFRASTRUCTURE, MAINTENANCE_OPS
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
-  project        Project        @relation(fields: [projectId], references: [id])
-  client         Client?        @relation(fields: [clientId], references: [id])
+  project        Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  client         Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   progressClaims ProgressClaim[]
   salesInvoices  SalesInvoice[]
   timesheets     Timesheet[]
   rental         EquipmentRental?
+
+  @@index([projectId])
+  @@index([clientId])
+  @@index([status])
+  @@index([projectId, status])
+  @@index([date])
 }
 
 // ============ BOQ ============
@@ -562,93 +620,112 @@ model BOQItem {
   description String
   unit        String
   quantity    Float
-  unitPrice   Float
-  totalPrice  Float
+  unitPrice   Decimal  @default(0)
+  totalPrice  Decimal  @default(0)
   category    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([code])
 }
 
 // ============ PROGRESS CLAIMS ============
 
 model ProgressClaim {
-  id            String      @id @default(cuid())
-  projectId     String
-  contractId    String
-  claimNo       String
-  date          DateTime
-  percentage    Float
-  amount        Float
-  vatRate       Float       @default(0.15)
-  vatAmount     Float       @default(0)
-  totalAmount   Float       @default(0)
-  status        ClaimStatus @default(DRAFT)
-  approvedDate  DateTime?
-  notes         String?
+  id             String      @id @default(cuid())
+  projectId      String
+  contractId     String
+  claimNo        String
+  date           DateTime
+  percentage     Float
+  amount         Decimal     @default(0)
+  vatRate        Decimal     @default(0.15)
+  vatAmount      Decimal     @default(0)
+  totalAmount    Decimal     @default(0)
+  status         ClaimStatus @default(DRAFT)
+  approvedDate   DateTime?
+  notes          String?
   journalEntryId String?
-  invoiced      Boolean     @default(false)
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  invoiced       Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  deletedAt      DateTime?
 
-  project      Project       @relation(fields: [projectId], references: [id])
-  contract     Contract      @relation(fields: [contractId], references: [id])
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contract     Contract      @relation(fields: [contractId], references: [id], onDelete: Restrict)
   salesInvoice SalesInvoice?
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([status])
+  @@index([date])
+  @@index([projectId, status])
 }
 
 // ============ SALES / CLIENT INVOICES ============
 
 model SalesInvoice {
-  id            String        @id @default(cuid())
-  invoiceNo     String        @unique
-  projectId     String?
-  contractId    String?
-  clientId      String
-  date          DateTime
-  dueDate       DateTime
-  subtotal      Float
-  discountRate  Float         @default(0)
-  discountAmount Float        @default(0)
-  netAmount     Float         @default(0)
-  vatRate       Float         @default(0.15)
-  vatAmount     Float
-  totalAmount   Float
-  paidAmount    Float         @default(0)
-  status        InvoiceStatus @default(DRAFT)
-  invoiceType   String        @default("PROGRESS_CLAIM")
-  notes         String?
-  paymentTerms  String?
-  referenceNo   String?
-  sourceType    String        @default("EXTRACT")  // EXTRACT or TIMESHEET
-  timesheetId   String?       @unique
-  progressClaimId String?     @unique
-  deliveryMonth String?
-  includeDelivery Boolean     @default(false)
-  deliveryAmount Float        @default(0)
-  deliveryFeesTaxable Boolean @default(true)
-  includeVat    Boolean       @default(true)
-  contractNo    String?
-  contractType  String?
+  id                  String        @id @default(cuid())
+  invoiceNo           String        @unique
+  projectId           String?
+  contractId          String?
+  clientId            String
+  date                DateTime
+  dueDate             DateTime
+  subtotal            Decimal       @default(0)
+  discountRate        Decimal       @default(0)
+  discountAmount      Decimal       @default(0)
+  netAmount           Decimal       @default(0)
+  vatRate             Decimal       @default(0.15)
+  vatAmount           Decimal       @default(0)
+  totalAmount         Decimal       @default(0)
+  paidAmount          Decimal       @default(0)
+  status              InvoiceStatus @default(DRAFT)
+  invoiceType         String        @default("PROGRESS_CLAIM")
+  notes               String?
+  paymentTerms        String?
+  referenceNo         String?
+  sourceType          String        @default("EXTRACT") // EXTRACT or TIMESHEET
+  timesheetId         String?       @unique
+  progressClaimId     String?       @unique
+  deliveryMonth       String?
+  includeDelivery     Boolean       @default(false)
+  deliveryAmount      Decimal       @default(0)
+  deliveryFeesTaxable Boolean       @default(true)
+  includeVat          Boolean       @default(true)
+  contractNo          String?
+  contractType        String?
   contractPeriodStart DateTime?
   contractPeriodEnd   DateTime?
-  salesOrderNo  String?
-  equipmentName String?
-  operatingHours Float?
-  hourlyRate    Float?
-  amountInWordsAr String?
-  amountInWordsEn String?
-  journalEntryId String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  salesOrderNo        String?
+  equipmentName       String?
+  operatingHours      Float?
+  hourlyRate          Decimal?
+  amountInWordsAr     String?
+  amountInWordsEn     String?
+  journalEntryId      String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
 
-  project       Project?       @relation(fields: [projectId], references: [id])
-  contract      Contract?      @relation(fields: [contractId], references: [id])
-  client        Client         @relation(fields: [clientId], references: [id])
-  items         SalesInvoiceItem[]
-  timesheet     Timesheet?     @relation(fields: [timesheetId], references: [id])
-  progressClaim ProgressClaim? @relation(fields: [progressClaimId], references: [id])
+  project        Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  contract       Contract?          @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  client         Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  items          SalesInvoiceItem[]
+  timesheet      Timesheet?         @relation(fields: [timesheetId], references: [id], onDelete: SetNull)
+  progressClaim  ProgressClaim?     @relation(fields: [progressClaimId], references: [id], onDelete: SetNull)
   clientPayments ClientPayment[]
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([clientId])
+  @@index([status])
+  @@index([date])
+  @@index([clientId, status])
+  @@index([projectId, status])
 }
 
 model SalesInvoiceItem {
@@ -658,30 +735,38 @@ model SalesInvoiceItem {
   descriptionEn String?
   quantity      Float
   unit          String?
-  unitPrice     Float
-  totalPrice    Float
+  unitPrice     Decimal  @default(0)
+  totalPrice    Decimal  @default(0)
   itemType      String   @default("PRODUCT")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
 
 // ============ PURCHASE WORKFLOW ============
 
 model PurchaseRequest {
-  id          String              @id @default(cuid())
-  requestNo   String              @unique
+  id          String                @id @default(cuid())
+  requestNo   String                @unique
   projectId   String?
-  source      String              @default("PROJECT") // PROJECT, INVENTORY, WORKSHOP, ADMIN
+  source      String                @default("PROJECT") // PROJECT, INVENTORY, WORKSHOP, ADMIN
   date        DateTime
   description String?
   status      PurchaseRequestStatus @default(NEW)
   requestedBy String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
 
-  project Project? @relation(fields: [projectId], references: [id])
-  items   PurchaseRequestItem[]
+  project        Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  items          PurchaseRequestItem[]
   purchaseOrders PurchaseOrder[]
+
+  @@index([projectId])
+  @@index([status])
+  @@index([date])
 }
 
 model PurchaseRequestItem {
@@ -691,8 +776,12 @@ model PurchaseRequestItem {
   quantity    Float
   unit        String?
   notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   request PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId])
 }
 
 model PurchaseOrder {
@@ -704,23 +793,30 @@ model PurchaseOrder {
   date              DateTime
   deliveryDate      DateTime?
   paymentTerms      String?
-  subtotal          Float
-  vatRate           Float               @default(0.15)
-  vatAmount         Float
-  totalAmount       Float
-  paidAmount        Float               @default(0)
+  subtotal          Decimal             @default(0)
+  vatRate           Decimal             @default(0.15)
+  vatAmount         Decimal             @default(0)
+  totalAmount       Decimal             @default(0)
+  paidAmount        Decimal             @default(0)
   status            PurchaseOrderStatus @default(DRAFT)
   notes             String?
   journalEntryId    String?
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
 
-  project         Project?         @relation(fields: [projectId], references: [id])
-  supplier        Supplier         @relation(fields: [supplierId], references: [id])
-  purchaseRequest PurchaseRequest? @relation(fields: [purchaseRequestId], references: [id])
+  project         Project?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  supplier        Supplier            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseRequest PurchaseRequest?    @relation(fields: [purchaseRequestId], references: [id], onDelete: SetNull)
   items           PurchaseOrderItem[]
   invoices        PurchaseInvoice[]
   goodsReceipts   GoodsReceipt[]
+
+  @@index([projectId])
+  @@index([supplierId])
+  @@index([status])
+  @@index([date])
+  @@index([supplierId, status])
+  @@index([projectId, status])
 }
 
 model PurchaseOrderItem {
@@ -729,80 +825,104 @@ model PurchaseOrderItem {
   description String
   quantity    Float
   unit        String?
-  unitPrice   Float
-  vatRate     Float    @default(0.15)
-  totalPrice  Float
+  unitPrice   Decimal  @default(0)
+  vatRate     Decimal  @default(0.15)
+  totalPrice  Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   order PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }
 
 model GoodsReceipt {
-  id             String             @id @default(cuid())
-  receiptNo      String             @unique
+  id              String             @id @default(cuid())
+  receiptNo       String             @unique
   purchaseOrderId String
-  supplierId     String
-  projectId      String?
-  date           DateTime
-  status         GoodsReceiptStatus @default(PENDING)
-  notes          String?
-  journalEntryId String?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  supplierId      String
+  projectId       String?
+  date            DateTime
+  status          GoodsReceiptStatus @default(PENDING)
+  notes           String?
+  journalEntryId  String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  supplier      Supplier      @relation(fields: [supplierId], references: [id])
-  project       Project?      @relation(fields: [projectId], references: [id])
-  items         GoodsReceiptItem[]
+  purchaseOrder   PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  supplier        Supplier           @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  project         Project?           @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  items           GoodsReceiptItem[]
   purchaseInvoice PurchaseInvoice?
+
+  @@index([purchaseOrderId])
+  @@index([supplierId])
+  @@index([projectId])
+  @@index([status])
+  @@index([date])
 }
 
 model GoodsReceiptItem {
-  id              String   @id @default(cuid())
-  goodsReceiptId  String
-  description     String
-  quantityOrdered Float
-  quantityReceived Float
+  id                String   @id @default(cuid())
+  goodsReceiptId    String
+  description       String
+  quantityOrdered   Float
+  quantityReceived  Float
   quantityRemaining Float
-  unitPrice       Float
-  totalPrice      Float
-  destination     String   @default("INVENTORY") // INVENTORY or PROJECT
+  unitPrice         Decimal  @default(0)
+  totalPrice        Decimal  @default(0)
+  destination       String   @default("INVENTORY") // INVENTORY or PROJECT
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+
+  @@index([goodsReceiptId])
 }
 
 model PurchaseInvoice {
-  id               String        @id @default(cuid())
-  invoiceNo        String        @unique
-  purchaseOrderId  String?
-  goodsReceiptId   String?          @unique
-  projectId        String?
-  equipmentId      String?           // ربط بالمعدة
-  activityType     String        @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
-  supplierId       String
-  date             DateTime
-  dueDate          DateTime
-  supplierInvoiceNo String?
+  id                  String        @id @default(cuid())
+  invoiceNo           String        @unique
+  purchaseOrderId     String?
+  goodsReceiptId      String?       @unique
+  projectId           String?
+  equipmentId         String? // ربط بالمعدة
+  activityType        String        @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
+  supplierId          String
+  date                DateTime
+  dueDate             DateTime
+  supplierInvoiceNo   String?
   supplierInvoiceDate DateTime?
-  attachmentPath   String?
-  subtotal         Float
-  vatRate          Float         @default(0.15)
-  vatAmount        Float
-  totalAmount      Float
-  paidAmount       Float         @default(0)
-  status           InvoiceStatus @default(DRAFT)
-  notes            String?
-  referenceNo      String?
-  expenseCategory  String?
-  journalEntryId   String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  attachmentPath      String?
+  subtotal            Decimal       @default(0)
+  vatRate             Decimal       @default(0.15)
+  vatAmount           Decimal       @default(0)
+  totalAmount         Decimal       @default(0)
+  paidAmount          Decimal       @default(0)
+  status              InvoiceStatus @default(DRAFT)
+  notes               String?
+  referenceNo         String?
+  expenseCategory     String?
+  journalEntryId      String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
 
-  purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
-  goodsReceipt  GoodsReceipt?   @relation(fields: [goodsReceiptId], references: [id])
-  supplier      Supplier        @relation(fields: [supplierId], references: [id])
-  project       Project?        @relation(fields: [projectId], references: [id])
-  equipment     Equipment?      @relation(fields: [equipmentId], references: [id])
+  purchaseOrder PurchaseOrder?        @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  goodsReceipt  GoodsReceipt?         @relation(fields: [goodsReceiptId], references: [id], onDelete: SetNull)
+  supplier      Supplier              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  project       Project?              @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  equipment     Equipment?            @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
   items         PurchaseInvoiceItem[]
+
+  @@index([purchaseOrderId])
+  @@index([goodsReceiptId])
+  @@index([supplierId])
+  @@index([projectId])
+  @@index([equipmentId])
+  @@index([status])
+  @@index([date])
+  @@index([supplierId, status])
 }
 
 model PurchaseInvoiceItem {
@@ -810,32 +930,42 @@ model PurchaseInvoiceItem {
   invoiceId   String
   description String
   quantity    Float
-  unitPrice   Float
-  totalPrice  Float
+  unitPrice   Decimal  @default(0)
+  totalPrice  Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
 }
 
 // ============ SUBCONTRACTOR CONTRACTS ============
 
 model SubcontractorContract {
-  id              String   @id @default(cuid())
+  id              String         @id @default(cuid())
   subcontractorId String
   projectId       String
-  contractNo      String   @unique
+  contractNo      String         @unique
   startDate       DateTime
   endDate         DateTime?
-  value           Float
-  vatRate         Float    @default(0.15)
-  vatAmount       Float    @default(0)
-  totalValue      Float    @default(0)
-  retentionRate   Float    @default(0)
+  value           Decimal        @default(0)
+  vatRate         Decimal        @default(0.15)
+  vatAmount       Decimal        @default(0)
+  totalValue      Decimal        @default(0)
+  retentionRate   Decimal        @default(0)
   status          ContractStatus @default(DRAFT)
   description     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
-  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([subcontractorId])
+  @@index([projectId])
+  @@index([status])
+  @@index([projectId, status])
 }
 
 // ============ SUBCONTRACTOR INVOICES ============
@@ -846,45 +976,59 @@ model SubcontractorInvoice {
   projectId       String?
   invoiceNo       String        @unique
   date            DateTime
-  amount          Float
-  vatRate         Float         @default(0.15)
-  vatAmount       Float
-  totalAmount     Float
-  paidAmount      Float         @default(0)
+  amount          Decimal       @default(0)
+  vatRate         Decimal       @default(0.15)
+  vatAmount       Decimal       @default(0)
+  totalAmount     Decimal       @default(0)
+  paidAmount      Decimal       @default(0)
   status          InvoiceStatus @default(DRAFT)
   description     String?
   journalEntryId  String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
 
-  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
-  project       Project?      @relation(fields: [projectId], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([subcontractorId])
+  @@index([projectId])
+  @@index([status])
+  @@index([date])
+  @@index([subcontractorId, status])
 }
 
 // ============ EXPENSES ============
 
 model Expense {
-  id               String          @id @default(cuid())
-  projectId        String?
-  equipmentId      String?         // ربط بالمعدة
-  expenseType      ExpenseType     @default(PROJECT)
-  activityType     String          @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
-  category         ExpenseCategory
-  description      String
-  amount           Float
-  vatRate          Float           @default(0.15)
-  vatAmount        Float           @default(0)
-  totalAmount      Float           @default(0)
-  date             DateTime
-  reference        String?
-  payFrom          String          @default("TREASURY")
-  attachmentPath   String?
-  journalEntryId   String?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  projectId      String?
+  equipmentId    String? // ربط بالمعدة
+  expenseType    ExpenseType     @default(PROJECT)
+  activityType   String          @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
+  category       ExpenseCategory
+  description    String
+  amount         Decimal         @default(0)
+  vatRate        Decimal         @default(0.15)
+  vatAmount      Decimal         @default(0)
+  totalAmount    Decimal         @default(0)
+  date           DateTime
+  reference      String?
+  payFrom        String          @default("TREASURY")
+  attachmentPath String?
+  journalEntryId String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
 
-  project   Project?   @relation(fields: [projectId], references: [id])
-  equipment Equipment? @relation(fields: [equipmentId], references: [id])
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([equipmentId])
+  @@index([category])
+  @@index([date])
+  @@index([expenseType])
 }
 
 // ============ LABOR COSTS ============
@@ -895,51 +1039,58 @@ model LaborCost {
   description String
   workers     Int
   days        Float
-  dailyRate   Float
-  totalAmount Float
+  dailyRate   Decimal  @default(0)
+  totalAmount Decimal  @default(0)
   date        DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([date])
 }
 
 // ============ EQUIPMENT ============
 
 model Equipment {
-  id               String          @id @default(cuid())
-  code             String          @unique
-  name             String
-  nameAr           String?
-  type             String?
-  model            String?
-  manufacturer     String?
-  manufactureYear  Int?
-  plateNumber      String?
-  serialNumber     String?
-  status           EquipmentStatus @default(AVAILABLE)
-  supplierId       String?
-  purchasePrice    Float           @default(0)
-  hourlyRate       Float           @default(0)
-  dailyRate        Float           @default(0)
-  monthlyRate      Float           @default(0)
-  purchaseDate     DateTime?
-  warrantyExpiry   DateTime?
-  isActive         Boolean         @default(true)
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  code            String          @unique
+  name            String
+  nameAr          String?
+  type            String?
+  model           String?
+  manufacturer    String?
+  manufactureYear Int?
+  plateNumber     String?
+  serialNumber    String?
+  status          EquipmentStatus @default(AVAILABLE)
+  supplierId      String?
+  purchasePrice   Decimal         @default(0)
+  hourlyRate      Decimal         @default(0)
+  dailyRate       Decimal         @default(0)
+  monthlyRate     Decimal         @default(0)
+  purchaseDate    DateTime?
+  warrantyExpiry  DateTime?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  supplier       Supplier?             @relation(fields: [supplierId], references: [id])
-  usages         EquipmentUsage[]
-  maintenance    EquipmentMaintenance[]
-  fuelLogs       EquipmentFuelLog[]
-  rentals        EquipmentRental[]
-  expenses       EquipmentExpense[]
-  deliveryOrders EquipmentDeliveryOrder[]
-  timesheets     Timesheet[]
-  operatorLogs   EquipmentOperation[]
+  supplier         Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  usages           EquipmentUsage[]
+  maintenance      EquipmentMaintenance[]
+  fuelLogs         EquipmentFuelLog[]
+  rentals          EquipmentRental[]
+  expenses         EquipmentExpense[]
+  deliveryOrders   EquipmentDeliveryOrder[]
+  timesheets       Timesheet[]
+  operatorLogs     EquipmentOperation[]
   purchaseInvoices PurchaseInvoice[]
-  costExpenses   Expense[]          // المصروفات المرتبطة بالمعدة
+  costExpenses     Expense[] // المصروفات المرتبطة بالمعدة
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([isActive])
 }
 
 model EquipmentOperation {
@@ -951,10 +1102,16 @@ model EquipmentOperation {
   hours       Float    @default(0)
   notes       String?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
-  operator  Employee? @relation(fields: [operatorId], references: [id])
-  project   Project?  @relation(fields: [projectId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  operator  Employee? @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([equipmentId])
+  @@index([operatorId])
+  @@index([projectId])
+  @@index([date])
 }
 
 model EquipmentUsage {
@@ -964,194 +1121,252 @@ model EquipmentUsage {
   date        DateTime
   hours       Float
   description String?
-  cost        Float
+  cost        Decimal  @default(0)
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
-  project   Project   @relation(fields: [projectId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([equipmentId])
+  @@index([projectId])
+  @@index([date])
 }
 
 model EquipmentMaintenance {
-  id          String   @id @default(cuid())
-  equipmentId String
-  date        DateTime
-  description String
-  cost        Float
-  supplierId  String?
-  nextDate    DateTime?
+  id             String    @id @default(cuid())
+  equipmentId    String
+  date           DateTime
+  description    String
+  cost           Decimal   @default(0)
+  supplierId     String?
+  nextDate       DateTime?
   journalEntryId String?
-  createdAt   DateTime @default(now())
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
-  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([equipmentId])
+  @@index([supplierId])
+  @@index([date])
 }
 
 model EquipmentFuelLog {
-  id           String   @id @default(cuid())
-  equipmentId  String
-  projectId    String?
-  date         DateTime
-  liters       Float
-  costPerLiter Float
-  totalCost    Float
+  id             String   @id @default(cuid())
+  equipmentId    String
+  projectId      String?
+  date           DateTime
+  liters         Float
+  costPerLiter   Decimal  @default(0)
+  totalCost      Decimal  @default(0)
   journalEntryId String?
-  createdAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
-  project   Project?  @relation(fields: [projectId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([equipmentId])
+  @@index([projectId])
+  @@index([date])
 }
 
 model EquipmentCost {
   id          String   @id @default(cuid())
   projectId   String
   description String
-  amount      Float
+  amount      Decimal  @default(0)
   date        DateTime
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([date])
 }
 
 // ============ EQUIPMENT RENTAL ============
 
 model EquipmentRental {
-  id              String     @id @default(cuid())
-  contractId      String     @unique
-  equipmentId     String
-  clientId        String
-  projectId       String?
-  startDate       DateTime
-  endDate         DateTime?
+  id                      String    @id @default(cuid())
+  contractId              String    @unique
+  equipmentId             String
+  clientId                String
+  projectId               String?
+  startDate               DateTime
+  endDate                 DateTime?
   // ─── Pricing ───
-  pricingType     String     @default("HOURLY") // HOURLY, DAILY, MONTHLY, LUMP_SUM
-  referenceRate   Float      @default(0)  // القيمة الشهرية المرجعية
-  referenceHours  Float      @default(0)  // ساعات التسعير المرجعية
-  hourlyRate      Float      @default(0)  // محسوب تلقائياً
-  dailyRate       Float      @default(0)  // السعر اليومي
-  monthlyRate     Float      @default(0)  // السعر الشهري
-  lumpSumAmount   Float      @default(0)  // المبلغ المقطوع
+  pricingType             String    @default("HOURLY") // HOURLY, DAILY, MONTHLY, LUMP_SUM
+  referenceRate           Decimal   @default(0) // القيمة الشهرية المرجعية
+  referenceHours          Float     @default(0) // ساعات التسعير المرجعية
+  hourlyRate              Decimal   @default(0) // محسوب تلقائياً
+  dailyRate               Decimal   @default(0) // السعر اليومي
+  monthlyRate             Decimal   @default(0) // السعر الشهري
+  lumpSumAmount           Decimal   @default(0) // المبلغ المقطوع
   // ─── Work Location ───
-  workCity        String?    // مدينة المشروع
-  workLocation    String?    // موقع العمل
-  siteSupervisor  String?    // اسم المسؤول بالموقع
-  siteSupervisorPhone String? // جوال المسؤول
+  workCity                String? // مدينة المشروع
+  workLocation            String? // موقع العمل
+  siteSupervisor          String? // اسم المسؤول بالموقع
+  siteSupervisorPhone     String? // جوال المسؤول
   // ─── Delivery & Transport ───
-  deliveryFeesType String?   @default("NONE") // NONE, FIXED, ONE_WAY, ROUND_TRIP, BY_DISTANCE
-  deliveryFees    Float      @default(0)
-  deliveryFeesTaxable Boolean @default(true)
+  deliveryFeesType        String?   @default("NONE") // NONE, FIXED, ONE_WAY, ROUND_TRIP, BY_DISTANCE
+  deliveryFees            Decimal   @default(0)
+  deliveryFeesTaxable     Boolean   @default(true)
   // ─── Operation & Responsibilities ───
-  operationMode   String     @default("WITHOUT_DRIVER") // WITHOUT_DRIVER, WITH_DRIVER, WITH_CREW
-  fuelResponsibility String? @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
-  insuranceResponsibility String? @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  operationMode           String    @default("WITHOUT_DRIVER") // WITHOUT_DRIVER, WITH_DRIVER, WITH_CREW
+  fuelResponsibility      String?   @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  insuranceResponsibility String?   @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
   // ─── Reference Documents ───
-  salesOrderNo    String?    // رقم طلب البيع (تلقائي)
-  purchaseOrderNo String?    // رقم طلب شراء العميل
-  quotationNo     String?    // رقم عرض السعر
+  salesOrderNo            String? // رقم طلب البيع (تلقائي)
+  purchaseOrderNo         String? // رقم طلب شراء العميل
+  quotationNo             String? // رقم عرض السعر
   // ─── Status & Terms ───
-  status          String     @default("DRAFT") // DRAFT, UNDER_REVIEW, ACTIVE, EXPIRED, CANCELLED
-  paymentDuration String?    // مدة السداد بالأيام
-  additionalTerms String?    // شروط إضافية
-  notes           String?
-  totalAmount     Float      @default(0)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  status                  String    @default("DRAFT") // DRAFT, UNDER_REVIEW, ACTIVE, EXPIRED, CANCELLED
+  paymentDuration         String? // مدة السداد بالأيام
+  additionalTerms         String? // شروط إضافية
+  notes                   String?
+  totalAmount             Decimal   @default(0)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
-  contract       Contract       @relation(fields: [contractId], references: [id])
-  equipment      Equipment      @relation(fields: [equipmentId], references: [id])
-  client         Client         @relation(fields: [clientId], references: [id])
-  project        Project?       @relation(fields: [projectId], references: [id])
+  contract       Contract                 @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  equipment      Equipment                @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  client         Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  project        Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
   deliveryOrders EquipmentDeliveryOrder[]
   timesheets     Timesheet[]
+
+  @@index([contractId])
+  @@index([equipmentId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([status])
+  @@index([clientId, status])
+  @@index([equipmentId, status])
 }
 
 model EquipmentDeliveryOrder {
-  id            String   @id @default(cuid())
-  orderNo       String   @unique
-  rentalId      String?
-  equipmentId   String
-  clientId      String?
-  projectId     String?
-  site          String?
-  deliveryDate  DateTime
-  returnDate    DateTime?
-  status        DeliveryOrderStatus @default(PENDING)
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String              @id @default(cuid())
+  orderNo      String              @unique
+  rentalId     String?
+  equipmentId  String
+  clientId     String?
+  projectId    String?
+  site         String?
+  deliveryDate DateTime
+  returnDate   DateTime?
+  status       DeliveryOrderStatus @default(PENDING)
+  notes        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  deletedAt    DateTime?
 
-  equipment Equipment        @relation(fields: [equipmentId], references: [id])
-  rental    EquipmentRental? @relation(fields: [rentalId], references: [id])
-  client    Client?          @relation(fields: [clientId], references: [id])
+  equipment Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  rental    EquipmentRental? @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  client    Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  project   Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([rentalId])
+  @@index([equipmentId])
+  @@index([clientId])
+  @@index([projectId])
+  @@index([status])
+  @@index([deliveryDate])
 }
 
 model EquipmentExpense {
-  id             String         @id @default(cuid())
+  id             String          @id @default(cuid())
   equipmentId    String
   category       ExpenseCategory
   description    String
-  amount         Float
+  amount         Decimal         @default(0)
   date           DateTime
   reference      String?
   journalEntryId String?
-  createdAt      DateTime       @default(now())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+
+  @@index([equipmentId])
+  @@index([category])
+  @@index([date])
 }
 
 // ============ TIMESHEETS ============
 
 model Timesheet {
-  id            String          @id @default(cuid())
-  rentalId      String
-  contractId    String
-  projectId     String
-  equipmentId   String
-  month         Int
-  year          Int
-  operatingHours Float          @default(0)
-  status        TimesheetStatus @default(DRAFT)
-  approvedDate  DateTime?
-  notes         String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  rentalId       String
+  contractId     String
+  projectId      String
+  equipmentId    String
+  month          Int
+  year           Int
+  operatingHours Float           @default(0)
+  status         TimesheetStatus @default(DRAFT)
+  approvedDate   DateTime?
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
-  contract  Contract       @relation(fields: [contractId], references: [id])
-  project   Project        @relation(fields: [projectId], references: [id])
-  equipment Equipment      @relation(fields: [equipmentId], references: [id])
-  rental    EquipmentRental @relation(fields: [rentalId], references: [id])
+  contract  Contract        @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  equipment Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  rental    EquipmentRental @relation(fields: [rentalId], references: [id], onDelete: Restrict)
   invoice   SalesInvoice?
+
+  @@index([rentalId])
+  @@index([contractId])
+  @@index([projectId])
+  @@index([equipmentId])
+  @@index([status])
+  @@index([year, month])
 }
 
 // ============ PETTY CASH & ADVANCES ============
 
 model PettyCash {
-  id            String   @id @default(cuid())
-  branchId      String
-  description   String
-  amount        Float
-  date          DateTime
-  category      String?
-  reference     String?
+  id             String    @id @default(cuid())
+  branchId       String
+  description    String
+  amount         Decimal   @default(0)
+  date           DateTime
+  category       String?
+  reference      String?
   journalEntryId String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
-  branch Branch @relation(fields: [branchId], references: [id])
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@index([branchId])
+  @@index([date])
+  @@index([category])
 }
 
 model EmployeeAdvance {
-  id            String        @id @default(cuid())
-  employeeId    String
-  amount        Float
-  date          DateTime
-  settledAmount Float         @default(0)
-  status        AdvanceStatus @default(PENDING)
-  description   String?
+  id             String        @id @default(cuid())
+  employeeId     String
+  amount         Decimal       @default(0)
+  date           DateTime
+  settledAmount  Decimal       @default(0)
+  status         AdvanceStatus @default(PENDING)
+  description    String?
   journalEntryId String?
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([date])
 }
 
 // ============ INVENTORY ============
@@ -1163,8 +1378,8 @@ model InventoryItem {
   nameAr        String?
   itemType      InventoryItemType @default(PRODUCT)
   unit          String
-  purchasePrice Float             @default(0)
-  sellingPrice  Float             @default(0)
+  purchasePrice Decimal           @default(0)
+  sellingPrice  Decimal           @default(0)
   quantity      Float             @default(0)
   minQuantity   Float             @default(0)
   warehouseId   String
@@ -1173,209 +1388,276 @@ model InventoryItem {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([warehouseId])
+  @@index([category])
+  @@index([isActive])
 }
 
 // ============ DOUBLE ENTRY ACCOUNTING ============
 
 model Account {
-  id           String   @id @default(cuid())
-  code         String   @unique
-  name         String
-  nameAr       String?
-  type         String
-  parentId     String?
-  isActive     Boolean  @default(true)
-  activityType String?  // CONSTRUCTION | EQUIPMENT_RENTAL | BOTH
-  isSystem     Boolean  @default(false)
-  allowPosting Boolean  @default(true)
-  level        Int      @default(0)
+  id            String   @id @default(cuid())
+  code          String   @unique
+  name          String
+  nameAr        String?
+  type          String
+  parentId      String?
+  isActive      Boolean  @default(true)
+  activityType  String? // CONSTRUCTION | EQUIPMENT_RENTAL | BOTH
+  isSystem      Boolean  @default(false)
+  allowPosting  Boolean  @default(true)
+  level         Int      @default(0)
   description   String?
   descriptionAr String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  parent      Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children    Account[]     @relation("AccountHierarchy")
-  journalLines JournalLine[]
+  parent             Account?      @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children           Account[]     @relation("AccountHierarchy")
+  journalLines       JournalLine[]
+  fixedAssets        FixedAsset[]  @relation("FixedAssetAccount")
+  depExpenseAccounts FixedAsset[]  @relation("FixedAssetDepExpense")
+  accumDepAccounts   FixedAsset[]  @relation("FixedAssetAccumDep")
+  bankAccounts       BankAccount[]
+
+  @@index([parentId])
+  @@index([type])
+  @@index([isActive])
+  @@index([activityType])
 }
 
 model JournalEntry {
-  id          String             @id @default(cuid())
-  entryNo     String             @unique
-  date        DateTime
-  description String?
-  status      JournalEntryStatus @default(POSTED)
-  sourceType  String?
-  sourceId    String?
-  isReversal  Boolean            @default(false)
+  id              String             @id @default(cuid())
+  entryNo         String             @unique
+  date            DateTime
+  description     String?
+  status          JournalEntryStatus @default(POSTED)
+  sourceType      String?
+  sourceId        String?
+  isReversal      Boolean            @default(false)
   reversedEntryId String?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
 
-  lines JournalLine[]
+  lines         JournalLine[]
+  reversedEntry JournalEntry?  @relation("JournalEntryReversal", fields: [reversedEntryId], references: [id], onDelete: SetNull)
+  reversedBy    JournalEntry[] @relation("JournalEntryReversal")
+
+  @@index([status])
+  @@index([date])
+  @@index([sourceType, sourceId])
+  @@index([reversedEntryId])
 }
 
 model JournalLine {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   journalEntryId String
   accountId      String
   costCenterId   String?
-  debit          Float    @default(0)
-  credit         Float    @default(0)
+  debit          Decimal   @default(0)
+  credit         Decimal   @default(0)
   description    String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
   journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
-  account      Account      @relation(fields: [accountId], references: [id])
-  costCenter   CostCenter?  @relation(fields: [costCenterId], references: [id])
+  account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  costCenter   CostCenter?  @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@index([costCenterId])
 }
 
 // ============ VAT / TAX DECLARATION ============
 
 model VATReturn {
-  id              String         @id @default(cuid())
-  year            Int
-  quarter         Int
-  period          String         @unique
-  totalSales      Float          @default(0)
-  outputVat       Float          @default(0)
-  totalPurchases  Float          @default(0)
-  inputVat        Float          @default(0)
-  netVat          Float          @default(0)
-  salesInvoiceIds String?
+  id                 String          @id @default(cuid())
+  year               Int
+  quarter            Int
+  period             String          @unique
+  totalSales         Decimal         @default(0)
+  outputVat          Decimal         @default(0)
+  totalPurchases     Decimal         @default(0)
+  inputVat           Decimal         @default(0)
+  netVat             Decimal         @default(0)
+  salesInvoiceIds    String?
   purchaseInvoiceIds String?
-  expenseIds      String?
-  status          VATReturnStatus @default(DRAFT)
-  filedDate       DateTime?
-  paymentDate     DateTime?
-  paymentReference String?
-  journalEntryId  String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  expenseIds         String?
+  status             VATReturnStatus @default(DRAFT)
+  filedDate          DateTime?
+  paymentDate        DateTime?
+  paymentReference   String?
+  journalEntryId     String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([status])
+  @@index([year, quarter])
 }
 
 // ============ CLIENT PAYMENTS ============
 
 model ClientPayment {
-  id            String   @id @default(cuid())
-  clientId      String
-  invoiceId     String?
-  amount        Float
-  date          DateTime
-  receivedIn    String   @default("TREASURY")
-  reference     String?
-  notes         String?
+  id             String    @id @default(cuid())
+  clientId       String
+  invoiceId      String?
+  amount         Decimal   @default(0)
+  date           DateTime
+  receivedIn     String    @default("TREASURY")
+  reference      String?
+  notes          String?
   journalEntryId String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
-  client  Client       @relation(fields: [clientId], references: [id])
-  invoice SalesInvoice? @relation(fields: [invoiceId], references: [id])
+  client  Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  invoice SalesInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([invoiceId])
+  @@index([date])
+  @@index([clientId, date])
 }
 
 // ============ SUPPLIER PAYMENTS ============
 
 model SupplierPayment {
-  id            String   @id @default(cuid())
-  supplierId    String
-  invoiceId     String?
-  amount        Float
-  date          DateTime
-  paidFrom      String   @default("TREASURY")
-  bankAccount   String?
-  paymentMethod String?
-  reference     String?
-  notes         String?
+  id             String    @id @default(cuid())
+  supplierId     String
+  invoiceId      String?
+  amount         Decimal   @default(0)
+  date           DateTime
+  paidFrom       String    @default("TREASURY")
+  bankAccount    String?
+  paymentMethod  String?
+  reference      String?
+  notes          String?
   journalEntryId String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
 
-  supplier Supplier @relation(fields: [supplierId], references: [id])
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@index([supplierId])
+  @@index([date])
+  @@index([supplierId, date])
 }
 
 // ============ RESOURCE DISTRIBUTION ============
 
 model ResourceAllocation {
-  id          String   @id @default(cuid())
-  projectId   String
-  resourceType String  // EMPLOYEE, TEAM, EQUIPMENT
-  resourceId  String   // ID of Employee/WorkTeam/Equipment
-  startDate   DateTime
-  endDate     DateTime?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(cuid())
+  projectId    String
+  resourceType String // EMPLOYEE, TEAM, EQUIPMENT
+  resourceId   String // ID of Employee/WorkTeam/Equipment
+  startDate    DateTime
+  endDate      DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([resourceType])
 }
 
 // ============ FIXED ASSETS ============
 
 model FixedAsset {
-  id                    String   @id @default(cuid())
-  assetCode             String   @unique
-  name                  String
-  nameAr                String?
-  category              String   // EQUIPMENT, VEHICLE, OFFICE_EQUIPMENT, SOFTWARE, OTHER
-  acquisitionDate       DateTime
-  acquisitionCost       Float
-  residualValue         Float    @default(0)
-  usefulLifeMonths      Int
-  depreciationMethod    String   @default("STRAIGHT_LINE")
-  accumulatedDepreciation Float  @default(0)
-  netBookValue          Float
-  status                String   @default("ACTIVE") // ACTIVE, SOLD, DISPOSED, FULLY_DEPRECIATED
-  accountId             String?  // Fixed Asset Account
-  depExpenseAccountId   String?  // Depreciation Expense Account
-  accumDepAccountId     String?  // Accumulated Depreciation Account
-  journalEntryId        String?  // Acquisition journal entry
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                      String   @id @default(cuid())
+  assetCode               String   @unique
+  name                    String
+  nameAr                  String?
+  category                String // EQUIPMENT, VEHICLE, OFFICE_EQUIPMENT, SOFTWARE, OTHER
+  acquisitionDate         DateTime
+  acquisitionCost         Decimal  @default(0)
+  residualValue           Decimal  @default(0)
+  usefulLifeMonths        Int
+  depreciationMethod      String   @default("STRAIGHT_LINE")
+  accumulatedDepreciation Decimal  @default(0)
+  netBookValue            Decimal  @default(0)
+  status                  String   @default("ACTIVE") // ACTIVE, SOLD, DISPOSED, FULLY_DEPRECIATED
+  accountId               String? // Fixed Asset Account
+  depExpenseAccountId     String? // Depreciation Expense Account
+  accumDepAccountId       String? // Accumulated Depreciation Account
+  journalEntryId          String? // Acquisition journal entry
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 
-  depreciations AssetDepreciation[]
+  account           Account?            @relation("FixedAssetAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  depExpenseAccount Account?            @relation("FixedAssetDepExpense", fields: [depExpenseAccountId], references: [id], onDelete: SetNull)
+  accumDepAccount   Account?            @relation("FixedAssetAccumDep", fields: [accumDepAccountId], references: [id], onDelete: SetNull)
+  depreciations     AssetDepreciation[]
+
+  @@index([status])
+  @@index([category])
+  @@index([accountId])
+  @@index([depExpenseAccountId])
+  @@index([accumDepAccountId])
 }
 
 model AssetDepreciation {
-  id              String   @id @default(cuid())
-  fixedAssetId    String
-  year            Int
-  month           Int
-  depreciationAmount Float
-  journalEntryId  String?
-  createdAt       DateTime @default(now())
+  id                 String   @id @default(cuid())
+  fixedAssetId       String
+  year               Int
+  month              Int
+  depreciationAmount Decimal  @default(0)
+  journalEntryId     String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  fixedAsset FixedAsset @relation(fields: [fixedAssetId], references: [id])
+  fixedAsset FixedAsset @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+
+  @@index([fixedAssetId])
+  @@index([year, month])
 }
 
 // ============ PROVISIONS ============
 
 model Provision {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  name        String
-  nameAr      String?
-  type        String   // END_OF_SERVICE, WARRANTY, MAINTENANCE, OTHER
-  totalAmount Float
-  currentBalance Float @default(0)
-  startDate   DateTime
-  endDate     DateTime?
-  status      String   @default("ACTIVE") // ACTIVE, RELEASED, CLOSED
+  id             String    @id @default(cuid())
+  code           String    @unique
+  name           String
+  nameAr         String?
+  type           String // END_OF_SERVICE, WARRANTY, MAINTENANCE, OTHER
+  totalAmount    Decimal   @default(0)
+  currentBalance Decimal   @default(0)
+  startDate      DateTime
+  endDate        DateTime?
+  status         String    @default("ACTIVE") // ACTIVE, RELEASED, CLOSED
   journalEntryId String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   movements ProvisionMovement[]
+
+  @@index([status])
+  @@index([type])
 }
 
 model ProvisionMovement {
-  id           String   @id @default(cuid())
-  provisionId  String
-  amount       Float
-  movementType String   // INCREASE, DECREASE, RELEASE
-  date         DateTime
-  description  String?
+  id             String   @id @default(cuid())
+  provisionId    String
+  amount         Decimal  @default(0)
+  movementType   String // INCREASE, DECREASE, RELEASE
+  date           DateTime
+  description    String?
   journalEntryId String?
-  createdAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  provision Provision @relation(fields: [provisionId], references: [id])
+  provision Provision @relation(fields: [provisionId], references: [id], onDelete: Cascade)
+
+  @@index([provisionId])
+  @@index([date])
 }
 
 // ============ BANK ACCOUNTS & RECONCILIATION ============
@@ -1387,60 +1669,74 @@ model BankAccount {
   accountNumber String
   iban          String?
   currency      String   @default("SAR")
-  accountId     String?  // Link to Chart of Accounts
+  accountId     String? // Link to Chart of Accounts
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  account         Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
   transactions    BankTransaction[]
   reconciliations BankReconciliation[]
+
+  @@index([accountId])
+  @@index([isActive])
 }
 
 model BankTransaction {
-  id             String   @id @default(cuid())
-  bankAccountId  String
-  date           DateTime
-  description    String?
-  reference      String?
-  amount         Float
-  transactionType String  // DEPOSIT, WITHDRAWAL
-  reconciled     Boolean  @default(false)
-  journalEntryId String?
-  createdAt      DateTime @default(now())
-
-  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
-}
-
-model BankReconciliation {
   id              String   @id @default(cuid())
   bankAccountId   String
-  year            Int
-  month           Int
-  bookBalance     Float    @default(0)
-  bankBalance     Float    @default(0)
-  difference      Float    @default(0)
-  status          String   @default("DRAFT") // DRAFT, COMPLETED
-  completedAt     DateTime?
-  notes           String?
+  date            DateTime
+  description     String?
+  reference       String?
+  amount          Decimal  @default(0)
+  transactionType String // DEPOSIT, WITHDRAWAL
+  reconciled      Boolean  @default(false)
+  journalEntryId  String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([bankAccountId])
+  @@index([date])
+  @@index([reconciled])
+}
+
+model BankReconciliation {
+  id            String    @id @default(cuid())
+  bankAccountId String
+  year          Int
+  month         Int
+  bookBalance   Decimal   @default(0)
+  bankBalance   Decimal   @default(0)
+  difference    Decimal   @default(0)
+  status        String    @default("DRAFT") // DRAFT, COMPLETED
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([bankAccountId])
+  @@index([year, month])
 }
 
 // ============ PERIOD CLOSING ============
 
 model PeriodClosing {
-  id              String   @id @default(cuid())
-  year            Int
-  month           Int
-  type            String   @default("MONTHLY") // MONTHLY, YEARLY
-  status          String   @default("CLOSED") // CLOSED, OPEN, REOPENED
-  closingEntryId  String?  // Journal entry for closing
-  closedAt        DateTime @default(now())
-  closedBy        String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  year           Int
+  month          Int
+  type           String   @default("MONTHLY") // MONTHLY, YEARLY
+  status         String   @default("CLOSED") // CLOSED, OPEN, REOPENED
+  closingEntryId String? // Journal entry for closing
+  closedAt       DateTime @default(now())
+  closedBy       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@unique([year, month, type])
+  @@index([status])
+  @@index([year, month])
 }

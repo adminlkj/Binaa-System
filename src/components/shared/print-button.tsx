@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/app-store'
-import type { PrintDocumentType } from '@/lib/print-service'
+import type { PrintDocumentType } from '@/printing'
 
 // ============ Data Transformation ============
 /**
@@ -235,7 +235,7 @@ export function PrintButton({
       const transformedData = transformDataForPrint(type, documentData)
 
       // 4. For invoice types, generate QR code from server (ZATCA compliance)
-      if ((type === 'rental-invoice' || type === 'service-invoice') && settings.taxNumber) {
+      if ((type === 'rental-invoice' || type === 'service-invoice' || type === 'supplier-invoice') && settings.taxNumber) {
         try {
           const sellerName = lang === 'ar' ? (settings.nameAr || '') : (settings.nameEn || '')
           const vatNumber = settings.taxNumber
@@ -282,7 +282,7 @@ export function PrintButton({
       }
 
       // 5. Generate print HTML using the professional print service
-      const { generatePrintHTML } = await import('@/lib/print-service')
+      const { generatePrintHTML } = await import('@/printing')
       const html = generatePrintHTML({
         type,
         data: transformedData,

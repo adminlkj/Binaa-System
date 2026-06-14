@@ -127,12 +127,16 @@ export function generatePrintHTML(options: PrintOptions): string {
   // Extra scripts
   const extraScripts = template.getExtraScripts ? template.getExtraScripts(data, settings, lang) : ''
 
-  // Extra head links (for rental invoice: QR + html2canvas)
+  // Extra head links: QR library for templates that require QR, html2canvas for rental invoice
+  const needsQR = template.requiresQR && settings.taxNumber
   const extraHeadLinks = isRentalInvoice
     ? `
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>`
-    : ''
+    : needsQR
+      ? `
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>`
+      : ''
 
   return `<!DOCTYPE html>
 <html lang="${lang === 'ar' ? 'ar' : 'en'}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">

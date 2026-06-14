@@ -4,16 +4,16 @@
 // ============================================================================
 
 import type { DocumentTemplate, PrintSettings } from '../shared/types'
-import { fmtMoney, formatDate, getCurrencySymbol } from '../shared/utils'
+import { fmtMoney, formatDate, formatMoneyPrint, getCurrencySymbol, encodeZATCATLV } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
-import { signaturesSection, amountInWordsSection, totalsSection } from '../shared/sections'
+import { signaturesSection, amountInWordsSection, totalsSection, qrCodeSection, qrCodeScript } from '../shared/sections'
 
 // ============ Template Implementation ============
 
 export const SupplierInvoiceTemplate: DocumentTemplate = {
   category: 'invoice',
 
-  requiresQR: false,
+  requiresQR: true,
   requiresSignature: true,
   requiresBankInfo: false,
   requiresAmountInWords: true,
@@ -98,12 +98,32 @@ export const SupplierInvoiceTemplate: DocumentTemplate = {
     const fmtMoneyFn = (v: number) => fmtMoney(v, settings, lang)
     const totalsHtml = totalsSection(totalRows, settings, lang, fmtMoneyFn)
 
+    // ─── ZATCA QR Code ───
+    const sellerName = lang === 'ar' ? settings.nameAr : settings.nameEn
+    const vatNumber = settings.taxNumber || ''
+    const invoiceDate = data.date ? new Date(data.date as string).toISOString().split('T')[0] : ''
+    const totalStr = formatMoneyPrint(totalAmount)
+    const vatTotalStr = formatMoneyPrint(vatAmount)
+    const tlvBase64 = encodeZATCATLV(sellerName, vatNumber, invoiceDate, totalStr, vatTotalStr)
+    const qrDataUrl = data.qrDataUrl as string | undefined
+
+    // Wrap totals and QR side-by-side if we have a tax number
+    const totalsAndQrHtml = settings.taxNumber
+      ? `
+        <div class="doc-totals-qr-wrapper">
+          ${totalsHtml}
+          ${qrCodeSection(qrDataUrl, tlvBase64, settings, lang, 'doc')}
+        </div>
+        ${!qrDataUrl && settings.taxNumber ? qrCodeScript(tlvBase64, 'doc') : ''}
+      `
+      : totalsHtml
+
     // ─── Assemble all sections ───
     return `
       ${infoGrid}
       ${partiesHtml}
       ${itemsTable}
-      ${totalsHtml}
+      ${totalsAndQrHtml}
       ${amountInWordsSection(totalAmount, lang)}
       ${signaturesSection(settings, lang)}
     `

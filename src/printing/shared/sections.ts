@@ -153,29 +153,30 @@ export function approvalsSection(lang: 'ar' | 'en'): string {
 
 // ============ QR Code Section ============
 
-export function qrCodeSection(qrDataUrl: string | undefined, tlvBase64: string, settings: PrintSettings, lang: 'ar' | 'en'): string {
+export function qrCodeSection(qrDataUrl: string | undefined, tlvBase64: string, settings: PrintSettings, lang: 'ar' | 'en', prefix = 'ri'): string {
   if (!settings.taxNumber) return ''
 
   return `
-    <div class="ri-qr-box">
+    <div class="${prefix}-qr-box">
       ${qrDataUrl
-        ? `<img class="ri-qr-image" src="${qrDataUrl}" alt="ZATCA QR Code" style="display:block;width:100%;height:100%;object-fit:contain;" />`
-        : `<canvas id="ri-qr-canvas" style="display:none;"></canvas>
-           <img id="ri-qr-image" class="ri-qr-image" alt="ZATCA QR Code" style="display:none;width:100%;height:100%;object-fit:contain;" />`
+        ? `<img class="${prefix}-qr-image" src="${qrDataUrl}" alt="ZATCA QR Code" style="display:block;width:100%;height:100%;object-fit:contain;" />`
+        : `<canvas id="${prefix}-qr-canvas" style="display:none;"></canvas>
+           <img id="${prefix}-qr-image" class="${prefix}-qr-image" alt="ZATCA QR Code" style="display:none;width:100%;height:100%;object-fit:contain;" />`
       }
-      <div class="ri-qr-label">${lang === 'ar' ? 'رمز الاستجابة السريعة - هيئة الزكاة والضريبة والجمارك' : 'ZATCA QR Code'}</div>
+      <div class="${prefix}-qr-label">${lang === 'ar' ? 'رمز الاستجابة السريعة - هيئة الزكاة والضريبة والجمارك' : 'ZATCA QR Code'}</div>
     </div>
   `
 }
 
-export function qrCodeScript(tlvBase64: string): string {
+export function qrCodeScript(tlvBase64: string, prefix = 'ri'): string {
   return `
     <script>
       (function() {
         var tlvBase64 = "${tlvBase64}";
+        var prefix = "${prefix}";
         function generateQR() {
           if (typeof QRCode === 'undefined') return;
-          var canvas = document.getElementById('ri-qr-canvas');
+          var canvas = document.getElementById(prefix + '-qr-canvas');
           if (!canvas) return;
           QRCode.toCanvas(canvas, tlvBase64, {
             width: 140,
@@ -183,7 +184,7 @@ export function qrCodeScript(tlvBase64: string): string {
             color: { dark: '#000000', light: '#ffffff' }
           }, function(error) {
             if (error) return;
-            var img = document.getElementById('ri-qr-image');
+            var img = document.getElementById(prefix + '-qr-image');
             if (img) {
               img.src = canvas.toDataURL('image/png');
               img.style.display = 'block';

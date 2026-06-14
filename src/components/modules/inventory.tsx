@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Package, Plus, Search, RefreshCw, AlertTriangle, Tag, Wrench,
+  Package, Plus, Search, RefreshCw, AlertTriangle, Tag, Wrench, Pencil, Trash2, Download,
   Warehouse as WarehouseIcon, Building2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,14 +17,20 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+import { useAppStore, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
+import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { useToast } from '@/hooks/use-toast'
 
 // ============ Types ============
 interface Branch { id: string; code: string; name: string }
@@ -58,12 +64,12 @@ const itemTypeConfig: Record<string, { label: { ar: string; en: string }; color:
   SERVICE: { label: { ar: 'خدمة', en: 'Service' }, color: 'text-amber-700', bg: 'bg-amber-100' },
 }
 
-function ItemTypeBadge({ itemType, lang }: { itemType: string; lang: 'ar' | 'en' }) {
+function ItemTypeBadge({ itemType, lang }: { itemType: string; lang: Lang }) {
   const cfg = itemTypeConfig[itemType] || itemTypeConfig.PRODUCT
   return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
 }
 
-function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+function t(ar: string, en: string, lang: Lang) { return lang === 'ar' ? ar : en }
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
@@ -79,12 +85,16 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
   )
 }
 
-// ============ New Inventory Item Dialog ============
-function NewInventoryDialog({ open, onOpenChange, warehouses }: {
+// ============ Inventory Item Form Dialog (Create + Edit) ============
+function InventoryFormDialog({ open, onOpenChange, warehouses, editItem }: {
   open: boolean; onOpenChange: (v: boolean) => void; warehouses: Warehouse[]
+  editItem?: InventoryItem | null
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const isEdit = !!editItem
+
   const [name, setName] = useState('')
   const [nameAr, setNameAr] = useState('')
   const [itemType, setItemType] = useState('PRODUCT')
@@ -98,22 +108,49 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
 
   React.useEffect(() => {
     if (open) {
-      setName(''); setNameAr(''); setItemType('PRODUCT'); setUnit('')
-      setPurchasePrice(''); setSellingPrice(''); setQuantity('')
-      setMinQuantity(''); setWarehouseId(''); setCategory('')
+      if (editItem) {
+        setName(editItem.name)
+        setNameAr(editItem.nameAr || '')
+        setItemType(editItem.itemType || 'PRODUCT')
+        setUnit(editItem.unit)
+        setPurchasePrice(String(editItem.purchasePrice))
+        setSellingPrice(String(editItem.sellingPrice))
+        setQuantity(String(editItem.quantity))
+        setMinQuantity(String(editItem.minQuantity))
+        setWarehouseId(editItem.warehouseId || editItem.warehouse?.id || '')
+        setCategory(editItem.category || '')
+      } else {
+        setName(''); setNameAr(''); setItemType('PRODUCT'); setUnit('')
+        setPurchasePrice(''); setSellingPrice(''); setQuantity('')
+        setMinQuantity(''); setWarehouseId(''); setCategory('')
+      }
     }
-  }, [open])
+  }, [open, editItem])
 
-  const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      fetch('/api/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); onOpenChange(false) },
+  const saveMutation = useMutation({
+    mutationFn: (data: Record<string, unknown> & { id?: string }) => {
+      const payload = { name, nameAr, itemType, unit, purchasePrice, sellingPrice, quantity, minQuantity, warehouseId, category: category || null }
+      if (data.id) {
+        return fetch(`/api/inventory/${data.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+      }
+      return fetch('/api/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] })
+      toast({
+        title: t(isEdit ? 'تم التحديث' : 'تم الإنشاء', isEdit ? 'Updated' : 'Created', lang),
+        description: t(isEdit ? 'تم تحديث الصنف بنجاح' : 'تم إضافة الصنف بنجاح', isEdit ? 'Item updated successfully' : 'Item created successfully', lang),
+      })
+      onOpenChange(false)
+    },
+    onError: () => {
+      toast({ title: t('خطأ', 'Error', lang), description: t('فشل في حفظ الصنف', 'Failed to save item', lang), variant: 'destructive' })
+    },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate({ name, nameAr, itemType, unit, purchasePrice, sellingPrice, quantity, minQuantity, warehouseId, category: category || null })
+    saveMutation.mutate({ name, nameAr, itemType, unit, purchasePrice, sellingPrice, quantity, minQuantity, warehouseId, category: category || null, id: editItem?.id })
   }
 
   const isService = itemType === 'SERVICE'
@@ -122,8 +159,8 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t('صنف مخزون جديد', 'New Inventory Item', lang)}</DialogTitle>
-          <DialogDescription>{t('إضافة صنف جديد (منتج أو خدمة)', 'Add new item (product or service)', lang)}</DialogDescription>
+          <DialogTitle>{t(isEdit ? 'تعديل صنف المخزون' : 'صنف مخزون جديد', isEdit ? 'Edit Inventory Item' : 'New Inventory Item', lang)}</DialogTitle>
+          <DialogDescription>{t(isEdit ? 'تعديل بيانات الصنف' : 'إضافة صنف جديد (منتج أو خدمة)', isEdit ? 'Edit item details' : 'Add new item (product or service)', lang)}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -173,9 +210,9 @@ function NewInventoryDialog({ open, onOpenChange, warehouses }: {
             </>)}
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !name || !unit || !warehouseId} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إضافة', 'Add', lang)}
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{commonText.cancel[lang]}</Button>
+            <Button type="submit" disabled={saveMutation.isPending || !name || !unit || !warehouseId} className="bg-emerald-600 hover:bg-emerald-700">
+              {saveMutation.isPending ? t('جاري الحفظ...', 'Saving...', lang) : isEdit ? t('حفظ التعديلات', 'Save Changes', lang) : t('إضافة', 'Add', lang)}
             </Button>
           </DialogFooter>
         </form>
@@ -229,7 +266,7 @@ function NewWarehouseDialog({ open, onOpenChange, branches }: {
             </Select>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{commonText.cancel[lang]}</Button>
             <Button type="submit" disabled={createMutation.isPending || !name || !branchId} className="bg-emerald-600 hover:bg-emerald-700">
               {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إضافة', 'Add', lang)}
             </Button>
@@ -241,15 +278,15 @@ function NewWarehouseDialog({ open, onOpenChange, branches }: {
 }
 
 // ============ Items Tab ============
-function ItemsTab({ items, warehouses, isLoading, isError, refetch }: {
+function ItemsTab({ items, warehouses, isLoading, isError, refetch, onEdit, onDelete }: {
   items: InventoryItem[]; warehouses: Warehouse[]
   isLoading: boolean; isError: boolean; refetch: () => void
+  onEdit: (item: InventoryItem) => void; onDelete: (id: string) => void
 }) {
   const { lang } = useAppStore()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
-  const [dialogOpen, setDialogOpen] = useState(false)
 
   const filtered = items.filter(item => {
     const matchCategory = categoryFilter === 'all' || item.category === categoryFilter
@@ -322,8 +359,7 @@ function ItemsTab({ items, warehouses, isLoading, isError, refetch }: {
         {isLoading ? (<div className="p-6"><TableSkeleton /></div>) : isError ? (
           <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center gap-3 py-10"><Package className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أصناف', 'No items found', lang)}</p>
-            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4 mr-1" />{t('إضافة صنف', 'Add Item', lang)}</Button></div>
+          <div className="flex flex-col items-center gap-3 py-10"><Package className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أصناف', 'No items found', lang)}</p></div>
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -337,6 +373,7 @@ function ItemsTab({ items, warehouses, isLoading, isError, refetch }: {
                 <TableHead className="text-right">{t('الكمية', 'Qty', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحد الأدنى', 'Min', lang)}</TableHead>
                 <TableHead className="text-right">{t('المستودع', 'Warehouse', lang)}</TableHead>
+                <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {filtered.map(item => {
@@ -352,6 +389,16 @@ function ItemsTab({ items, warehouses, isLoading, isError, refetch }: {
                       <TableCell className={isLow ? 'font-bold text-amber-700' : ''}>{formatNumber(item.quantity)}</TableCell>
                       <TableCell>{formatNumber(item.minQuantity)}</TableCell>
                       <TableCell className="text-muted-foreground">{item.warehouse.name}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={() => onEdit(item)} title={t('تعديل', 'Edit', lang)}>
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="size-8 text-rose-500" onClick={() => onDelete(item.id)} title={t('حذف', 'Delete', lang)}>
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -360,8 +407,6 @@ function ItemsTab({ items, warehouses, isLoading, isError, refetch }: {
           </div>
         )}
       </CardContent></Card>
-
-      <NewInventoryDialog open={dialogOpen} onOpenChange={setDialogOpen} warehouses={warehouses} />
     </div>
   )
 }
@@ -412,7 +457,12 @@ function WarehousesTab({ warehouses, branches, isLoading }: {
 // ============ Main Inventory Module ============
 export function InventoryModule() {
   const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState('items')
+  const [itemDialogOpen, setItemDialogOpen] = useState(false)
+  const [editItem, setEditItem] = useState<InventoryItem | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data: items = [], isLoading: loadingItems, isError: itemsError, refetch: refetchItems } = useQuery<InventoryItem[]>({
     queryKey: ['inventory'],
@@ -429,16 +479,100 @@ export function InventoryModule() {
     queryFn: async () => { const res = await fetch('/api/branches'); if (!res.ok) return []; return res.json() },
   })
 
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/inventory/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inventory'] })
+      toast({ title: t('تم الحذف', 'Deleted', lang), description: t('تم حذف الصنف بنجاح', 'Item deleted successfully', lang) })
+      setDeleteId(null)
+    },
+    onError: () => {
+      toast({ title: t('خطأ', 'Error', lang), description: t('فشل في حذف الصنف', 'Failed to delete item', lang), variant: 'destructive' })
+    },
+  })
+
+  // CSV export
+  const handleExport = () => {
+    const columns: CSVColumn[] = [
+      { key: 'code', label: t('الكود', 'Code', lang) },
+      { key: 'name', label: t('الاسم', 'Name', lang) },
+      { key: 'itemType', label: t('النوع', 'Type', lang), format: (v) => itemTypeConfig[v as string]?.label[lang] || String(v) },
+      { key: 'unit', label: t('الوحدة', 'Unit', lang) },
+      { key: 'purchasePrice', label: t('سعر الشراء', 'Purchase', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'sellingPrice', label: t('سعر البيع', 'Selling', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'quantity', label: t('الكمية', 'Qty', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'minQuantity', label: t('الحد الأدنى', 'Min', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'category', label: t('الفئة', 'Category', lang) },
+      { key: 'warehouse', label: t('المستودع', 'Warehouse', lang) },
+    ]
+    const rows = items.map(item => ({
+      code: item.code,
+      name: item.name,
+      itemType: item.itemType,
+      unit: item.unit,
+      purchasePrice: item.purchasePrice,
+      sellingPrice: item.sellingPrice,
+      quantity: item.quantity,
+      minQuantity: item.minQuantity,
+      category: item.category || '',
+      warehouse: item.warehouse.name,
+    }))
+    exportToCSV(rows, `inventory-${new Date().toISOString().slice(0, 10)}`, columns)
+  }
+
+  // Handle edit
+  const handleEdit = (item: InventoryItem) => {
+    setEditItem(item)
+    setItemDialogOpen(true)
+  }
+
+  // Handle create (from header button)
+  const handleCreate = () => {
+    setEditItem(null)
+    setItemDialogOpen(true)
+  }
+
+  // Close item dialog
+  const handleItemDialogClose = (open: boolean) => {
+    setItemDialogOpen(open)
+    if (!open) setEditItem(null)
+  }
+
+  // Print data
+  const printData = useMemo(() => ({
+    columns: [
+      { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+      { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+      { key: 'quantity', label: lang === 'ar' ? 'الكمية' : 'Qty' },
+      { key: 'warehouse', label: lang === 'ar' ? 'المستودع' : 'Warehouse' },
+    ],
+    rows: items.map(item => ({
+      code: item.code,
+      name: item.name,
+      quantity: item.quantity,
+      warehouse: item.warehouse.name,
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'عدد الأصناف' : 'Item Count', value: String(items.length) },
+    ],
+  }), [items, lang])
+
   return (
     <ModuleLayout
       title={{ ar: 'المخزون', en: 'Inventory' }}
       subtitle={{ ar: 'إدارة المنتجات والخدمات والمستودعات', en: 'Manage products, services & warehouses' }}
       actions={
         <div className="flex items-center gap-2">
-          <PrintButton type="generic-table" size="icon" />
+          <PrintButton type="generic-table" data={printData} size="icon" />
+          <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير CSV', 'Export CSV', lang)}>
+            <Download className="size-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={() => refetchItems()} title={t('تحديث', 'Refresh', lang)}><RefreshCw className="size-4" /></Button>
           {activeTab === 'items' && (
-            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => {/* dialog handled in ItemsTab */}}>
+            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={handleCreate}>
               <Plus className="size-4" />{t('صنف جديد', 'New Item', lang)}
             </Button>
           )}
@@ -452,13 +586,32 @@ export function InventoryModule() {
         </TabsList>
 
         <TabsContent value="items">
-          <ItemsTab items={items} warehouses={warehouses} isLoading={loadingItems} isError={itemsError} refetch={refetchItems} />
+          <ItemsTab items={items} warehouses={warehouses} isLoading={loadingItems} isError={itemsError} refetch={refetchItems} onEdit={handleEdit} onDelete={(id) => setDeleteId(id)} />
         </TabsContent>
 
         <TabsContent value="warehouses">
           <WarehousesTab warehouses={warehouses} branches={branches} isLoading={loadingWarehouses} />
         </TabsContent>
       </Tabs>
+
+      {/* Item Form Dialog */}
+      <InventoryFormDialog open={itemDialogOpen} onOpenChange={handleItemDialogClose} warehouses={warehouses} editItem={editItem} />
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('حذف الصنف', 'Delete Item', lang)}</AlertDialogTitle>
+            <AlertDialogDescription>{t('هل أنت متأكد من حذف هذا الصنف من المخزون؟', 'Are you sure you want to delete this inventory item?')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+              {commonText.delete[lang]}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ModuleLayout>
   )
 }

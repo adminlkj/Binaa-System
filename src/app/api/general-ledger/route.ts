@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getGeneralLedger, getAccountBalance, getAccountByCode } from '@/lib/accounting/engine'
+import { serializeDecimal } from '@/lib/decimal'
 
 export async function GET(request: Request) {
   try {
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
     const ledgerEntries = await getGeneralLedger(accountCode, from, to)
     const currentBalance = await getAccountBalance(accountCode)
 
-    return NextResponse.json({
+    return NextResponse.json(serializeDecimal({
       account: {
         id: account.id,
         code: account.code,
@@ -45,7 +46,7 @@ export async function GET(request: Request) {
         dateFrom: from?.toISOString() || null,
         dateTo: to?.toISOString() || null,
       },
-    })
+    }))
   } catch (error) {
     console.error('Error fetching general ledger:', error)
     return NextResponse.json(

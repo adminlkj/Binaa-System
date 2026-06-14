@@ -1,19 +1,57 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const projects = await db.project.findMany({
-      include: {
-        client: { select: { id: true, name: true, code: true } },
-        branch: { select: { id: true, name: true, code: true } },
-        contracts: { select: { id: true, contractNo: true, totalValue: true, status: true } },
-        _count: { select: { boqItems: true, progressClaims: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const { searchParams } = new URL(request.url)
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
+    const search = searchParams.get('search') || ''
+    const status = searchParams.get('status')
 
-    return NextResponse.json(projects)
+    const where: Record<string, unknown> = {}
+    if (status) where.status = status
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { nameAr: { contains: search } },
+        { code: { contains: search } },
+        { location: { contains: search } },
+      ]
+    }
+
+    const include = {
+      client: { select: { id: true, name: true, code: true } },
+      branch: { select: { id: true, name: true, code: true } },
+      contracts: { select: { id: true, contractNo: true, totalValue: true, status: true } },
+      _count: { select: { boqItems: true, progressClaims: true } },
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const projects = await db.project.findMany({
+        where: whereClause,
+        include,
+        orderBy: { createdAt: 'desc' },
+      })
+      return NextResponse.json(projects)
+    }
+
+    const [data, total] = await Promise.all([
+      db.project.findMany({
+        where: whereClause,
+        include,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.project.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('Error fetching projects:', error)
     return NextResponse.json({ error: 'فشل في تحميل المشاريع' }, { status: 500 })

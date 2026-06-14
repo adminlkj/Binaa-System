@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -53,8 +54,8 @@ export async function GET(request: Request) {
 
     // Add computed totals to each entry
     const enriched = entries.map((entry) => {
-      const totalDebit = entry.lines.reduce((s, l) => s + l.debit, 0)
-      const totalCredit = entry.lines.reduce((s, l) => s + l.credit, 0)
+      const totalDebit = entry.lines.reduce((s, l) => s + toNumber(l.debit), 0)
+      const totalCredit = entry.lines.reduce((s, l) => s + toNumber(l.credit), 0)
       return { ...entry, totalDebit, totalCredit }
     })
 
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
       distinct: ['sourceType'],
     })
 
-    return NextResponse.json({
+    return NextResponse.json(serializeDecimal({
       entries: enriched,
       sourceTypes: sourceTypes.map(st => st.sourceType).filter(Boolean),
       pagination: {
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
         total,
         totalPages: Math.ceil(total / pageSize),
       },
-    })
+    }))
   } catch (error) {
     console.error('Error fetching journal entries:', error)
     return NextResponse.json(

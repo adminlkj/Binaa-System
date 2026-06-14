@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  HardHat, Plus, Search, RefreshCw, Users, Calculator,
+  HardHat, Plus, Search, RefreshCw, Users, Calculator, Trash2, Pencil, Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,13 +15,19 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { MoneyDisplay } from '@/components/ui/money-display'
-import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+import { PrintButton } from '@/components/shared/print-button'
+import { useAppStore, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
+import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+import { useToast } from '@/hooks/use-toast'
 
 // ============ Types ============
 interface ProjectOption { id: string; code: string; name: string }
@@ -33,7 +39,7 @@ interface LaborCost {
 }
 
 // ============ Bilingual Helpers ============
-const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
+const t = (lang: Lang, ar: string, en: string) => lang === 'ar' ? ar : en
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
@@ -50,15 +56,17 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
   )
 }
 
-// ============ Labor Cost Form Dialog ============
+// ============ Labor Cost Form Dialog (Create + Edit) ============
 function LaborCostFormDialog({
-  open, onOpenChange, projects,
+  open, onOpenChange, projects, editItem,
 }: {
   open: boolean; onOpenChange: (open: boolean) => void
-  projects: ProjectOption[]
+  projects: ProjectOption[]; editItem?: LaborCost | null
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const isEdit = !!editItem
 
   const [projectId, setProjectId] = useState('')
   const [description, setDescription] = useState('')
@@ -69,10 +77,19 @@ function LaborCostFormDialog({
 
   React.useEffect(() => {
     if (open) {
-      setProjectId(''); setDescription(''); setWorkers('')
-      setDays(''); setDailyRate(''); setDate('')
+      if (editItem) {
+        setProjectId(editItem.projectId || editItem.project?.id || '')
+        setDescription(editItem.description)
+        setWorkers(String(editItem.workers))
+        setDays(String(editItem.days))
+        setDailyRate(String(editItem.dailyRate))
+        setDate(editItem.date ? new Date(editItem.date).toISOString().split('T')[0] : '')
+      } else {
+        setProjectId(''); setDescription(''); setWorkers('')
+        setDays(''); setDailyRate(''); setDate('')
+      }
     }
-  }, [open])
+  }, [open, editItem])
 
   const totalAmount = useMemo(() => {
     const w = parseFloat(workers) || 0
@@ -81,23 +98,38 @@ function LaborCostFormDialog({
     return w * d * r
   }, [workers, days, dailyRate])
 
-  const createMutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      fetch('/api/labor-costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['labor-costs'] }); onOpenChange(false) },
+  const saveMutation = useMutation({
+    mutationFn: (data: Record<string, unknown> & { id?: string }) => {
+      const payload = { projectId, description, workers, days, dailyRate, date }
+      if (data.id) {
+        return fetch(`/api/labor-costs/${data.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+      }
+      return fetch('/api/labor-costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['labor-costs'] })
+      toast({
+        title: t(lang, isEdit ? 'تم التحديث' : 'تم الإنشاء', isEdit ? 'Updated' : 'Created'),
+        description: t(lang, isEdit ? 'تم تحديث تكلفة العمالة بنجاح' : 'تم إضافة تكلفة العمالة بنجاح', isEdit ? 'Labor cost updated successfully' : 'Labor cost added successfully'),
+      })
+      onOpenChange(false)
+    },
+    onError: () => {
+      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حفظ تكلفة العمالة', 'Failed to save labor cost'), variant: 'destructive' })
+    },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate({ projectId, description, workers, days, dailyRate, date })
+    saveMutation.mutate({ projectId, description, workers, days, dailyRate, date, id: editItem?.id })
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t(lang, 'تكلفة عمالة جديدة', 'New Labor Cost')}</DialogTitle>
-          <DialogDescription>{t(lang, 'إضافة تكلفة عمالة للمشروع', 'Add labor cost for project')}</DialogDescription>
+          <DialogTitle>{t(lang, isEdit ? 'تعديل تكلفة العمالة' : 'تكلفة عمالة جديدة', isEdit ? 'Edit Labor Cost' : 'New Labor Cost')}</DialogTitle>
+          <DialogDescription>{t(lang, isEdit ? 'تعديل بيانات تكلفة العمالة' : 'إضافة تكلفة عمالة للمشروع', isEdit ? 'Edit labor cost details' : 'Add labor cost for project')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -154,9 +186,9 @@ function LaborCostFormDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !projectId || !description || !workers || !days || !dailyRate || !date} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إضافة تكلفة العمالة', 'Add Labor Cost')}
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{commonText.cancel[lang]}</Button>
+            <Button type="submit" disabled={saveMutation.isPending || !projectId || !description || !workers || !days || !dailyRate || !date} className="bg-emerald-600 hover:bg-emerald-700">
+              {saveMutation.isPending ? t(lang, 'جاري الحفظ...', 'Saving...') : isEdit ? t(lang, 'حفظ التعديلات', 'Save Changes') : t(lang, 'إضافة تكلفة العمالة', 'Add Labor Cost')}
             </Button>
           </DialogFooter>
         </form>
@@ -168,9 +200,14 @@ function LaborCostFormDialog({
 // ============ Main Labor Costs Module ============
 export function LaborModule() {
   const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
   const [search, setSearch] = useState('')
   const [projectFilter, setProjectFilter] = useState<string>('all')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editItem, setEditItem] = useState<LaborCost | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const { data: laborCosts = [], isLoading, isError, refetch } = useQuery<LaborCost[]>({
     queryKey: ['labor-costs'],
@@ -190,6 +227,20 @@ export function LaborModule() {
     },
   })
 
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/labor-costs/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['labor-costs'] })
+      toast({ title: t(lang, 'تم الحذف', 'Deleted'), description: t(lang, 'تم حذف تكلفة العمالة بنجاح', 'Labor cost deleted successfully') })
+      setDeleteId(null)
+    },
+    onError: () => {
+      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حذف تكلفة العمالة', 'Failed to delete labor cost'), variant: 'destructive' })
+    },
+  })
+
   const filtered = laborCosts.filter(lc => {
     const matchProject = projectFilter === 'all' || lc.projectId === projectFilter
     const matchSearch = !search ||
@@ -203,16 +254,85 @@ export function LaborModule() {
   const totalWorkers = laborCosts.reduce((s, l) => s + (l.workers ?? 0), 0)
   const avgDailyRate = laborCosts.length > 0 ? laborCosts.reduce((s, l) => s + (l.dailyRate ?? 0), 0) / laborCosts.length : 0
 
+  // CSV export
+  const handleExport = () => {
+    const columns: CSVColumn[] = [
+      { key: 'projectName', label: t(lang, 'المشروع', 'Project') },
+      { key: 'description', label: t(lang, 'الوصف', 'Description') },
+      { key: 'workers', label: t(lang, 'عدد العمال', 'Workers') },
+      { key: 'days', label: t(lang, 'الأيام', 'Days'), format: (v) => (Number(v) || 0).toFixed(1) },
+      { key: 'dailyRate', label: t(lang, 'الأجر اليومي', 'Daily Rate'), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'totalAmount', label: t(lang, 'الإجمالي', 'Total'), format: (v) => (Number(v) || 0).toFixed(2) },
+      { key: 'date', label: t(lang, 'التاريخ', 'Date') },
+    ]
+    const rows = filtered.map(lc => ({
+      projectName: lc.project.name,
+      description: lc.description,
+      workers: lc.workers,
+      days: lc.days,
+      dailyRate: Number(lc.dailyRate),
+      totalAmount: Number(lc.totalAmount),
+      date: formatDate(lc.date, lang),
+    }))
+    exportToCSV(rows, `labor-costs-${new Date().toISOString().slice(0, 10)}`, columns)
+  }
+
+  // Print data
+  const printData = {
+    columns: [
+      { key: 'projectName', label: lang === 'ar' ? 'المشروع' : 'Project' },
+      { key: 'description', label: lang === 'ar' ? 'الوصف' : 'Description' },
+      { key: 'workers', label: lang === 'ar' ? 'العمال' : 'Workers' },
+      { key: 'days', label: lang === 'ar' ? 'الأيام' : 'Days' },
+      { key: 'totalAmount', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
+      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+    ],
+    rows: filtered.map(lc => ({
+      projectName: lc.project.name,
+      description: lc.description,
+      workers: lc.workers,
+      days: lc.days,
+      totalAmount: Number(lc.totalAmount),
+      date: formatDate(lc.date, lang),
+    })),
+    infoItems: [
+      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+      { label: lang === 'ar' ? 'إجمالي العمالة' : 'Total Labor', value: String(totalLabor) },
+    ],
+  }
+
+  // Open edit dialog
+  const handleEdit = (item: LaborCost) => {
+    setEditItem(item)
+    setDialogOpen(true)
+  }
+
+  // Open create dialog
+  const handleCreate = () => {
+    setEditItem(null)
+    setDialogOpen(true)
+  }
+
+  // Close dialog
+  const handleDialogClose = (open: boolean) => {
+    setDialogOpen(open)
+    if (!open) setEditItem(null)
+  }
+
   return (
     <ModuleLayout
       title={{ ar: 'تكاليف العمالة', en: 'Labor Costs' }}
       subtitle={{ ar: 'إدارة تكاليف العمالة للمشاريع', en: 'Manage project labor costs' }}
       actions={
         <div className="flex items-center gap-2">
+          <PrintButton type="labor-report" data={printData} size="icon" />
+          <Button variant="outline" size="icon" onClick={handleExport} title={t(lang, 'تصدير CSV', 'Export CSV')}>
+            <Download className="size-4" />
+          </Button>
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
           </Button>
-          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={handleCreate}>
             <Plus className="size-4" /> {t(lang, 'تكلفة عمالة جديدة', 'New Labor Cost')}
           </Button>
         </div>
@@ -288,7 +408,7 @@ export function LaborModule() {
             <div className="flex flex-col items-center gap-3 py-10">
               <HardHat className="size-12 text-gray-300" />
               <p className="text-muted-foreground">{t(lang, 'لا توجد تكاليف عمالة', 'No labor costs found')}</p>
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={handleCreate}>
                 <Plus className="size-4 mr-1" /> {t(lang, 'إضافة تكلفة عمالة', 'Add Labor Cost')}
               </Button>
             </div>
@@ -304,6 +424,7 @@ export function LaborModule() {
                     <TableHead className="text-right">{t(lang, 'الأجر اليومي', 'Daily Rate')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'الإجراءات', 'Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -318,6 +439,16 @@ export function LaborModule() {
                         <MoneyDisplay value={lc.totalAmount} lang={lang} bold size="sm" className="text-emerald-700" />
                       </TableCell>
                       <TableCell>{formatDate(lc.date, lang)}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" className="size-8" onClick={() => handleEdit(lc)} title={t(lang, 'تعديل', 'Edit')}>
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="size-8 text-rose-500" onClick={() => setDeleteId(lc.id)} title={t(lang, 'حذف', 'Delete')}>
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -328,7 +459,23 @@ export function LaborModule() {
       </Card>
 
       {/* Form Dialog */}
-      <LaborCostFormDialog open={dialogOpen} onOpenChange={setDialogOpen} projects={projects} />
+      <LaborCostFormDialog open={dialogOpen} onOpenChange={handleDialogClose} projects={projects} editItem={editItem} />
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t(lang, 'حذف تكلفة العمالة', 'Delete Labor Cost')}</AlertDialogTitle>
+            <AlertDialogDescription>{t(lang, 'هل أنت متأكد من حذف تكلفة العمالة هذه؟', 'Are you sure you want to delete this labor cost?')}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+              {commonText.delete[lang]}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ModuleLayout>
   )
 }

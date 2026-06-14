@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 // GET /api/journal-entries/by-source?sourceType=...&sourceId=...
@@ -55,11 +56,11 @@ export async function GET(request: Request) {
     }
 
     // Calculate totals
-    const totalDebit = journalEntry.lines.reduce((s, l) => s + l.debit, 0)
-    const totalCredit = journalEntry.lines.reduce((s, l) => s + l.credit, 0)
+    const totalDebit = journalEntry.lines.reduce((s, l) => s + toNumber(l.debit), 0)
+    const totalCredit = journalEntry.lines.reduce((s, l) => s + toNumber(l.credit), 0)
     const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01
 
-    return NextResponse.json({
+    return NextResponse.json(serializeDecimal({
       found: true,
       journalEntry: {
         id: journalEntry.id,
@@ -76,8 +77,8 @@ export async function GET(request: Request) {
           id: l.id,
           account: l.account,
           costCenter: l.costCenter,
-          debit: Math.round(l.debit * 10000) / 10000,
-          credit: Math.round(l.credit * 10000) / 10000,
+          debit: Math.round(toNumber(l.debit) * 10000) / 10000,
+          credit: Math.round(toNumber(l.credit) * 10000) / 10000,
           description: l.description,
         })),
         totals: {
@@ -86,7 +87,7 @@ export async function GET(request: Request) {
           isBalanced,
         },
       },
-    })
+    }))
   } catch (error) {
     console.error('Error looking up journal entry by source:', error)
     return NextResponse.json(

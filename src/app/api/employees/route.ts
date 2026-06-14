@@ -4,16 +4,18 @@ import { NextResponse } from 'next/server'
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const search = searchParams.get('search')
+    const search = searchParams.get('search') || ''
     const activeOnly = searchParams.get('active') === 'true'
     const branchId = searchParams.get('branchId')
     const status = searchParams.get('status')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
 
     const where: Record<string, unknown> = {}
     if (activeOnly) where.isActive = true
     if (branchId) where.branchId = branchId
     if (status) where.status = status
-
     if (search) {
       where.OR = [
         { code: { contains: search } },
@@ -25,14 +27,34 @@ export async function GET(request: Request) {
       ]
     }
 
-    const employees = await db.employee.findMany({
-      where: Object.keys(where).length > 0 ? where : undefined,
-      include: {
-        branch: { select: { id: true, code: true, name: true } },
-      },
-      orderBy: { code: 'asc' },
-    })
-    return NextResponse.json(employees)
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const employees = await db.employee.findMany({
+        where: whereClause,
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+        },
+        orderBy: { code: 'asc' },
+      })
+      return NextResponse.json(employees)
+    }
+
+    const [data, total] = await Promise.all([
+      db.employee.findMany({
+        where: whereClause,
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+        },
+        orderBy: { code: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.employee.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('Error fetching employees:', error)
     return NextResponse.json({ error: 'فشل في تحميل الموظفين' }, { status: 500 })

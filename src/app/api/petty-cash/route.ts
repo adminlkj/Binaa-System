@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryPettyCash, initializeChartOfAccounts } from '@/lib/accounting/engine'
+import { autoEntryPettyCash, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -25,50 +25,53 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    const pettyCash = await db.pettyCash.create({
-      data: {
-        branchId: body.branchId,
-        description: body.description,
-        amount: parseFloat(body.amount) || 0,
-        date: new Date(body.date),
-        category: body.category || null,
-        reference: body.reference || null,
-      },
-      include: {
-        branch: { select: { id: true, code: true, name: true } },
-      },
-    })
-
-    // Auto-create accounting journal entry
-    try {
-      await initializeChartOfAccounts()
-      const journalEntry = await autoEntryPettyCash({
-        description: pettyCash.description,
-        amount: pettyCash.amount,
-        category: pettyCash.category || 'OTHER',
-        date: pettyCash.date,
+    // Create petty cash + accounting entry in transaction
+    const result = await db.$transaction(async (tx: PrismaTransaction) => {
+      const pettyCash = await tx.pettyCash.create({
+        data: {
+          branchId: body.branchId,
+          description: body.description,
+          amount: parseFloat(body.amount) || 0,
+          date: new Date(body.date),
+          category: body.category || null,
+          reference: body.reference || null,
+        },
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+        },
       })
 
-      // Store journalEntryId on the petty cash entry
-      if (journalEntry) {
-        await db.pettyCash.update({
-          where: { id: pettyCash.id },
-          data: { journalEntryId: journalEntry.id },
-        })
-      }
-    } catch (accountingError) {
-      console.error('Accounting entry failed for petty cash:', accountingError)
-    }
+      // Auto-create accounting journal entry
+      try {
+        await initializeChartOfAccounts()
+        const journalEntry = await autoEntryPettyCash({
+          description: pettyCash.description,
+          amount: pettyCash.amount,
+          category: pettyCash.category || 'OTHER',
+          date: pettyCash.date,
+        }, tx)
 
-    // Re-fetch to include journalEntryId
-    const updatedPettyCash = await db.pettyCash.findUnique({
-      where: { id: pettyCash.id },
-      include: {
-        branch: { select: { id: true, code: true, name: true } },
-      },
+        // Store journalEntryId on the petty cash entry
+        if (journalEntry) {
+          await tx.pettyCash.update({
+            where: { id: pettyCash.id },
+            data: { journalEntryId: journalEntry.id },
+          })
+        }
+      } catch (accountingError) {
+        console.error('Accounting entry failed for petty cash:', accountingError)
+      }
+
+      // Re-fetch to include journalEntryId
+      return await tx.pettyCash.findUnique({
+        where: { id: pettyCash.id },
+        include: {
+          branch: { select: { id: true, code: true, name: true } },
+        },
+      })
     })
 
-    return NextResponse.json(updatedPettyCash, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('Error creating petty cash:', error)
     return NextResponse.json({ error: 'فشل في إنشاء السلفة' }, { status: 500 })

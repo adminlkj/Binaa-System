@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
           select: {
             id: true, hourlyRate: true, pricingType: true, status: true, clientId: true,
             deliveryFees: true, deliveryFeesTaxable: true, salesOrderNo: true, paymentDuration: true,
+            client: { select: { id: true, name: true, nameAr: true } },
           },
         },
         project: {
@@ -58,34 +59,17 @@ export async function GET(request: NextRequest) {
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     })
 
-    // Enrich with client names from the rental
-    const enrichedTimesheets = await Promise.all(
-      timesheets.map(async (ts) => {
-        let clientName = ''
-        let clientNameAr = ''
+    // Enrich with client names from the already-included rental relation
+    const enrichedTimesheets = timesheets.map((ts) => {
+      const clientName = ts.rental?.client?.name || ''
+      const clientNameAr = ts.rental?.client?.nameAr || ''
 
-        if (ts.rental) {
-          const rentalWithClient = await db.equipmentRental.findUnique({
-            where: { id: ts.rentalId },
-            select: { clientId: true },
-          })
-          if (rentalWithClient) {
-            const cl = await db.client.findUnique({
-              where: { id: rentalWithClient.clientId },
-              select: { name: true, nameAr: true },
-            })
-            clientName = cl?.name || ''
-            clientNameAr = cl?.nameAr || ''
-          }
-        }
-
-        return {
-          ...ts,
-          clientName,
-          clientNameAr,
-        }
-      })
-    )
+      return {
+        ...ts,
+        clientName,
+        clientNameAr,
+      }
+    })
 
     return NextResponse.json(enrichedTimesheets)
   } catch (error) {

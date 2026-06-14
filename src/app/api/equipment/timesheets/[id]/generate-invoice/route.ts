@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import type { PrismaTransaction } from '@/lib/accounting/engine'
 
 // POST: Generate a SalesInvoice from an approved timesheet
 export async function POST(
@@ -134,49 +135,53 @@ export async function POST(
     const clientId = timesheet.rental?.clientId || contract.clientId
     const projectId = timesheet.rental?.projectId || contract.projectId || timesheet.projectId
 
-    // Create the SalesInvoice
-    const invoice = await db.salesInvoice.create({
-      data: {
-        invoiceNo,
-        clientId: clientId!,
-        projectId: projectId || null,
-        date: invoiceDate,
-        dueDate,
-        subtotal,
-        discountRate: 0,
-        discountAmount: 0,
-        netAmount: subtotal,
-        vatRate,
-        vatAmount,
-        totalAmount,
-        paidAmount: 0,
-        status: 'DRAFT',
-        invoiceType: 'RENTAL',
-        sourceType: 'TIMESHEET',
-        timesheetId: timesheet.id,
-        notes: `فاتورة تأجير معدات - عقد ${contract.contractNo} - ${monthLabel}`,
-        paymentTerms: contract.paymentTerms,
-        contractNo: contract.contractNo,
-        contractType: 'RENTAL',
-        salesOrderNo: contract.salesOrderNo,
-        equipmentName: equipment.nameAr || equipment.name,
-        operatingHours,
-        hourlyRate,
-      },
-      include: {
-        client: {
-          select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true },
+    // Create the SalesInvoice + update timesheet in transaction
+    const invoice = await db.$transaction(async (tx: PrismaTransaction) => {
+      const inv = await tx.salesInvoice.create({
+        data: {
+          invoiceNo,
+          clientId: clientId!,
+          projectId: projectId || null,
+          date: invoiceDate,
+          dueDate,
+          subtotal,
+          discountRate: 0,
+          discountAmount: 0,
+          netAmount: subtotal,
+          vatRate,
+          vatAmount,
+          totalAmount,
+          paidAmount: 0,
+          status: 'DRAFT',
+          invoiceType: 'RENTAL',
+          sourceType: 'TIMESHEET',
+          timesheetId: timesheet.id,
+          notes: `فاتورة تأجير معدات - عقد ${contract.contractNo} - ${monthLabel}`,
+          paymentTerms: contract.paymentTerms,
+          contractNo: contract.contractNo,
+          contractType: 'RENTAL',
+          salesOrderNo: contract.salesOrderNo,
+          equipmentName: equipment.nameAr || equipment.name,
+          operatingHours,
+          hourlyRate,
         },
-        project: {
-          select: { id: true, name: true, nameAr: true, code: true },
+        include: {
+          client: {
+            select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true },
+          },
+          project: {
+            select: { id: true, name: true, nameAr: true, code: true },
+          },
         },
-      },
-    })
+      })
 
-    // 6. Update timesheet status to INVOICED
-    await db.timesheet.update({
-      where: { id: timesheet.id },
-      data: { status: 'INVOICED' },
+      // 6. Update timesheet status to INVOICED
+      await tx.timesheet.update({
+        where: { id: timesheet.id },
+        data: { status: 'INVOICED' },
+      })
+
+      return inv
     })
 
     return NextResponse.json(invoice, { status: 201 })

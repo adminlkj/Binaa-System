@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -54,8 +55,8 @@ export async function GET(request: Request) {
       for (const line of aggregatedLines) {
         const accountType = accountTypeMap.get(line.accountId) || 'ASSET'
         const normalBalance = normalBalanceMap[accountType] || 'DEBIT'
-        const debit = line._sum.debit || 0
-        const credit = line._sum.credit || 0
+        const debit = toNumber(line._sum.debit)
+        const credit = toNumber(line._sum.credit)
         const amount = normalBalance === 'DEBIT' ? debit - credit : credit - debit
         balanceMap.set(line.accountId, amount)
       }
@@ -100,7 +101,7 @@ export async function GET(request: Request) {
 
     const tree = rootAccounts.map(buildTree)
 
-    return NextResponse.json({
+    return NextResponse.json(serializeDecimal({
       accounts: accountsWithBalances.map(a => ({
         id: a.id,
         code: a.code,
@@ -122,7 +123,7 @@ export async function GET(request: Request) {
         normalBalance: a.normalBalance,
       })),
       total: accountsWithBalances.length,
-    })
+    }))
   } catch (error) {
     console.error('Error fetching accounts:', error)
     return NextResponse.json(
@@ -234,7 +235,7 @@ export async function POST(request: Request) {
       },
     })
 
-    return NextResponse.json(account, { status: 201 })
+    return NextResponse.json(serializeDecimal(account), { status: 201 })
   } catch (error) {
     console.error('Error creating account:', error)
     return NextResponse.json(

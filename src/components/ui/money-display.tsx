@@ -25,8 +25,8 @@ import { CurrencySymbol } from '@/components/ui/currency-symbol'
  */
 
 export interface MoneyDisplayProps {
-  /** The numeric value to display (undefined/null treated as 0) */
-  value: number | undefined | null
+  /** The numeric value to display (undefined/null treated as 0, strings from Decimal JSON are supported) */
+  value: number | string | undefined | null
   /** Display mode: system = with thousand separators, official = no separators (ZATCA) */
   mode?: 'system' | 'official'
   /** Language for display: ar = Arabic (RTL), en = English (LTR) */
@@ -88,9 +88,25 @@ const symbolImageCache = new Map<string, string>()
  * @param mode - 'system' = with thousand separators, 'official' = no separators (ZATCA)
  * @returns Formatted number string with exactly 2 decimal places
  */
-export function formatAmount(value: number | undefined | null, mode: 'system' | 'official' = 'system'): string {
+export function formatAmount(value: number | string | undefined | null, mode: 'system' | 'official' = 'system'): string {
   // Handle undefined/null/NaN values gracefully
-  const safeValue = (value === undefined || value === null || isNaN(value)) ? 0 : value
+  // Also handle string values that may come from Prisma Decimal JSON serialization
+  let safeValue: number
+  if (value === undefined || value === null) {
+    safeValue = 0
+  } else if (typeof value === 'string') {
+    safeValue = parseFloat(value)
+    if (isNaN(safeValue)) safeValue = 0
+  } else if (typeof value === 'number') {
+    safeValue = isNaN(value) ? 0 : value
+  } else {
+    // Handle objects with .toNumber() method (Prisma.Decimal)
+    if (typeof value === 'object' && 'toNumber' in value && typeof (value as { toNumber: () => number }).toNumber === 'function') {
+      safeValue = (value as { toNumber: () => number }).toNumber()
+    } else {
+      safeValue = 0
+    }
+  }
   if (mode === 'official') {
     // ZATCA compliance: no thousand separators
     return safeValue.toFixed(2)
@@ -110,7 +126,7 @@ export function formatAmount(value: number | undefined | null, mode: 'system' | 
  * @returns Formatted currency string
  */
 export function formatMoney(
-  value: number | undefined | null,
+  value: number | string | undefined | null,
   options?: {
     mode?: 'system' | 'official'
     lang?: 'ar' | 'en'
