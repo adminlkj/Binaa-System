@@ -16,7 +16,10 @@ export async function GET(
           orderBy: { date: 'desc' },
           take: 50,
         },
-        _count: { select: { progressClaims: true } },
+        changeOrders: {
+          orderBy: { date: 'desc' },
+        },
+        _count: { select: { progressClaims: true, changeOrders: true } },
       },
     })
 

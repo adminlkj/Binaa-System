@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { type PrismaTransaction } from '@/lib/auto-journal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -7,28 +8,74 @@ export async function GET(request: Request) {
     const status = searchParams.get('status')
     const clientId = searchParams.get('clientId')
     const equipmentId = searchParams.get('equipmentId')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
 
     const where: Record<string, unknown> = {}
     if (status) where.status = status
     if (clientId) where.clientId = clientId
     if (equipmentId) where.equipmentId = equipmentId
 
-    const orders = await db.equipmentDeliveryOrder.findMany({
-      where,
-      include: {
-        equipment: {
-          select: { id: true, code: true, name: true, nameAr: true },
-        },
-        rental: {
-          select: { id: true, pricingType: true, status: true, hourlyRate: true },
-        },
+    const include = {
+      equipment: {
+        select: { id: true, code: true, name: true, nameAr: true },
       },
-      orderBy: { deliveryDate: 'desc' },
-    })
+      rental: {
+        select: { id: true, pricingType: true, status: true, hourlyRate: true },
+      },
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const orders = await db.equipmentDeliveryOrder.findMany({
+        where: whereClause,
+        include,
+        orderBy: { deliveryDate: 'desc' },
+      })
+
+      // Enrich with client info
+      const clientIds = [...new Set(orders.filter(o => o.clientId).map(o => o.clientId as string))]
+      const projectIds = [...new Set(orders.map(o => o.projectId).filter(Boolean))] as string[]
+
+      const clients = clientIds.length > 0 ? await db.client.findMany({
+        where: { id: { in: clientIds } },
+        select: { id: true, code: true, name: true, nameAr: true },
+      }) : []
+      const clientMap = Object.fromEntries(clients.map(c => [c.id, c]))
+
+      const projects = projectIds.length > 0 ? await db.project.findMany({
+        where: { id: { in: projectIds } },
+        select: { id: true, code: true, name: true, nameAr: true },
+      }) : []
+      const projectMap = Object.fromEntries(projects.map(p => [p.id, p]))
+
+      const enriched = orders.map(order => ({
+        ...order,
+        client: order.clientId ? (clientMap[order.clientId] || { id: order.clientId, code: '', name: 'غير معروف', nameAr: null }) : null,
+        project: order.projectId ? (projectMap[order.projectId] || null) : null,
+      }))
+
+      return NextResponse.json(enriched)
+    }
+
+    // Paginated response
+    const [data, total] = await Promise.all([
+      db.equipmentDeliveryOrder.findMany({
+        where: whereClause,
+        include,
+        orderBy: { deliveryDate: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.equipmentDeliveryOrder.count({ where: whereClause }),
+    ])
 
     // Enrich with client info
-    const clientIds = [...new Set(orders.filter(o => o.clientId).map(o => o.clientId as string))]
-    const projectIds = [...new Set(orders.map(o => o.projectId).filter(Boolean))] as string[]
+    const clientIds = [...new Set(data.filter(o => o.clientId).map(o => o.clientId as string))]
+    const projectIds = [...new Set(data.map(o => o.projectId).filter(Boolean))] as string[]
 
     const clients = clientIds.length > 0 ? await db.client.findMany({
       where: { id: { in: clientIds } },
@@ -42,16 +89,16 @@ export async function GET(request: Request) {
     }) : []
     const projectMap = Object.fromEntries(projects.map(p => [p.id, p]))
 
-    const enriched = orders.map(order => ({
+    const enriched = data.map(order => ({
       ...order,
       client: order.clientId ? (clientMap[order.clientId] || { id: order.clientId, code: '', name: 'غير معروف', nameAr: null }) : null,
       project: order.projectId ? (projectMap[order.projectId] || null) : null,
     }))
 
-    return NextResponse.json(enriched)
+    return NextResponse.json({ data: enriched, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching delivery orders:', error)
-    return NextResponse.json({ error: 'فشل في تحميل أوامر التوصيل' }, { status: 500 })
+    console.error('[API] Failed to fetch delivery orders:', error)
+    return NextResponse.json({ error: 'Failed to fetch delivery orders', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -110,8 +157,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(order, { status: 201 })
   } catch (error) {
-    console.error('Error creating delivery order:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء أمر التوصيل' }, { status: 500 })
+    console.error('[API] Failed to create delivery order:', error)
+    return NextResponse.json({ error: 'Failed to create delivery order', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -129,44 +176,49 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'أمر التوصيل غير موجود' }, { status: 404 })
     }
 
-    const order = await db.equipmentDeliveryOrder.update({
-      where: { id },
-      data: { status },
-      include: {
-        equipment: {
-          select: { id: true, code: true, name: true, nameAr: true },
+    // Update delivery order and equipment status in transaction
+    const order = await db.$transaction(async (tx: PrismaTransaction) => {
+      const updated = await tx.equipmentDeliveryOrder.update({
+        where: { id },
+        data: { status },
+        include: {
+          equipment: {
+            select: { id: true, code: true, name: true, nameAr: true },
+          },
+          rental: {
+            select: { id: true, pricingType: true, status: true, hourlyRate: true },
+          },
         },
-        rental: {
-          select: { id: true, pricingType: true, status: true, hourlyRate: true },
-        },
-      },
-    })
+      })
 
-    // Handle equipment status changes based on delivery order status
-    if (status === 'DELIVERED') {
-      await db.equipment.update({
-        where: { id: order.equipmentId },
-        data: { status: 'IN_USE' },
-      })
-    } else if (status === 'RETURNED') {
-      await db.equipment.update({
-        where: { id: order.equipmentId },
-        data: { status: 'AVAILABLE' },
-      })
-    } else if (status === 'CANCELLED') {
-      if (existing.status === 'DELIVERED') {
-        // Was IN_USE, revert to AVAILABLE
-        await db.equipment.update({
-          where: { id: order.equipmentId },
+      // Handle equipment status changes based on delivery order status
+      if (status === 'DELIVERED') {
+        await tx.equipment.update({
+          where: { id: updated.equipmentId },
+          data: { status: 'IN_USE' },
+        })
+      } else if (status === 'RETURNED') {
+        await tx.equipment.update({
+          where: { id: updated.equipmentId },
           data: { status: 'AVAILABLE' },
         })
+      } else if (status === 'CANCELLED') {
+        if (existing.status === 'DELIVERED') {
+          // Was IN_USE, revert to AVAILABLE
+          await tx.equipment.update({
+            where: { id: updated.equipmentId },
+            data: { status: 'AVAILABLE' },
+          })
+        }
+        // PENDING → CANCELLED: equipment was never changed, no revert needed
       }
-      // PENDING → CANCELLED: equipment was never changed, no revert needed
-    }
+
+      return updated
+    })
 
     return NextResponse.json(order)
   } catch (error) {
-    console.error('Error updating delivery order:', error)
-    return NextResponse.json({ error: 'فشل في تحديث أمر التوصيل' }, { status: 500 })
+    console.error('[API] Failed to update delivery order:', error)
+    return NextResponse.json({ error: 'Failed to update delivery order', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

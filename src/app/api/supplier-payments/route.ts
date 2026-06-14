@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { autoEntrySupplierPayment, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
+import { createSupplierPaymentJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -53,8 +54,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching supplier payments:', error)
-    return NextResponse.json({ error: 'فشل في تحميل مدفوعات الموردين' }, { status: 500 })
+    console.error('[API] Failed to fetch supplier payments:', error)
+    return NextResponse.json({ error: 'Failed to fetch supplier payments', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -111,24 +112,11 @@ export async function POST(request: Request) {
         },
       })
 
-      // Create accounting entry using autoEntrySupplierPayment
+      // Create accounting entry using auto-journal
       try {
-        await initializeChartOfAccounts()
-        const journalEntry = await autoEntrySupplierPayment({
-          supplierName: supplier.name,
-          amount: parseFloat(amount) || 0,
-          date: new Date(date),
-          paidFrom: paidFrom === 'BANK' ? 'BANK' : 'TREASURY',
-          reference: reference || undefined,
-        }, tx)
-
-        // Store the journalEntryId on the payment
-        await tx.supplierPayment.update({
-          where: { id: payment.id },
-          data: { journalEntryId: journalEntry.id },
-        })
+        await createSupplierPaymentJournalEntry(payment.id, tx)
       } catch (accountingError) {
-        console.error('Accounting entry failed for supplier payment:', accountingError)
+        console.error('[API] Accounting entry failed for supplier payment:', accountingError)
       }
 
       // Update purchase invoice paidAmount and status
@@ -137,10 +125,10 @@ export async function POST(request: Request) {
           where: { id: invoiceId },
         })
         if (invoice) {
-          const newPaidAmount = invoice.paidAmount + (parseFloat(amount) || 0)
+          const newPaidAmount = toNumber(invoice.paidAmount) + (parseFloat(amount) || 0)
           let newStatus = invoice.status
 
-          if (newPaidAmount >= invoice.totalAmount) {
+          if (newPaidAmount >= toNumber(invoice.totalAmount)) {
             newStatus = 'PAID'
           } else if (newPaidAmount > 0) {
             newStatus = 'PARTIALLY_PAID'
@@ -167,7 +155,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
-    console.error('Error creating supplier payment:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء دفعة المورد' }, { status: 500 })
+    console.error('[API] Failed to create supplier payment:', error)
+    return NextResponse.json({ error: 'Failed to create supplier payment', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

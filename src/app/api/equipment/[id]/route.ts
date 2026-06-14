@@ -83,7 +83,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (body.model !== undefined) data.model = body.model || null
     if (body.serialNumber !== undefined) data.serialNumber = body.serialNumber || null
     if (body.status !== undefined) data.status = body.status
+    if (body.ownershipType !== undefined) data.ownershipType = body.ownershipType
     if (body.supplierId !== undefined) data.supplierId = body.supplierId || null
+    if (body.ownerId !== undefined) data.ownerId = body.ownerId || null
     if (body.clientId !== undefined) data.clientId = body.clientId || null
     if (body.purchasePrice !== undefined) data.purchasePrice = parseFloat(body.purchasePrice) || 0
     if (body.sellingPrice !== undefined) data.sellingPrice = parseFloat(body.sellingPrice) || 0

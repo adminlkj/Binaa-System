@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
-import { autoEntryExpense, initializeChartOfAccounts, createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { createExpenseJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { createJournalEntry } from '@/lib/accounting/engine'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -54,8 +56,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching expenses:', error)
-    return NextResponse.json({ error: 'فشل في تحميل المصروفات' }, { status: 500 })
+    console.error('[API] Failed to fetch expenses:', error)
+    return NextResponse.json({ error: 'Failed to fetch expenses', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -109,26 +111,11 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry and store journalEntryId
+      // Auto-create accounting journal entry
       try {
-        await initializeChartOfAccounts()
-        const journalEntry = await autoEntryExpense({
-          description: expense.description,
-          amount: expense.amount,
-          vatAmount: expense.vatAmount,
-          category: expense.category,
-          date: expense.date,
-          payFrom: body.payFrom || 'TREASURY',
-          costCenterId: expense.projectId || undefined,
-        }, tx)
-
-        // Store the journalEntryId on the expense
-        await tx.expense.update({
-          where: { id: expense.id },
-          data: { journalEntryId: journalEntry.id },
-        })
+        await createExpenseJournalEntry(expense.id, tx)
       } catch (accountingError) {
-        console.error('Accounting entry failed for expense:', accountingError)
+        console.error('[API] Accounting entry failed for expense:', accountingError)
       }
 
       // Re-fetch to include journalEntryId
@@ -142,8 +129,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
-    console.error('Error creating expense:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء المصروف' }, { status: 500 })
+    console.error('[API] Failed to create expense:', error)
+    return NextResponse.json({ error: 'Failed to create expense', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -189,8 +176,8 @@ export async function PUT(request: Request) {
 
           const resolvedReversalLines = originalEntry.lines.map(line => ({
             accountCode: accountMap.get(line.accountId) || '',
-            debit: line.credit,
-            credit: line.debit,
+            debit: toNumber(line.credit),
+            credit: toNumber(line.debit),
             costCenterId: line.costCenterId || undefined,
             description: `Reversal: ${line.description || ''}`,
           }))
@@ -211,34 +198,35 @@ export async function PUT(request: Request) {
           })
         }
 
-        // Create new entry with updated values
-        const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : existing.amount
-        const newVatAmount = updateData.vatAmount !== undefined ? (updateData.vatAmount ? parseFloat(updateData.vatAmount) : 0) : existing.vatAmount
-        const newPayFrom = updateData.payFrom || existing.payFrom
-        const newDate = updateData.date ? new Date(updateData.date) : existing.date
-        const newCategory = updateData.category || existing.category
-        const newDescription = updateData.description || existing.description
-        const newProjectId = updateData.projectId !== undefined ? updateData.projectId : existing.projectId
+        // Update the expense with new values so createExpenseJournalEntry reads them
+        const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : toNumber(existing.amount)
+        const newVatAmount = updateData.vatAmount !== undefined ? (updateData.vatAmount ? parseFloat(updateData.vatAmount) : 0) : toNumber(existing.vatAmount)
+        const newTotalAmount = newAmount + newVatAmount
 
-        await initializeChartOfAccounts()
-        const newJournalEntry = await autoEntryExpense({
-          description: newDescription,
-          amount: newAmount,
-          vatAmount: newVatAmount,
-          category: newCategory,
-          date: newDate,
-          payFrom: newPayFrom,
-          costCenterId: newProjectId || undefined,
-        }, tx)
+        await tx.expense.update({
+          where: { id: existing.id },
+          data: {
+            amount: newAmount,
+            vatAmount: newVatAmount,
+            totalAmount: newTotalAmount,
+          },
+        })
 
-        updateData.journalEntryId = newJournalEntry.id
+        // Create new journal entry
+        try {
+          await createExpenseJournalEntry(existing.id, tx)
+        } catch (journalError) {
+          console.error('[API] Failed to create replacement journal entry for expense:', journalError)
+        }
+
+        updateData.journalEntryId = undefined // Will be set by createExpenseJournalEntry
       })
     }
 
     // Recalculate totalAmount if amount or vatAmount changed
     if (updateData.amount !== undefined || updateData.vatAmount !== undefined) {
-      const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : existing.amount
-      const newVat = updateData.vatAmount !== undefined ? (updateData.vatAmount ? parseFloat(updateData.vatAmount) : 0) : (existing.vatAmount || 0)
+      const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : toNumber(existing.amount)
+      const newVat = updateData.vatAmount !== undefined ? (updateData.vatAmount ? parseFloat(updateData.vatAmount) : 0) : toNumber(existing.vatAmount || 0)
       updateData.totalAmount = newAmount + newVat
     }
 
@@ -258,7 +246,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error updating expense:', error)
-    return NextResponse.json({ error: 'فشل في تحديث المصروف' }, { status: 500 })
+    console.error('[API] Failed to update expense:', error)
+    return NextResponse.json({ error: 'Failed to update expense', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { type PrismaTransaction } from '@/lib/auto-journal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -8,6 +9,9 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
     const purchaseRequestId = searchParams.get('purchaseRequestId')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
 
     const where: Record<string, unknown> = {}
     if (supplierId) where.supplierId = supplierId
@@ -15,24 +19,44 @@ export async function GET(request: Request) {
     if (status) where.status = status
     if (purchaseRequestId) where.purchaseRequestId = purchaseRequestId
 
-    const orders = await db.purchaseOrder.findMany({
-      where,
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        purchaseRequest: { select: { id: true, requestNo: true, status: true } },
-        items: true,
-        goodsReceipts: {
-          select: { id: true, receiptNo: true, status: true, date: true },
-        },
-        _count: { select: { invoices: true } },
+    const include = {
+      supplier: { select: { id: true, name: true, code: true } },
+      project: { select: { id: true, name: true, code: true, projectType: true } },
+      purchaseRequest: { select: { id: true, requestNo: true, status: true } },
+      items: true,
+      goodsReceipts: {
+        select: { id: true, receiptNo: true, status: true, date: true },
       },
-      orderBy: { date: 'desc' },
-    })
-    return NextResponse.json(orders)
+      _count: { select: { invoices: true } },
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const orders = await db.purchaseOrder.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+      })
+      return NextResponse.json(orders)
+    }
+
+    const [data, total] = await Promise.all([
+      db.purchaseOrder.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.purchaseOrder.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching purchase orders:', error)
-    return NextResponse.json({ error: 'فشل في تحميل أوامر الشراء' }, { status: 500 })
+    console.error('[API] Failed to fetch purchase orders:', error)
+    return NextResponse.json({ error: 'Failed to fetch purchase orders', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -68,55 +92,58 @@ export async function POST(request: Request) {
     const vatAmount = subtotal * vatRate
     const totalAmount = subtotal + vatAmount
 
-    // Auto-generate order number PO-XXX
-    const lastOrder = await db.purchaseOrder.findFirst({
-      orderBy: { orderNo: 'desc' },
-      select: { orderNo: true },
-    })
+    // Create PO with items in a transaction
+    const order = await db.$transaction(async (tx: PrismaTransaction) => {
+      // Auto-generate order number PO-XXX (inside tx for consistency)
+      const lastOrder = await tx.purchaseOrder.findFirst({
+        orderBy: { orderNo: 'desc' },
+        select: { orderNo: true },
+      })
 
-    let nextNum = 1
-    if (lastOrder?.orderNo) {
-      const match = lastOrder.orderNo.match(/PO-(\d+)/)
-      if (match) nextNum = parseInt(match[1]) + 1
-    }
-    const orderNo = `PO-${String(nextNum).padStart(4, '0')}`
+      let nextNum = 1
+      if (lastOrder?.orderNo) {
+        const match = lastOrder.orderNo.match(/PO-(\d+)/)
+        if (match) nextNum = parseInt(match[1]) + 1
+      }
+      const orderNo = `PO-${String(nextNum).padStart(4, '0')}`
 
-    const order = await db.purchaseOrder.create({
-      data: {
-        orderNo,
-        supplierId,
-        projectId: projectId || null,
-        purchaseRequestId: purchaseRequestId || null,
-        date: new Date(date),
-        deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
-        subtotal,
-        vatRate,
-        vatAmount,
-        totalAmount,
-        paidAmount: 0,
-        status: 'DRAFT',
-        notes: notes || null,
-        items: {
-          create: items.map((item: { description: string; quantity: number; unit?: string; unitPrice: number }) => ({
-            description: item.description,
-            quantity: item.quantity,
-            unit: item.unit || null,
-            unitPrice: item.unitPrice,
-            totalPrice: item.quantity * item.unitPrice,
-          })),
+      return await tx.purchaseOrder.create({
+        data: {
+          orderNo,
+          supplierId,
+          projectId: projectId || null,
+          purchaseRequestId: purchaseRequestId || null,
+          date: new Date(date),
+          deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+          subtotal,
+          vatRate,
+          vatAmount,
+          totalAmount,
+          paidAmount: 0,
+          status: 'DRAFT',
+          notes: notes || null,
+          items: {
+            create: items.map((item: { description: string; quantity: number; unit?: string; unitPrice: number }) => ({
+              description: item.description,
+              quantity: item.quantity,
+              unit: item.unit || null,
+              unitPrice: item.unitPrice,
+              totalPrice: item.quantity * item.unitPrice,
+            })),
+          },
         },
-      },
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        purchaseRequest: { select: { id: true, requestNo: true, status: true } },
-        items: true,
-      },
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
+          project: { select: { id: true, name: true, code: true, projectType: true } },
+          purchaseRequest: { select: { id: true, requestNo: true, status: true } },
+          items: true,
+        },
+      })
     })
 
     return NextResponse.json(order, { status: 201 })
   } catch (error) {
-    console.error('Error creating purchase order:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء أمر الشراء' }, { status: 500 })
+    console.error('[API] Failed to create purchase order:', error)
+    return NextResponse.json({ error: 'Failed to create purchase order', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

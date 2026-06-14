@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
     const year = searchParams.get('year')
     const rentalId = searchParams.get('rentalId')
     const uninvoiced = searchParams.get('uninvoiced')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
 
     const where: Record<string, unknown> = {}
     if (status) where.status = status
@@ -23,58 +26,81 @@ export async function GET(request: NextRequest) {
       where.status = 'APPROVED'
     }
 
-    const timesheets = await db.timesheet.findMany({
-      where,
-      include: {
-        contract: {
-          select: {
-            id: true, contractNo: true, clientId: true, projectId: true,
-            hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true,
-            paymentTerms: true, contractType: true, startDate: true, endDate: true,
-            rental: {
-              select: {
-                id: true, hourlyRate: true, pricingType: true, deliveryFees: true,
-                deliveryFeesTaxable: true, clientId: true, salesOrderNo: true, paymentDuration: true,
-              },
+    const include = {
+      contract: {
+        select: {
+          id: true, contractNo: true, clientId: true, projectId: true,
+          hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true,
+          paymentTerms: true, contractType: true, startDate: true, endDate: true,
+          rental: {
+            select: {
+              id: true, hourlyRate: true, pricingType: true, deliveryFees: true,
+              deliveryFeesTaxable: true, clientId: true, salesOrderNo: true, paymentDuration: true,
             },
           },
         },
-        equipment: {
-          select: { id: true, code: true, name: true, nameAr: true },
-        },
-        rental: {
-          select: {
-            id: true, hourlyRate: true, pricingType: true, status: true, clientId: true,
-            deliveryFees: true, deliveryFeesTaxable: true, salesOrderNo: true, paymentDuration: true,
-            client: { select: { id: true, name: true, nameAr: true } },
-          },
-        },
-        project: {
-          select: { id: true, code: true, name: true, nameAr: true, clientId: true, client: { select: { id: true, name: true, nameAr: true } } },
-        },
-        invoice: {
-          select: { id: true, invoiceNo: true, status: true },
+      },
+      equipment: {
+        select: { id: true, code: true, name: true, nameAr: true },
+      },
+      rental: {
+        select: {
+          id: true, hourlyRate: true, pricingType: true, status: true, clientId: true,
+          deliveryFees: true, deliveryFeesTaxable: true, salesOrderNo: true, paymentDuration: true,
+          client: { select: { id: true, name: true, nameAr: true } },
         },
       },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    })
+      project: {
+        select: { id: true, code: true, name: true, nameAr: true, clientId: true, client: { select: { id: true, name: true, nameAr: true } } },
+      },
+      invoice: {
+        select: { id: true, invoiceNo: true, status: true },
+      },
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const timesheets = await db.timesheet.findMany({
+        where: whereClause,
+        include,
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      })
+
+      // Enrich with client names from the already-included rental relation
+      const enrichedTimesheets = timesheets.map((ts) => {
+        const clientName = ts.rental?.client?.name || ''
+        const clientNameAr = ts.rental?.client?.nameAr || ''
+        return { ...ts, clientName, clientNameAr }
+      })
+
+      return NextResponse.json(enrichedTimesheets)
+    }
+
+    // Paginated response
+    const [data, total] = await Promise.all([
+      db.timesheet.findMany({
+        where: whereClause,
+        include,
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.timesheet.count({ where: whereClause }),
+    ])
 
     // Enrich with client names from the already-included rental relation
-    const enrichedTimesheets = timesheets.map((ts) => {
+    const enrichedTimesheets = data.map((ts) => {
       const clientName = ts.rental?.client?.name || ''
       const clientNameAr = ts.rental?.client?.nameAr || ''
-
-      return {
-        ...ts,
-        clientName,
-        clientNameAr,
-      }
+      return { ...ts, clientName, clientNameAr }
     })
 
-    return NextResponse.json(enrichedTimesheets)
+    return NextResponse.json({ data: enrichedTimesheets, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching timesheets:', error)
-    return NextResponse.json({ error: 'فشل في تحميل التايم شيت' }, { status: 500 })
+    console.error('[API] Failed to fetch timesheets:', error)
+    return NextResponse.json({ error: 'Failed to fetch timesheets', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -161,8 +187,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(timesheet, { status: 201 })
   } catch (error) {
-    console.error('Error creating timesheet:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء التايم شيت' }, { status: 500 })
+    console.error('[API] Failed to create timesheet:', error)
+    return NextResponse.json({ error: 'Failed to create timesheet', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -190,7 +216,7 @@ export async function PUT(request: Request) {
     }
 
     // If status is changing to INVOICED, validate the transition
-    if (updateData.status === 'INVOICED' && existing.status !== 'INVOICED') {
+    if (updateData.status === 'INVOICED') {
       // Can only change to INVOICED from APPROVED
       if (existing.status !== 'APPROVED') {
         return NextResponse.json(
@@ -234,7 +260,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error updating timesheet:', error)
-    return NextResponse.json({ error: 'فشل في تحديث التايم شيت' }, { status: 500 })
+    console.error('[API] Failed to update timesheet:', error)
+    return NextResponse.json({ error: 'Failed to update timesheet', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

@@ -1,0 +1,711 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  CreditCard, Plus, Search, RefreshCw, Eye, Trash2, Download,
+     7→  Landmark, Building2, FileText,
+     8→} from 'lucide-react'
+     9→import { Card, CardContent } from '@/components/ui/card'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Label } from '@/components/ui/label'
+    14→import { Separator } from '@/components/ui/separator'
+    15→import {
+    16→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    17→} from '@/components/ui/table'
+    18→import {
+    19→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    20→} from '@/components/ui/dialog'
+    21→import {
+    22→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    23→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    24→} from '@/components/ui/alert-dialog'
+    25→import {
+    26→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    27→} from '@/components/ui/select'
+    28→import { MoneyDisplay } from '@/components/ui/money-display'
+    29→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    30→import { PrintButton } from '@/components/shared/print-button'
+    31→import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
+    32→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    33→import { useToast } from '@/hooks/use-toast'
+    34→
+    35→// ============ Types ============
+    36→
+    37→interface ClientSummary { id: string; name: string; code: string }
+    38→
+    39→interface InvoiceSummary {
+    40→  id: string; invoiceNo: string; totalAmount: number; paidAmount: number
+    41→  status: string; sourceType: string; invoiceType: string
+    42→}
+    43→
+    44→interface RentalPaymentItem {
+    45→  id: string
+    46→  clientId: string
+    47→  invoiceId: string | null
+    48→  amount: number
+    49→  date: string
+    50→  receivedIn: string
+    51→  reference: string | null
+    52→  notes: string | null
+    53→  journalEntryId: string | null
+    54→  createdAt: string
+    55→  client: ClientSummary
+    56→  invoice: InvoiceSummary | null
+    57→}
+    58→
+    59→// ============ Labels ============
+    60→
+    61→const labels = {
+    62→  title: { ar: 'تحصيلات التأجير', en: 'Rental Collections' },
+    63→  subtitle: { ar: 'تحصيلات فواتير التأجير', en: 'Collections for rental invoices' },
+    64→  newPayment: { ar: 'تحصيل جديد', en: 'New Collection' },
+    65→  search: { ar: 'بحث بالعميل أو المرجع...', en: 'Search by client or reference...' },
+    66→  client: { ar: 'العميل', en: 'Client' },
+    67→  invoice: { ar: 'الفاتورة', en: 'Invoice' },
+    68→  amount: { ar: 'المبلغ', en: 'Amount' },
+    69→  date: { ar: 'التاريخ', en: 'Date' },
+    70→  receivedIn: { ar: 'عن طريق', en: 'Via' },
+    71→  reference: { ar: 'المرجع', en: 'Reference' },
+    72→  notes: { ar: 'ملاحظات', en: 'Notes' },
+    73→  actions: { ar: 'الإجراءات', en: 'Actions' },
+    74→  totalPayments: { ar: 'إجمالي التحصيلات', en: 'Total Collections' },
+    75→  paymentCount: { ar: 'عدد التحصيلات', en: 'Payment Count' },
+    76→  avgPayment: { ar: 'متوسط التحصيل', en: 'Average Payment' },
+    77→  treasury: { ar: 'الخزينة', en: 'Treasury' },
+    78→  bank: { ar: 'البنك', en: 'Bank' },
+    79→  selectClient: { ar: 'اختر العميل', en: 'Select Client' },
+    80→  selectInvoice: { ar: 'اختر الفاتورة', en: 'Select Invoice' },
+    81→  noInvoices: { ar: 'لا توجد فواتير تأجير', en: 'No rental invoices' },
+    82→  deleteTitle: { ar: 'حذف التحصيل', en: 'Delete Collection' },
+    83→  deleteConfirm: { ar: 'هل أنت متأكد من حذف هذا التحصيل؟', en: 'Are you sure you want to delete this collection?' },
+    84→  noPayments: { ar: 'لا توجد تحصيلات تأجير', en: 'No rental collections' },
+    85→  editPayment: { ar: 'تعديل التحصيل', en: 'Edit Collection' },
+    86→  accountingEntry: { ar: 'القيد المحاسبي', en: 'Accounting Entry' },
+    87→}
+    88→
+    89→// ============ Helpers ============
+    90→
+    91→function t(ar: string, en: string, lang: Lang) {
+    92→  return lang === 'ar' ? ar : en
+    93→}
+    94→
+    95→const receivedInLabels: Record<string, { ar: string; en: string }> = {
+    96→  TREASURY: { ar: 'الخزينة', en: 'Treasury' },
+    97→  BANK: { ar: 'البنك', en: 'Bank' },
+    98→}
+    99→
+   100→const receivedInColors: Record<string, string> = {
+   101→  TREASURY: 'bg-amber-100 text-amber-700 border-amber-200',
+   102→  BANK: 'bg-sky-100 text-sky-700 border-sky-200',
+   103→}
+   104→
+   105→// ============ Skeleton ============
+   106→
+   107→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   108→  return (
+   109→    <div className="space-y-2 p-4">
+   110→      {Array.from({ length: rows }).map((_, i) => (
+   111→        <div key={i} className="flex gap-4 p-3">
+   112→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   113→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   114→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   115→        </div>
+   116→      ))}
+   117→    </div>
+   118→  )
+   119→}
+   120→
+   121→// ============ Add Payment Dialog ============
+   122→
+   123→function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+   124→  const { lang } = useAppStore()
+   125→  const queryClient = useQueryClient()
+   126→  const { toast } = useToast()
+   127→  const tt = (ar: string, en: string) => t(ar, en, lang)
+   128→
+   129→  const [clientId, setClientId] = useState('')
+   130→  const [invoiceId, setInvoiceId] = useState('')
+   131→  const [amount, setAmount] = useState('')
+   132→  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+   133→  const [receivedIn, setReceivedIn] = useState('TREASURY')
+   134→  const [reference, setReference] = useState('')
+   135→  const [notes, setNotes] = useState('')
+   136→
+   137→  // Fetch clients
+   138→  const { data: clients = [] } = useQuery<ClientSummary[]>({
+   139→    queryKey: ['clients-for-rental-payments'],
+   140→    queryFn: async () => {
+   141→      const res = await fetch('/api/clients')
+   142→      if (!res.ok) return []
+   143→      return res.json()
+   144→    },
+   145→  })
+   146→
+   147→  // Fetch rental invoices
+   148→  const { data: invoices = [] } = useQuery<InvoiceSummary[]>({
+   149→    queryKey: ['rental-invoices-for-payments', clientId],
+   150→    queryFn: async () => {
+   151→      const res = await fetch('/api/sales-invoices')
+   152→      if (!res.ok) return []
+   153→      const all: InvoiceSummary[] = await res.json()
+   154→      const rental = all.filter(inv =>
+   155→        inv.sourceType === 'TIMESHEET' || inv.invoiceType === 'RENTAL'
+   156→      )
+   157→      if (clientId) return rental.filter(inv => inv.status !== 'PAID' && inv.status !== 'CANCELLED')
+   158→      return rental
+   159→    },
+   160→    enabled: !!clientId,
+   161→  })
+   162→
+   163→  // Reset form when dialog opens/closes
+   164→  React.useEffect(() => {
+   165→    if (!open) {
+   166→      setClientId(''); setInvoiceId(''); setAmount('')
+   167→      setDate(new Date().toISOString().split('T')[0])
+   168→      setReceivedIn('TREASURY'); setReference(''); setNotes('')
+   169→    }
+   170→  }, [open])
+   171→
+   172→  const createMutation = useMutation({
+   173→    mutationFn: (data: Record<string, unknown>) =>
+   174→      fetch('/api/client-payments', {
+   175→        method: 'POST',
+   176→        headers: { 'Content-Type': 'application/json' },
+   177→        body: JSON.stringify(data),
+   178→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   179→    onSuccess: () => {
+   180→      queryClient.invalidateQueries({ queryKey: ['rental-client-payments'] })
+   181→      toast({ title: tt('تم تسجيل التحصيل', 'Collection recorded'), description: tt('تم تسجيل التحصيل بنجاح', 'Collection has been recorded successfully') })
+   182→      onClose()
+   183→    },
+   184→    onError: () => {
+   185→      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تسجيل التحصيل', 'Failed to record collection'), variant: 'destructive' })
+   186→    },
+   187→  })
+   188→
+   189→  const handleSubmit = (e: React.FormEvent) => {
+   190→    e.preventDefault()
+   191→    const parsedAmount = parseFloat(amount) || 0
+   192→    if (!clientId || parsedAmount <= 0 || !date) return
+   193→
+   194→    createMutation.mutate({
+   195→      clientId,
+   196→      invoiceId: invoiceId || null,
+   197→      amount: parsedAmount,
+   198→      date,
+   199→      receivedIn,
+   200→      reference: reference || null,
+   201→      notes: notes || null,
+   202→    })
+   203→  }
+   204→
+   205→  return (
+   206→    <Dialog open={open} onOpenChange={onClose}>
+   207→      <DialogContent className="max-w-lg">
+   208→        <DialogHeader>
+   209→          <DialogTitle className="flex items-center gap-2">
+   210→            <CreditCard className="size-5 text-cyan-600" />
+   211→            {tt(labels.newPayment.ar, labels.newPayment.en)}
+   212→          </DialogTitle>
+   213→        </DialogHeader>
+   214→
+   215→        <form onSubmit={handleSubmit} className="space-y-4">
+   216→          {/* Client Selection */}
+   217→          <div className="space-y-2">
+   218→            <Label>{tt(labels.client.ar, labels.client.en)} *</Label>
+   219→            <Select value={clientId} onValueChange={v => { setClientId(v); setInvoiceId(''); setAmount('') }}>
+   220→              <SelectTrigger className="w-full">
+   221→                <SelectValue placeholder={tt(labels.selectClient.ar, labels.selectClient.en)} />
+   222→              </SelectTrigger>
+   223→              <SelectContent>
+   224→                {clients.map(c => (
+   225→                  <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
+   226→                ))}
+   227→              </SelectContent>
+   228→            </Select>
+   229→          </div>
+   230→
+   231→          {/* Invoice Selection */}
+   232→          <div className="space-y-2">
+   233→            <Label>{tt(labels.invoice.ar, labels.invoice.en)}</Label>
+   234→            <Select value={invoiceId} onValueChange={setInvoiceId} disabled={!clientId}>
+   235→              <SelectTrigger className="w-full">
+   236→                <SelectValue placeholder={
+   237→                  !clientId
+   238→                    ? tt(labels.selectClient.ar, labels.selectClient.en)
+   239→                    : invoices.length === 0
+   240→                      ? tt(labels.noInvoices.ar, labels.noInvoices.en)
+   241→                      : tt(labels.selectInvoice.ar, labels.selectInvoice.en)
+   242→                } />
+   243→              </SelectTrigger>
+   244→              <SelectContent>
+   245→                {invoices.filter(inv => !clientId || inv.id === clientId || true).map(inv => (
+   246→                  <SelectItem key={inv.id} value={inv.id}>{inv.invoiceNo}</SelectItem>
+   247→                ))}
+   248→              </SelectContent>
+   249→            </Select>
+   250→          </div>
+   251→
+   252→          {/* Amount */}
+   253→          <div className="space-y-2">
+   254→            <Label>{tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *</Label>
+   255→            <Input type="number" step="0.01" min="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" dir="ltr" required />
+   256→          </div>
+   257→
+   258→          {/* Date & Received In */}
+   259→          <div className="grid grid-cols-2 gap-4">
+   260→            <div className="space-y-2">
+   261→              <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
+   262→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   263→            </div>
+   264→            <div className="space-y-2">
+   265→              <Label>{tt(labels.receivedIn.ar, labels.receivedIn.en)}</Label>
+   266→              <Select value={receivedIn} onValueChange={setReceivedIn}>
+   267→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   268→                <SelectContent>
+   269→                  <SelectItem value="TREASURY">
+   270→                    <span className="flex items-center gap-2">
+   271→                      <Landmark className="size-3.5" />
+   272→                      {tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}
+   273→                    </span>
+   274→                  </SelectItem>
+   275→                  <SelectItem value="BANK">
+   276→                    <span className="flex items-center gap-2">
+   277→                      <Building2 className="size-3.5" />
+   278→                      {tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}
+   279→                    </span>
+   280→                  </SelectItem>
+   281→                </SelectContent>
+   282→              </Select>
+   283→            </div>
+   284→          </div>
+   285→
+   286→          {/* Reference */}
+   287→          <div className="space-y-2">
+   288→            <Label>{tt(labels.reference.ar, labels.reference.en)}</Label>
+   289→            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={tt('رقم الإيصال', 'Receipt No.', lang)} />
+   290→          </div>
+   291→
+   292→          {/* Notes */}
+   293→          <div className="space-y-2">
+   294→            <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
+   295→            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes', lang)} />
+   296→          </div>
+   297→
+   298→          <DialogFooter>
+   299→            <Button type="button" variant="outline" onClick={onClose}>{commonText.cancel[lang]}</Button>
+   300→            <Button type="submit" disabled={createMutation.isPending || !clientId || !amount || !date} className="bg-cyan-600 hover:bg-cyan-700 min-w-[140px]">
+   301→              {createMutation.isPending ? tt('جاري الحفظ...', 'Saving...') : tt('تسجيل التحصيل', 'Record Collection')}
+   302→            </Button>
+   303→          </DialogFooter>
+   304→        </form>
+   305→      </DialogContent>
+   306→    </Dialog>
+   307→  )
+   308→}
+   309→
+   310→// ============ Edit Payment Dialog ============
+   311→
+   312→function EditPaymentDialog({ payment, open, onClose }: { payment: RentalPaymentItem | null; open: boolean; onClose: () => void }) {
+   313→  const { lang } = useAppStore()
+   314→  const queryClient = useQueryClient()
+   315→  const { toast } = useToast()
+   316→  const tt = (ar: string, en: string) => t(ar, en, lang)
+   317→
+   318→  const [amount, setAmount] = useState('')
+   319→  const [date, setDate] = useState('')
+   320→  const [receivedIn, setReceivedIn] = useState('TREASURY')
+   321→  const [reference, setReference] = useState('')
+   322→  const [notes, setNotes] = useState('')
+   323→
+   324→  React.useEffect(() => {
+   325→    if (payment && open) {
+   326→      setAmount(String(payment.amount))
+   327→      setDate(payment.date ? new Date(payment.date).toISOString().split('T')[0] : '')
+   328→      setReceivedIn(payment.receivedIn || 'TREASURY')
+   329→      setReference(payment.reference || '')
+   330→      setNotes(payment.notes || '')
+   331→    }
+   332→  }, [payment, open])
+   333→
+   334→  const editMutation = useMutation({
+   335→    mutationFn: (data: Record<string, unknown>) =>
+   336→      fetch(`/api/client-payments/${payment?.id}`, {
+   337→        method: 'PATCH',
+   338→        headers: { 'Content-Type': 'application/json' },
+   339→        body: JSON.stringify(data),
+   340→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   341→    onSuccess: () => {
+   342→      queryClient.invalidateQueries({ queryKey: ['rental-client-payments'] })
+   343→      queryClient.invalidateQueries({ queryKey: ['client-payments'] })
+   344→      toast({ title: tt('تم تحديث التحصيل', 'Collection updated'), description: tt('تم تحديث التحصيل بنجاح', 'Collection has been updated successfully') })
+   345→      onClose()
+   346→    },
+   347→    onError: () => {
+   348→      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تحديث التحصيل', 'Failed to update collection'), variant: 'destructive' })
+   349→    },
+   350→  })
+   351→
+   352→  const handleSubmit = (e: React.FormEvent) => {
+   353→    e.preventDefault()
+   354→    editMutation.mutate({
+   355→      amount: parseFloat(amount) || 0,
+   356→      date,
+   357→      receivedIn,
+   358→      reference: reference || null,
+   359→      notes: notes || null,
+   360→    })
+   361→  }
+   362→
+   363→  if (!payment) return null
+   364→
+   365→  const isPosted = !!payment.journalEntryId
+   366→
+   367→  return (
+   368→    <Dialog open={open} onOpenChange={onClose}>
+   369→      <DialogContent className="max-w-lg">
+   370→        <DialogHeader>
+   371→          <DialogTitle className="flex items-center gap-2">
+   372→            <CreditCard className="size-5 text-cyan-600" />
+   373→            {tt(labels.editPayment.ar, labels.editPayment.en)}
+   374→          </DialogTitle>
+   375→        </DialogHeader>
+   376→
+   377→        {isPosted && (
+   378→          <div className="p-3 rounded-lg border bg-amber-50 text-amber-700 text-sm">
+   379→            {tt('هذا التحصيل مرحّل محاسبياً - التعديل محدود', 'This collection is posted - editing is limited')}
+   380→          </div>
+   381→        )}
+   382→
+   383→        <form onSubmit={handleSubmit} className="space-y-4">
+   384→          <div className="p-3 rounded-lg bg-gray-50 text-sm">
+   385→            <span className="text-muted-foreground">{tt('العميل:', 'Client:')}</span>{' '}
+   386→            <span className="font-medium">{payment.client.name}</span>
+   387→            {payment.invoice && (
+   388→              <><span className="text-muted-foreground mx-2">|</span>
+   389→              <span className="text-muted-foreground">{tt('الفاتورة:', 'Invoice:')}</span>{' '}
+   390→              <span className="font-medium">{payment.invoice.invoiceNo}</span></>
+   391→            )}
+   392→          </div>
+   393→
+   394→          <div className="space-y-2">
+   395→            <Label>{tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *</Label>
+   396→            <Input type="number" step="0.01" min="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required disabled={isPosted} />
+   397→          </div>
+   398→
+   399→          <div className="grid grid-cols-2 gap-4">
+   400→            <div className="space-y-2">
+   401→              <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
+   402→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required disabled={isPosted} />
+   403→            </div>
+   404→            <div className="space-y-2">
+   405→              <Label>{tt(labels.receivedIn.ar, labels.receivedIn.en)}</Label>
+   406→              <Select value={receivedIn} onValueChange={setReceivedIn} disabled={isPosted}>
+   407→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   408→                <SelectContent>
+   409→                  <SelectItem value="TREASURY">{tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}</SelectItem>
+   410→                  <SelectItem value="BANK">{tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}</SelectItem>
+   411→                </SelectContent>
+   412→              </Select>
+   413→            </div>
+   414→          </div>
+   415→
+   416→          <div className="space-y-2">
+   417→            <Label>{tt(labels.reference.ar, labels.reference.en)}</Label>
+   418→            <Input value={reference} onChange={e => setReference(e.target.value)} disabled={isPosted} />
+   419→          </div>
+   420→
+   421→          <div className="space-y-2">
+   422→            <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
+   423→            <Input value={notes} onChange={e => setNotes(e.target.value)} disabled={isPosted} />
+   424→          </div>
+   425→
+   426→          <DialogFooter>
+   427→            <Button type="button" variant="outline" onClick={onClose}>{commonText.cancel[lang]}</Button>
+   428→            <Button type="submit" disabled={editMutation.isPending || isPosted} className="bg-cyan-600 hover:bg-cyan-700 min-w-[140px]">
+   429→              {editMutation.isPending ? tt('جاري الحفظ...', 'Saving...') : tt('حفظ التعديلات', 'Save Changes')}
+   430→            </Button>
+   431→          </DialogFooter>
+   432→        </form>
+   433→      </DialogContent>
+   434→    </Dialog>
+   435→  )
+   436→}
+   437→
+   438→// ============ Main Module ============
+   439→
+   440→export function RentalPaymentsModule() {
+   441→  const { lang } = useAppStore()
+   442→  const queryClient = useQueryClient()
+   443→  const { toast } = useToast()
+   444→  const tt = (ar: string, en: string) => t(ar, en, lang)
+   445→
+   446→  const [search, setSearch] = useState('')
+   447→  const [showAddDialog, setShowAddDialog] = useState(false)
+   448→  const [editPayment, setEditPayment] = useState<RentalPaymentItem | null>(null)
+   449→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   450→
+   451→  // Fetch payments
+   452→  const { data: payments = [], isLoading, isError, refetch } = useQuery<RentalPaymentItem[]>({
+   453→    queryKey: ['rental-client-payments'],
+   454→    queryFn: async () => {
+   455→      const res = await fetch('/api/client-payments')
+   456→      if (!res.ok) throw new Error('Failed')
+   457→      const all: RentalPaymentItem[] = await res.json()
+   458→      // Filter to only rental invoices
+   459→      return all.filter(p => !p.invoice || p.invoice.sourceType === 'TIMESHEET' || p.invoice.invoiceType === 'RENTAL')
+   460→    },
+   461→    staleTime: 30000,
+   462→  })
+   463→
+   464→  // Delete mutation
+   465→  const deleteMutation = useMutation({
+   466→    mutationFn: (id: string) =>
+   467→      fetch(`/api/client-payments/${id}`, { method: 'DELETE' }).then(r => {
+   468→        if (!r.ok) throw new Error()
+   469→        return r.json()
+   470→      }),
+   471→    onSuccess: () => {
+   472→      queryClient.invalidateQueries({ queryKey: ['rental-client-payments'] })
+   473→      toast({ title: tt('تم الحذف', 'Deleted'), description: tt('تم حذف التحصيل بنجاح', 'Collection has been deleted') })
+   474→      setDeleteId(null)
+   475→    },
+   476→    onError: () => {
+   477→      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في حذف التحصيل', 'Failed to delete collection'), variant: 'destructive' })
+   478→    },
+   479→  })
+   480→
+   481→  // Filter
+   482→  const filtered = useMemo(() => {
+   483→    return payments.filter(p => {
+   484→      const matchSearch = !search ||
+   485→        p.client.name.toLowerCase().includes(search.toLowerCase()) ||
+   486→        (p.reference && p.reference.toLowerCase().includes(search.toLowerCase())) ||
+   487→        (p.invoice?.invoiceNo && p.invoice.invoiceNo.toLowerCase().includes(search.toLowerCase()))
+   488→      return matchSearch
+   489→    })
+   490→  }, [payments, search])
+   491→
+   492→  // Stats
+   493→  const totalPayments = filtered.reduce((s, p) => s + p.amount, 0)
+   494→  const avgPayment = filtered.length > 0 ? totalPayments / filtered.length : 0
+   495→
+   496→  // CSV export
+   497→  const handleExport = () => {
+   498→    const columns: CSVColumn[] = [
+   499→      { key: 'clientName', label: tt('العميل', 'Client') },
+   500→      { key: 'invoiceNo', label: tt('الفاتورة', 'Invoice') },
+   501→      { key: 'amount', label: tt('المبلغ', 'Amount'), format: (v) => (Number(v) || 0).toFixed(2) },
+   502→      { key: 'date', label: tt('التاريخ', 'Date') },
+   503→      { key: 'receivedIn', label: tt('عن طريق', 'Via'), format: (v) => receivedInLabels[v as string]?.[lang] || String(v) },
+   504→      { key: 'reference', label: tt('المرجع', 'Reference') },
+   505→      { key: 'notes', label: tt('ملاحظات', 'Notes') },
+   506→    ]
+   507→    const rows = filtered.map(p => ({
+   508→      clientName: p.client.name,
+   509→      invoiceNo: p.invoice?.invoiceNo || '',
+   510→      amount: p.amount,
+   511→      date: formatDate(p.date, lang),
+   512→      receivedIn: p.receivedIn,
+   513→      reference: p.reference || '',
+   514→      notes: p.notes || '',
+   515→    }))
+   516→    exportToCSV(rows, `rental-payments-${new Date().toISOString().slice(0, 10)}`, columns)
+   517→  }
+   518→
+   519→  // Print data
+   520→  const printData = useMemo(() => ({
+   521→    columns: [
+   522→      { key: 'clientName', label: lang === 'ar' ? 'العميل' : 'Client' },
+   523→      { key: 'invoiceNo', label: lang === 'ar' ? 'الفاتورة' : 'Invoice' },
+   524→      { key: 'amount', label: lang === 'ar' ? 'المبلغ' : 'Amount' },
+   525→      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+   526→      { key: 'receivedIn', label: lang === 'ar' ? 'عن طريق' : 'Via' },
+   527→    ],
+   528→    rows: filtered.map(p => ({
+   529→      clientName: p.client.name,
+   530→      invoiceNo: p.invoice?.invoiceNo || '—',
+   531→      amount: p.amount,
+   532→      date: formatDate(p.date, lang),
+   533→      receivedIn: receivedInLabels[p.receivedIn]?.[lang] || p.receivedIn,
+   534→    })),
+   535→    infoItems: [
+   536→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   537→      { label: lang === 'ar' ? 'الإجمالي' : 'Total', value: String(totalPayments) },
+   538→    ],
+   539→  }), [filtered, lang, totalPayments])
+   540→
+   541→  return (
+   542→    <ModuleLayout
+   543→      title={labels.title}
+   544→      subtitle={labels.subtitle}
+   545→      actions={
+   546→        <>
+   547→          <PrintButton type="rental-payment" data={printData} size="icon" />
+   548→          <Button variant="outline" size="icon" onClick={handleExport} title={tt('تصدير CSV', 'Export CSV')}>
+   549→            <Download className="size-4" />
+   550→          </Button>
+   551→          <Button variant="outline" size="icon" onClick={() => refetch()} title={tt('تحديث', 'Refresh')}>
+   552→            <RefreshCw className="size-4" />
+   553→          </Button>
+   554→          <Button className="gap-2 bg-cyan-600 hover:bg-cyan-700" onClick={() => setShowAddDialog(true)}>
+   555→            <Plus className="size-4" /> {tt(labels.newPayment.ar, labels.newPayment.en)}
+   556→          </Button>
+   557→        </>
+   558→      }
+   559→    >
+   560→      {/* Summary Cards */}
+   561→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   562→        <Card className="bg-cyan-50 border-cyan-200">
+   563→          <CardContent className="p-3">
+   564→            <p className="text-xs text-muted-foreground">{tt(labels.paymentCount.ar, labels.paymentCount.en)}</p>
+   565→            <p className="text-xl font-bold text-cyan-700">{filtered.length}</p>
+   566→          </CardContent>
+   567→        </Card>
+   568→        <Card className="bg-emerald-50 border-emerald-200">
+   569→          <CardContent className="p-3">
+   570→            <p className="text-xs text-muted-foreground">{tt(labels.totalPayments.ar, labels.totalPayments.en)}</p>
+   571→            <MoneyDisplay value={totalPayments} lang={lang} size="xl" bold className="text-emerald-700" />
+   572→          </CardContent>
+   573→        </Card>
+   574→        <Card className="bg-amber-50 border-amber-200">
+   575→          <CardContent className="p-3">
+   576→            <p className="text-xs text-muted-foreground">{tt(labels.avgPayment.ar, labels.avgPayment.en)}</p>
+   577→            <MoneyDisplay value={avgPayment} lang={lang} size="xl" bold className="text-amber-700" />
+   578→          </CardContent>
+   579→        </Card>
+   580→      </div>
+   581→
+   582→      {/* Filters */}
+   583→      <Card>
+   584→        <CardContent className="p-4">
+   585→          <div className="flex flex-col sm:flex-row gap-3">
+   586→            <div className="relative flex-1">
+   587→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   588→              <Input placeholder={tt(labels.search.ar, labels.search.en)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   589→            </div>
+   590→          </div>
+   591→        </CardContent>
+   592→      </Card>
+   593→
+   594→      {/* Table */}
+   595→      <Card>
+   596→        <CardContent className="p-0">
+   597→          {isLoading ? (
+   598→            <TableSkeleton />
+   599→          ) : isError ? (
+   600→            <div className="flex flex-col items-center gap-3 py-10">
+   601→              <p className="text-rose-600">{commonText.error[lang]}</p>
+   602→              <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   603→            </div>
+   604→          ) : filtered.length === 0 ? (
+   605→            <div className="flex flex-col items-center gap-3 py-10">
+   606→              <CreditCard className="size-12 text-gray-300" />
+   607→              <p className="text-muted-foreground">{tt(labels.noPayments.ar, labels.noPayments.en)}</p>
+   608→              <Button className="bg-cyan-600 hover:bg-cyan-700" onClick={() => setShowAddDialog(true)}>
+   609→                <Plus className="size-4 mr-1" /> {tt(labels.newPayment.ar, labels.newPayment.en)}
+   610→              </Button>
+   611→            </div>
+   612→          ) : (
+   613→            <div className="overflow-x-auto">
+   614→              <Table>
+   615→                <TableHeader>
+   616→                  <TableRow>
+   617→                    <TableHead className="text-right">{tt(labels.date.ar, labels.date.en)}</TableHead>
+   618→                    <TableHead className="text-right">{tt(labels.client.ar, labels.client.en)}</TableHead>
+   619→                    <TableHead className="text-right">{tt(labels.invoice.ar, labels.invoice.en)}</TableHead>
+   620→                    <TableHead className="text-right">{tt(labels.amount.ar, labels.amount.en)}</TableHead>
+   621→                    <TableHead className="text-right">{tt(labels.receivedIn.ar, labels.receivedIn.en)}</TableHead>
+   622→                    <TableHead className="text-right">{tt(labels.reference.ar, labels.reference.en)}</TableHead>
+   623→                    <TableHead className="text-right">{tt(labels.accountingEntry.ar, labels.accountingEntry.en)}</TableHead>
+   624→                    <TableHead className="text-right">{tt(labels.actions.ar, labels.actions.en)}</TableHead>
+   625→                  </TableRow>
+   626→                </TableHeader>
+   627→                <TableBody>
+   628→                  {filtered.map(p => (
+   629→                    <TableRow key={p.id} className="cursor-pointer hover:bg-cyan-50/50" onClick={() => setEditPayment(p)}>
+   630→                      <TableCell className="whitespace-nowrap">{formatDate(p.date, lang)}</TableCell>
+   631→                      <TableCell className="font-medium">{p.client.name}</TableCell>
+   632→                      <TableCell>
+   633→                        {p.invoice ? (
+   634→                          <span className="flex items-center gap-1 text-sm">
+   635→                            <FileText className="size-3.5 text-muted-foreground" />
+   636→                            {p.invoice.invoiceNo}
+   637→                          </span>
+   638→                        ) : (
+   639→                          <span className="text-muted-foreground text-xs">—</span>
+   640→                        )}
+   641→                      </TableCell>
+   642→                      <TableCell className="font-semibold">
+   643→                        <MoneyDisplay value={p.amount} lang={lang} size="sm" inline bold />
+   644→                      </TableCell>
+   645→                      <TableCell>
+   646→                        <Badge variant="outline" className={`text-[10px] ${receivedInColors[p.receivedIn] || ''}`}>
+   647→                          {receivedInLabels[p.receivedIn]?.[lang] || p.receivedIn}
+   648→                        </Badge>
+   649→                      </TableCell>
+   650→                      <TableCell className="text-xs text-muted-foreground">{p.reference || '—'}</TableCell>
+   651→                      <TableCell>
+   652→                        {p.journalEntryId ? (
+   653→                          <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">
+   654→                            {tt('قيد', 'JE', lang)}
+   655→                          </Badge>
+   656→                        ) : (
+   657→                          <span className="text-muted-foreground text-xs">—</span>
+   658→                        )}
+   659→                      </TableCell>
+   660→                      <TableCell>
+   661→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   662→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setEditPayment(p)} title={tt('تعديل', 'Edit')}>
+   663→                            <Eye className="size-4" />
+   664→                          </Button>
+   665→                          <Button variant="ghost" size="icon" className="size-8 text-rose-500" onClick={() => setDeleteId(p.id)} title={tt('حذف', 'Delete')}>
+   666→                            <Trash2 className="size-4" />
+   667→                          </Button>
+   668→                        </div>
+   669→                      </TableCell>
+   670→                    </TableRow>
+   671→                  ))}
+   672→                  {/* Total row */}
+   673→                  <TableRow className="bg-cyan-50 font-bold">
+   674→                    <TableCell colSpan={3}>{tt('الإجمالي', 'Total')}</TableCell>
+   675→                    <TableCell>
+   676→                      <MoneyDisplay value={totalPayments} lang={lang} bold size="sm" />
+   677→                    </TableCell>
+   678→                    <TableCell colSpan={4} />
+   679→                  </TableRow>
+   680→                </TableBody>
+   681→              </Table>
+   682→            </div>
+   683→          )}
+   684→        </CardContent>
+   685→      </Card>
+   686→
+   687→      {/* Add Dialog */}
+   688→      <AddPaymentDialog open={showAddDialog} onClose={() => setShowAddDialog(false)} />
+   689→
+   690→      {/* Edit Dialog */}
+   691→      <EditPaymentDialog payment={editPayment} open={!!editPayment} onClose={() => setEditPayment(null)} />
+   692→
+   693→      {/* Delete Confirmation */}
+   694→      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+   695→        <AlertDialogContent>
+   696→          <AlertDialogHeader>
+   697→            <AlertDialogTitle>{tt(labels.deleteTitle.ar, labels.deleteTitle.en)}</AlertDialogTitle>
+   698→            <AlertDialogDescription>{tt(labels.deleteConfirm.ar, labels.deleteConfirm.en)}</AlertDialogDescription>
+   699→          </AlertDialogHeader>
+   700→          <AlertDialogFooter>
+   701→            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+   702→            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+   703→              {commonText.delete[lang]}
+   704→            </AlertDialogAction>
+   705→          </AlertDialogFooter>
+   706→        </AlertDialogContent>
+   707→      </AlertDialog>
+   708→    </ModuleLayout>
+   709→  )
+   710→}
+   711→

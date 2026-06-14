@@ -1,6 +1,6 @@
 // نظام بِنَاء ERP - Complete Schema
 // Binaa Construction ERP
-// Updated: Resources + Supply Chain + Accounting Integration
+// Version 2.0 - Restructured per comprehensive audit
 
 generator client {
   provider = "prisma-client-js"
@@ -78,6 +78,12 @@ enum EquipmentStatus {
   RENTED
 }
 
+enum EquipmentOwnershipType {
+  COMPANY_OWNED    // مملوكة للشركة
+  LEASED_ASSET    // مستأجرة من طرف آخر
+  CUSTOMER_OWNED  // معدات عميل
+}
+
 enum AdvanceStatus {
   PENDING
   PARTIALLY_SETTLED
@@ -144,8 +150,8 @@ enum AccountActivityType {
 // Activity type for business flow - every record knows which hub it belongs to
 enum ActivityType {
   EXECUTION // مشاريع تنفيذية
-  RENTAL // تأجير معدات
-  GENERAL // مشترك / عام
+  RENTAL    // تأجير معدات
+  GENERAL   // مشترك / عام
 }
 
 enum VATReturnStatus {
@@ -174,7 +180,23 @@ enum GoodsReceiptStatus {
   CANCELLED
 }
 
+enum ChangeOrderStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum WarrantyType {
+  PERFORMANCE     // ضمان أداء
+  ADVANCEMENT     // ضمان دفعة مقدمة
+  RETENTION       // ضمان استقطاع
+  MAINTENANCE     // ضمان صيانة
+}
+
 // ============ COMPANY SETTINGS ============
+// المصدر المركزي الوحيد لبيانات الشركة - يمنع تكرارها في أي مكان آخر
 
 model CompanySetting {
   id                            String   @id @default(cuid())
@@ -201,8 +223,11 @@ model CompanySetting {
   currencySymbolImage           String?
   headerImage                   String?
   footerImage                   String?
+  headerHeight                  Int      @default(30)
+  footerHeight                  Int      @default(22)
   useThousandSeparatorsSystem   Boolean  @default(true)
   useThousandSeparatorsOfficial Boolean  @default(false)
+  decimalPlaces                 Int      @default(2)
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 }
@@ -245,7 +270,9 @@ model Currency {
   name      String
   nameAr    String?
   symbol    String
+  symbolImage String?   // صورة رمز العملة
   rate      Decimal  @default(1)
+  decimalPlaces Int    @default(2)
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -256,6 +283,7 @@ model CostCenter {
   code      String  @unique
   name      String
   parentId  String?
+  isActive  Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -264,6 +292,7 @@ model CostCenter {
   journalLines JournalLine[]
 
   @@index([parentId])
+  @@index([isActive])
 }
 
 model Attachment {
@@ -292,6 +321,41 @@ model AuditLog {
 
   @@index([entity, entityId])
   @@index([userId])
+}
+
+// ============ FISCAL YEAR & PERIODS ============
+
+model FiscalYear {
+  id        String   @id @default(cuid())
+  name      String   @unique // e.g. "2025"
+  startDate DateTime
+  endDate   DateTime
+  status    String   @default("OPEN") // OPEN, CLOSED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  periods FiscalPeriod[]
+
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model FiscalPeriod {
+  id         String   @id @default(cuid())
+  fiscalYearId String
+  periodNo   Int      // 1-12
+  startDate  DateTime
+  endDate    DateTime
+  status     String   @default("OPEN") // OPEN, CLOSED
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  fiscalYear FiscalYear @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+
+  @@unique([fiscalYearId, periodNo])
+  @@index([fiscalYearId])
+  @@index([status])
+  @@index([startDate, endDate])
 }
 
 // ============ CLIENTS & SUPPLIERS ============
@@ -373,6 +437,7 @@ model Subcontractor {
 }
 
 // ============ EMPLOYEES ============
+// المصدر المركزي للعمالة - جميع الوحدات تعتمد عليه
 
 model Employee {
   id              String         @id @default(cuid())
@@ -400,6 +465,7 @@ model Employee {
   salaries        Salary[]
   teamMemberships TeamMember[]
   operatorLogs    EquipmentOperation[]
+  laborCosts      LaborCost[]
 
   @@index([branchId])
   @@index([status])
@@ -429,8 +495,8 @@ model Attendance {
   date          DateTime
   checkIn       DateTime?
   checkOut      DateTime?
-  workHours     Float     @default(0)
-  overtimeHours Float     @default(0)
+  workHours     Decimal   @default(0)
+  overtimeHours Decimal   @default(0)
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -445,7 +511,7 @@ model Attendance {
 model Salary {
   id                 String       @id @default(cuid())
   employeeId         String
-  projectId          String? // ربط بالمشروع
+  projectId          String? // ربط بالمشروع لتحميل التكلفة
   activityType       String       @default("GENERAL") // EXECUTION, RENTAL, GENERAL
   month              Int // 1-12
   year               Int
@@ -528,6 +594,8 @@ model Project {
   client                 Client                   @relation(fields: [clientId], references: [id])
   contracts              Contract[]
   boqItems               BOQItem[]
+  changeOrders           ChangeOrder[]
+  warranties             Warranty[]
   progressClaims         ProgressClaim[]
   salesInvoices          SalesInvoice[]
   purchaseOrders         PurchaseOrder[]
@@ -546,7 +614,7 @@ model Project {
   fuelLogs               EquipmentFuelLog[]
   resourceAllocations    ResourceAllocation[]
   equipmentOperations    EquipmentOperation[]
-  salaries               Salary[] // الرواتب المرتبطة بالمشروع
+  salaries               Salary[]
   deliveryOrders         EquipmentDeliveryOrder[]
 
   @@index([branchId])
@@ -555,6 +623,9 @@ model Project {
   @@index([projectType])
   @@index([clientId, status])
 }
+
+// ============ CONTRACTS ============
+// عقد موحد يدعم نوعين: مشاريع تنفيذية وتأجير معدات
 
 model Contract {
   id                    String         @id @default(cuid())
@@ -569,7 +640,9 @@ model Contract {
   endDate               DateTime?
   status                ContractStatus @default(DRAFT)
   description           String?
-  contractType          String? // PROJECT, RENTAL, SERVICE
+  // ─── Contract Type ───
+  contractType          String         @default("PROJECT") // PROJECT, RENTAL, SERVICE
+  // ─── Rental Contract Fields ───
   clientId              String?
   equipmentId           String?
   hourlyRate            Decimal?
@@ -588,7 +661,7 @@ model Contract {
   billingMethod         String? // PROGRESS_CLAIMS, MILESTONES
   firstClaimNo          String? // رقم أول مستخلص
   advancePaymentPercent Decimal?       @default(0) // نسبة الدفعة المقدمة
-  retentionPercent      Decimal?       @default(0) // نسبة الاحتجاز
+  retentionPercent      Decimal?       @default(0) // نسبة الاستقطاع
   projectManager        String? // مدير المشروع
   projectEngineer       String? // مهندس المشروع
   projectLocation       String? // الموقع
@@ -601,14 +674,78 @@ model Contract {
   client         Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   progressClaims ProgressClaim[]
   salesInvoices  SalesInvoice[]
+  changeOrders   ChangeOrder[]
+  warranties     Warranty[]
   timesheets     Timesheet[]
   rental         EquipmentRental?
 
   @@index([projectId])
   @@index([clientId])
   @@index([status])
+  @@index([contractType])
   @@index([projectId, status])
   @@index([date])
+}
+
+// ============ CHANGE ORDERS / VARIATION ORDERS ============
+// أوامر التغيير - لإدارة التعديلات على العقود
+
+model ChangeOrder {
+  id              String            @id @default(cuid())
+  projectId       String
+  contractId      String
+  orderNo         String            @unique
+  date            DateTime
+  description     String
+  changeType      String            @default("ADDITION") // ADDITION, MODIFICATION, DELETION
+  originalValue   Decimal           @default(0)
+  changeValue     Decimal           @default(0)
+  newValue        Decimal           @default(0)
+  vatRate         Decimal           @default(0.15)
+  vatAmount       Decimal           @default(0)
+  totalChangeValue Decimal          @default(0)
+  status          ChangeOrderStatus @default(DRAFT)
+  approvedDate    DateTime?
+  approvedBy      String?
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([status])
+  @@index([date])
+}
+
+// ============ WARRANTIES ============
+// الضمانات
+
+model Warranty {
+  id             String       @id @default(cuid())
+  projectId      String
+  contractId     String
+  type           WarrantyType @default(PERFORMANCE)
+  referenceNo    String?      @unique
+  issuer         String?      // جهة الإصدار (بنك/شركة تأمين)
+  beneficiary    String?      // المستفيد
+  amount         Decimal      @default(0)
+  startDate      DateTime
+  endDate        DateTime
+  status         String       @default("ACTIVE") // ACTIVE, RELEASED, EXPIRED, CLAIMED
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  project  Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
+
+  @@index([projectId])
+  @@index([contractId])
+  @@index([status])
+  @@index([endDate])
 }
 
 // ============ BOQ ============
@@ -619,7 +756,7 @@ model BOQItem {
   code        String
   description String
   unit        String
-  quantity    Float
+  quantity    Decimal  @default(0)
   unitPrice   Decimal  @default(0)
   totalPrice  Decimal  @default(0)
   category    String?
@@ -640,7 +777,7 @@ model ProgressClaim {
   contractId     String
   claimNo        String
   date           DateTime
-  percentage     Float
+  percentage     Decimal     @default(0)
   amount         Decimal     @default(0)
   vatRate        Decimal     @default(0.15)
   vatAmount      Decimal     @default(0)
@@ -684,7 +821,7 @@ model SalesInvoice {
   totalAmount         Decimal       @default(0)
   paidAmount          Decimal       @default(0)
   status              InvoiceStatus @default(DRAFT)
-  invoiceType         String        @default("PROGRESS_CLAIM")
+  invoiceType         String        @default("PROGRESS_CLAIM") // PROGRESS_CLAIM, RENTAL, SERVICE
   notes               String?
   paymentTerms        String?
   referenceNo         String?
@@ -702,11 +839,13 @@ model SalesInvoice {
   contractPeriodEnd   DateTime?
   salesOrderNo        String?
   equipmentName       String?
-  operatingHours      Float?
+  operatingHours      Decimal?
   hourlyRate          Decimal?
   amountInWordsAr     String?
   amountInWordsEn     String?
   journalEntryId      String?
+  // ZATCA QR fields
+  zatcaQr             String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   deletedAt           DateTime?
@@ -726,6 +865,7 @@ model SalesInvoice {
   @@index([date])
   @@index([clientId, status])
   @@index([projectId, status])
+  @@index([invoiceType])
 }
 
 model SalesInvoiceItem {
@@ -733,7 +873,7 @@ model SalesInvoiceItem {
   invoiceId     String
   description   String
   descriptionEn String?
-  quantity      Float
+  quantity      Decimal  @default(0)
   unit          String?
   unitPrice     Decimal  @default(0)
   totalPrice    Decimal  @default(0)
@@ -773,7 +913,7 @@ model PurchaseRequestItem {
   id          String   @id @default(cuid())
   requestId   String
   description String
-  quantity    Float
+  quantity    Decimal  @default(0)
   unit        String?
   notes       String?
   createdAt   DateTime @default(now())
@@ -823,7 +963,7 @@ model PurchaseOrderItem {
   id          String   @id @default(cuid())
   orderId     String
   description String
-  quantity    Float
+  quantity    Decimal  @default(0)
   unit        String?
   unitPrice   Decimal  @default(0)
   vatRate     Decimal  @default(0.15)
@@ -866,9 +1006,9 @@ model GoodsReceiptItem {
   id                String   @id @default(cuid())
   goodsReceiptId    String
   description       String
-  quantityOrdered   Float
-  quantityReceived  Float
-  quantityRemaining Float
+  quantityOrdered   Decimal  @default(0)
+  quantityReceived  Decimal  @default(0)
+  quantityRemaining Decimal  @default(0)
   unitPrice         Decimal  @default(0)
   totalPrice        Decimal  @default(0)
   destination       String   @default("INVENTORY") // INVENTORY or PROJECT
@@ -904,6 +1044,8 @@ model PurchaseInvoice {
   referenceNo         String?
   expenseCategory     String?
   journalEntryId      String?
+  // ZATCA QR fields
+  zatcaQr             String?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   deletedAt           DateTime?
@@ -929,7 +1071,7 @@ model PurchaseInvoiceItem {
   id          String   @id @default(cuid())
   invoiceId   String
   description String
-  quantity    Float
+  quantity    Decimal  @default(0)
   unitPrice   Decimal  @default(0)
   totalPrice  Decimal  @default(0)
   createdAt   DateTime @default(now())
@@ -1036,26 +1178,29 @@ model Expense {
 model LaborCost {
   id          String   @id @default(cuid())
   projectId   String
+  employeeId  String?  // ربط بالموظف
   description String
   workers     Int
-  days        Float
+  days        Decimal  @default(0)
   dailyRate   Decimal  @default(0)
   totalAmount Decimal  @default(0)
   date        DateTime
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([employeeId])
   @@index([date])
 }
 
 // ============ EQUIPMENT ============
 
 model Equipment {
-  id              String          @id @default(cuid())
-  code            String          @unique
+  id              String              @id @default(cuid())
+  code            String              @unique
   name            String
   nameAr          String?
   type            String?
@@ -1064,17 +1209,20 @@ model Equipment {
   manufactureYear Int?
   plateNumber     String?
   serialNumber    String?
-  status          EquipmentStatus @default(AVAILABLE)
-  supplierId      String?
-  purchasePrice   Decimal         @default(0)
-  hourlyRate      Decimal         @default(0)
-  dailyRate       Decimal         @default(0)
-  monthlyRate     Decimal         @default(0)
+  status          EquipmentStatus     @default(AVAILABLE)
+  // ─── Ownership ───
+  ownershipType   EquipmentOwnershipType @default(COMPANY_OWNED)
+  supplierId      String?             // المورد (اختياري للشركة المملوكة، إلزامي للمستأجرة)
+  ownerId         String?             // مالك المعدة (للمعدات المملوكة للعميل)
+  purchasePrice   Decimal             @default(0)
+  hourlyRate      Decimal             @default(0)
+  dailyRate       Decimal             @default(0)
+  monthlyRate     Decimal             @default(0)
   purchaseDate    DateTime?
   warrantyExpiry  DateTime?
-  isActive        Boolean         @default(true)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  isActive        Boolean             @default(true)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
   supplier         Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   usages           EquipmentUsage[]
@@ -1091,6 +1239,7 @@ model Equipment {
   @@index([supplierId])
   @@index([status])
   @@index([isActive])
+  @@index([ownershipType])
 }
 
 model EquipmentOperation {
@@ -1099,7 +1248,7 @@ model EquipmentOperation {
   operatorId  String?
   projectId   String?
   date        DateTime
-  hours       Float    @default(0)
+  hours       Decimal  @default(0)
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1119,7 +1268,7 @@ model EquipmentUsage {
   equipmentId String
   projectId   String
   date        DateTime
-  hours       Float
+  hours       Decimal  @default(0)
   description String?
   cost        Decimal  @default(0)
   createdAt   DateTime @default(now())
@@ -1158,7 +1307,7 @@ model EquipmentFuelLog {
   equipmentId    String
   projectId      String?
   date           DateTime
-  liters         Float
+  liters         Decimal  @default(0)
   costPerLiter   Decimal  @default(0)
   totalCost      Decimal  @default(0)
   journalEntryId String?
@@ -1201,7 +1350,7 @@ model EquipmentRental {
   // ─── Pricing ───
   pricingType             String    @default("HOURLY") // HOURLY, DAILY, MONTHLY, LUMP_SUM
   referenceRate           Decimal   @default(0) // القيمة الشهرية المرجعية
-  referenceHours          Float     @default(0) // ساعات التسعير المرجعية
+  referenceHours          Decimal   @default(0) // ساعات التسعير المرجعية
   hourlyRate              Decimal   @default(0) // محسوب تلقائياً
   dailyRate               Decimal   @default(0) // السعر اليومي
   monthlyRate             Decimal   @default(0) // السعر الشهري
@@ -1297,6 +1446,7 @@ model EquipmentExpense {
 }
 
 // ============ TIMESHEETS ============
+// يمنع إنشاء فاتورة تأجير يدوياً - الفاتورة تنشأ من التايم شيت فقط
 
 model Timesheet {
   id             String          @id @default(cuid())
@@ -1306,10 +1456,13 @@ model Timesheet {
   equipmentId    String
   month          Int
   year           Int
-  operatingHours Float           @default(0)
+  operatingHours Decimal         @default(0)
   status         TimesheetStatus @default(DRAFT)
   approvedDate   DateTime?
   notes          String?
+  // ─── Invoicing Control ───
+  invoiced       Boolean         @default(false)
+  invoiceId      String?         // ربط بالفاتورة بعد إصدارها
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -1325,21 +1478,22 @@ model Timesheet {
   @@index([equipmentId])
   @@index([status])
   @@index([year, month])
+  @@index([invoiced])
 }
 
 // ============ PETTY CASH & ADVANCES ============
 
 model PettyCash {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   branchId       String
   description    String
-  amount         Decimal   @default(0)
+  amount         Decimal  @default(0)
   date           DateTime
   category       String?
   reference      String?
   journalEntryId String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
   deletedAt      DateTime?
 
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
@@ -1380,8 +1534,8 @@ model InventoryItem {
   unit          String
   purchasePrice Decimal           @default(0)
   sellingPrice  Decimal           @default(0)
-  quantity      Float             @default(0)
-  minQuantity   Float             @default(0)
+  quantity      Decimal           @default(0)
+  minQuantity   Decimal           @default(0)
   warehouseId   String
   category      String?
   isActive      Boolean           @default(true)
@@ -1434,10 +1588,11 @@ model JournalEntry {
   date            DateTime
   description     String?
   status          JournalEntryStatus @default(POSTED)
-  sourceType      String?
+  sourceType      String? // SALES_INVOICE, PURCHASE_INVOICE, EXPENSE, CLIENT_PAYMENT, SUPPLIER_PAYMENT, etc.
   sourceId        String?
   isReversal      Boolean            @default(false)
   reversedEntryId String?
+  isSystem        Boolean            @default(false) // قيد تلقائي من النظام
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   deletedAt       DateTime?
@@ -1450,6 +1605,7 @@ model JournalEntry {
   @@index([date])
   @@index([sourceType, sourceId])
   @@index([reversedEntryId])
+  @@index([isSystem])
 }
 
 model JournalLine {

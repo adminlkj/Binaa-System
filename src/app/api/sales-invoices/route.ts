@@ -1,6 +1,36 @@
 import { db } from '@/lib/db'
-import { autoEntrySalesInvoice, autoEntryRentalInvoice, initializeChartOfAccounts, createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { createSalesInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { createJournalEntry } from '@/lib/accounting/engine'
+import { generateZatcaQRForInvoice } from '@/lib/zatca-qr'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+
+/**
+ * Generate and store ZATCA QR for a sales invoice after creation.
+ * Uses company settings for seller name and VAT number.
+ */
+async function storeZatcaQR(invoiceId: string, invoiceData: { date: Date; totalAmount: number; vatAmount: number }) {
+  try {
+    const settings = await db.companySetting.findFirst()
+    if (!settings?.taxNumber) return
+
+    const zatcaQr = generateZatcaQRForInvoice(invoiceData, {
+      nameAr: settings.nameAr,
+      nameEn: settings.nameEn,
+      taxNumber: settings.taxNumber,
+    })
+
+    if (zatcaQr) {
+      await db.salesInvoice.update({
+        where: { id: invoiceId },
+        data: { zatcaQr },
+      })
+    }
+  } catch (error) {
+    console.error('Failed to generate ZATCA QR for sales invoice:', error)
+    // Don't fail the invoice creation
+  }
+}
 
 export async function GET(request: Request) {
   try {
@@ -77,8 +107,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching sales invoices:', error)
-    return NextResponse.json({ error: 'فشل في تحميل فواتير المبيعات' }, { status: 500 })
+    console.error('[API] Failed to fetch sales invoices:', error)
+    return NextResponse.json({ error: 'Failed to fetch sales invoices', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -100,8 +130,8 @@ export async function POST(request: Request) {
     // ===== LEGACY MODE: Manual creation with items array =====
     return await createInvoiceManual(body)
   } catch (error) {
-    console.error('Error creating sales invoice:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء فاتورة المبيعات' }, { status: 500 })
+    console.error('[API] Failed to create sales invoice:', error)
+    return NextResponse.json({ error: 'Failed to create sales invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -241,25 +271,9 @@ async function createInvoiceFromExtract(body: Record<string, unknown>) {
 
     // Create auto accounting entry
     try {
-      await initializeChartOfAccounts()
-      const journalEntry = await autoEntrySalesInvoice({
-        invoiceNo: invoice.invoiceNo,
-        clientId: invoice.clientId,
-        subtotal: invoice.subtotal,
-        vatRate: invoice.vatRate,
-        vatAmount: invoice.vatAmount,
-        totalAmount: invoice.totalAmount,
-        invoiceType: 'PROGRESS_CLAIM',
-        date: invoice.date,
-        projectId: invoice.projectId || undefined,
-      }, tx)
-
-      await tx.salesInvoice.update({
-        where: { id: invoice.id },
-        data: { journalEntryId: journalEntry.id },
-      })
+      await createSalesInvoiceJournalEntry(invoice.id, tx)
     } catch (accountingError) {
-      console.error('Accounting entry failed for sales invoice from extract:', accountingError)
+      console.error('[API] Accounting entry failed for sales invoice from extract:', accountingError)
     }
 
     // Re-fetch to include journalEntryId
@@ -275,6 +289,15 @@ async function createInvoiceFromExtract(body: Record<string, unknown>) {
       },
     })
   })
+
+  // Generate and store ZATCA QR code
+  if (result?.id) {
+    await storeZatcaQR(result.id, {
+      date: result.date,
+      totalAmount: Number(result.totalAmount),
+      vatAmount: Number(result.vatAmount),
+    })
+  }
 
   return NextResponse.json(result, { status: 201 })
 }
@@ -324,6 +347,11 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
     return NextResponse.json({ error: 'يجب اعتماد التايم شيت أولاً قبل إنشاء الفاتورة' }, { status: 400 })
   }
 
+  // 3. Check if already invoiced via invoiced flag
+  if (timesheet.invoiced) {
+    return NextResponse.json({ error: 'تم إصدار فاتورة لهذا التايم شيت بالفعل' }, { status: 400 })
+  }
+
   // Also check if there's already an invoice linked
   const existingInvoice = await db.salesInvoice.findUnique({
     where: { timesheetId: timesheet.id },
@@ -334,12 +362,12 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
 
   // 4. Calculate: subtotal = operatingHours × hourlyRate (from contract)
   const rental = timesheet.rental || timesheet.contract.rental
-  const hourlyRate = rental?.hourlyRate || timesheet.contract.hourlyRate || 0
-  const operatingHours = timesheet.operatingHours
+  const hourlyRate = toNumber(rental?.hourlyRate || timesheet.contract.hourlyRate || 0)
+  const operatingHours = toNumber(timesheet.operatingHours)
   const subtotal = Math.round(operatingHours * hourlyRate * 100) / 100
 
   // 5. Add delivery fees if applicable (from rental contract)
-  const deliveryFees = rental?.deliveryFees || timesheet.contract.deliveryFees || 0
+  const deliveryFees = toNumber(rental?.deliveryFees || timesheet.contract.deliveryFees || 0)
   const deliveryFeesTaxable = rental?.deliveryFeesTaxable ?? timesheet.contract.deliveryFeesTaxable ?? true
   const includeDelivery = deliveryFees > 0
 
@@ -465,30 +493,17 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
       },
     })
 
-    // Mark the Timesheet as INVOICED
+    // Mark the Timesheet as INVOICED, set invoiced=true and invoiceId
     await tx.timesheet.update({
       where: { id: timesheet.id },
-      data: { status: 'INVOICED', approvedDate: timesheet.approvedDate || new Date() },
+      data: { status: 'INVOICED', invoiced: true, invoiceId: invoice.id, approvedDate: timesheet.approvedDate || new Date() },
     })
 
     // Create auto accounting entry
     try {
-      await initializeChartOfAccounts()
-      const journalEntry = await autoEntryRentalInvoice({
-        invoiceNo: invoice.invoiceNo,
-        subtotal: invoice.subtotal,
-        vatAmount: invoice.vatAmount,
-        totalAmount: invoice.totalAmount,
-        date: invoice.date,
-        costCenterId: invoice.projectId || undefined,
-      }, tx)
-
-      await tx.salesInvoice.update({
-        where: { id: invoice.id },
-        data: { journalEntryId: journalEntry.id },
-      })
+      await createSalesInvoiceJournalEntry(invoice.id, tx)
     } catch (accountingError) {
-      console.error('Accounting entry failed for sales invoice from timesheet:', accountingError)
+      console.error('[API] Accounting entry failed for sales invoice from timesheet:', accountingError)
     }
 
     // Re-fetch to include journalEntryId
@@ -504,6 +519,15 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
       },
     })
   })
+
+  // Generate and store ZATCA QR code
+  if (result?.id) {
+    await storeZatcaQR(result.id, {
+      date: result.date,
+      totalAmount: Number(result.totalAmount),
+      vatAmount: Number(result.vatAmount),
+    })
+  }
 
   return NextResponse.json(result, { status: 201 })
 }
@@ -616,42 +640,11 @@ async function createInvoiceManual(body: Record<string, unknown>) {
       },
     })
 
-    // Auto-create accounting journal entry and store journalEntryId
+    // Auto-create accounting journal entry
     try {
-      await initializeChartOfAccounts()
-
-      let journalEntry
-      if (invoiceType === 'RENTAL') {
-        journalEntry = await autoEntryRentalInvoice({
-          invoiceNo: invoice.invoiceNo,
-          subtotal: invoice.subtotal,
-          vatAmount: invoice.vatAmount,
-          totalAmount: invoice.totalAmount,
-          date: invoice.date,
-          costCenterId: invoice.projectId || undefined,
-        }, tx)
-      } else {
-        journalEntry = await autoEntrySalesInvoice({
-          invoiceNo: invoice.invoiceNo,
-          clientId: invoice.clientId,
-          subtotal: invoice.subtotal,
-          vatRate: invoice.vatRate,
-          vatAmount: invoice.vatAmount,
-          totalAmount: invoice.totalAmount,
-          invoiceType: invoice.invoiceType,
-          date: invoice.date,
-          projectId: invoice.projectId || undefined,
-        }, tx)
-      }
-
-      // Store the journalEntryId on the invoice
-      await tx.salesInvoice.update({
-        where: { id: invoice.id },
-        data: { journalEntryId: journalEntry.id },
-      })
+      await createSalesInvoiceJournalEntry(invoice.id, tx)
     } catch (accountingError) {
-      console.error('Accounting entry failed for sales invoice:', accountingError)
-      // Don't fail the invoice creation, just log the error
+      console.error('[API] Accounting entry failed for sales invoice:', accountingError)
     }
 
     // Re-fetch to include journalEntryId
@@ -665,6 +658,15 @@ async function createInvoiceManual(body: Record<string, unknown>) {
       },
     })
   })
+
+  // Generate and store ZATCA QR code
+  if (result?.id) {
+    await storeZatcaQR(result.id, {
+      date: result.date,
+      totalAmount: Number(result.totalAmount),
+      vatAmount: Number(result.vatAmount),
+    })
+  }
 
   return NextResponse.json(result, { status: 201 })
 }
@@ -707,8 +709,8 @@ export async function PUT(request: Request) {
 
           const resolvedReversalLines = originalEntry.lines.map(line => ({
             accountCode: accountMap.get(line.accountId) || '',
-            debit: line.credit,
-            credit: line.debit,
+            debit: toNumber(line.credit),
+            credit: toNumber(line.debit),
             costCenterId: line.costCenterId || undefined,
             description: `Reversal: ${line.description || ''}`,
           }))
@@ -733,37 +735,25 @@ export async function PUT(request: Request) {
         // Create new entry with updated values
         const newSubtotal = updateData.subtotal ?? existing.subtotal
         const newVatAmount = updateData.vatAmount ?? existing.vatAmount
-        const newTotalAmount = updateData.totalAmount ?? existing.totalAmount
-        const newInvoiceType = updateData.invoiceType ?? existing.invoiceType
         const newDate = updateData.date ? new Date(updateData.date) : existing.date
 
-        await initializeChartOfAccounts()
+        // Use auto-journal for the new entry
+        // First update the invoice temporarily so createSalesInvoiceJournalEntry reads the new values
+        await tx.salesInvoice.update({
+          where: { id: existing.id },
+          data: {
+            subtotal: newSubtotal,
+            vatAmount: newVatAmount,
+            totalAmount: updateData.totalAmount ?? existing.totalAmount,
+            date: newDate,
+          },
+        })
 
-        let newJournalEntry
-        if (newInvoiceType === 'RENTAL') {
-          newJournalEntry = await autoEntryRentalInvoice({
-            invoiceNo: existing.invoiceNo,
-            subtotal: newSubtotal,
-            vatAmount: newVatAmount,
-            totalAmount: newTotalAmount,
-            date: newDate,
-            costCenterId: existing.projectId || undefined,
-          }, tx)
-        } else {
-          newJournalEntry = await autoEntrySalesInvoice({
-            invoiceNo: existing.invoiceNo,
-            clientId: existing.clientId,
-            subtotal: newSubtotal,
-            vatRate: existing.vatRate,
-            vatAmount: newVatAmount,
-            totalAmount: newTotalAmount,
-            invoiceType: newInvoiceType,
-            date: newDate,
-            projectId: existing.projectId || undefined,
-          }, tx)
+        try {
+          await createSalesInvoiceJournalEntry(existing.id, tx)
+        } catch (journalError) {
+          console.error('[API] Failed to create replacement journal entry:', journalError)
         }
-
-        updateData.journalEntryId = newJournalEntry.id
       })
     }
 
@@ -802,7 +792,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error updating sales invoice:', error)
-    return NextResponse.json({ error: 'فشل في تحديث فاتورة المبيعات' }, { status: 500 })
+    console.error('[API] Failed to update sales invoice:', error)
+    return NextResponse.json({ error: 'Failed to update sales invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
+import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatSAR, formatNumber, formatDate, RENTAL_WORKFLOW } from '@/stores/app-store'
 import type { NavItem } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
@@ -39,7 +40,7 @@ interface Supplier {
 interface Equipment {
   id: string; code: string; name: string; nameAr: string | null
   type: string | null; model: string | null; serialNumber: string | null
-  status: string; supplierId: string | null; clientId: string | null
+  status: string; ownershipType: string; supplierId: string | null; ownerId: string | null; clientId: string | null
   purchasePrice: number; sellingPrice: number
   hourlyRate: number; dailyRate: number; monthlyRate: number
   purchaseDate: string | null; warrantyExpiry: string | null
@@ -126,6 +127,12 @@ const statusConfig: Record<string, { label: { ar: string; en: string }; color: s
   RENTED: { label: { ar: 'مؤجرة', en: 'Rented' }, color: 'text-purple-700', bg: 'bg-purple-100' },
 }
 
+const ownershipTypeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+  COMPANY_OWNED: { label: { ar: 'مملوكة للشركة', en: 'Company Owned' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+  LEASED_ASSET: { label: { ar: 'مستأجرة', en: 'Leased Asset' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+  CUSTOMER_OWNED: { label: { ar: 'مملوكة للعميل', en: 'Customer Owned' }, color: 'text-purple-700', bg: 'bg-purple-100' },
+}
+
 const rentalStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
   ACTIVE: { label: { ar: 'نشط', en: 'Active' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
   RETURNED: { label: { ar: 'مرتجع', en: 'Returned' }, color: 'text-gray-700', bg: 'bg-gray-100' },
@@ -177,6 +184,11 @@ function StatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
   return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
 }
 
+function OwnershipBadge({ ownershipType, lang }: { ownershipType: string; lang: 'ar' | 'en' }) {
+  const cfg = ownershipTypeConfig[ownershipType] || ownershipTypeConfig.COMPANY_OWNED
+  return <Badge className={`${cfg.bg} ${cfg.color} border-0 text-[10px]`}>{cfg.label[lang]}</Badge>
+}
+
 function ActivityBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
   if (status === 'RENTED') {
     return <Badge className="bg-cyan-100 text-cyan-700 border-cyan-200 text-[10px] px-1.5 py-0 border">{lang === 'ar' ? 'تأجير' : 'Rental'}</Badge>
@@ -220,8 +232,8 @@ function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string
 }
 
 // ============ New Equipment Dialog ============
-function NewEquipmentDialog({ open, onOpenChange, suppliers }: {
-  open: boolean; onOpenChange: (v: boolean) => void; suppliers: Supplier[]
+function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
+  open: boolean; onOpenChange: (v: boolean) => void; suppliers: Supplier[]; clients: ClientOption[]
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
@@ -231,7 +243,9 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers }: {
   const [model, setModel] = useState('')
   const [serialNumber, setSerialNumber] = useState('')
   const [status, setStatus] = useState('AVAILABLE')
+  const [ownershipType, setOwnershipType] = useState('COMPANY_OWNED')
   const [supplierId, setSupplierId] = useState('')
+  const [ownerId, setOwnerId] = useState('')
   const [purchasePrice, setPurchasePrice] = useState('')
   const [sellingPrice, setSellingPrice] = useState('')
   const [hourlyRate, setHourlyRate] = useState('')
@@ -243,7 +257,7 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers }: {
   React.useEffect(() => {
     if (open) {
       setName(''); setNameAr(''); setType(''); setModel('')
-      setSerialNumber(''); setStatus('AVAILABLE'); setSupplierId('')
+      setSerialNumber(''); setStatus('AVAILABLE'); setOwnershipType('COMPANY_OWNED'); setSupplierId(''); setOwnerId('')
       setPurchasePrice(''); setSellingPrice(''); setHourlyRate('')
       setDailyRate(''); setMonthlyRate(''); setPurchaseDate(''); setWarrantyExpiry('')
     }
@@ -260,7 +274,9 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers }: {
     e.preventDefault()
     createMutation.mutate({
       name, nameAr, type, model, serialNumber, status,
+      ownershipType,
       supplierId: supplierId || null,
+      ownerId: ownershipType === 'CUSTOMER_OWNED' ? (ownerId || null) : null,
       purchasePrice, sellingPrice, hourlyRate, dailyRate, monthlyRate,
       purchaseDate: purchaseDate || null,
       warrantyExpiry: warrantyExpiry || null,
@@ -311,12 +327,56 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers }: {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>{t('نوع الملكية', 'Ownership Type')}</Label>
+                <Select value={ownershipType} onValueChange={v => { setOwnershipType(v); if (v !== 'LEASED_ASSET') setSupplierId(''); if (v !== 'CUSTOMER_OWNED') setOwnerId('') }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(ownershipTypeConfig).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
+          {/* Ownership Info */}
+          {ownershipType === 'LEASED_ASSET' && (
+            <div className="p-3 rounded-lg border bg-amber-50 border-amber-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Shield className="size-4 text-amber-600" />
+                <span className="text-sm font-medium text-amber-700">{t('معلومات التأجير - المورد إلزامي', 'Lease Info - Supplier is required')}</span>
+              </div>
+            </div>
+          )}
+          {ownershipType === 'CUSTOMER_OWNED' && (
+            <div className="p-3 rounded-lg border bg-purple-50 border-purple-200">
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="size-4 text-purple-600" />
+                <span className="text-sm font-medium text-purple-700">{t('معدات مملوكة للعميل - حدد المالك', 'Customer-owned equipment - select owner')}</span>
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
             <h4 className="font-semibold text-sm text-teal-700 border-b border-teal-200 pb-1">{t('معلومات الشراء', 'Purchase Information')}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2"><Label>{t('المورد', 'Supplier')}</Label><Select value={supplierId} onValueChange={setSupplierId}><SelectTrigger><SelectValue placeholder={t('اختر المورد', 'Select supplier')} /></SelectTrigger><SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent></Select></div>
+              <div className="space-y-2">
+                <Label>{t('المورد', 'Supplier')} {ownershipType === 'LEASED_ASSET' ? '*' : ''}</Label>
+                <Select value={supplierId} onValueChange={setSupplierId}>
+                  <SelectTrigger><SelectValue placeholder={t('اختر المورد', 'Select supplier')} /></SelectTrigger>
+                  <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                </Select>
+                {ownershipType === 'LEASED_ASSET' && !supplierId && <p className="text-xs text-amber-600">{t('المورد إلزامي للمعدات المستأجرة', 'Supplier is required for leased equipment')}</p>}
+              </div>
+              {ownershipType === 'CUSTOMER_OWNED' && (
+                <div className="space-y-2">
+                  <Label>{t('مالك المعدة *', 'Equipment Owner *')}</Label>
+                  <Select value={ownerId} onValueChange={setOwnerId}>
+                    <SelectTrigger><SelectValue placeholder={t('اختر العميل المالك', 'Select owner client')} /></SelectTrigger>
+                    <SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2"><Label>{t('سعر الشراء', 'Purchase Price')}</Label><Input type="number" min="0" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} dir="ltr" placeholder="0.00" /></div>
               <div className="space-y-2"><Label>{t('سعر البيع/التأجير', 'Selling/Rental Price')}</Label><Input type="number" min="0" step="0.01" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} dir="ltr" placeholder="0.00" /></div>
               <div className="space-y-2"><Label>{t('تاريخ الشراء', 'Purchase Date')}</Label><Input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} /></div>
@@ -333,7 +393,7 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers }: {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !name} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button type="submit" disabled={createMutation.isPending || !name || (ownershipType === 'LEASED_ASSET' && !supplierId) || (ownershipType === 'CUSTOMER_OWNED' && !ownerId)} className="bg-emerald-600 hover:bg-emerald-700">
               {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إضافة', 'Add')}
             </Button>
           </DialogFooter>
@@ -825,6 +885,7 @@ function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onB
             <h2 className="text-xl font-bold">{equipment.name}</h2>
             <StatusBadge status={equipment.status} lang={lang} />
             <ActivityBadge status={equipment.status} lang={lang} />
+            <OwnershipBadge ownershipType={equipment.ownershipType || 'COMPANY_OWNED'} lang={lang} />
           </div>
           <p className="text-sm text-muted-foreground">{equipment.code} {equipment.model ? `| ${equipment.model}` : ''} {equipment.type ? `| ${equipment.type}` : ''}</p>
         </div>
@@ -1380,6 +1441,11 @@ export function EquipmentModule() {
     queryFn: async () => { const r = await fetch('/api/suppliers'); if (!r.ok) return []; return r.json() },
   })
 
+  const { data: clients = [] } = useQuery<ClientOption[]>({
+    queryKey: ['clients-list'],
+    queryFn: async () => { const r = await fetch('/api/clients'); if (!r.ok) return []; return r.json() },
+  })
+
   const filtered = equipment.filter(eq => {
     if (!search) return true
     return eq.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -1445,13 +1511,10 @@ export function EquipmentModule() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('المعدات', 'Equipment Hub')}</h1>
-          <p className="text-sm text-muted-foreground">{t('كرت المعدة - مركز نشاط التأجير', 'Equipment Card - Center of Rental Activity')}</p>
-        </div>
+    <ModuleLayout
+      title={{ ar: 'المعدات', en: 'Equipment Hub' }}
+      subtitle={{ ar: 'كرت المعدة - مركز نشاط التأجير', en: 'Equipment Card - Center of Rental Activity' }}
+      actions={
         <div className="flex items-center gap-2">
           <PrintButton type="equipment-report" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير CSV', 'Export CSV')}><Download className="size-4" /></Button>
@@ -1460,7 +1523,8 @@ export function EquipmentModule() {
             <Plus className="size-4" /> {t('معدة جديدة', 'New Equipment')}
           </Button>
         </div>
-      </div>
+      }
+    >
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -1546,6 +1610,7 @@ export function EquipmentModule() {
                     <TableHead className="text-right">{t('الموديل', 'Model')}</TableHead>
                     <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
                     <TableHead className="text-right">{t('النشاط', 'Activity')}</TableHead>
+                    <TableHead className="text-right">{t('الملكية', 'Ownership')}</TableHead>
                     <TableHead className="text-right">{t('الأجر/ساعة', 'Hourly Rate')}</TableHead>
                     <TableHead className="text-right">{t('النشاط الحالي', 'Current Activity')}</TableHead>
                     <TableHead className="text-right">{t('عرض', 'View')}</TableHead>
@@ -1560,6 +1625,7 @@ export function EquipmentModule() {
                       <TableCell className="text-muted-foreground">{eq.model || '—'}</TableCell>
                       <TableCell><StatusBadge status={eq.status} lang={lang} /></TableCell>
                       <TableCell><ActivityBadge status={eq.status} lang={lang} /></TableCell>
+                      <TableCell><OwnershipBadge ownershipType={eq.ownershipType || 'COMPANY_OWNED'} lang={lang} /></TableCell>
                       <TableCell><MoneyDisplay value={eq.hourlyRate} lang={lang} size="sm" inline /></TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {eq.status === 'RENTED' ? t('تأجير', 'Rental') : eq.status === 'IN_USE' ? t('تنفيذي', 'Construction') : '—'}
@@ -1579,7 +1645,7 @@ export function EquipmentModule() {
       </Card>
 
       {/* New Equipment Dialog */}
-      <NewEquipmentDialog open={dialogOpen} onOpenChange={setDialogOpen} suppliers={suppliers} />
-    </div>
+      <NewEquipmentDialog open={dialogOpen} onOpenChange={setDialogOpen} suppliers={suppliers} clients={clients} />
+    </ModuleLayout>
   )
 }

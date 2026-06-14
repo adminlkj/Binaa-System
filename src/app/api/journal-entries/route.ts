@@ -77,9 +77,9 @@ export async function GET(request: Request) {
       },
     }))
   } catch (error) {
-    console.error('Error fetching journal entries:', error)
+    console.error('[API] Failed to fetch journal entries:', error)
     return NextResponse.json(
-      { error: 'فشل في تحميل القيود المحاسبية' },
+      { error: 'Failed to fetch journal entries', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

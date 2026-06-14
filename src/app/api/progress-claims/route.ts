@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
-import { autoEntryProgressClaim, initializeChartOfAccounts, createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { type PrismaTransaction } from '@/lib/auto-journal'
+import { autoEntryProgressClaim, initializeChartOfAccounts, createJournalEntry } from '@/lib/accounting/engine'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -8,6 +10,9 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
     const uninvoiced = searchParams.get('uninvoiced')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
 
     const where: Record<string, unknown> = {}
     if (projectId) where.projectId = projectId
@@ -19,19 +24,38 @@ export async function GET(request: Request) {
       where.status = 'APPROVED'
     }
 
-    const claims = await db.progressClaim.findMany({
-      where,
-      include: {
-        project: { select: { id: true, name: true, code: true, clientId: true, client: { select: { id: true, name: true, nameAr: true, code: true } } } },
-        contract: { select: { id: true, contractNo: true, totalValue: true } },
-      },
-      orderBy: { date: 'desc' },
-    })
+    const include = {
+      project: { select: { id: true, name: true, code: true, clientId: true, client: { select: { id: true, name: true, nameAr: true, code: true } } } },
+      contract: { select: { id: true, contractNo: true, totalValue: true } },
+    }
 
-    return NextResponse.json(claims)
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const claims = await db.progressClaim.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+      })
+      return NextResponse.json(claims)
+    }
+
+    const [data, total] = await Promise.all([
+      db.progressClaim.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.progressClaim.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching progress claims:', error)
-    return NextResponse.json({ error: 'فشل في تحميل المستخلصات' }, { status: 500 })
+    console.error('[API] Failed to fetch progress claims:', error)
+    return NextResponse.json({ error: 'Failed to fetch progress claims', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -79,10 +103,10 @@ export async function POST(request: Request) {
           claimNo: claim.claimNo,
           projectId: claim.projectId,
           contractId: claim.contractId,
-          amount: claim.amount,
-          vatRate: claim.vatRate,
-          vatAmount: claim.vatAmount,
-          totalAmount: claim.totalAmount,
+          amount: toNumber(claim.amount),
+          vatRate: toNumber(claim.vatRate),
+          vatAmount: toNumber(claim.vatAmount),
+          totalAmount: toNumber(claim.totalAmount),
           date: claim.date,
         }, tx)
 
@@ -92,7 +116,7 @@ export async function POST(request: Request) {
           data: { journalEntryId: journalEntry.id },
         })
       } catch (accountingError) {
-        console.error('Accounting entry failed for progress claim:', accountingError)
+        console.error('[API] Accounting entry failed for progress claim:', accountingError)
       }
 
       // Re-fetch to include journalEntryId
@@ -107,8 +131,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
-    console.error('Error creating progress claim:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء المستخلص' }, { status: 500 })
+    console.error('[API] Failed to create progress claim:', error)
+    return NextResponse.json({ error: 'Failed to create progress claim', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -152,8 +176,8 @@ export async function PUT(request: Request) {
 
           const resolvedReversalLines = originalEntry.lines.map(line => ({
             accountCode: accountMap.get(line.accountId) || '',
-            debit: line.credit,
-            credit: line.debit,
+            debit: toNumber(line.credit),
+            credit: toNumber(line.debit),
             costCenterId: line.costCenterId || undefined,
             description: `Reversal: ${line.description || ''}`,
           }))
@@ -175,9 +199,9 @@ export async function PUT(request: Request) {
         }
 
         // Create new entry with updated values
-        const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : existing.amount
-        const newVatAmount = updateData.vatAmount !== undefined ? parseFloat(updateData.vatAmount) : existing.vatAmount
-        const newTotalAmount = updateData.totalAmount !== undefined ? parseFloat(updateData.totalAmount) : existing.totalAmount
+        const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : toNumber(existing.amount)
+        const newVatAmount = updateData.vatAmount !== undefined ? parseFloat(updateData.vatAmount) : toNumber(existing.vatAmount)
+        const newTotalAmount = updateData.totalAmount !== undefined ? parseFloat(updateData.totalAmount) : toNumber(existing.totalAmount)
         const newDate = updateData.date ? new Date(updateData.date) : existing.date
 
         await initializeChartOfAccounts()
@@ -186,7 +210,7 @@ export async function PUT(request: Request) {
           projectId: existing.projectId,
           contractId: existing.contractId,
           amount: newAmount,
-          vatRate: existing.vatRate,
+          vatRate: toNumber(existing.vatRate),
           vatAmount: newVatAmount,
           totalAmount: newTotalAmount,
           date: newDate,
@@ -199,7 +223,7 @@ export async function PUT(request: Request) {
     // Recalculate amounts if amount changed
     if (updateData.amount !== undefined && updateData.vatAmount === undefined) {
       const newAmount = parseFloat(updateData.amount)
-      const rate = existing.vatRate
+      const rate = toNumber(existing.vatRate)
       updateData.vatAmount = Math.round(newAmount * rate * 100) / 100
       updateData.totalAmount = Math.round((newAmount + updateData.vatAmount) * 100) / 100
     }
@@ -221,7 +245,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error updating progress claim:', error)
-    return NextResponse.json({ error: 'فشل في تحديث المستخلص' }, { status: 500 })
+    console.error('[API] Failed to update progress claim:', error)
+    return NextResponse.json({ error: 'Failed to update progress claim', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

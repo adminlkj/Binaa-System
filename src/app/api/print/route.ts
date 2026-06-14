@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  generatePrintHTML,
-  type PrintDocumentType,
-  type PrintOptions,
-} from '@/printing'
+  generateDocument,
+  type UnifiedDocumentType,
+  type PrintSettings,
+  requiresZatcaQR,
+  getSupportedDocumentTypes,
+} from '@/lib/unified-print-engine'
+import { generateZatcaQR } from '@/lib/zatca-qr'
 import { db } from '@/lib/db'
 
 /**
@@ -15,9 +18,10 @@ import { db } from '@/lib/db'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const type = searchParams.get('type') as PrintDocumentType | null
+    const type = searchParams.get('type') as UnifiedDocumentType | null
     const id = searchParams.get('id')
     const format = searchParams.get('format') || 'html'
+    const lang = (searchParams.get('lang') as 'ar' | 'en') || 'ar'
 
     // Validate required params
     if (!type || !id) {
@@ -27,58 +31,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Validate document type against the new printing system's supported types
-    const validTypes: PrintDocumentType[] = [
-      // فواتير
-      'service-invoice',
-      'rental-invoice',
-      'supplier-invoice',
-      // مشاريع
-      'progress-claim',
-      // مشتريات
-      'purchase-order',
-      'delivery-order',
-      // عمليات
-      'timesheet',
-      // محاسبة
-      'trial-balance',
-      'general-ledger',
-      'income-statement',
-      'balance-sheet',
-      // ضريبي
-      'vat-return',
-      // مالي
-      'client-payment',
-      'supplier-payment',
-      'rental-payment',
-      'expense-report',
-      'advance-voucher',
-      'petty-cash-voucher',
-      'salary-slip',
-      'rental-contract',
-      // تقارير
-      'equipment-report',
-      'fuel-report',
-      'maintenance-report',
-      'work-team-report',
-      'resource-distribution',
-      'attendance-report',
-      'purchase-request',
-      'goods-receipt',
-      'journal-entry',
-      'account-statement',
-      'generic-table',
-    ]
-    // Backward compatibility: map old type names to new ones
-    const typeAliases: Record<string, PrintDocumentType> = {
-      'extract': 'progress-claim',
-      'timesheet-report': 'timesheet',
-      'tax-declaration': 'vat-return',
-    }
-    const resolvedType = (typeAliases[type] || type) as PrintDocumentType
-    if (!validTypes.includes(resolvedType) && !typeAliases[type]) {
+    // Validate document type
+    const supportedTypes = getSupportedDocumentTypes()
+    if (!supportedTypes.includes(type)) {
       return NextResponse.json(
-        { error: `Invalid document type: ${type}. Valid types: ${validTypes.join(', ')}` },
+        { error: `Invalid document type: ${type}. Valid types: ${supportedTypes.join(', ')}` },
         { status: 400 },
       )
     }
@@ -106,7 +63,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const printSettings: PrintOptions['settings'] = {
+    const printSettings: PrintSettings = {
       nameAr: settings?.nameAr || 'بِنَاء',
       nameEn: settings?.nameEn || 'Binaa',
       taxNumber: settings?.taxNumber || null,
@@ -123,7 +80,7 @@ export async function GET(request: NextRequest) {
       currencySymbol: settings?.currencySymbol || null,
       currencySymbolAr: settings?.currencySymbolAr || null,
       currencySymbolEn: settings?.currencySymbolEn || null,
-      defaultVatRate: settings?.defaultVatRate || 0.15,
+      defaultVatRate: Number(settings?.defaultVatRate) || 0.15,
       bankName: settings?.bankName || null,
       bankIban: settings?.bankIban || null,
       bankAccountName: settings?.bankAccountName || null,
@@ -133,109 +90,225 @@ export async function GET(request: NextRequest) {
     // Fetch document data based on type
     let data: Record<string, unknown> = {}
 
-    // Use resolved type for data fetching (handles backward compat aliases)
-    const fetchType = resolvedType
-
-    if (fetchType === 'service-invoice' || fetchType === 'rental-invoice') {
+    if (type === 'service-invoice' || type === 'sales-invoice' || type === 'rental-invoice') {
       const invoice = await db.salesInvoice.findUnique({
         where: { id },
         include: { client: true, items: true, project: true, contract: true },
       })
       if (invoice) {
         data = {
+          id: invoice.id,
           invoiceNo: invoice.invoiceNo,
           date: invoice.date,
+          dueDate: invoice.dueDate,
           clientName: invoice.client.name,
+          clientTaxNumber: invoice.client.taxNumber,
+          clientAddress: invoice.client.address,
           contractNo: invoice.contractNo,
-          subtotal: invoice.subtotal,
-          vatAmount: invoice.vatAmount,
-          totalAmount: invoice.totalAmount,
+          subtotal: Number(invoice.subtotal),
+          netAmount: Number(invoice.netAmount),
+          vatRate: Number(invoice.vatRate),
+          vatAmount: Number(invoice.vatAmount),
+          totalAmount: Number(invoice.totalAmount),
           includeDelivery: invoice.includeDelivery,
-          deliveryAmount: invoice.deliveryAmount,
+          deliveryAmount: Number(invoice.deliveryAmount),
           items: invoice.items.map(i => ({
             description: i.description,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            totalPrice: i.totalPrice,
+            quantity: Number(i.quantity),
+            unit: i.unit,
+            unitPrice: Number(i.unitPrice),
+            totalPrice: Number(i.totalPrice),
           })),
           terms: invoice.notes,
+          // Use stored ZATCA QR if available
+          ...(invoice.zatcaQr ? { _zatcaTlvBase64: invoice.zatcaQr } : {}),
         }
       }
-    } else if (fetchType === 'progress-claim') {
-      const claim = await db.progressClaim.findUnique({
-        where: { id },
-        include: { project: true, contract: true },
-      })
-      if (claim) {
-        data = {
-          claimNo: claim.claimNo,
-          date: claim.date,
-          projectName: claim.project.name,
-          percentage: claim.percentage,
-          amount: claim.amount,
-          vatAmount: claim.vatAmount,
-          totalAmount: claim.totalAmount,
-          contractValue: claim.contract.totalValue,
-        }
-      }
-    } else if (fetchType === 'supplier-invoice') {
+    } else if (type === 'supplier-invoice') {
       const invoice = await db.purchaseInvoice.findUnique({
         where: { id },
         include: { supplier: true, items: true },
       })
       if (invoice) {
         data = {
+          id: invoice.id,
           invoiceNo: invoice.invoiceNo,
           date: invoice.date,
           supplierName: invoice.supplier.name,
-          subtotal: invoice.subtotal,
-          vatAmount: invoice.vatAmount,
-          totalAmount: invoice.totalAmount,
+          supplierTaxNumber: invoice.supplier.taxNumber,
+          subtotal: Number(invoice.subtotal),
+          vatRate: Number(invoice.vatRate),
+          vatAmount: Number(invoice.vatAmount),
+          totalAmount: Number(invoice.totalAmount),
           items: invoice.items.map(i => ({
             description: i.description,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            totalPrice: i.totalPrice,
+            quantity: Number(i.quantity),
+            unitPrice: Number(i.unitPrice),
+            totalPrice: Number(i.totalPrice),
           })),
+          // Use stored ZATCA QR if available
+          ...(invoice.zatcaQr ? { _zatcaTlvBase64: invoice.zatcaQr } : {}),
         }
       }
-    } else if (fetchType === 'purchase-order') {
+    } else if (type === 'progress-claim') {
+      const claim = await db.progressClaim.findUnique({
+        where: { id },
+        include: { project: true, contract: true },
+      })
+      if (claim) {
+        data = {
+          id: claim.id,
+          claimNo: claim.claimNo,
+          date: claim.date,
+          projectName: claim.project.name,
+          contractNo: claim.contract.contractNo,
+          percentage: Number(claim.percentage),
+          amount: Number(claim.amount),
+          vatAmount: Number(claim.vatAmount),
+          totalAmount: Number(claim.totalAmount),
+          contractValue: Number(claim.contract.totalValue),
+        }
+      }
+    } else if (type === 'purchase-order') {
       const po = await db.purchaseOrder.findUnique({
         where: { id },
         include: { supplier: true, items: true },
       })
       if (po) {
         data = {
+          id: po.id,
           orderNo: po.orderNo,
           supplierName: po.supplier.name,
-          subtotal: po.subtotal,
-          vatAmount: po.vatAmount,
-          totalAmount: po.totalAmount,
+          date: po.date,
+          subtotal: Number(po.subtotal),
+          vatAmount: Number(po.vatAmount),
+          totalAmount: Number(po.totalAmount),
           items: po.items.map(i => ({
             description: i.description,
-            quantity: i.quantity,
-            unitPrice: i.unitPrice,
-            totalPrice: i.totalPrice,
+            quantity: Number(i.quantity),
+            unitPrice: Number(i.unitPrice),
+            totalPrice: Number(i.totalPrice),
           })),
         }
       }
-    } else if (fetchType === 'vat-return') {
+    } else if (type === 'boq') {
+      // BOQ data comes from BOQItem model
+      const project = await db.project.findUnique({
+        where: { id },
+        include: { boqItems: true, contracts: true },
+      })
+      if (project) {
+        const firstContract = project.contracts[0]
+        const subtotal = project.boqItems.reduce((sum, item) => sum + Number(item.totalPrice), 0)
+        const vatRate = 0.15
+        const vatAmount = subtotal * vatRate
+        data = {
+          id: project.id,
+          boqNo: `BOQ-${project.code}`,
+          projectName: project.name,
+          contractNo: firstContract?.contractNo || '',
+          date: project.startDate || project.createdAt,
+          items: project.boqItems.map(item => ({
+            code: item.code,
+            description: item.description,
+            quantity: Number(item.quantity),
+            unit: item.unit,
+            unitPrice: Number(item.unitPrice),
+            totalPrice: Number(item.totalPrice),
+          })),
+          subtotal,
+          vatAmount,
+          totalAmount: subtotal + vatAmount,
+        }
+      }
+    } else if (type === 'change-order') {
+      const changeOrder = await db.changeOrder.findUnique({
+        where: { id },
+        include: { project: true, contract: true },
+      })
+      if (changeOrder) {
+        data = {
+          id: changeOrder.id,
+          changeOrderNo: changeOrder.orderNo,
+          projectName: changeOrder.project.name,
+          contractNo: changeOrder.contract?.contractNo || '',
+          originalContractValue: Number(changeOrder.originalValue),
+          date: changeOrder.date,
+          description: changeOrder.description,
+          changeType: changeOrder.changeType,
+          changeAmount: Number(changeOrder.changeValue),
+          newContractValue: Number(changeOrder.newValue),
+          subtotal: Number(changeOrder.changeValue),
+          vatAmount: Number(changeOrder.vatAmount),
+          totalAmount: Number(changeOrder.totalChangeValue),
+        }
+      }
+    } else if (type === 'employee-contract') {
+      const employee = await db.employee.findUnique({
+        where: { id },
+        include: { contracts: true, branch: true },
+      })
+      if (employee) {
+        const activeContract = employee.contracts[0]
+        const housingAllowance = Number(activeContract?.housingAllowance || 0)
+        const transportAllowance = Number(activeContract?.transportAllowance || 0)
+        const otherAllowances = Number(activeContract?.otherAllowances || 0)
+        const totalAllowances = housingAllowance + transportAllowance + otherAllowances
+        const basicSalary = Number(activeContract?.basicSalary || employee.basicSalary)
+        data = {
+          id: employee.id,
+          employeeName: employee.name,
+          nationalId: employee.nationality || '',
+          position: employee.profession || '',
+          department: employee.branch ? `Branch: ${employee.branch.name || ''}` : '',
+          contractNo: `EC-${employee.code}`,
+          date: activeContract?.startDate || employee.hireDate,
+          contractType: 'Full Time',
+          startDate: activeContract?.startDate || employee.hireDate,
+          endDate: activeContract?.endDate || '',
+          basicSalary,
+          allowances: totalAllowances,
+          totalSalary: basicSalary + totalAllowances,
+        }
+      }
+    } else if (type === 'salary-slip') {
+      const salary = await db.salary.findUnique({
+        where: { id },
+        include: { employee: true },
+      })
+      if (salary) {
+        data = {
+          id: salary.id,
+          employeeName: salary.employee?.name || '',
+          position: salary.employee?.profession || '',
+          department: salary.employee?.branchId || '',
+          month: salary.month,
+          year: salary.year,
+          basicSalary: Number(salary.basicSalary),
+          housingAllowance: Number(salary.housingAllowance),
+          transportAllowance: Number(salary.transportAllowance),
+          otherAllowances: Number(salary.otherAllowances),
+          deductions: Number(salary.deductions),
+          netSalary: Number(salary.netSalary),
+        }
+      }
+    } else if (type === 'vat-return') {
       const vatReturn = await db.vATReturn.findUnique({ where: { id } })
       if (vatReturn) {
         data = {
           year: vatReturn.year,
           quarter: vatReturn.quarter,
-          totalSales: vatReturn.totalSales,
-          outputVat: vatReturn.outputVat,
-          totalPurchases: vatReturn.totalPurchases,
-          inputVat: vatReturn.inputVat,
-          netVat: vatReturn.netVat,
+          totalSales: Number(vatReturn.totalSales),
+          outputVat: Number(vatReturn.outputVat),
+          totalPurchases: Number(vatReturn.totalPurchases),
+          inputVat: Number(vatReturn.inputVat),
+          netVat: Number(vatReturn.netVat),
         }
       }
     }
 
     // For invoice types, generate QR code server-side (ZATCA compliance)
-    if ((fetchType === 'rental-invoice' || fetchType === 'service-invoice' || fetchType === 'supplier-invoice') && printSettings.taxNumber) {
+    if (requiresZatcaQR(type) && printSettings.taxNumber) {
       try {
         const sellerName = printSettings.nameAr || ''
         const vatNumber = printSettings.taxNumber
@@ -247,14 +320,20 @@ export async function GET(request: NextRequest) {
         const totalStr = totalAmount.toFixed(2)
         const vatTotalStr = vatAmount.toFixed(2)
 
-        const qrRes = await fetch(
-          `${request.nextUrl.origin}/api/generate-qr?seller=${encodeURIComponent(sellerName)}&vat=${encodeURIComponent(vatNumber)}&date=${encodeURIComponent(invoiceDate)}&total=${encodeURIComponent(totalStr)}&vatTotal=${encodeURIComponent(vatTotalStr)}`
-        )
-        if (qrRes.ok) {
-          const qrData = await qrRes.json()
-          if (qrData.qrDataUrl) {
-            data.qrDataUrl = qrData.qrDataUrl
-          }
+        const { qrDataUrl, tlvBase64 } = await generateZatcaQR({
+          sellerName,
+          vatNumber,
+          invoiceDate,
+          totalAmount: totalStr,
+          vatAmount: vatTotalStr,
+        })
+
+        if (qrDataUrl) {
+          data.qrDataUrl = qrDataUrl
+        }
+        // Always store TLV base64 for client-side fallback
+        if (tlvBase64) {
+          data._zatcaTlvBase64 = tlvBase64
         }
       } catch {
         // QR generation failed, will fall back to client-side approach in template
@@ -265,12 +344,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data, settings: printSettings })
     }
 
-    // Default: Return complete HTML document using the new modular printing system
-    const html = generatePrintHTML({
-      type: resolvedType,
-      data,
-      settings: printSettings,
-    })
+    // Default: Return complete HTML document using the unified print engine
+    const html = generateDocument(type, data, printSettings, lang)
 
     return new NextResponse(html, {
       status: 200,

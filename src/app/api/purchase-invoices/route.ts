@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
-import { autoEntryPurchaseInvoice, initializeChartOfAccounts, createJournalEntry } from '@/lib/accounting/engine'
+import { createPurchaseInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { createJournalEntry } from '@/lib/accounting/engine'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -8,26 +10,56 @@ export async function GET(request: Request) {
     const supplierId = searchParams.get('supplierId')
     const status = searchParams.get('status')
     const projectId = searchParams.get('projectId')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
+    const search = searchParams.get('search') || ''
 
     const where: Record<string, unknown> = {}
     if (supplierId) where.supplierId = supplierId
     if (status) where.status = status
     if (projectId) where.projectId = projectId
+    if (search) {
+      where.OR = [
+        { invoiceNo: { contains: search } },
+        { notes: { contains: search } },
+      ]
+    }
 
-    const invoices = await db.purchaseInvoice.findMany({
-      where,
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        purchaseOrder: { select: { id: true, orderNo: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        items: true,
-      },
-      orderBy: { date: 'desc' },
-    })
-    return NextResponse.json(invoices)
+    const include = {
+      supplier: { select: { id: true, name: true, code: true } },
+      purchaseOrder: { select: { id: true, orderNo: true } },
+      project: { select: { id: true, name: true, code: true, projectType: true } },
+      items: true,
+    }
+
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const invoices = await db.purchaseInvoice.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+      })
+      return NextResponse.json(invoices)
+    }
+
+    const [data, total] = await Promise.all([
+      db.purchaseInvoice.findMany({
+        where: whereClause,
+        include,
+        orderBy: { date: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.purchaseInvoice.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching purchase invoices:', error)
-    return NextResponse.json({ error: 'فشل في تحميل فواتير الشراء' }, { status: 500 })
+    console.error('[API] Failed to fetch purchase invoices:', error)
+    return NextResponse.json({ error: 'Failed to fetch purchase invoices', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -47,91 +79,77 @@ export async function POST(request: Request) {
     const vatAmount = subtotal * vatRate
     const totalAmount = subtotal + vatAmount
 
-    // Auto-generate invoice number
-    const lastInvoice = await db.purchaseInvoice.findFirst({
-      orderBy: { invoiceNo: 'desc' },
-      select: { invoiceNo: true },
-    })
+    // Create invoice + accounting entry in transaction
+    const result = await db.$transaction(async (tx: PrismaTransaction) => {
+      // Auto-generate invoice number (inside tx for consistency)
+      const lastInvoice = await tx.purchaseInvoice.findFirst({
+        orderBy: { invoiceNo: 'desc' },
+        select: { invoiceNo: true },
+      })
 
-    let nextNum = 1
-    if (lastInvoice?.invoiceNo) {
-      const match = lastInvoice.invoiceNo.match(/PI-(\d+)/)
-      if (match) nextNum = parseInt(match[1]) + 1
-    }
-    const invoiceNo = `PI-${String(nextNum).padStart(4, '0')}`
+      let nextNum = 1
+      if (lastInvoice?.invoiceNo) {
+        const match = lastInvoice.invoiceNo.match(/PI-(\d+)/)
+        if (match) nextNum = parseInt(match[1]) + 1
+      }
+      const invoiceNo = `PI-${String(nextNum).padStart(4, '0')}`
 
-    const invoice = await db.purchaseInvoice.create({
-      data: {
-        invoiceNo,
-        supplierId,
-        purchaseOrderId: purchaseOrderId || null,
-        projectId: projectId || null,
-        date: new Date(date),
-        dueDate: new Date(dueDate),
-        subtotal,
-        vatRate,
-        vatAmount,
-        totalAmount,
-        paidAmount: 0,
-        status: 'DRAFT',
-        notes: notes || null,
-        expenseCategory: body.expenseCategory || null,
-        items: {
-          create: items.map((item: { description: string; quantity: number; unitPrice: number }) => ({
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.quantity * item.unitPrice,
-          })),
+      const invoice = await tx.purchaseInvoice.create({
+        data: {
+          invoiceNo,
+          supplierId,
+          purchaseOrderId: purchaseOrderId || null,
+          projectId: projectId || null,
+          date: new Date(date),
+          dueDate: new Date(dueDate),
+          subtotal,
+          vatRate,
+          vatAmount,
+          totalAmount,
+          paidAmount: 0,
+          status: 'DRAFT',
+          notes: notes || null,
+          expenseCategory: body.expenseCategory || null,
+          items: {
+            create: items.map((item: { description: string; quantity: number; unitPrice: number }) => ({
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.quantity * item.unitPrice,
+            })),
+          },
         },
-      },
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        purchaseOrder: { select: { id: true, orderNo: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        items: true,
-      },
-    })
-
-    // Auto-create accounting journal entry and store journalEntryId
-    try {
-      await initializeChartOfAccounts()
-      const journalEntry = await autoEntryPurchaseInvoice({
-        invoiceNo: invoice.invoiceNo,
-        supplierId: invoice.supplierId,
-        subtotal: invoice.subtotal,
-        vatRate: invoice.vatRate,
-        vatAmount: invoice.vatAmount,
-        totalAmount: invoice.totalAmount,
-        date: invoice.date,
-        projectId: invoice.projectId || undefined,
-        expenseCategory: body.expenseCategory,
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
+          purchaseOrder: { select: { id: true, orderNo: true } },
+          project: { select: { id: true, name: true, code: true, projectType: true } },
+          items: true,
+        },
       })
 
-      // Store the journalEntryId on the invoice
-      await db.purchaseInvoice.update({
+      // Auto-create accounting journal entry
+      try {
+        await createPurchaseInvoiceJournalEntry(invoice.id, tx)
+      } catch (accountingError) {
+        console.error('[API] Accounting entry failed for purchase invoice:', accountingError)
+      }
+
+      // Re-fetch to include journalEntryId
+      return await tx.purchaseInvoice.findUnique({
         where: { id: invoice.id },
-        data: { journalEntryId: journalEntry.id },
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
+          purchaseOrder: { select: { id: true, orderNo: true } },
+          project: { select: { id: true, name: true, code: true, projectType: true } },
+          items: true,
+        },
       })
-    } catch (accountingError) {
-      console.error('Accounting entry failed for purchase invoice:', accountingError)
-    }
-
-    // Re-fetch to include journalEntryId
-    const updatedInvoice = await db.purchaseInvoice.findUnique({
-      where: { id: invoice.id },
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        purchaseOrder: { select: { id: true, orderNo: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        items: true,
-      },
     })
 
-    return NextResponse.json(updatedInvoice, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
-    console.error('Error creating purchase invoice:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء فاتورة الشراء' }, { status: 500 })
+    console.error('[API] Failed to create purchase invoice:', error)
+    return NextResponse.json({ error: 'Failed to create purchase invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -157,62 +175,66 @@ export async function PUT(request: Request) {
 
     // If the invoice has been approved/posted and amounts are changing, create reversal + new entry
     if (existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
-      const originalEntry = await db.journalEntry.findUnique({
-        where: { id: existing.journalEntryId },
-        include: { lines: true },
-      })
-
-      if (originalEntry) {
-        // Get account codes for reversal lines
-        const accountIds = originalEntry.lines.map(l => l.accountId)
-        const accounts = await db.account.findMany({ where: { id: { in: accountIds } } })
-        const accountMap = new Map(accounts.map(a => [a.id, a.code]))
-
-        const resolvedReversalLines = originalEntry.lines.map(line => ({
-          accountCode: accountMap.get(line.accountId) || '',
-          debit: line.credit,
-          credit: line.debit,
-          costCenterId: line.costCenterId || undefined,
-          description: `Reversal: ${line.description || ''}`,
-        }))
-
-        await createJournalEntry({
-          entryNo: `JE-REV-PI-${Date.now()}`,
-          date: new Date(),
-          description: `Reversal for Purchase Invoice ${existing.invoiceNo}`,
-          descriptionAr: `قيد عكسي لفاتورة مشتريات ${existing.invoiceNo}`,
-          lines: resolvedReversalLines,
-          sourceType: 'PURCHASE_INVOICE_REVERSAL',
-          sourceId: existing.invoiceNo,
+      await db.$transaction(async (tx: PrismaTransaction) => {
+        const originalEntry = await tx.journalEntry.findUnique({
+          where: { id: existing.journalEntryId! },
+          include: { lines: true },
         })
 
-        // Cancel the original entry
-        await db.journalEntry.update({
-          where: { id: existing.journalEntryId },
-          data: { status: 'CANCELLED' },
+        if (originalEntry) {
+          // Get account codes for reversal lines
+          const accountIds = originalEntry.lines.map(l => l.accountId)
+          const accounts = await tx.account.findMany({ where: { id: { in: accountIds } } })
+          const accountMap = new Map(accounts.map(a => [a.id, a.code]))
+
+          const resolvedReversalLines = originalEntry.lines.map(line => ({
+            accountCode: accountMap.get(line.accountId) || '',
+            debit: toNumber(line.credit),
+            credit: toNumber(line.debit),
+            costCenterId: line.costCenterId || undefined,
+            description: `Reversal: ${line.description || ''}`,
+          }))
+
+          await createJournalEntry({
+            entryNo: `JE-REV-PI-${Date.now()}`,
+            date: new Date(),
+            description: `Reversal for Purchase Invoice ${existing.invoiceNo}`,
+            descriptionAr: `قيد عكسي لفاتورة مشتريات ${existing.invoiceNo}`,
+            lines: resolvedReversalLines,
+            sourceType: 'PURCHASE_INVOICE_REVERSAL',
+            sourceId: existing.invoiceNo,
+          }, tx)
+
+          // Cancel the original entry
+          await tx.journalEntry.update({
+            where: { id: existing.journalEntryId! },
+            data: { status: 'CANCELLED' },
+          })
+        }
+
+        // Update the invoice with new values so createPurchaseInvoiceJournalEntry reads them
+        const newSubtotal = updateData.subtotal !== undefined ? toNumber(updateData.subtotal) : toNumber(existing.subtotal)
+        const newVatAmount = updateData.vatAmount !== undefined ? toNumber(updateData.vatAmount) : toNumber(existing.vatAmount)
+        const newTotalAmount = updateData.totalAmount !== undefined ? toNumber(updateData.totalAmount) : toNumber(existing.totalAmount)
+
+        await tx.purchaseInvoice.update({
+          where: { id: existing.id },
+          data: {
+            subtotal: newSubtotal,
+            vatAmount: newVatAmount,
+            totalAmount: newTotalAmount,
+          },
         })
-      }
 
-      // Create new entry with updated values
-      const newSubtotal = updateData.subtotal ?? existing.subtotal
-      const newVatAmount = updateData.vatAmount ?? existing.vatAmount
-      const newTotalAmount = updateData.totalAmount ?? existing.totalAmount
-      const newDate = updateData.date ? new Date(updateData.date) : existing.date
+        // Create new journal entry
+        try {
+          await createPurchaseInvoiceJournalEntry(existing.id, tx)
+        } catch (journalError) {
+          console.error('[API] Failed to create replacement journal entry for purchase invoice:', journalError)
+        }
 
-      await initializeChartOfAccounts()
-      const newJournalEntry = await autoEntryPurchaseInvoice({
-        invoiceNo: existing.invoiceNo,
-        supplierId: existing.supplierId,
-        subtotal: newSubtotal,
-        vatRate: existing.vatRate,
-        vatAmount: newVatAmount,
-        totalAmount: newTotalAmount,
-        date: newDate,
-        projectId: existing.projectId || undefined,
-        expenseCategory: existing.expenseCategory || undefined,
+        updateData.journalEntryId = undefined // Will be set by createPurchaseInvoiceJournalEntry
       })
-
-      updateData.journalEntryId = newJournalEntry.id
     }
 
     // Update the invoice
@@ -233,7 +255,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error updating purchase invoice:', error)
-    return NextResponse.json({ error: 'فشل في تحديث فاتورة الشراء' }, { status: 500 })
+    console.error('[API] Failed to update purchase invoice:', error)
+    return NextResponse.json({ error: 'Failed to update purchase invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

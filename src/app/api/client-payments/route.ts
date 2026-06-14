@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { autoEntryClientPayment, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
+import { createClientPaymentJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -16,9 +17,10 @@ export async function GET(request: Request) {
     const where: Record<string, unknown> = {}
     if (clientId) where.clientId = clientId
     if (dateFrom || dateTo) {
-      where.date = {}
-      if (dateFrom) where.date.gte = new Date(dateFrom)
-      if (dateTo) where.date.lte = new Date(dateTo)
+      const dateFilter: Record<string, Date> = {}
+      if (dateFrom) dateFilter.gte = new Date(dateFrom)
+      if (dateTo) dateFilter.lte = new Date(dateTo)
+      where.date = dateFilter
     }
     if (search) {
       where.OR = [
@@ -57,8 +59,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching client payments:', error)
-    return NextResponse.json({ error: 'فشل في تحميل تحصيلات العملاء' }, { status: 500 })
+    console.error('[API] Failed to fetch client payments:', error)
+    return NextResponse.json({ error: 'Failed to fetch client payments', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -114,24 +116,11 @@ export async function POST(request: Request) {
         },
       })
 
-      // Create accounting entry using autoEntryClientPayment
+      // Create accounting entry using auto-journal
       try {
-        await initializeChartOfAccounts()
-        const journalEntry = await autoEntryClientPayment({
-          clientName: client.name,
-          amount,
-          date: new Date(date),
-          receivedIn: receivedIn === 'BANK' ? 'BANK' : 'TREASURY',
-          reference: reference || undefined,
-        }, tx)
-
-        // Store the journalEntryId on the payment
-        await tx.clientPayment.update({
-          where: { id: payment.id },
-          data: { journalEntryId: journalEntry.id },
-        })
+        await createClientPaymentJournalEntry(payment.id, tx)
       } catch (accountingError) {
-        console.error('Accounting entry failed for client payment:', accountingError)
+        console.error('[API] Accounting entry failed for client payment:', accountingError)
       }
 
       // Update sales invoice paidAmount and status
@@ -140,10 +129,10 @@ export async function POST(request: Request) {
           where: { id: invoiceId },
         })
         if (invoice) {
-          const newPaidAmount = invoice.paidAmount + amount
+          const newPaidAmount = toNumber(invoice.paidAmount) + amount
           let newStatus = invoice.status
 
-          if (newPaidAmount >= invoice.totalAmount) {
+          if (newPaidAmount >= toNumber(invoice.totalAmount)) {
             newStatus = 'PAID'
           } else if (newPaidAmount > 0) {
             newStatus = 'PARTIALLY_PAID'
@@ -171,7 +160,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
-    console.error('Error creating client payment:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء تحصيل العميل' }, { status: 500 })
+    console.error('[API] Failed to create client payment:', error)
+    return NextResponse.json({ error: 'Failed to create client payment', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

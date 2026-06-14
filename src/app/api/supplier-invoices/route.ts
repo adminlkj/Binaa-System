@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
-import { autoEntryPurchaseInvoice, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
+import { createPurchaseInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { toNumber } from '@/lib/decimal'
+import { generateZatcaQRForInvoice } from '@/lib/zatca-qr'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -63,8 +65,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching supplier invoices:', error)
-    return NextResponse.json({ error: 'فشل في تحميل فواتير الموردين' }, { status: 500 })
+    console.error('[API] Failed to fetch supplier invoices:', error)
+    return NextResponse.json({ error: 'Failed to fetch supplier invoices', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -115,39 +117,39 @@ export async function POST(request: Request) {
     const purchaseOrderId = gr.purchaseOrderId
 
     // System calculates subtotal, vat, total from GR items
-    const subtotal = gr.items.reduce((sum, item) => sum + item.totalPrice, 0)
+    const subtotal = gr.items.reduce((sum, item) => sum + toNumber(item.totalPrice), 0)
     const vatAmount = subtotal * vatRate
     const totalAmount = subtotal + vatAmount
-
-    // Auto-generate invoice number SI-XXX
-    const lastInvoice = await db.purchaseInvoice.findFirst({
-      orderBy: { invoiceNo: 'desc' },
-      select: { invoiceNo: true },
-    })
-
-    let nextNum = 1
-    if (lastInvoice?.invoiceNo) {
-      const match = lastInvoice.invoiceNo.match(/SI-(\d+)/)
-      if (!match) {
-        // Try PI pattern too since there might be existing PI-XXX invoices
-        const piMatch = lastInvoice.invoiceNo.match(/PI-(\d+)/)
-        if (piMatch) nextNum = parseInt(piMatch[1]) + 1
-      } else {
-        nextNum = parseInt(match[1]) + 1
-      }
-    }
-    const invoiceNo = `SI-${String(nextNum).padStart(4, '0')}`
 
     // Build invoice items from GR items
     const invoiceItems = gr.items.map(item => ({
       description: item.description,
       quantity: item.quantityReceived,
       unitPrice: item.unitPrice,
-      totalPrice: item.quantityReceived * item.unitPrice,
+      totalPrice: toNumber(item.quantityReceived) * toNumber(item.unitPrice),
     }))
 
     // Create invoice + accounting entry in transaction
     const result = await db.$transaction(async (tx: PrismaTransaction) => {
+      // Auto-generate invoice number SI-XXX inside transaction
+      const lastInvoice = await tx.purchaseInvoice.findFirst({
+        orderBy: { invoiceNo: 'desc' },
+        select: { invoiceNo: true },
+      })
+
+      let nextNum = 1
+      if (lastInvoice?.invoiceNo) {
+        const match = lastInvoice.invoiceNo.match(/SI-(\d+)/)
+        if (!match) {
+          // Try PI pattern too since there might be existing PI-XXX invoices
+          const piMatch = lastInvoice.invoiceNo.match(/PI-(\d+)/)
+          if (piMatch) nextNum = parseInt(piMatch[1]) + 1
+        } else {
+          nextNum = parseInt(match[1]) + 1
+        }
+      }
+      const invoiceNo = `SI-${String(nextNum).padStart(4, '0')}`
+
       const invoice = await tx.purchaseInvoice.create({
         data: {
           invoiceNo,
@@ -182,24 +184,9 @@ export async function POST(request: Request) {
 
       // Auto-create accounting journal entry
       try {
-        await initializeChartOfAccounts()
-        const journalEntry = await autoEntryPurchaseInvoice({
-          invoiceNo: invoice.invoiceNo,
-          supplierId: invoice.supplierId,
-          subtotal: invoice.subtotal,
-          vatRate: invoice.vatRate,
-          vatAmount: invoice.vatAmount,
-          totalAmount: invoice.totalAmount,
-          date: invoice.date,
-          projectId: invoice.projectId || undefined,
-        }, tx)
-
-        await tx.purchaseInvoice.update({
-          where: { id: invoice.id },
-          data: { journalEntryId: journalEntry.id },
-        })
+        await createPurchaseInvoiceJournalEntry(invoice.id, tx)
       } catch (accountingError) {
-        console.error('Accounting entry failed for supplier invoice:', accountingError)
+        console.error('[API] Accounting entry failed for supplier invoice:', accountingError)
       }
 
       // Re-fetch to include journalEntryId
@@ -215,9 +202,32 @@ export async function POST(request: Request) {
       })
     })
 
+    // Generate and store ZATCA QR code for the supplier invoice
+    try {
+      const company = await db.companySetting.findFirst()
+      if (company && result) {
+        const zatcaQr = generateZatcaQRForInvoice({
+          date: result.date,
+          totalAmount: toNumber(result.totalAmount),
+          vatAmount: toNumber(result.vatAmount),
+        }, {
+          sellerName: company.nameEn || company.nameAr,
+          vatNumber: company.taxNumber || '',
+        })
+        if (zatcaQr) {
+          await db.purchaseInvoice.update({
+            where: { id: result.id },
+            data: { zatcaQr },
+          })
+        }
+      }
+    } catch (qrError) {
+      console.error('[API] ZATCA QR generation failed for supplier invoice:', qrError)
+    }
+
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
-    console.error('Error creating supplier invoice:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء فاتورة المورد' }, { status: 500 })
+    console.error('[API] Failed to create supplier invoice:', error)
+    return NextResponse.json({ error: 'Failed to create supplier invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

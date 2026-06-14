@@ -5,7 +5,7 @@ import { Printer, Building2, FileText, Stamp, FileDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { numberToArabicWords, numberToEnglishWords } from '@/lib/amount-to-words'
-import { generateZATCAQR } from '@/lib/zatca-qr'
+import { generateZatcaQR } from '@/lib/zatca-qr'
 import { CurrencySymbol } from '@/components/ui/currency-symbol'
 
 // ============ Types ============
@@ -208,14 +208,14 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
   useEffect(() => {
     async function generateQR() {
       try {
-        const qr = await generateZATCAQR({
+        const qr = await generateZatcaQR({
           sellerName: company.nameAr,
           vatNumber: company.taxNumber || '',
-          date: fmtDateISO(invoice.date),
-          total: fmt(invoice.totalAmount),
-          vatTotal: fmt(effectiveVatAmount),
+          invoiceDate: fmtDateISO(invoice.date),
+          totalAmount: fmt(invoice.totalAmount),
+          vatAmount: fmt(effectiveVatAmount),
         })
-        setQrDataUrl(qr)
+        setQrDataUrl(qr.qrDataUrl || '')
       } catch (err) {
         console.error('QR generation error:', err)
       }

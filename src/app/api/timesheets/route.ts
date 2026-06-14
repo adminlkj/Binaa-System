@@ -11,6 +11,9 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId')
     const status = searchParams.get('status')
     const year = searchParams.get('year')
+    const pageParam = searchParams.get('page')
+    const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
+    const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
 
     const where: Record<string, unknown> = {}
     if (contractId) where.contractId = contractId
@@ -18,29 +21,48 @@ export async function GET(request: Request) {
     if (status) where.status = status
     if (year) where.year = parseInt(year)
 
-    const timesheets = await db.timesheet.findMany({
-      where,
-      include: {
-        contract: {
-          select: {
-            id: true, contractNo: true, hourlyRate: true, deliveryFees: true,
-            deliveryFeesTaxable: true, paymentTerms: true,
-            project: { select: { id: true, name: true, nameAr: true, code: true } },
-          },
-        },
-        project: { select: { id: true, name: true, nameAr: true, code: true } },
-        equipment: { select: { id: true, code: true, name: true, nameAr: true } },
-        rental: {
-          select: { id: true, hourlyRate: true, pricingType: true, status: true, clientId: true },
+    const include = {
+      contract: {
+        select: {
+          id: true, contractNo: true, hourlyRate: true, deliveryFees: true,
+          deliveryFeesTaxable: true, paymentTerms: true,
+          project: { select: { id: true, name: true, nameAr: true, code: true } },
         },
       },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    })
+      project: { select: { id: true, name: true, nameAr: true, code: true } },
+      equipment: { select: { id: true, code: true, name: true, nameAr: true } },
+      rental: {
+        select: { id: true, hourlyRate: true, pricingType: true, status: true, clientId: true },
+      },
+    }
 
-    return NextResponse.json(timesheets)
+    const whereClause = Object.keys(where).length > 0 ? where : undefined
+
+    // Backward compatibility: return array if no page param, paginated object if page provided
+    if (page === null) {
+      const timesheets = await db.timesheet.findMany({
+        where: whereClause,
+        include,
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+      })
+      return NextResponse.json(timesheets)
+    }
+
+    const [data, total] = await Promise.all([
+      db.timesheet.findMany({
+        where: whereClause,
+        include,
+        orderBy: [{ year: 'desc' }, { month: 'desc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      db.timesheet.count({ where: whereClause }),
+    ])
+
+    return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
-    console.error('Error fetching timesheets:', error)
-    return NextResponse.json({ error: 'فشل في تحميل سجلات ساعات العمل' }, { status: 500 })
+    console.error('[API] Failed to fetch timesheets:', error)
+    return NextResponse.json({ error: 'Failed to fetch timesheets', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
 
@@ -112,7 +134,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(timesheet, { status: 201 })
   } catch (error) {
-    console.error('Error creating timesheet:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء سجل ساعات العمل' }, { status: 500 })
+    console.error('[API] Failed to create timesheet:', error)
+    return NextResponse.json({ error: 'Failed to create timesheet', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }

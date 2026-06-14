@@ -26,6 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
+import { ChangeOrderDialog } from '@/components/shared/change-order-dialog'
 import { useAppStore, formatDate, commonText } from '@/stores/app-store'
 
 // ============ Types ============
@@ -75,7 +76,7 @@ interface ContractItem {
   // Relations
   project: { id: string; name: string; code: string; nameAr?: string | null }
   client: { id: string; name: string; code: string; nameAr?: string | null } | null
-  _count?: { progressClaims: number }
+  _count?: { progressClaims: number; changeOrders: number }
   progressClaims?: {
     id: string
     claimNo: string
@@ -84,6 +85,28 @@ interface ContractItem {
     amount: number
     totalAmount: number
     status: string
+  }
+  changeOrders?: {
+    id: string
+    contractId: string
+    projectId: string
+    orderNo: string
+    date: string
+    description: string
+    changeType: string
+    originalValue: number
+    changeValue: number
+    newValue: number
+    vatRate: number
+    vatAmount: number
+    totalChangeValue: number
+    status: string
+    approvedDate: string | null
+    approvedBy: string | null
+    notes: string | null
+    createdAt: string
+    contract: { id: string; contractNo: string }
+    project: { id: string; name: string; code: string }
   }[]
 }
 
@@ -125,8 +148,8 @@ interface ContractFormData {
 
 // ============ Labels ============
 const labels = {
-  title: { ar: 'عقود المشاريع', en: 'Project Contracts' },
-  subtitle: { ar: 'إدارة عقود المشاريع التنفيذية والمستخلصات', en: 'Manage execution project contracts and progress claims' },
+  title: { ar: 'العقود', en: 'Contracts' },
+  subtitle: { ar: 'إدارة عقود المشاريع والتأجير', en: 'Manage project and rental contracts' },
   contractNo: { ar: 'رقم العقد', en: 'Contract No.' },
   client: { ar: 'العميل', en: 'Client' },
   project: { ar: 'المشروع', en: 'Project' },
@@ -141,6 +164,12 @@ const labels = {
   date: { ar: 'تاريخ العقد', en: 'Contract Date' },
   description: { ar: 'وصف العقد', en: 'Description' },
   newContract: { ar: 'عقد مشروع جديد', en: 'New Project Contract' },
+  newRentalContract: { ar: 'عقد تأجير جديد', en: 'New Rental Contract' },
+  rentalContracts: { ar: 'عقود التأجير', en: 'Rental Contracts' },
+  projectContracts: { ar: 'عقود المشاريع', en: 'Project Contracts' },
+  equipment: { ar: 'المعدة', en: 'Equipment' },
+  hourlyRate: { ar: 'سعر الساعة', en: 'Hourly Rate' },
+  deliveryFees: { ar: 'رسوم النقل', en: 'Delivery Fees' },
   editContract: { ar: 'تعديل العقد', en: 'Edit Contract' },
   search: { ar: 'بحث برقم العقد، المشروع، العميل...', en: 'Search by contract no., project, client...' },
   allStatus: { ar: 'كل الحالات', en: 'All Status' },
@@ -587,12 +616,13 @@ export function ContractsModule() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [form, setForm] = useState<ContractFormData>(defaultForm)
+  const [contractTab, setContractTab] = useState<'PROJECT' | 'RENTAL'>('PROJECT')
 
   // Fetch contracts
   const { data: contracts = [], isLoading, isError, refetch } = useQuery<ContractItem[]>({
-    queryKey: ['contracts', 'PROJECT'],
+    queryKey: ['contracts', contractTab],
     queryFn: async () => {
-      const res = await fetch('/api/contracts?contractType=PROJECT')
+      const res = await fetch(`/api/contracts?contractType=${contractTab}`)
       if (!res.ok) throw new Error('Failed to fetch')
       return res.json()
     },
@@ -672,7 +702,7 @@ export function ContractsModule() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...data,
-          contractType: 'PROJECT', // Always PROJECT for this module
+          contractType: contractTab,
           value: parseFloat(data.value) || 0,
           vatRate: parseFloat(data.vatRate) || 0.15,
           hourlyRate: data.hourlyRate ? parseFloat(data.hourlyRate) : null,
@@ -713,7 +743,7 @@ export function ContractsModule() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...data,
-          contractType: 'PROJECT',
+          contractType: data.contractType || 'PROJECT',
           value: parseFloat(data.value) || 0,
           vatRate: parseFloat(data.vatRate) || 0.15,
           hourlyRate: data.hourlyRate ? parseFloat(data.hourlyRate) : null,
@@ -1021,6 +1051,33 @@ export function ContractsModule() {
             )}
           </CardContent>
         </Card>
+
+        {/* Rental Contract Info (for RENTAL type) */}
+        {contract.contractType === 'RENTAL' && (
+          <Card className="border-cyan-200 bg-cyan-50/30">
+            <CardContent className="pt-6">
+              <SectionHeader icon={DollarSign} title={{ ar: 'بيانات التأجير', en: 'Rental Details' }} lang={lang} />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <DetailRow label={labels.client} value={clientName} lang={lang} />
+                <DetailMoneyRow label={labels.hourlyRate} value={contract.hourlyRate || 0} lang={lang} />
+                <DetailMoneyRow label={labels.deliveryFees} value={contract.deliveryFees || 0} lang={lang} />
+                <DetailRow label={labels.salesOrderNo} value={contract.salesOrderNo} lang={lang} />
+                <DetailRow label={labels.paymentTerms} value={contract.paymentTerms} lang={lang} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Change Orders */}
+        <Card>
+          <CardContent className="pt-6">
+            <ChangeOrderDialog
+              contractId={contract.id}
+              projectId={contract.projectId || contract.project?.id}
+              changeOrders={contract.changeOrders || []}
+            />
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -1036,14 +1093,30 @@ export function ContractsModule() {
             <RefreshCw className="size-4" />
           </Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => {
-            setForm(defaultForm)
+            setForm({ ...defaultForm, contractType: contractTab })
             setViewState({ type: 'create' })
           }}>
-            <Plus className="size-4" /> {t(labels.newContract.ar, labels.newContract.en)}
+            <Plus className="size-4" /> {contractTab === 'RENTAL' ? t(labels.newRentalContract.ar, labels.newRentalContract.en) : t(labels.newContract.ar, labels.newContract.en)}
           </Button>
         </>
       }
     >
+      {/* Tab Selector */}
+      <div className="flex items-center gap-1 rounded-lg bg-muted p-1 w-fit">
+        <button
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${contractTab === 'PROJECT' ? 'bg-white shadow-sm text-emerald-700' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => { setContractTab('PROJECT'); setSearch(''); setStatusFilter('all') }}
+        >
+          {t(labels.projectContracts.ar, labels.projectContracts.en)}
+        </button>
+        <button
+          className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${contractTab === 'RENTAL' ? 'bg-white shadow-sm text-cyan-700' : 'text-muted-foreground hover:text-foreground'}`}
+          onClick={() => { setContractTab('RENTAL'); setSearch(''); setStatusFilter('all') }}
+        >
+          {t(labels.rentalContracts.ar, labels.rentalContracts.en)}
+        </button>
+      </div>
+
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="bg-emerald-50 border-emerald-200">
@@ -1101,8 +1174,8 @@ export function ContractsModule() {
             <div className="flex flex-col items-center gap-3 py-10">
               <FileText className="size-12 text-gray-300" />
               <p className="text-muted-foreground">{t(labels.noContracts.ar, labels.noContracts.en)}</p>
-              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setForm(defaultForm); setViewState({ type: 'create' }) }}>
-                <Plus className="size-4 mr-1" /> {t(labels.newContract.ar, labels.newContract.en)}
+              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setForm({ ...defaultForm, contractType: contractTab }); setViewState({ type: 'create' }) }}>
+                <Plus className="size-4 mr-1" /> {contractTab === 'RENTAL' ? t(labels.newRentalContract.ar, labels.newRentalContract.en) : t(labels.newContract.ar, labels.newContract.en)}
               </Button>
             </div>
           ) : (
@@ -1111,10 +1184,21 @@ export function ContractsModule() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-right">{t(labels.contractNo.ar, labels.contractNo.en)}</TableHead>
-                    <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
-                    <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
-                    <TableHead className="text-right">{t(labels.value.ar, labels.value.en)}</TableHead>
-                    <TableHead className="text-right">{t(labels.totalValue.ar, labels.totalValue.en)}</TableHead>
+                    {contractTab === 'PROJECT' ? (
+                      <>
+                        <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+                        <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+                        <TableHead className="text-right">{t(labels.value.ar, labels.value.en)}</TableHead>
+                        <TableHead className="text-right">{t(labels.totalValue.ar, labels.totalValue.en)}</TableHead>
+                      </>
+                    ) : (
+                      <>
+                        <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+                        <TableHead className="text-right">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}</TableHead>
+                        <TableHead className="text-right">{t(labels.deliveryFees.ar, labels.deliveryFees.en)}</TableHead>
+                        <TableHead className="text-right">{t(labels.totalValue.ar, labels.totalValue.en)}</TableHead>
+                      </>
+                    )}
                     <TableHead className="text-right">{t(labels.status.ar, labels.status.en)}</TableHead>
                     <TableHead className="text-right">{commonText.actions[lang]}</TableHead>
                   </TableRow>
@@ -1123,10 +1207,21 @@ export function ContractsModule() {
                   {filtered.map(c => (
                     <TableRow key={c.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', contractId: c.id })}>
                       <TableCell className="font-medium font-mono">{c.contractNo}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{c.project.name}</TableCell>
-                      <TableCell className="max-w-[150px] truncate">{c.client?.name || '—'}</TableCell>
-                      <TableCell><MoneyDisplay value={c.value} lang={lang} size="sm" inline /></TableCell>
-                      <TableCell className="font-semibold"><MoneyDisplay value={c.totalValue} lang={lang} size="sm" inline bold /></TableCell>
+                      {contractTab === 'PROJECT' ? (
+                        <>
+                          <TableCell className="max-w-[200px] truncate">{c.project.name}</TableCell>
+                          <TableCell className="max-w-[150px] truncate">{c.client?.name || '—'}</TableCell>
+                          <TableCell><MoneyDisplay value={c.value} lang={lang} size="sm" inline /></TableCell>
+                          <TableCell className="font-semibold"><MoneyDisplay value={c.totalValue} lang={lang} size="sm" inline bold /></TableCell>
+                        </>
+                      ) : (
+                        <>
+                          <TableCell className="max-w-[150px] truncate">{c.client?.name || '—'}</TableCell>
+                          <TableCell><MoneyDisplay value={c.hourlyRate || 0} lang={lang} size="sm" inline /></TableCell>
+                          <TableCell><MoneyDisplay value={c.deliveryFees || 0} lang={lang} size="sm" inline /></TableCell>
+                          <TableCell className="font-semibold"><MoneyDisplay value={c.totalValue} lang={lang} size="sm" inline bold /></TableCell>
+                        </>
+                      )}
                       <TableCell><ContractStatusBadge status={c.status} lang={lang} /></TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
