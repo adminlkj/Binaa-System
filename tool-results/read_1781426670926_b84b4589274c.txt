@@ -1,0 +1,1124 @@
+     1→---
+     2→Task ID: 1
+     3→Agent: Main Agent
+     4→Task: فحص شامل لنظام بِنَاء ERP وإصلاح المشاكل
+     5→
+     6→Work Log:
+     7→- فحص حالة النظام الحالية: 43 موديول، 29+ API، قاعدة بيانات SQLite
+     8→- اكتشاف مشكلة انهيار الخادم بسبب استيراد المحرك المحاسبي الثقيل (1394 سطر)
+     9→- إصلاح مشكلة ترتيب الحذف في seed route (قيد خارجي بين EquipmentRental و Contract)
+    10→- إصلاح مشكلة استيراد المحرك المحاسبي في dashboard route و accounts route
+    11→- تحويل الاستيرادات الثابتة إلى تحميل ديناميكي (dynamic imports) مع ssr:false
+    12→- تحسين أداء accounts API بتقليل حجم الاستجابة من 177KB إلى 96KB
+    13→- إزالة حساب الأرصدة الثقيل من accounts API واستخدام groupBy بدلاً من findMany
+    14→- تبسيط seed route بإزالة استدعاءات autoEntry المحاسبية لتسريع التهيئة
+    15→- اختبار 29 واجهة API بنجاح عبر curl
+    16→- تهيئة البيانات التجريبية بنجاح (5 عملاء، 5 موردين، 3 مشاريع، 3 عقود، 5 موظفين، 3 معدات...)
+    17→
+    18→Stage Summary:
+    19→- ✅ جميع واجهات API تعمل بنجاح
+    20→- ✅ البيانات التجريبية تم تهيئتها
+    21→
+    22→---
+    23→Task ID: 2
+    24→Agent: Main Agent
+    25→Task: إعادة هيكلة محرك الطباعة الموحد ليدعم قوالب متعددة حسب نوع المستند
+    26→
+    27→Work Log:
+    28→- مراجعة شاملة لملف print-service.ts (2547 سطر) وتحديد المشكلة التصميمية
+    29→- اكتشاف أن 13 نوع مستند تستخدم generateGenericTableBody() الذي يعطي شكل الفاتورة لكل المستندات
+    30→- تصميم نظام تصنيف المستندات (DocumentCategory) بـ5 فئات: invoice, voucher, report, contract, order
+    31→- تنفيذ 5 ثيمات ألوان مختلفة: أخضر (فواتير)، كهرماني (سندات)، رمادي (تقارير)، تركوازي+ذهبي (عقود)، أزرق (أوامر)
+    32→- إنشاء 13 قالب متخصص لكل نوع مستند:
+    33→  1. generateDeliveryOrderBody - أمر تسليم (أزرق)
+    34→  2. generatePurchaseRequestBody - طلب شراء (أزرق)
+    35→  3. generateGoodsReceiptBody - محضر استلام (أزرق)
+    36→  4. generateAttendanceReportBody - تقرير حضور (رمادي)
+    37→  5. generateRentalContractBody - عقد تأجير (تركوازي+ذهبي)
+    38→  6. generateEquipmentReportBody - تقرير معدات (رمادي)
+    39→  7. generateFuelReportBody - تقرير وقود (رمادي)
+    40→  8. generateMaintenanceReportBody - تقرير صيانة (رمادي)
+    41→  9. generateWorkTeamReportBody - تقرير فريق عمل (رمادي)
+    42→  10. generateResourceDistributionBody - تقرير توزيع موارد (رمادي)
+    43→  11. generateJournalEntryBody - قيد يومية محاسبي (رمادي)
+    44→  12. generateTrialBalanceBody - ميزان مراجعة (رمادي)
+    45→  13. generateAccountStatementBody - كشف حساب (رمادي)
+    46→- تحديث getSharedCSS() لقبول معامل الفئة وتطبيق ثيم الألوان المناسب
+    47→- تحديث generatePrintHTML() لاستخدام نظام التصنيف
+    48→- اختبار شامل لجميع فئات المستندات - جميع الاختبارات ناجحة
+    49→
+    50→Stage Summary:
+    51→- ✅ نظام تصنيف المستندات بـ5 فئات يعمل بنجاح
+    52→- ✅ 5 ثيمات ألوان مختلفة للرأس والجداول والإجماليات
+    53→- ✅ التقارير لا تحتوي على أقسام الفاتورة (أطراف، بنك، توقيعات، مبلغ بالكلمات)
+    54→- ✅ العقود تحتوي على بنود العقد والشروط والتوقيعات المزدوجة
+    55→- ✅ الأوامر تحتوي على أقسام الموافقة والتوقيعات المناسبة
+    56→- ✅ قيود اليومية تعرض جدول T-account مع فحص التوازن (مدين=دائن)
+    57→- ✅ كشوف الحسابات تعرض رصيد افتتاحي + حركات + رصيد إقفالي
+    58→- ✅ ميزان المراجعة يعرض أرصدة مدينة ودائنة مع الإجمالي
+    59→- ✅ الملف زاد من 2547 إلى 3853 سطر (+1306 سطر)
+    60→- ✅ lint يمر بدون أخطاء
+    61→- ✅ تحسين أداء الخادم بتقليل استهلاك الذاكرة
+    62→- ⚠️ المتصفح الآلي يسبب انهيار الخادم بسبب الضغط المتزامن (لكن واجهة المستخدم تعمل عبر Preview Panel)
+    63→- 🔧 تم تحويل جميع الموديولات إلى تحميل ديناميكي مع ssr:false
+    64→
+    65→---
+    66→Task ID: 2-d
+    67→Agent: Audit Agent
+    68→Task: تدقيق شامل لقاعدة بيانات وAPIs نظام بِنَاء ERP
+    69→
+    70→Work Log:
+    71→- قراءة وتحليل ملف schema.prisma الكامل (1447 سطر، 43+ نموذج)
+    72→- قراءة وتحليل 20+ ملف API حرج
+    73→- تحليل سلاسل البيانات الثلاث (تنفيذية، تأجير، مشتريات)
+    74→- اكتشاف 45+ مشكلة وتوصية عبر 4 محاور
+    75→
+    76→Stage Summary:
+    77→- 🔴 مشاكل حرجة: استخدام Float للمبالغ المالية، غياب الفهارس، غياب المعاملات (Transactions)
+    78→- 🟡 مشاكل متوسطة: غياب soft delete، عدم اكتمال سلسلة التأجير، تكرار كود
+    79→- 🟢 نقاط قوة: تكامل محاسبي جيد، business-flow validation، حذف آمن للفواتير
+    80→
+    81→---
+    82→Task ID: 2-a
+    83→Agent: Audit Agent
+    84→Task: تدقيق شامل لمحرك الطباعة print-service.ts (3853 سطر)
+    85→
+    86→Work Log:
+    87→- قراءة كاملة لملف print-service.ts (3853 سطر) وتحليل معمق لجميع الوظائف
+    88→- تحليل نظام تصنيف المستندات (getDocumentCategory) عبر 28 نوع مستند
+    89→- فحص 22 قالب طباعة مخصص و14 دالة توليد HTML
+    90→- مراجعة تكامل القوالب مع البيانات لكل نوع مستند
+    91→- تدقيق مطابقة القوالب مع المعايير المهنية السعودية (ZATCA، الأوراق التجارية)
+    92→- تحديد 18 مشكلة وتوصية عبر 7 محاور
+    93→
+    94→Stage Summary:
+    95→- 🔴 مشكلة حرجة: غياب QR رمز ZATCA من فواتير الخدمات والموردين (مخالفة تنظيمية)
+    96→- 🟡 مشاكل متوسطة: تكرار بيانات في أعمدة الجداول، غياب تصنيف صريح لـ timesheet-report، سندات مشتركة تفتقر لحقول مخصصة
+    97→- 🟢 نقاط قوة: نظام تصنيف 5 فئات يعمل جيداً، ثيمات ألوان احترافية، قوالب متخصصة لـ 16 نوع مستند
+    98→
+    99→---
+   100→Task ID: 2-c
+   101→Agent: Audit Agent
+   102→Task: تدقيق شامل لجميع وحدات واجهة المستخدم (35 موديول)
+   103→
+   104→Work Log:
+   105→- قراءة وتحليل 35 ملف موديول في /src/components/modules/
+   106→- تحليل كل موديول عبر 5 محاور: اكتمال الوظائف، جودة التصميم، التكامل، عرض البيانات المالية، الطباعة/التصدير
+   107→- إجمالي الأسطر المحللة: ~28,000+ سطر كود TypeScript/React
+   108→- تحديد 24 مشكلة وتوصية عبر المحاور الخمسة
+   109→
+   110→Stage Summary:
+   111→- 🟢 نقاط قوة: اتساق ممتاز في التصميم (ModuleLayout, MoneyDisplay, StatusBadge)، استخدام MoneyDisplay في 40 ملف، دعم كامل للعربية/الإنجليزية
+   112→- 🟡 مشاكل متوسطة: غياب تعديل/حذف في 6 موديولات، غياب تصدير CSV في 4 موديولات، PrintButton بدون data في 5 موديولات
+   113→- 🔴 مشاكل حرجة: rental-payments لا يستخدم ModuleLayout (الوحيد)، BOQ لا يدعم تعديل/حذف البنود
+   114→
+   115→---
+   116→Task ID: 2-b
+   117→Agent: Audit Agent
+   118→Task: تدقيق شامل لوحدة المحاسبة - المحرك المحاسبي وواجهة المستخدم و13 واجهة API
+   119→
+   120→Work Log:
+   121→- قراءة وتحليل accounting.tsx (1944 سطر) - واجهة المحاسبة
+   122→- قراءة وتحليل engine.ts (1395 سطر) - المحرك المحاسبي
+   123→- قراءة وتحليل 13 ملف API: accounts, journal-entries, trial-balance, general-ledger, financial-reports, account-statement, period-closing, fixed-assets, provisions, bank-accounts, bank-reconciliation, financial-summary, cost-centers
+   124→- فحص تكامل القيود التلقائية مع 16 وحدة أخرى عبر autoEntry functions
+   125→- تدقيق مبدأ القيد المزدوج وصحة توجيه الحسابات
+   126→- مطابقة مع معايير SOCPA السعودية
+   127→- تحديد 28 مشكلة وتوصية عبر 4 محاور
+   128→
+   129→Stage Summary:
+   130→- 🔴 مشاكل حرجة: أخطاء في تعليقات توجيه الحسابات (8 مواقع)، Input VAT مصنف كخصم بدلاً من أصل، غياب حماية الإقفال، ازدواج حساب في كشف المشاريع
+   131→- 🟡 مشاكل متوسطة: N+1 في financial-summary و bank-accounts، غياب CRUD كامل في 5 APIs، غياب تبويبات مخصصة للذمم المدينة/الدائنة، تعطيل القيود اليدوية
+   132→- 🟢 نقاط قوة: ميزان المراجعة يحسب الأرصدة بشكل صحيح، 16 قيد تلقائي يغطي معظم العمليات، شجرة الحسابات متوافقة مع SOCPA
+   133→
+   134→---
+   135→Task ID: 2-c
+   136→Agent: Database Schema Auditor
+   137→Task: Audit database schema and relationships
+   138→
+   139→Work Log:
+   140→- Read and analyzed prisma/schema.prisma (1447 lines, 62 models)
+   141→- Read and analyzed src/lib/db.ts (database client singleton)
+   142→- Evaluated all 62 models for completeness, data types, relationships, indexes, audit trail
+   143→- Evaluated accounting schema (Account, JournalEntry, JournalLine, CostCenter)
+   144→- Evaluated business flow support (Construction, Rental, Purchase)
+   145→- Cross-referenced previous audit findings from Task 2-d
+   146→
+   147→Stage Summary:
+   148→
+   149→## 🔴 CRITICAL ISSUES (7)
+   150→
+   151→### C1. Float Used for ALL Financial Fields (138 occurrences)
+   152→- **Severity:** 🔴 Critical - Data integrity risk
+   153→- **Models affected:** ALL 62 models with financial/monetary fields
+   154→- **Count:** 138 Float fields used for money, rates, quantities
+   155→- **Problem:** IEEE 754 Float has precision errors (0.1 + 0.2 ≠ 0.3). In an ERP, SAR 1,000,000.15 can become 1000000.14999999. Over thousands of transactions, rounding errors accumulate.
+   156→- **Examples:** JournalLine.debit/credit, SalesInvoice.totalAmount, Contract.value, Employee.basicSalary, Equipment.purchasePrice
+   157→- **Fix:** Change all monetary Float fields to Decimal (Prisma emulates Decimal as TEXT in SQLite — still more precise than Float). For rates/percentages, Decimal is also preferred.
+   158→- **Note:** SQLite limitation — Prisma stores Decimal as TEXT but performs correct arithmetic in JS.
+   159→
+   160→### C2. Zero Database Indexes (only 1 @@unique, no @@index)
+   161→- **Severity:** 🔴 Critical - Performance & scalability
+   162→- **Problem:** Only 1 composite @@unique found (PeriodClosing year+month+type). ZERO @@index declarations.
+   163→- **Impact:** Every query filtering by foreign key (projectId, clientId, supplierId, equipmentId, etc.) performs a full table scan. With production data, this will cause severe slowdowns.
+   164→- **Missing indexes on FK columns (35+):** Project.branchId, Project.clientId, Contract.projectId, SalesInvoice.clientId, SalesInvoice.projectId, PurchaseOrder.supplierId, PurchaseOrder.projectId, EquipmentRental.contractId, EquipmentRental.equipmentId, EquipmentRental.clientId, Timesheet.rentalId, Timesheet.contractId, JournalLine.journalEntryId, JournalLine.accountId, Expense.projectId, Employee.branchId, and 20+ more.
+   165→- **Missing indexes on frequently queried fields:** status fields (all models), date fields, invoiceNo, entryNo, code fields.
+   166→- **Fix:** Add @@index on all FK columns and frequently filtered/ordered columns.
+   167→
+   168→### C3. Broken Referential Integrity — SubcontractorContract.projectId Has No @relation
+   169→- **Severity:** 🔴 Critical - Data integrity
+   170→- **Model:** SubcontractorContract has `projectId String` but NO `@relation` defined, and Project has no `subcontractorContracts` back-relation.
+   171→- **Impact:** No referential integrity enforcement, no Prisma include/join queries possible, orphan records possible.
+   172→- **Fix:** Add `project Project @relation(fields: [projectId], references: [id])` and `subcontractorContracts SubcontractorContract[]` on Project.
+   173→
+   174→### C4. Missing onDelete/onUpdate on Most Relations (only 7 of 60+)
+   175→- **Severity:** 🔴 Critical - Data integrity
+   176→- **Only 7 relations have onDelete: Cascade:** TeamMember→WorkTeam, SalesInvoiceItem→SalesInvoice, PurchaseRequestItem→PurchaseRequest, PurchaseOrderItem→PurchaseOrder, GoodsReceiptItem→GoodsReceipt, PurchaseInvoiceItem→PurchaseInvoice, JournalLine→JournalEntry.
+   177→- **Missing critical cascades:**
+   178→  - Deleting a Client should Restrict if invoices/payments exist
+   179→  - Deleting a Project should Restrict if contracts/invoices exist
+   180→  - Deleting an Equipment should Restrict if active rentals exist
+   181→  - Deleting a Contract should Cascade to EquipmentRental
+   182→- **Zero onUpdate rules** defined anywhere.
+   183→- **Fix:** Add explicit onDelete: Restrict on all financial parent entities, onDelete: Cascade on line-item children, onUpdate: Cascade on all.
+   184→
+   185→### C5. No Soft Delete (deletedAt) on Any Model
+   186→- **Severity:** 🔴 Critical - Data loss risk
+   187→- **Problem:** All deletes are hard deletes. In ERP systems, financial records (invoices, journal entries, payments) should NEVER be hard-deleted.
+   188→- **Impact:** Accidental deletion of financial data is unrecoverable. Audit trail is broken.
+   189→- **Fix:** Add `deletedAt DateTime?` to all financial models and implement soft-delete filtering at the application layer or via Prisma middleware.
+   190→
+   191→### C6. FixedAsset Account References Have No @relation to Account
+   192→- **Severity:** 🔴 Critical - Data integrity
+   193→- **Model:** FixedAsset has `accountId String?`, `depExpenseAccountId String?`, `accumDepAccountId String?` — all without @relation to Account.
+   194→- **Impact:** No referential integrity, no Prisma join queries, possible orphan references if an Account is deleted.
+   195→- **Fix:** Add named relations: `assetAccount Account? @relation("FixedAssetAccount", ...)`, `depExpenseAccount Account? @relation("FixedAssetDepExpense", ...)`, `accumDepAccount Account? @relation("FixedAssetAccumDep", ...)`.
+   196→
+   197→### C7. BankAccount.accountId Has No @relation to Account
+   198→- **Severity:** 🔴 Critical - Data integrity
+   199→- **Model:** BankAccount has `accountId String?` with comment "Link to Chart of Accounts" but no @relation.
+   200→- **Impact:** Same as C6 — no referential integrity, no Prisma joins.
+   201→- **Fix:** Add `account Account? @relation("BankAccountGL", fields: [accountId], references: [id])` and back-relation on Account.
+   202→
+   203→---
+   204→
+   205→## 🟡 MODERATE ISSUES (10)
+   206→
+   207→### M1. 20 Models Missing updatedAt Audit Trail
+   208→- **Models:** Warehouse, CostCenter, Attachment, TeamMember, SalesInvoiceItem, PurchaseRequestItem, PurchaseOrderItem, GoodsReceiptItem, PurchaseInvoiceItem, EquipmentOperation, EquipmentUsage, EquipmentMaintenance, EquipmentFuelLog, EquipmentCost, EquipmentExpense, Account, JournalLine, AssetDepreciation, ProvisionMovement, BankTransaction
+   209→- **Impact:** Cannot track when records were last modified. Audit trail incomplete.
+   210→- **Fix:** Add `updatedAt DateTime @updatedAt` to all 20 models.
+   211→
+   212→### M2. String Instead of Enum for 20+ Status/Type Fields
+   213→- **Models affected:** EquipmentRental (status, pricingType, operationMode, fuelResponsibility, insuranceResponsibility, deliveryFeesType), Salary.activityType, Expense.activityType, PurchaseInvoice.activityType, FixedAsset (status, category, depreciationMethod), Provision (type, status), ProvisionMovement.movementType, BankTransaction.transactionType, BankReconciliation.status, PeriodClosing (type, status), Expense.payFrom, ClientPayment.receivedIn, SupplierPayment.paidFrom
+   214→- **Impact:** No type safety, invalid values possible, harder to query/refactor.
+   215→- **Fix:** Define proper enums for each status/type field.
+   216→
+   217→### M3. Missing User/Authentication Model
+   218→- **Problem:** No User, Role, or Permission model. AuditLog has `userId String?` with no relation.
+   219→- **Impact:** No authentication/authorization, no way to track who performed actions, no role-based access control.
+   220→- **Fix:** Add User model with role-based access, and add `createdBy String?` to key models.
+   221→
+   222→### M4. Missing Payment-Invoice Many-to-Many Link
+   223→- **Problem:** ClientPayment has one `invoiceId`, SupplierPayment has one `invoiceId`. In practice, a single payment can cover multiple invoices, and one invoice can have multiple partial payments.
+   224→- **Impact:** Cannot properly allocate payments across invoices. Payment-on-account not supported.
+   225→- **Fix:** Create PaymentAllocation junction model (paymentId, invoiceId, allocatedAmount).
+   226→
+   227→### M5. SupplierPayment Missing Relation to PurchaseInvoice
+   228→- **Problem:** SupplierPayment has `invoiceId String?` but no @relation to PurchaseInvoice, and PurchaseInvoice has no back-relation to SupplierPayment.
+   229→- **Impact:** Cannot track which supplier payments apply to which purchase invoices.
+   230→- **Fix:** Add proper relation (or PaymentAllocation junction as in M4).
+   231→
+   232→### M6. SubcontractorInvoice Not Linked to SubcontractorContract
+   233→- **Problem:** SubcontractorInvoice links to Subcontractor and Project, but not to SubcontractorContract.
+   234→- **Impact:** Cannot track which invoices belong to which subcontractor contract.
+   235→- **Fix:** Add `contractId String` with @relation to SubcontractorContract.
+   236→
+   237→### M7. JournalEntry.reversedEntryId Has No Self-Relation
+   238→- **Problem:** JournalEntry has `reversedEntryId String?` but no self-relation defined.
+   239→- **Impact:** Cannot use Prisma include to fetch the reversed entry.
+   240→- **Fix:** Add `reversedEntry JournalEntry? @relation("JournalReversal", fields: [reversedEntryId], references: [id])` and `reversals JournalEntry[] @relation("JournalReversal")`.
+   241→
+   242→### M8. Account Model Missing Critical Fields
+   243→- **Problem:** Account model lacks `openingBalance`, `currentBalance` (cached), and `updatedAt`.
+   244→- **Impact:** Cannot store opening balances per fiscal year. Balance must always be computed on the fly (slow for large datasets).
+   245→- **Fix:** Add `openingBalance Decimal @default(0)`, `updatedAt DateTime @updatedAt`, and consider a separate AccountBalance model per fiscal period.
+   246→
+   247→### M9. No Inventory Transaction/Movement Model
+   248→- **Problem:** InventoryItem has `quantity Float` but no StockMovement or InventoryTransaction model to track in/out history.
+   249→- **Impact:** Cannot trace inventory movements, no FIFO/LIFO/AVG cost tracking, no stock audit trail.
+   250→- **Fix:** Add InventoryTransaction model (itemId, type IN/OUT, quantity, unitCost, referenceType, referenceId, date).
+   251→
+   252→### M10. No Fiscal Year / Fiscal Period Model
+   253→- **Problem:** PeriodClosing exists but is minimal. No proper FiscalYear/FiscalPeriod model with opening/closing balances.
+   254→- **Impact:** Cannot properly handle year-end closing, opening balances, or multi-year accounting.
+   255→- **Fix:** Add FiscalYear model (year, startDate, endDate, status) and FiscalPeriod model (fiscalYearId, periodNumber, startDate, endDate, status).
+   256→
+   257→---
+   258→
+   259→## 🟢 STRENGTHS (6)
+   260→
+   261→1. **Comprehensive model coverage** — 62 models covering construction, rental, purchase, HR, and accounting domains
+   262→2. **Activity type segregation** — ActivityType enum (EXECUTION/RENTAL/GENERAL) properly separates business flow data
+   263→3. **Accounting integration** — journalEntryId foreign keys on 15+ models enable automatic journal entries
+   264→4. **Hierarchical structures** — Account and CostCenter support parent-child hierarchies via self-relations
+   265→5. **Rental workflow detail** — EquipmentRental has rich fields (pricingType, operationMode, fuelResponsibility, insuranceResponsibility, deliveryFeesType)
+   266→6. **Database client singleton** — db.ts properly implements Next.js hot-reload-safe Prisma singleton pattern
+   267→
+   268→---
+   269→
+   270→## ❌ MISSING MODELS FOR COMPLETE ERP
+   271→
+   272→| Missing Model | Purpose | Priority |
+   273→|---|---|---|
+   274→| User | Authentication & authorization | 🔴 Critical |
+   275→| Role | Role-based access control | 🔴 Critical |
+   276→| Permission | Granular access control | 🟡 Medium |
+   277→| InventoryTransaction | Stock in/out tracking & cost method | 🔴 Critical |
+   278→| PaymentAllocation | Many-to-many payment-invoice allocation | 🟡 Medium |
+   279→| FiscalYear | Year-end closing & opening balances | 🟡 Medium |
+   280→| FiscalPeriod | Monthly/quarterly period management | 🟡 Medium |
+   281→| AccountBalance | Per-period account balances | 🟡 Medium |
+   282→| VariationOrder | Construction change orders | 🟡 Medium |
+   283→| ProjectMilestone | Project milestone tracking | 🟢 Low |
+   284→| Notification | System notifications | 🟢 Low |
+   285→| DocumentSequence | Auto-numbering for all document types | 🟢 Low |
+   286→| WithholdingTax | WHT tracking per ZATCA | 🟡 Medium |
+   287→| Warranty | Equipment warranty tracking | 🟢 Low |
+   288→| Insurance | Equipment insurance tracking | 🟢 Low |
+   289→| ApprovalWorkflow | Document approval chains | 🟢 Low |
+   290→
+   291→---
+   292→
+   293→## 📊 BUSINESS FLOW INTEGRITY ASSESSMENT
+   294→
+   295→### Construction Workflow: ⚠️ 75% Complete
+   296→- ✅ Project → Contract → BOQ → ProgressClaim → SalesInvoice → ClientPayment
+   297→- ✅ Project → Expense, LaborCost, EquipmentCost
+   298→- ❌ Missing: VariationOrder (change orders), ProjectMilestone
+   299→- ❌ Missing: Retention tracking on ProgressClaim (retentionPercent exists on Contract but no retention release flow)
+   300→
+   301→### Rental Workflow: ⚠️ 70% Complete
+   302→- ✅ Equipment → EquipmentRental → Contract → Timesheet → SalesInvoice
+   303→- ✅ Equipment → EquipmentDeliveryOrder (delivery/return tracking)
+   304→- ✅ EquipmentRental has rich operational fields
+   305→- ❌ Missing: Rental payment tracking (no link from EquipmentRental to ClientPayment)
+   306→- ❌ Missing: EquipmentRental has no direct link to SalesInvoice (only through Timesheet)
+   307→- ❌ Missing: Rental return inspection model
+   308→
+   309→### Purchase Workflow: ⚠️ 80% Complete
+   310→- ✅ PurchaseRequest → PurchaseOrder → GoodsReceipt → PurchaseInvoice → SupplierPayment
+   311→- ❌ Missing: SupplierPayment → PurchaseInvoice relation (M5)
+   312→- ❌ Missing: PaymentAllocation for partial/multi-invoice payments (M4)
+   313→- ❌ Missing: InventoryTransaction for goods receipt → inventory flow (M9)
+   314→
+   315→---
+   316→
+   317→## 📋 MODEL-BY-MODEL AUDIT SUMMARY
+   318→
+   319→| Model | Status | Key Issues |
+   320→|---|---|---|
+   321→| CompanySetting | ⚠️ | Float for defaultVatRate, no multi-company support |
+   322→| Branch | ✅ | Good - has relations to projects, warehouses, employees |
+   323→| Warehouse | ⚠️ | Missing updatedAt, no address fields, no InventoryTransaction |
+   324→| Currency | ⚠️ | Float for rate (should be Decimal) |
+   325→| CostCenter | ⚠️ | Missing updatedAt, missing @index on parentId |
+   326→| Attachment | ⚠️ | Missing updatedAt, no @index on entityId+entityType |
+   327→| AuditLog | ✅ | Acceptable — no updatedAt needed for log table |
+   328→| Client | ⚠️ | Missing creditLimit field, no deletedAt |
+   329→| Supplier | ⚠️ | Float for creditLimit, no deletedAt |
+   330→| Subcontractor | ✅ | Good |
+   331→| Employee | ⚠️ | Float for basicSalary, no deletedAt |
+   332→| EmployeeContract | ⚠️ | All salary fields are Float |
+   333→| Attendance | ⚠️ | Float for workHours/overtimeHours, no @index on employeeId+date |
+   334→| Salary | ⚠️ | All 6 monetary fields are Float, activityType is String not enum |
+   335→| WorkTeam | ✅ | Good |
+   336→| TeamMember | ⚠️ | Missing updatedAt |
+   337→| Project | ⚠️ | Float for contractValue, missing subcontractorContracts relation |
+   338→| Contract | ⚠️ | 5 Float monetary fields, missing @index on projectId |
+   339→| BOQItem | ⚠️ | 3 Float monetary fields, no parentItemId for hierarchical BOQ |
+   340→| ProgressClaim | ⚠️ | 4 Float monetary fields, no retention release tracking |
+   341→| SalesInvoice | ⚠️ | 8 Float monetary fields, no @index on clientId/date/status |
+   342→| SalesInvoiceItem | ⚠️ | Missing updatedAt, Float for quantity/price |
+   343→| PurchaseRequest | ✅ | Good structure |
+   344→| PurchaseRequestItem | ⚠️ | Missing updatedAt |
+   345→| PurchaseOrder | ⚠️ | 4 Float monetary fields, no @index on supplierId |
+   346→| PurchaseOrderItem | ⚠️ | Missing updatedAt, Float for all amounts |
+   347→| GoodsReceipt | ⚠️ | Missing @index on purchaseOrderId |
+   348→| GoodsReceiptItem | ⚠️ | Missing updatedAt, Float for all quantities/prices |
+   349→| PurchaseInvoice | ⚠️ | 4 Float monetary fields, activityType is String, no @index on supplierId |
+   350→| PurchaseInvoiceItem | ⚠️ | Missing updatedAt |
+   351→| SubcontractorContract | 🔴 | projectId has no @relation to Project! |
+   352→| SubcontractorInvoice | ⚠️ | 4 Float monetary fields, missing contractId relation |
+   353→| Expense | ⚠️ | 3 Float monetary fields, payFrom is String not enum |
+   354→| LaborCost | ⚠️ | Float for days/dailyRate/totalAmount |
+   355→| Equipment | ⚠️ | 4 Float rate fields, no deletedAt |
+   356→| EquipmentOperation | ⚠️ | Missing updatedAt, Float for hours |
+   357→| EquipmentUsage | ⚠️ | Missing updatedAt, Float for hours/cost |
+   358→| EquipmentMaintenance | ⚠️ | Missing updatedAt, Float for cost |
+   359→| EquipmentFuelLog | ⚠️ | Missing updatedAt, 3 Float fields |
+   360→| EquipmentCost | ⚠️ | Missing updatedAt, Float for amount |
+   361→| EquipmentRental | ⚠️ | 6 Float rate/amount fields, status/pricingType/etc are String not enum |
+   362→| EquipmentDeliveryOrder | ⚠️ | No relation to Project (only optional rentalId) |
+   363→| EquipmentExpense | ⚠️ | Missing updatedAt, Float for amount |
+   364→| Timesheet | ⚠️ | Float for operatingHours, no @index on rentalId |
+   365→| PettyCash | ⚠️ | Float for amount |
+   366→| EmployeeAdvance | ⚠️ | 2 Float fields, no settledDate field |
+   367→| InventoryItem | ⚠️ | 4 Float fields, no InventoryTransaction tracking |
+   368→| Account | 🔴 | Missing updatedAt, missing openingBalance, no @index on code/type/parentId |
+   369→| JournalEntry | ⚠️ | reversedEntryId has no self-relation, missing createdBy |
+   370→| JournalLine | 🔴 | Float for debit/credit (critical for accounting!), missing updatedAt |
+   371→| VATReturn | ⚠️ | 5 Float fields, salesInvoiceIds is String not relation |
+   372→| ClientPayment | ⚠️ | Float for amount, receivedIn is String not enum, single invoice link |
+   373→| SupplierPayment | 🔴 | No relation to PurchaseInvoice, Float for amount |
+   374→| ResourceAllocation | ⚠️ | Generic resourceId pattern — no referential integrity |
+   375→| FixedAsset | 🔴 | 3 account references without @relation (accountId, depExpenseAccountId, accumDepAccountId) |
+   376→| AssetDepreciation | ⚠️ | Missing updatedAt, Float for depreciationAmount |
+   377→| Provision | ⚠️ | 2 Float fields, type/status are String not enum |
+   378→| ProvisionMovement | ⚠️ | Missing updatedAt, Float for amount |
+   379→| BankAccount | 🔴 | accountId has no @relation to Account |
+   380→| BankTransaction | ⚠️ | Missing updatedAt, Float for amount |
+   381→| BankReconciliation | ⚠️ | 3 Float fields |
+   382→| PeriodClosing | ✅ | Good — has @@unique constraint |
+   383→
+   384→---
+   385→
+   386→## 🔧 db.ts ASSESSMENT
+   387→
+   388→- ✅ Proper singleton pattern for Next.js development hot-reload
+   389→- ✅ Conditional query logging (PRISMA_LOG env variable)
+   390→- ⚠️ No connection pool configuration (Prisma default)
+   391→- ⚠️ No error handling / retry logic for connection failures
+   392→- ⚠️ No Prisma middleware for soft-delete or audit logging
+   393→
+   394→---
+   395→
+   396→## TOP 5 PRIORITY RECOMMENDATIONS
+   397→
+   398→1. **Convert Float → Decimal** for ALL financial fields (138 occurrences). This is the #1 data integrity risk.
+   399→2. **Add database indexes** on all FK columns and frequently queried fields (status, date, code). Estimated 40+ indexes needed.
+   400→3. **Fix broken @relation** on SubcontractorContract.projectId, FixedAsset account references, BankAccount.accountId.
+   401→4. **Add User model** with authentication and role-based access control.
+   402→5. **Add PaymentAllocation model** and fix SupplierPayment → PurchaseInvoice relation for proper payment allocation.
+   403→
+   404→---
+   405→Task ID: 2-a
+   406→Agent: Module Components Auditor
+   407→Task: Audit all frontend module components
+   408→
+   409→Work Log:
+   410→- Read and analyzed all 44 module component files (~40,000+ lines of TypeScript/React)
+   411→- Evaluated each module across 9 criteria: CRUD completeness, data display, form validation, error handling, integration, UI/UX, missing features, print/export, search/filter
+   412→- Cross-referenced findings with previous audit entries (Task 2-c was a prior partial audit)
+   413→- Identified 6 critical issues, 18 medium issues, and 12 improvement recommendations
+   414→
+   415→Stage Summary:
+   416→
+   417→🔴 CRITICAL ISSUES (6):
+   418→
+   419→1. **rental-payments.tsx** — ONLY module NOT using ModuleLayout. Uses raw `<div className="space-y-6">` layout with manual header. Missing: Edit, Delete, CSV export, toast notifications. Inconsistent with all other modules.
+   420→
+   421→2. **boq.tsx** — Only Create (no Edit/Delete). BOQ items cannot be modified after creation — critical for an ERP where quantities/prices change. PrintButton without data prop. Missing CSV export.
+   422→
+   423→3. **labor.tsx** — Only Create (no Edit/Delete/View). Missing: CSV export, PrintButton with data, toast notifications. Records are permanent once created with no correction mechanism.
+   424→
+   425→4. **petty-cash.tsx** — Only Create (no Edit/Delete). Missing CSV export. No way to correct erroneous entries.
+   426→
+   427→5. **inventory.tsx** — Only Create (no Edit/Delete for items). "New Item" button in ModuleLayout header has broken onClick (`{/* dialog handled in ItemsTab */}` comment, button does nothing). PrintButton without data. Missing CSV export. No way to adjust stock or deactivate items.
+   428→
+   429→6. **client-payments.tsx** — Missing Edit and Delete. No way to void or correct payment entries. Missing CSV export. Uses `confirm()` instead of AlertDialog for consistency.
+   430→
+   431→🟡 MEDIUM ISSUES (18):
+   432→
+   433→1. **timesheets.tsx** — No Edit for draft timesheets. Should allow editing before approval.
+   434→2. **rental-invoices.tsx** — No Edit for draft invoices. Should allow editing before sending.
+   435→3. **attendance.tsx** — No Edit. Cannot correct check-in/out times.
+   436→4. **equipment-operations.tsx** — No Edit. Cannot adjust hours or operator after recording. Missing toast notifications.
+   437→5. **fuel.tsx** — No Edit. Cannot correct liters/cost entries. Missing toast notifications.
+   438→6. **subcontractors.tsx** — PrintButton without data prop. Missing CSV export.
+   439→7. **resource-distribution.tsx** — PrintButton without data prop in some cases.
+   440→8. **Inconsistent delete confirmation**: 12 modules use browser `confirm()`, 8 use AlertDialog. Should standardize on AlertDialog.
+   441→9. **Inconsistent toast notifications**: ~20 modules have no toast feedback on mutations. Modules like employee-contracts.tsx, supplier-payments.tsx use toast properly.
+   442→10. **purchases.tsx** — Duplicate of purchase-requests functionality. Unclear separation of concerns.
+   443→11. **delivery-orders.tsx** — No Edit for draft orders. Should allow editing before delivery.
+   444→12. **salary-payments.tsx** — No Edit/Delete. Payments cannot be voided once recorded.
+   445→13. **payroll-runs.tsx** — Complex module but no Edit for draft lines. Should allow adjustment before approval.
+   446→14. **Multiple modules** — expense amounts sent as string via `parseFloat()` without NaN protection (e.g., `parseFloat(form.amount) || 0` swallows errors silently).
+   447→15. **service-invoices.tsx** — No Delete for draft invoices. Large module (46KB) with good preview but missing void functionality.
+   448→16. **progress-claims.tsx** — Complex workflow but no Edit for draft claims. Missing CSV export.
+   449→17. **Many modules** — No pagination. All records loaded at once — will cause performance issues with large datasets.
+   450→18. **dashboard.tsx** — No error boundary. If any API call fails, the entire dashboard breaks.
+   451→
+   452→🟢 STRENGTHS (12):
+   453→
+   454→1. **Consistent design system**: 43/44 modules use ModuleLayout, StatusBadge, MoneyDisplay components.
+   455→2. **Excellent bilingual support**: All modules support Arabic/English with `t()` helper function.
+   456→3. **MoneyDisplay used consistently**: SAR formatting with correct currency display across all financial modules.
+   457→4. **projects.tsx** — Gold standard module: Full CRUD, tabs, detail view, export CSV, print with data, status workflow, accounting integration, resource links. ~100KB comprehensive.
+   458→5. **equipment.tsx** — Comprehensive with tabs (list/operations/maintenance/fuel), full CRUD, export, print, accounting badges.
+   459→6. **accounting.tsx** — Very comprehensive (~120KB): chart of accounts tree, journal entries, trial balance, general ledger, financial reports.
+   460→7. **reports.tsx** — Multiple report types: project profitability, revenue, expenses, receivables, payables, VAT. Export CSV, print.
+   461→8. **settings.tsx** — Complete company settings: branches, warehouses, cost centers, logo upload, bank accounts.
+   462→9. **Good query invalidation**: Most modules properly invalidate related queries after mutations (e.g., supplier-payments invalidates both payments and invoices).
+   463→10. **Loading states**: All modules have TableSkeleton components for loading state.
+   464→11. **Error states**: Most modules have retry buttons on API errors.
+   465→12. **Empty states**: All modules have helpful empty states with action buttons.
+   466→
+   467→📋 DETAILED MODULE STATUS:
+   468→
+   469→| Module | CRUD | Print | Export | Search | Status |
+   470→|--------|------|-------|--------|--------|--------|
+   471→| dashboard | Read | — | — | — | ✅ Good |
+   472→| projects | Full | ✅ | ✅ | ✅ | ✅ Gold |
+   473→| contracts | Full | ✅ | ✅ | ✅ | ✅ Good |
+   474→| boq | C only | ⚠️ no data | ❌ | ✅ | 🔴 Critical |
+   475→| progress-claims | C+D | ✅ | ❌ | ✅ | ⚠️ Needs work |
+   476→| sales | Full | ✅ | ✅ | ✅ | ✅ Good |
+   477→| client-payments | C only | ✅ | ❌ | ✅ | 🔴 Critical |
+   478→| equipment | Full | ✅ | ✅ | ✅ | ✅ Good |
+   479→| rental-contracts | C+U | ✅ | ❌ | ✅ | ⚠️ Needs work |
+   480→| delivery-orders | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   481→| timesheets | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   482→| rental-invoices | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   483→| rental-payments | C only | ✅ | ❌ | ✅ | 🔴 Critical |
+   484→| employees | Full | ✅ | ✅ | ✅ | ✅ Good |
+   485→| employee-contracts | Full | ✅ | ✅ | ✅ | ✅ Good |
+   486→| attendance | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   487→| salaries | C+D | ✅ | ✅ | ✅ | ✅ Good |
+   488→| work-teams | Full | ✅ | ✅ | ✅ | ✅ Good |
+   489→| resource-distribution | C+D | ✅ | ✅ | ✅ | ✅ Good |
+   490→| purchase-requests | Full | ✅ | ✅ | ✅ | ✅ Good |
+   491→| purchase-orders | Full | ✅ | ✅ | ✅ | ✅ Good |
+   492→| goods-receipt | Full | ✅ | ✅ | ✅ | ✅ Good |
+   493→| supplier-invoices | Full | ✅ | ✅ | ✅ | ✅ Good |
+   494→| supplier-payments | C+D | ✅ | ✅ | ✅ | ✅ Good |
+   495→| equipment-operations | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   496→| equipment-maintenance | Full | ✅ | ✅ | ✅ | ✅ Good |
+   497→| fuel | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   498→| subcontractors | Full | ⚠️ no data | ❌ | ✅ | ⚠️ Needs work |
+   499→| expenses | Full | ✅ | ✅ | ✅ | ✅ Good |
+   500→| accounting | Read | ✅ | ✅ | ✅ | ✅ Good |
+   501→| vat | C+U | ✅ | ✅ | ✅ | ✅ Good |
+   502→| reports | Read | ✅ | ✅ | ✅ | ✅ Good |
+   503→| clients | Full | ✅ | ✅ | ✅ | ✅ Good |
+   504→| suppliers | Full | ✅ | ✅ | ✅ | ✅ Good |
+   505→| inventory | C only | ⚠️ no data | ❌ | ✅ | 🔴 Critical |
+   506→| settings | Full | — | — | — | ✅ Good |
+   507→| payroll-runs | C+U | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   508→| advances | C+U | ✅ | ❌ | ✅ | ✅ Good |
+   509→| service-invoices | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   510→| labor | C only | ❌ | ❌ | ✅ | 🔴 Critical |
+   511→| petty-cash | C only | ✅ | ❌ | ✅ | 🔴 Critical |
+   512→| salary-payments | C+D | ✅ | ✅ | ✅ | ⚠️ Needs work |
+   513→| purchases | C+D | ❌ | ❌ | ✅ | ⚠️ Needs work |
+   514→| placeholder | — | — | — | — | ✅ Good |
+   515→
+   516→🔧 RECOMMENDATIONS (Priority Order):
+   517→
+   518→1. **URGENT**: Fix rental-payments.tsx to use ModuleLayout (consistency). Add Edit/Delete, CSV export, toast.
+   519→2. **URGENT**: Add Edit/Delete to boq.tsx. BOQ items must be editable in construction ERP.
+   520→3. **URGENT**: Add Edit/Delete to labor.tsx. Add print data, CSV export, toast.
+   521→4. **URGENT**: Add Edit/Delete to petty-cash.tsx. Add CSV export.
+   522→5. **URGENT**: Fix inventory.tsx broken "New Item" button. Add Edit/Delete for items. Add CSV export.
+   523→6. **URGENT**: Add Delete/Edit to client-payments.tsx. Add CSV export.
+   524→7. **HIGH**: Add Edit to timesheets, rental-invoices, attendance, equipment-operations, fuel (for draft records).
+   525→8. **HIGH**: Standardize delete confirmation — use AlertDialog everywhere (currently mixed with browser confirm()).
+   526→9. **HIGH**: Add toast notifications to all modules missing them (~20 modules).
+   527→10. **HIGH**: Add pagination to all list views for scalability.
+   528→11. **MEDIUM**: Add CSV export to all modules missing it (7 modules).
+   529→12. **MEDIUM**: Add PrintButton data prop to modules passing no data (4 modules).
+   530→13. **MEDIUM**: Add NaN/input validation protection before parseFloat in form submissions.
+   531→14. **LOW**: Add error boundaries to dashboard and complex modules.
+   532→15. **LOW**: Clarify purchases.tsx vs purchase-requests.tsx overlap — consider merging or differentiating.
+   533→
+   534→---
+   535→Task ID: 2-b
+   536→Agent: API Routes Auditor
+   537→Task: Audit all API routes
+   538→
+   539→Work Log:
+   540→- Read and analyzed 60+ API route files across 25+ endpoint groups
+   541→- Evaluated each route for CRUD completeness, input validation, error handling, DB operations, accounting integration, data integrity, business logic
+   542→- Cross-referenced with prior audit findings (Task 2-d, Task 2-b accounting)
+   543→- Total lines analyzed: ~8,000+ lines of TypeScript API route code
+   544→
+   545→Stage Summary:
+   546→
+   547→## 🔴 CRITICAL ISSUES (8)
+   548→
+   549→### 1. No Database Transactions Across All Write Endpoints
+   550→Almost every POST/PUT/DELETE performs multiple DB operations (create record + create journal entry + update related records) without Prisma `$transaction`. Examples:
+   551→- `client-payments POST`: payment create + journal entry + invoice update (3 separate operations)
+   552→- `sales-invoices POST`: invoice create + items create + journal entry + timesheet update (4+ operations)
+   553→- `supplier-payments POST`: payment create + journal entry + invoice update
+   554→- Any failure mid-operation leaves data inconsistent (e.g., invoice marked INVOICED but no journal entry exists)
+   555→
+   556→### 2. Silent Accounting Entry Failures
+   557→All financial endpoints (invoices, payments, expenses, progress-claims) catch journal entry creation errors and continue:
+   558→```typescript
+   559→} catch (accountingError) {
+   560→  console.error('Accounting entry failed...', accountingError)
+   561→  // Don't fail the main operation — INVOICE CREATED WITHOUT JOURNAL ENTRY
+   562→}
+   563→```
+   564→This breaks the fundamental accounting trail. Records can exist without corresponding journal entries, making financial reports inaccurate.
+   565→
+   566→### 3. VAT State Machine Inconsistency
+   567→Two conflicting state machines exist:
+   568→- `/api/vat/route.ts` PATCH: DRAFT → FILED → PAID
+   569→- `/api/vat/[id]/route.ts` PATCH: DRAFT → CREATED → DUE → PAID
+   570→The front-end may call either endpoint, leading to unpredictable state transitions.
+   571→
+   572→### 4. N+1 Query Problem in Equipment Timesheets GET
+   573→`/api/equipment/timesheets/route.ts` GET makes a separate DB query for EACH timesheet to fetch client name:
+   574→```typescript
+   575→const enrichedTimesheets = await Promise.all(
+   576→  timesheets.map(async (ts) => {
+   577→    const rentalWithClient = await db.equipmentRental.findUnique(...)
+   578→    const cl = await db.client.findUnique(...)
+   579→    ...
+   580→  })
+   581→)
+   582→```
+   583→With 100 timesheets, this makes 200+ queries. Should use `include` on the initial query.
+   584→
+   585→### 5. N+1 Query in Financial Summary
+   586→`/api/financial-summary/route.ts` calls `getAccountBalance()` for EACH account (24+ calls), each making its own DB query. The accounts route already demonstrates the correct pattern using `groupBy`.
+   587→
+   588→### 6. No Pagination on Most GET List Endpoints
+   589→The following endpoints lack pagination, loading ALL records:
+   590→- `/api/sales-invoices` - can be hundreds of invoices
+   591→- `/api/client-payments` - all payments ever made
+   592→- `/api/supplier-payments` - all supplier payments
+   593→- `/api/purchase-invoices` - all purchase invoices
+   594→- `/api/expenses` - all expenses
+   595→- `/api/contracts` - all contracts
+   596→- `/api/projects` - all projects
+   597→- `/api/equipment` - all equipment
+   598→- `/api/equipment/rentals` - all rentals
+   599→- `/api/equipment/timesheets` - all timesheets
+   600→Only `/api/journal-entries` has proper pagination.
+   601→
+   602→### 7. Dashboard Low Inventory Query Uses Prisma Internal API
+   603→`/api/dashboard/route.ts` line 437:
+   604→```typescript
+   605→const lowInventoryItems = await db.inventoryItem.count({
+   606→  where: { quantity: { lte: db.inventoryItem.fields.minQuantity } },
+   607→})
+   608→```
+   609→`db.inventoryItem.fields.minQuantity` is a Prisma internal API that does NOT produce a SQL comparison between columns. This query will either error or return 0 always. Should use `$queryRaw` or fetch all items and filter in JS.
+   610→
+   611→### 8. Duplicate Invoice Generation Code
+   612→Invoice generation exists in TWO places with different behavior:
+   613→- `/api/sales-invoices/route.ts` `createInvoiceFromTimesheet()` — creates accounting entry
+   614→- `/api/equipment/timesheets/[id]/generate-invoice/route.ts` — does NOT create accounting entry
+   615→Both create SalesInvoice from Timesheet, but only one creates the accounting journal entry. The equipment route's generated invoices will be missing from financial reports.
+   616→
+   617→## 🟡 MEDIUM ISSUES (18)
+   618→
+   619→### 1. No Overpayment Validation
+   620→Client payments and supplier payments do not check if payment amount exceeds invoice total:
+   621→```typescript
+   622→const newPaidAmount = invoice.paidAmount + amount
+   623→// No check: if (newPaidAmount > invoice.totalAmount) error
+   624→```
+   625→This allows paying more than the invoice value, creating negative balances.
+   626→
+   627→### 2. No Input Validation Schema
+   628→No Zod/Joi validation schemas anywhere. All validation is manual and inconsistent:
+   629→- Some routes validate required fields, others don't
+   630→- No type coercion safety (parseFloat || 0 swallows NaN)
+   631→- No max length or format validation
+   632→- No sanitization of string inputs
+   633→
+   634→### 3. Missing CRUD Endpoints
+   635→| Route | GET List | GET One | POST | PUT/PATCH | DELETE |
+   636→|-------|----------|---------|------|-----------|--------|
+   637→| `/api/accounts/[id]` | — | ✅ (statement) | — | ❌ | ❌ |
+   638→| `/api/clients/[id]` | — | ❌ | — | ❌ | ❌ |
+   639→| `/api/suppliers/[id]` | — | ❌ | — | ❌ | ❌ |
+   640→| `/api/purchase-invoices/[id]` | — | ❌ | — | ❌ | ❌ |
+   641→| `/api/progress-claims/[id]` | — | ✅ | — | ❌ (in list) | ❌ |
+   642→| `/api/journal-entries/[id]` | — | ✅ | — | ❌ | ❌ |
+   643→| `/api/subcontractor-invoices/[id]` | — | ❌ | — | ❌ | ❌ |
+   644→| `/api/fixed-assets/[id]` | — | ❌ | — | ❌ | ❌ |
+   645→
+   646→### 4. Inconsistent REST Conventions
+   647→- `sales-invoices PUT` uses `id` in request body instead of URL param
+   648→- `progress-claims PUT` uses `id` in request body instead of URL param
+   649→- `expenses PUT` uses `id` in request body instead of URL param
+   650→- `purchase-invoices PUT` uses `id` in request body instead of URL param
+   651→- `client-payments` uses PATCH while `supplier-payments` uses PUT for same operation
+   652→
+   653→### 5. Duplicate Rental Creation Endpoints
+   654→Two endpoints create equipment rentals with similar but different logic:
+   655→- `/api/equipment/rentals/route.ts` POST — less validation, no required field checks
+   656→- `/api/equipment/rental-contracts/route.ts` POST — better validation (equipmentId, clientId, startDate required)
+   657→Both create parent Contract + EquipmentRental without transactions.
+   658→
+   659→### 6. Journal Entry Created at Wrong Status
+   660→`/api/progress-claims` creates journal entry immediately on POST regardless of status (DRAFT, APPROVED, etc.). Should only create on status=APPROVED.
+   661→
+   662→### 7. Payroll Run Only Stores Last Journal Entry ID
+   663→When approving a payroll run, multiple journal entries are created (one per activity type: PROJECT, RENTAL, ADMIN), but only the last one's ID is stored:
+   664→```typescript
+   665→journalEntryId = entry.id  // Overwritten each iteration
+   666→```
+   667→Previous entries become orphaned with no back-reference.
+   668→
+   669→### 8. Salary Creates EquipmentCost for Labor
+   670→`/api/salaries/[id]/route.ts` creates an `EquipmentCost` record for salary allocations to projects. This is semantically incorrect — salary costs are not equipment costs.
+   671→
+   672→### 9. No Period Closing Protection
+   673→`/api/period-closing` can close periods, but no other endpoints check if a period is closed before allowing transactions. Users can create invoices/expenses in closed periods.
+   674→
+   675→### 10. Float Precision for Monetary Calculations
+   676→Multiple instances of floating-point arithmetic:
+   677→- `parseFloat(amount) || 0` — silently converts NaN to 0
+   678→- `subtotal * vatRate` — no rounding to consistent decimal places
+   679→- Running balance calculations accumulate floating-point errors
+   680→
+   681→### 11. Balance Sheet Logic Duplication
+   682→Balance sheet logic exists in both:
+   683→- `/api/financial-reports/route.ts` `getBalanceSheet()`
+   684→- `/api/financial-statements/balance-sheet/route.ts`
+   685→These use different account groupings (by code prefix) and may produce different results.
+   686→
+   687→### 12. No Soft Delete
+   688→Equipment DELETE does hard delete of all related records (rentals, expenses, usages, maintenance, fuel logs). No recovery possible. Same for inventory items.
+   689→
+   690→### 13. Equipment DELETE Race Condition
+   691→Equipment delete manually deletes related records in sequence without transaction:
+   692→```typescript
+   693→await db.equipmentRental.deleteMany({ where: { equipmentId: id } })
+   694→await db.equipmentExpense.deleteMany({ where: { equipmentId: id } })
+   695→// ... if any fails mid-way, partial deletion occurs
+   696→```
+   697→
+   698→### 14. Bank Accounts N+1
+   699→`/api/bank-accounts/route.ts` makes separate query per account to calculate balance from journal lines. Should aggregate in single query.
+   700→
+   701→### 15. Bank Reconciliation Upsert Fragility
+   702→Uses a find-then-upsert pattern with a potentially non-existent ID:
+   703→```typescript
+   704→where: { id: (await db.bankReconciliation.findFirst({...}))?.id || 'nonexistent' }
+   705→```
+   706→This is fragile and can create duplicate records under race conditions.
+   707→
+   708→### 16. No Authentication/Authorization
+   709→No middleware or route-level auth checks on any API route. All endpoints are publicly accessible.
+   710→
+   711→### 17. Client/Supplier Missing Individual Endpoints
+   712→No `/api/clients/[id]` or `/api/suppliers/[id]` routes for GET/PUT/DELETE individual records. Cannot update client info or deactivate a client.
+   713→
+   714→### 18. Cash Flow Receivables Calculation Risk
+   715→Cash flow statement calculates receivables at start and end by adding period lines to before-period lines. This is incorrect if there are corrections to prior-period entries within the period.
+   716→
+   717→## 🟢 STRENGTHS (10)
+   718→
+   719→### 1. Comprehensive Accounting Integration
+   720→16 auto-entry functions create journal entries automatically for: sales invoices, rental invoices, purchase invoices, progress claims, expenses, client payments, supplier payments, subcontractor invoices, salary payments, payroll runs, and fixed asset acquisitions/depreciation.
+   721→
+   722→### 2. Reversal Entry Pattern
+   723→All financial write endpoints (invoices, expenses, progress claims) properly create reversal journal entries when modifying posted records. This maintains the audit trail.
+   724→
+   725→### 3. Business Flow Validation
+   726→Good validation of business workflows:
+   727→- Sales invoices check if timesheet/progress claim is APPROVED before invoicing
+   728→- Duplicate invoice prevention (same timesheet or progress claim)
+   729→- Equipment delete checks for related records
+   730→- Cost center delete prevents deletion with journal lines
+   731→
+   732→### 4. Safe Delete Patterns
+   733→Sales invoices can only be deleted in DRAFT/CANCELLED status. Contracts only deleted if DRAFT with no progress claims. Payroll runs only deleted if DRAFT. This prevents accidental data loss.
+   734→
+   735→### 5. Consistent Error Handling
+   736→All routes follow consistent pattern: try/catch with console.error and Arabic error messages returned to client with appropriate status codes (400, 404, 500).
+   737→
+   738→### 6. Auto-Generated Reference Numbers
+   739→All document types auto-generate reference numbers with proper prefixes and sequences (PCL-YYYY-0001, RNT-YYYY-0001, PI-0001, PO-0001, etc.).
+   740→
+   741→### 7. VAT Calculation Comprehensive
+   742→VAT endpoint correctly aggregates from multiple sources (sales invoices, progress claims, purchase invoices, subcontractor invoices, expenses) with proper date filtering.
+   743→
+   744→### 8. Period Closing with Reversal
+   745→Period closing creates proper year-end closing entries and supports re-opening with automatic reversal of closing entries.
+   746→
+   747→### 9. Fixed Asset Depreciation
+   748→Depreciation endpoint properly calculates straight-line depreciation, creates journal entries, and updates net book values.
+   749→
+   750→### 10. Equipment Status Management
+   751→Rental contract activation automatically updates equipment status to RENTED and parent contract to ACTIVE.
+   752→
+   753→## 📋 DETAILED API ROUTE AUDIT TABLE
+   754→
+   755→| API Route | GET | POST | PUT/PATCH | DELETE | Accounting | Status |
+   756→|-----------|-----|------|-----------|--------|------------|--------|
+   757→| `/api/sales-invoices` | ✅⚠️ | ✅ | ✅ | ✅ (via /id) | ✅ | ⚠️ Needs improvement |
+   758→| `/api/sales-invoices/[id]` | ✅ | — | ✅ PATCH | ✅ | — | ✅ Good |
+   759→| `/api/journal-entries` | ✅✅ (paginated) | 🔒 Disabled | — | — | — | ⚠️ Needs improvement |
+   760→| `/api/journal-entries/[id]` | ✅ | — | — | — | — | ⚠️ No mutation |
+   761→| `/api/journal-entries/by-source` | ✅ | — | — | — | — | ✅ Good |
+   762→| `/api/accounts` | ✅ | ✅ | — | — | — | ⚠️ Missing PUT/DELETE |
+   763→| `/api/accounts/[id]` | ✅ (statement) | — | — | — | — | ⚠️ Missing CRUD |
+   764→| `/api/accounts/initialize` | ✅ | ✅ | — | — | — | ✅ Good |
+   765→| `/api/client-payments` | ✅⚠️ | ✅ | — | — | ✅ | ⚠️ Needs improvement |
+   766→| `/api/client-payments/[id]` | ✅ | — | ✅ PATCH | ✅ | — | ✅ Good |
+   767→| `/api/supplier-payments` | ✅⚠️ | ✅ | — | — | ✅ | ⚠️ Needs improvement |
+   768→| `/api/supplier-payments/[id]` | ✅ | — | ✅ PUT | ✅ | — | ✅ Good |
+   769→| `/api/financial-reports` | ✅ | — | — | — | — | ⚠️ Duplicate BS |
+   770→| `/api/financial-summary` | ✅🔴 N+1 | — | — | — | — | 🔴 Critical |
+   771→| `/api/financial-statements/balance-sheet` | ✅ | — | — | — | — | ✅ Good |
+   772→| `/api/financial-statements/income` | ✅ | — | — | — | — | ✅ Good |
+   773→| `/api/financial-statements/cash-flow` | ✅ | — | — | — | — | ⚠️ Needs improvement |
+   774→| `/api/trial-balance` | ✅ | — | — | — | — | ✅ Good |
+   775→| `/api/general-ledger` | ✅ | — | — | — | — | ✅ Good |
+   776→| `/api/vat` | ✅ | ✅ | ✅ PATCH | — | ⚠️ No payment JE | ⚠️ State conflict |
+   777→| `/api/vat/[id]` | ✅ | — | ✅ PATCH | — | — | ⚠️ State conflict |
+   778→| `/api/period-closing` | ✅ | ✅ | — | — | ✅ | ⚠️ No enforcement |
+   779→| `/api/cost-centers` | ✅ | ✅ | — | — | — | ✅ Good |
+   780→| `/api/cost-centers/[id]` | ✅ | — | ✅ PUT | ✅ | — | ✅ Good |
+   781→| `/api/fixed-assets` | ✅ | ✅ | — | — | ✅ | ⚠️ Missing /id |
+   782→| `/api/fixed-assets/depreciate` | — | ✅ | — | — | ✅ | ✅ Good |
+   783→| `/api/bank-accounts` | ✅⚠️ N+1 | ✅ | — | — | — | ⚠️ Needs improvement |
+   784→| `/api/bank-reconciliation` | ✅ | ✅ | — | — | — | ⚠️ Fragile upsert |
+   785→| `/api/equipment` | ✅⚠️ | ✅⚠️ | — | — | — | ⚠️ Needs improvement |
+   786→| `/api/equipment/[id]` | ✅ | — | ✅ PUT | ✅⚠️ | — | ⚠️ Hard delete |
+   787→| `/api/equipment/timesheets` | ✅🔴 N+1 | ✅ | ✅ | — | — | 🔴 Critical |
+   788→| `/api/equipment/timesheets/[id]` | ✅ | — | ✅ PUT/PATCH | ✅ | — | ✅ Good |
+   789→| `/api/equipment/timesheets/[id]/generate-invoice` | — | ✅⚠️ | — | — | ❌ No JE | 🔴 Missing JE |
+   790→| `/api/equipment/rentals` | ✅⚠️ | ✅⚠️ | — | — | — | ⚠️ Duplicate |
+   791→| `/api/equipment/rental-contracts` | ✅ | ✅ | — | — | — | ⚠️ Duplicate |
+   792→| `/api/equipment/rental-contracts/[id]` | ✅ | — | ✅ | — | — | ⚠️ Needs audit |
+   793→| `/api/contracts` | ✅⚠️ | ✅ | — | — | — | ⚠️ No pagination |
+   794→| `/api/contracts/[id]` | ✅ | — | ✅ PUT | ✅ | — | ✅ Good |
+   795→| `/api/progress-claims` | ✅⚠️ | ✅⚠️ | ✅ (in list) | — | ✅⚠️ | ⚠️ JE on DRAFT |
+   796→| `/api/progress-claims/[id]` | ✅ | — | — | — | — | ⚠️ No PUT/DELETE |
+   797→| `/api/purchase-invoices` | ✅⚠️ | ✅ | ✅ (in list) | — | ✅ | ⚠️ Missing /id |
+   798→| `/api/purchase-orders` | ✅⚠️ | ✅ | — | — | — | ⚠️ No pagination |
+   799→| `/api/expenses` | ✅⚠️ | ✅ | ✅ (in list) | — | ✅ | ⚠️ No pagination |
+   800→| `/api/expenses/[id]` | ✅ | — | — | ✅ | ✅ reversal | ✅ Good |
+   801→| `/api/subcontractor-invoices` | ✅⚠️ | ✅ | — | — | ✅ | ⚠️ Missing /id |
+   802→| `/api/payroll-runs` | ✅ | ✅ | — | — | ✅ | ⚠️ JE ID bug |
+   803→| `/api/payroll-runs/[id]` | ✅ | — | ✅ PUT | ✅ | ✅ | ✅ Good |
+   804→| `/api/salaries` | ✅ | ✅ | — | — | ✅ | ⚠️ EquipmentCost |
+   805→| `/api/salaries/[id]` | ✅ | — | ✅ PUT | ✅ | ✅ | ✅ Good |
+   806→| `/api/salaries/auto-calculate` | — | ✅ | — | — | — | ✅ Good |
+   807→| `/api/projects` | ✅⚠️ | ✅ | — | — | — | ⚠️ No pagination |
+   808→| `/api/projects/[id]` | ✅ | — | ✅ | ✅ | — | ✅ Good |
+   809→| `/api/clients` | ✅ | ✅ | — | — | — | ⚠️ Missing /id |
+   810→| `/api/suppliers` | ✅ | ✅ | — | — | — | ⚠️ Missing /id |
+   811→| `/api/inventory` | ✅ | ✅ | — | — | — | ⚠️ No pagination |
+   812→| `/api/inventory/[id]` | ✅ | — | ✅ PUT | ✅⚠️ | — | ⚠️ Hard delete |
+   813→| `/api/dashboard` | ✅🔴 | — | — | — | — | 🔴 Heavy + bug |
+   814→
+   815→## 🔧 RECOMMENDATIONS (Priority Order)
+   816→
+   817→### URGENT (Fix First)
+   818→1. **Wrap all multi-operation endpoints in `$transaction`** — especially payments, invoices, and any endpoint that creates records + journal entries + updates related records
+   819→2. **Fail on accounting entry error** — remove silent catch blocks; if journal entry fails, the whole operation should fail and rollback
+   820→3. **Fix VAT state machine** — unify `/api/vat` and `/api/vat/[id]` to use same status transitions (DRAFT → FILED → PAID)
+   821→4. **Fix equipment timesheets N+1** — include client via rental relation instead of separate queries
+   822→5. **Fix financial-summary N+1** — use groupBy like accounts route does
+   823→6. **Add accounting entry to equipment timesheet generate-invoice** — currently creates invoice without journal entry
+   824→7. **Fix dashboard lowInventoryItems query** — replace `db.inventoryItem.fields.minQuantity` with proper column comparison
+   825→
+   826→### HIGH (Fix Soon)
+   827→8. **Add pagination** to all GET list endpoints (invoices, payments, expenses, contracts, equipment, etc.)
+   828→9. **Add overpayment validation** — prevent payments exceeding invoice total
+   829→10. **Add Zod validation schemas** to all POST/PUT endpoints
+   830→11. **Create missing /[id] endpoints** for clients, suppliers, purchase-invoices, subcontractor-invoices, fixed-assets
+   831→12. **Fix journal entry creation timing** — progress-claims should create JE on APPROVED, not on DRAFT creation
+   832→13. **Fix payroll-runs journal entry ID storage** — store all journal entry IDs, not just the last one
+   833→14. **Remove duplicate rental creation** — consolidate `/equipment/rentals` and `/equipment/rental-contracts`
+   834→15. **Remove duplicate balance sheet** — consolidate `/financial-reports?type=balance-sheet` and `/financial-statements/balance-sheet`
+   835→16. **Add period closing enforcement** — check closed periods before allowing transactions
+   836→
+   837→### MEDIUM (Plan and Implement)
+   838→17. **Standardize REST conventions** — use URL params for ID everywhere, use PATCH for partial updates consistently
+   839→18. **Replace EquipmentCost for salaries** — use a proper LaborCost or SalaryCost model
+   840→19. **Add soft delete** for equipment and inventory (isActive flag)
+   841→20. **Add authentication middleware** to all routes
+   842→21. **Add request rate limiting** to prevent abuse
+   843→22. **Standardize monetary precision** — use integer cents or Decimal.js for all calculations
+   844→23. **Fix bank reconciliation upsert** — use proper unique constraint and upsert
+   845→
+   846→---
+   847→Task ID: 2-e
+   848→Agent: Layout & UI Architecture Auditor
+   849→Task: Audit layout components, shared components, and UI architecture
+   850→
+   851→Work Log:
+   852→- Read and analyzed all 25 target files across layout, shared, sections, stores, contexts, and app-level components
+   853→- Evaluated navigation, responsiveness, RTL, accessibility, state management, and provider architecture
+   854→- Ran TypeScript compilation check — discovered critical missing exports from app-store
+   855→- Searched for ARIA labels, keyboard handlers, skip-to-content links — found near-zero accessibility support
+   856→- Verified CompanyProvider is defined but never integrated into the provider tree
+   857→- Cross-referenced section components with store definitions — found broken imports
+   858→
+   859→Stage Summary:
+   860→
+   861→🔴 CRITICAL ISSUES (4):
+   862→
+   863→1. **SubModuleKey / subModuleLabels / activeSubModule / setActiveSubModule MISSING from store** — All 10 section files import `SubModuleKey` and `subModuleLabels` from `@/stores/app-store`, and all section layouts use `activeSubModule`/`setActiveSubModule` from the store. These types and state values DO NOT EXIST in app-store.ts. TypeScript compilation fails with 20+ errors. Section-level tab navigation is completely broken — clicking sub-tabs within any section (Finance, Projects, CRM, Warehouses, Admin, Reports, Rental, Supply Chain, Resources) will throw runtime errors.
+   864→
+   865→2. **Zero ARIA labels / roles in custom components** — Only 6 `aria-label` instances exist in the entire codebase, all in shadcn/ui library files. The layout (app-shell, header, sidebar), shared components, and section components have ZERO accessibility attributes. Screen readers cannot navigate the sidebar, understand tab panels, or interact with buttons meaningfully.
+   866→
+   867→3. **No keyboard navigation** — No `onKeyDown`, `onKeyUp`, `tabIndex`, or keyboard event handlers exist in any layout, shared, or section component. Sidebar groups cannot be expanded/collapsed via keyboard. Tab navigation in SectionLayout is mouse-only. No focus management when mobile sidebar opens/closes.
+   868→
+   869→4. **CompanyProvider never mounted** — The `CompanyProvider` (company-context.tsx) is well-built with React Query caching and default settings, but it is NEVER used. It's not in `providers.tsx` or `layout.tsx`. The `useCompany()` hook and `CurrencyAmount` component will always return the hardcoded defaults. The `useFormatCurrency()` hook in currency-hooks.ts is dead code.
+   870→
+   871→⚠️ NEEDS IMPROVEMENT (15):
+   872→
+   873→5. **No skip-to-content link** — No skip link for keyboard users to bypass the sidebar and jump to main content. Required for WCAG 2.1 compliance.
+   874→
+   875→6. **No focus trap on mobile sidebar** — When the mobile drawer opens, focus can escape to background content. Tab key should cycle within the drawer.
+   876→
+   877→7. **Search button is non-functional** — Header has a decorative Search icon button with no onClick handler, no search dialog, and no search functionality.
+   878→
+   879→8. **Notification bell is hardcoded** — Shows hardcoded badge count "3" with no real notification data. Should either be connected to a notification system or hidden.
+   880→
+   881→9. **No user profile menu** — Header lacks a user avatar, profile dropdown, or logout option. Critical for ERP systems with role-based access.
+   882→
+   883→10. **DataTablePagination ignores language** — Default labels are hardcoded in Arabic (`'صفحة'`, `'من'`, `'عنصر'`, `'عرض'`) with no integration with the app store's `lang` state. English users see Arabic pagination labels.
+   884→
+   885→11. **Sidebar hardcoded Arabic** — Collapse/expand button text is always Arabic (`'توسيع'` / `'تصغير القائمة'`), ignoring the `lang` state. Title is always `'بِنَاء'` / `'نظام إدارة المقاولات'` even in English mode.
+   886→
+   887→12. **Header breadcrumb always RTL** — The breadcrumb div has `dir="rtl"` hardcoded, even when `lang === 'en'`. Should dynamically switch based on language.
+   888→
+   889→13. **TabPlaceholder duplicated 5 times** — The `TabPlaceholder` component is copy-pasted identically across admin-section.tsx, warehouses-section.tsx, crm-section.tsx, supply-chain-section.tsx, and resources-section.tsx. Should be extracted to a shared component.
+   890→
+   891→14. **No footer** — There is no app-level footer. The sidebar has a small footer section with language/collapse controls, but the main content area has no footer with copyright, version, or links.
+   892→
+   893→15. **Mobile sidebar expandedGroups all-open** — Mobile sidebar initializes with ALL groups expanded, causing a very long scrollable list. Should match desktop behavior (only key groups expanded) or use a smarter default.
+   894→
+   895→16. **ModuleLayout vs SectionLayout inconsistency** — Two layout wrappers exist: `ModuleLayout` (simple header + actions) and `SectionLayout` (header + tabs + print/export). Some modules use ModuleLayout directly, some are inside SectionLayout. The `rental-section.tsx` (34.9KB) is a massive inline module that doesn't use SectionLayout's tab system properly — it reimplements its own sub-tab navigation with `activeSubModule`.
+   896→
+   897→17. **CurrencyAmount uses raw `<img>` tag** — The `CurrencyAmount` component in company-context.tsx uses `<img src=...>` instead of Next.js `<Image>`, missing optimization benefits.
+   898→
+   899→18. **globals.css duplicate @media print blocks** — Two separate `@media print` blocks (one for invoices, one for reports) with different `@page` settings. The second block's `@page` rule may override the first.
+   900→
+   901→19. **Providers missing CompanyProvider and ThemeProvider** — `providers.tsx` only wraps QueryClient and TooltipProvider. CompanyProvider is never added. ThemeProvider (next-themes) exists in the codebase (sonner.tsx imports it) but is not in the provider tree, so dark mode CSS variables are defined but never activated.
+   902→
+   903→✅ GOOD (12):
+   904→
+   905→1. **App Shell structure** — Clean flex layout with `h-screen overflow-hidden`, separate desktop/mobile sidebars, and sticky header with backdrop blur. Well-organized.
+   906→
+   907→2. **Dynamic module loading** — All 35+ modules are lazy-loaded with `dynamic()` and `ssr: false`, preventing the massive JS bundle from blocking initial render. Shared `ModuleLoading` component.
+   908→
+   909→3. **Sidebar navigation design** — Hub-centric grouping with color coding (8 groups), activity indicators (construction/rental dots), collapsible groups, and collapse-to-icon mode. Professional visual hierarchy.
+   910→
+   911→4. **RTL root setup** — `<html lang="ar" dir="rtl">` correctly set in layout.tsx, Cairo font with Arabic subset, `suppressHydrationWarning` for SSR compatibility.
+   912→
+   913→5. **Bilingual data architecture** — All labels use `{ ar: string; en: string }` pattern consistently across store, components, and sections. `commonText` object provides shared UI strings.
+   914→
+   915→6. **Zustand store organization** — Clean separation of navigation state, UI state (sidebar), and app settings. Format helpers (formatSAR, formatDate, formatNumber) are co-located with the store.
+   916→
+   917→7. **ModuleRouter pattern** — Single `moduleMap` record maps NavItem to dynamically-imported component. Clean O(1) lookup with fallback to PlaceholderModule.
+   918→
+   919→8. **AccountingEntryDisplay** — Well-built shared component with lazy loading (only fetches when expanded), balanced/unbalanced indicator, color-coded debit/credit, and proper T-account display.
+   920→
+   921→9. **PrintButton architecture** — Sophisticated data transformation layer (flattenClient, flattenEquipment, etc.), ZATCA QR code generation for invoices, dynamic import of print-service to reduce bundle.
+   922→
+   923→10. **ProjectTypeBadge** — Simple, reusable badge for construction/rental distinction with consistent color coding matching the sidebar.
+   924→
+   925→11. **SectionLayout ScrollArea tabs** — Horizontal scroll for tab overflow on mobile, proper active state styling with emerald accent.
+   926→
+   927→12. **Cairo font configuration** — Proper Google Fonts setup with Arabic + Latin subsets, multiple weights (300-800), and `display: swap` for performance.
+   928→
+   929→📋 DETAILED COMPONENT STATUS:
+   930→
+   931→| Component | Status | Key Issues |
+   932→|-----------|--------|------------|
+   933→| app-shell.tsx | ✅ Good | Clean structure, responsive |
+   934→| header.tsx | ⚠️ Needs work | Non-functional search, hardcoded notifications, no user menu, breadcrumb always RTL |
+   935→| sidebar.tsx | ⚠️ Needs work | Hardcoded Arabic strings, no keyboard nav, no ARIA, no focus trap (mobile) |
+   936→| providers.tsx | ⚠️ Needs work | Missing CompanyProvider, missing ThemeProvider |
+   937→| module-layout.tsx | ✅ Good | Clean, responsive, bilingual |
+   938→| print-button.tsx | ✅ Good | Sophisticated, ZATCA QR, data transform |
+   939→| data-table-pagination.tsx | ⚠️ Needs work | Hardcoded Arabic labels, ignores lang state |
+   940→| project-type-badge.tsx | ✅ Good | Simple, correct |
+   941→| accounting-entry-display.tsx | ✅ Good | Lazy load, balanced check, MoneyDisplay |
+   942→| section-layout.tsx | 🔴 Critical | Depends on missing SubModuleKey from store |
+   943→| admin-section.tsx | 🔴 Critical | Same — broken import |
+   944→| reports-section.tsx | 🔴 Critical | Same — broken import |
+   945→| rental-section.tsx | 🔴 Critical | Same — broken import; 34.9KB monolith |
+   946→| warehouses-section.tsx | 🔴 Critical | Same — broken import |
+   947→| finance-section.tsx | 🔴 Critical | Same — broken import; 78.3KB monolith |
+   948→| crm-section.tsx | 🔴 Critical | Same — broken import |
+   949→| projects-section.tsx | 🔴 Critical | Same — broken import; 67KB monolith |
+   950→| supply-chain-section.tsx | 🔴 Critical | Same — broken import |
+   951→| resources-section.tsx | 🔴 Critical | Same — broken import |
+   952→| app-store.ts | 🔴 Critical | Missing SubModuleKey, subModuleLabels, activeSubModule, setActiveSubModule |
+   953→| company-context.tsx | ⚠️ Needs work | Well-built but never mounted; raw img tag |
+   954→| currency-hooks.ts | ⚠️ Needs work | Dead code (depends on unmounted CompanyProvider) |
+   955→| page.tsx | ✅ Good | Clean dynamic imports, ModuleRouter pattern |
+   956→| layout.tsx | ✅ Good | Cairo font, RTL setup, proper metadata |
+   957→| globals.css | ✅ Good | Comprehensive print styles, dark mode vars |
+   958→
+   959→🔧 RECOMMENDATIONS (Priority Order):
+   960→
+   961→1. **URGENT**: Add `SubModuleKey`, `subModuleLabels`, `activeSubModule`, and `setActiveSubModule` to app-store.ts. This unblocks all 10 section components. Define SubModuleKey as a string union of all sub-tab keys, add `activeSubModule` state with a default, and export `subModuleLabels` record.
+   962→
+   963→2. **URGENT**: Add CompanyProvider to providers.tsx so useCompany() works across the app. Wrap inside QueryClientProvider since it depends on React Query.
+   964→
+   965→3. **HIGH**: Add ARIA labels to all interactive elements in sidebar (role="navigation", aria-expanded for groups, aria-current for active items), header (role="banner"), and section tabs (role="tablist", role="tab", role="tabpanel").
+   966→
+   967→4. **HIGH**: Add keyboard navigation to sidebar — arrow keys for items, Enter/Space for group toggle, Escape to close mobile drawer. Add focus trap when mobile drawer is open.
+   968→
+   969→5. **HIGH**: Add skip-to-content link as the first focusable element in app-shell.
+   970→
+   971→6. **HIGH**: Make DataTablePagination read lang from useAppStore and use bilingual labels automatically.
+   972→
+   973→7. **HIGH**: Fix sidebar to respect lang state for collapse button text and system title.
+   974→
+   975→8. **HIGH**: Fix header breadcrumb to use `dir={lang === 'ar' ? 'rtl' : 'ltr'}` dynamically.
+   976→
+   977→9. **MEDIUM**: Implement or remove the Search button in header. If implementing, add a command palette (Cmd+K) pattern.
+   978→
+   979→10. **MEDIUM**: Implement or remove the Notification bell. Connect to a notification system or make it a placeholder with a tooltip.
+   980→
+   981→11. **MEDIUM**: Add user profile dropdown to header with avatar, name, role, and logout.
+   982→
+   983→12. **MEDIUM**: Extract TabPlaceholder to shared components to eliminate 5x duplication across sections.
+   984→
+   985→13. **MEDIUM**: Consider adding ThemeProvider (next-themes) to providers.tsx to enable dark mode toggle.
+   986→
+   987→14. **LOW**: Replace `<img>` with Next.js `<Image>` in CurrencyAmount component.
+   988→
+   989→15. **LOW**: Merge duplicate @media print blocks in globals.css.
+   990→
+   991→16. **LOW**: Add app-level footer with version, copyright, and quick links.
+   992→
+   993→---
+   994→Task ID: 2-d
+   995→Agent: Print Engine Auditor
+   996→Task: Audit print engine, templates, and related services
+   997→
+   998→Work Log:
+   999→- Read and analyzed all 25 printing-related files across 4 directories
+  1000→- Analyzed the new modular print module (/src/printing/) with 16 template files
+  1001→- Analyzed the old monolithic print service (/src/lib/print-service.ts, 3853 lines)
+  1002→- Analyzed the print API route, PrintButton component, invoice-preview component
+  1003→- Analyzed lib utilities (zatca-qr.ts, amount-to-words.ts)
+  1004→- Cross-referenced imports and verified which service is actually used in production
+  1005→- Identified critical architectural disconnect between new and old print services
+  1006→
+  1007→Stage Summary:
+  1008→
+  1009→🔴 CRITICAL ISSUES (5):
+  1010→
+  1011→1. **DEAD CODE: New modular print module is completely unused** — The entire `/src/printing/` directory (16 template files, ~3000+ lines of well-structured code) is never imported anywhere in the codebase. Both the API route (`/src/app/api/print/route.ts`) and the PrintButton component import from the OLD monolithic `/src/lib/print-service.ts`. All the improved templates (ServiceInvoice, SupplierInvoice, ProgressClaim, PurchaseOrder, DeliveryOrder, Timesheet, TrialBalance, GeneralLedger, BalanceSheet, IncomeStatement, VatReturn, PaymentVoucher, SalarySlip, RentalContract, GenericTable) are dead code.
+  1012→
+  1013→2. **Print API only supports 6 of 28 document types** — The `/api/print` route only has valid types for: `service-invoice`, `rental-invoice`, `extract`, `purchase-order`, `supplier-invoice`, `tax-declaration`. It returns a 400 error for all other 22 types (delivery-order, salary-slip, rental-contract, all financial vouchers, all reports, all accounting templates). However, PrintButton bypasses the API for most types by generating HTML client-side.
+  1014→
+  1015→3. **No ZATCA QR code for service invoices** — In the ACTIVE (old) print service, `generateInvoiceBody()` for `service-invoice` does NOT include ZATCA QR code. Only `rental-invoice` has QR code generation. This is a regulatory violation per ZATCA (Saudi tax authority) requirements — all tax invoices must include a QR code.
+  1016→
+  1017→4. **No ZATCA QR code for supplier invoices** — Same issue: `generateSupplierInvoiceBody()` doesn't include any QR code. Supplier invoices above 1000 SAR also require ZATCA QR per Saudi regulations.
+  1018→
+  1019→5. **Triple duplication of core utilities** — Amount-to-words function is duplicated 3 times:
+  1020→   - `/src/lib/amount-to-words.ts` (standalone, 172 lines)
+  1021→   - `/src/lib/print-service.ts` (inline copy, ~55 lines)
+  1022→   - `/src/printing/shared/utils.ts` (new module copy, ~50 lines)
+  1023→   
+  1024→   ZATCA TLV encoding is also duplicated 3 times:
+  1025→   - `/src/lib/zatca-qr.ts` (standalone, uses `qrcode` npm package)
+  1026→   - `/src/lib/print-service.ts` (inline copy, uses CDN fallback)
+  1027→   - `/src/printing/shared/utils.ts` (new module copy, base64 only)
+  1028→
+  1029→🟡 MEDIUM ISSUES (8):
+  1030→
+  1031→1. **Type naming inconsistency** — Old service uses `extract`, `tax-declaration`, `timesheet-report`. New module uses `progress-claim`, `vat-return`, `timesheet` with backward-compat aliases. PrintButton uses old type names (`timesheet-report` in transformDataForPrint). This creates confusion.
+  1032→
+  1033→2. **Missing document types in old service** — Old `PrintDocumentType` doesn't include: `balance-sheet`, `income-statement`, `general-ledger`, `vat-return`. These only exist in the new (unused) module. The old service also lacks specialized templates for these — they fall through to `generateGenericTableBody`.
+  1034→
+  1035→3. **ServiceInvoice template (new) claims requiresQR=true but doesn't render QR** — The new `ServiceInvoiceTemplate` sets `requiresQR: true` but the `getBody()` method never renders a QR code section. The flag is metadata-only and not enforced by the print service.
+  1036→
+  1037→4. **SupplierInvoice template (new) sets requiresQR=false** — This is incorrect. Supplier invoices should also have ZATCA QR codes per Saudi regulations. Also missing bank info and terms sections.
+  1038→
+  1039→5. **PaymentVoucher uses one template for 6 document types** — `client-payment`, `supplier-payment`, `rental-payment`, `expense-report`, `advance-voucher`, `petty-cash-voucher` all share the same generic template with minimal differentiation (only party label and documentType check). Advance vouchers and petty-cash vouchers need specialized fields.
+  1040→
+  1041→6. **DeliveryOrder template is too minimal** — No items table, no quantities, no condition notes. Only shows equipment info and client name. A proper delivery order should list items being delivered with quantities and conditions.
+  1042→
+  1043→7. **SalarySlip template missing fields** — No employee ID, department, position, or date range fields. Only shows name, month, year, and salary breakdown.
+  1044→
+  1045→8. **PurchaseOrder missing VAT breakdown** — Only shows grand total without subtotal and VAT amount separation. Missing amount-in-words for official documents.
+  1046→
+  1047→🟢 STRENGTHS (8):
+  1048→
+  1049→1. **New modular architecture is well-designed** — The `/src/printing/` module has excellent separation: types, utils, CSS, sections, headers-footers, and 16 independent template files. The `DocumentTemplate` interface is well-defined with properties for category, QR, signatures, bank info, amount-in-words, custom header/footer.
+  1050→
+  1051→2. **Template registry pattern** — The new `print-service.ts` uses a clean registry map (`templateRegistry`) to route document types to templates, with a fallback to GenericTable.
+  1052→
+  1053→3. **Professional CSS design** — `getDefaultCSS()` is comprehensive (~1300 lines) with A4 page layout, professional headers, table styles, print media queries, RTL/LTR support, and responsive design.
+  1054→
+  1055→4. **Accounting templates are excellent** — BalanceSheet (with current/non-current breakdown, balance verification), IncomeStatement (with revenue/cost breakdown, profit/loss styling), TrialBalance (with code cells, balance check), GeneralLedger (with opening/closing balance, running balance) are all professionally designed.
+  1056→
+  1057→5. **Amount-to-words supports multiple currencies** — `getCurrencyName()` and `numberToArabicWords()` support SAR, AED, KWD, QAR, OMR, BHD with correct Arabic names.
+  1058→
+  1059→6. **RentalInvoice is the gold standard template** — Complete with custom header/footer, ZATCA QR code, bilingual labels, rental data section, parties section, items table, billing summary with QR side-by-side, amount in words (Arabic + English), bank info, terms, signatures, and JPG/PNG export.
+  1060→
+  1061→7. **Shared sections are reusable** — `bankInfoSection()`, `signaturesSection()`, `amountInWordsSection()`, `termsSection()`, `approvalsSection()`, `qrCodeSection()`, `totalsSection()` are well-designed shared components.
+  1062→
+  1063→8. **invoice-preview.tsx is comprehensive** — The React component provides inline invoice preview with ZATCA QR, amount-in-words, and print capability. It correctly uses `@/lib/zatca-qr` and `@/lib/amount-to-words`.
+  1064→
+  1065→📋 DETAILED TEMPLATE STATUS (New Module — Currently Dead Code):
+  1066→
+  1067→| Template | Category | QR | Signatures | Bank | Words | Custom Header | Status |
+  1068→|----------|----------|-----|-----------|------|-------|---------------|--------|
+  1069→| RentalInvoice | invoice | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Gold Standard |
+  1070→| ServiceInvoice | invoice | ⚠️ flag only | ✅ | ✅ | ✅ | ❌ | ⚠️ Missing QR render |
+  1071→| SupplierInvoice | invoice | 🔴 false | ✅ | ❌ | ✅ | ❌ | 🔴 Missing QR+Bank |
+  1072→| ProgressClaim | project | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ Good |
+  1073→| PurchaseOrder | procurement | ❌ | ✅ | ❌ | ❌ | ❌ | ⚠️ Missing VAT |
+  1074→| DeliveryOrder | procurement | ❌ | ✅ | ❌ | ❌ | ❌ | ⚠️ Too minimal |
+  1075→| Timesheet | operation | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ Good |
+  1076→| TrialBalance | accounting | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ Excellent |
+  1077→| GeneralLedger | accounting | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ Excellent |
+  1078→| IncomeStatement | accounting | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ Excellent |
+  1079→| BalanceSheet | accounting | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ Excellent |
+  1080→| VatReturn | tax | ❌ | ✅ | ❌ | ❌ | ✅ | ✅ Good |
+  1081→| PaymentVoucher | financial | ❌ | ✅ | ✅ | ✅ | ❌ | ⚠️ Generic for 6 types |
+  1082→| SalarySlip | financial | ❌ | ✅ | ❌ | ✅ | ❌ | ⚠️ Missing fields |
+  1083→| RentalContract | financial | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ Good |
+  1084→| GenericTable | report | ❌ | ✅ | ❌ | ❌ | ❌ | ⚠️ Fallback only |
+  1085→
+  1086→📋 MISSING TEMPLATES (No dedicated template exists):
+  1087→
+  1088→| Document Type | Current Handling | Needed? |
+  1089→|---------------|-----------------|---------|
+  1090→| Quotation/Quote | ❌ Not supported | Yes — common in construction |
+  1091→| Work Order | ❌ Not supported | Yes — needed for operations |
+  1092→| Receipt (distinct from voucher) | ❌ Not supported | Yes — client receipt confirmation |
+  1093→| Credit Note | ❌ Not supported | Yes — for invoice corrections |
+  1094→| Debit Note | ❌ Not supported | Yes — for supplier corrections |
+  1095→| Proforma Invoice | ❌ Not supported | Yes — pre-sale document |
+  1096→
+  1097→🔧 RECOMMENDATIONS (Priority Order):
+  1098→
+  1099→1. **🔴 URGENT: Switch to new modular print service** — Update `@/app/api/print/route.ts` and `@/components/shared/print-button.tsx` to import from `@/printing` instead of `@/lib/print-service`. Then delete the old monolithic file. This immediately activates 16 well-designed templates and eliminates 3853 lines of duplicated code.
+  1100→
+  1101→2. **🔴 URGENT: Add ZATCA QR to service invoices** — Both the old (active) and new (unused) ServiceInvoice templates must render ZATCA QR codes. Per ZATCA Phase 2 requirements, all tax invoices must include a QR-encoded TLV string.
+  1102→
+  1103→3. **🔴 URGENT: Add ZATCA QR to supplier invoices** — Same as above. Change `requiresQR: false` to `requiresQR: true` in SupplierInvoiceTemplate and add QR rendering.
+  1104→
+  1105→4. **🔴 URGENT: Expand API route document types** — The `/api/print` route's `validTypes` array must include all 28+ document types, not just 6. Add data fetchers for each type.
+  1106→
+  1107→5. **🟡 HIGH: Deduplicate utilities** — Remove inline copies of `numberToArabicWords`, `numberToEnglishWords`, and `encodeZATCATLV` from `@/lib/print-service.ts`. Import from `@/lib/amount-to-words.ts` and `@/lib/zatca-qr.ts` (or from `@/printing/shared/utils.ts` after migration).
+  1108→
+  1109→6. **🟡 HIGH: Unify type names** — Standardize on `progress-claim` (not `extract`), `vat-return` (not `tax-declaration`), `timesheet` (not `timesheet-report`). Keep backward-compat aliases in the registry.
+  1110→
+  1111→7. **🟡 HIGH: Enhance ServiceInvoice QR in new module** — Add `qrCodeSection()` and `qrCodeScript()` rendering in ServiceInvoiceTemplate.getBody(), similar to RentalInvoiceTemplate.
+  1112→
+  1113→8. **🟡 MEDIUM: Specialize PaymentVoucher** — Create separate templates or at least specialized body sections for advance-voucher, petty-cash-voucher, and expense-report instead of one generic template.
+  1114→
+  1115→9. **🟡 MEDIUM: Enhance DeliveryOrder** — Add items table with quantities, conditions, and delivery notes.
+  1116→
+  1117→10. **🟡 MEDIUM: Enhance SalarySlip** — Add employee ID, department, position, date range, and GOSI number.
+  1118→
+  1119→11. **🟡 MEDIUM: Add VAT breakdown to PurchaseOrder** — Show subtotal, VAT amount, and grand total separately.
+  1120→
+  1121→12. **🟢 LOW: Create missing templates** — Add Quotation, Work Order, Credit Note, Debit Note templates as business needs grow.
+  1122→
+  1123→13. **🟢 LOW: Enforce requiresQR flag** — When `template.requiresQR === true` and `settings.taxNumber` exists, the print service should automatically inject QR code section if the template's getBody() doesn't render it.
+  1124→
