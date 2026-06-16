@@ -45,9 +45,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         phone: body.phone ?? null,
         email: body.email ?? null,
         isActive: body.isActive !== undefined ? body.isActive : undefined,
+        expenseAccountId: body.expenseAccountId !== undefined ? (body.expenseAccountId || null) : undefined,
       },
       include: {
         branch: { select: { id: true, code: true, name: true } },
+        expenseAccount: { select: { id: true, code: true, name: true, nameAr: true, accountRole: true } },
       },
     })
     return NextResponse.json(employee)

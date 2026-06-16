@@ -455,10 +455,12 @@ model Employee {
   phone           String?
   email           String?
   isActive        Boolean        @default(true)
+  expenseAccountId String?       // حساب مصروف الراتب - يحدد الحساب المحاسبي لرواتب هذا الموظف
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
   branch          Branch               @relation(fields: [branchId], references: [id])
+  expenseAccount  Account?             @relation(fields: [expenseAccountId], references: [id])
   advances        EmployeeAdvance[]
   contracts       EmployeeContract[]
   attendance      Attendance[]
@@ -1215,16 +1217,20 @@ model Equipment {
   supplierId      String?             // المورد (اختياري للشركة المملوكة، إلزامي للمستأجرة)
   ownerId         String?             // مالك المعدة (للمعدات المملوكة للعميل)
   purchasePrice   Decimal             @default(0)
+  sellingPrice    Decimal             @default(0)
   hourlyRate      Decimal             @default(0)
   dailyRate       Decimal             @default(0)
   monthlyRate     Decimal             @default(0)
   purchaseDate    DateTime?
   warrantyExpiry  DateTime?
+  assetAccountId  String?             // حساب الأصل الثابت
+  assetAccountCode String?            // كود حساب الأصل (للعرض السريع)
   isActive        Boolean             @default(true)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
   supplier         Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  assetAccount     Account?                 @relation("EquipmentAssetAccount", fields: [assetAccountId], references: [id], onDelete: SetNull)
   usages           EquipmentUsage[]
   maintenance      EquipmentMaintenance[]
   fuelLogs         EquipmentFuelLog[]
@@ -1577,6 +1583,8 @@ model Account {
   depExpenseAccounts FixedAsset[]  @relation("FixedAssetDepExpense")
   accumDepAccounts   FixedAsset[]  @relation("FixedAssetAccumDep")
   bankAccounts       BankAccount[]
+  employees          Employee[]    // الموظفون المرتبطون بهذا الحساب كمصروف رواتب
+  equipmentAssets    Equipment[]   @relation("EquipmentAssetAccount")
 
   @@index([parentId])
   @@index([type])
@@ -1663,18 +1671,21 @@ model VATReturn {
 // ============ CLIENT PAYMENTS ============
 
 model ClientPayment {
-  id             String    @id @default(cuid())
-  clientId       String
-  invoiceId      String?
-  amount         Decimal   @default(0)
-  date           DateTime
-  receivedIn     String    @default("TREASURY")
-  reference      String?
-  notes          String?
-  journalEntryId String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id                  String    @id @default(cuid())
+  clientId            String
+  invoiceId           String?
+  amount              Decimal   @default(0)
+  date                DateTime
+  receivedIn          String    @default("TREASURY")
+  receivingAccountId  String?
+  receivingAccountCode String?
+  receivingAccountName String?
+  reference           String?
+  notes               String?
+  journalEntryId      String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
 
   client  Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
   invoice SalesInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
@@ -1688,20 +1699,23 @@ model ClientPayment {
 // ============ SUPPLIER PAYMENTS ============
 
 model SupplierPayment {
-  id             String    @id @default(cuid())
-  supplierId     String
-  invoiceId      String?
-  amount         Decimal   @default(0)
-  date           DateTime
-  paidFrom       String    @default("TREASURY")
-  bankAccount    String?
-  paymentMethod  String?
-  reference      String?
-  notes          String?
-  journalEntryId String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id                String    @id @default(cuid())
+  supplierId        String
+  invoiceId         String?
+  amount            Decimal   @default(0)
+  date              DateTime
+  paidFrom          String    @default("TREASURY")
+  payingAccountId   String?
+  payingAccountCode String?
+  payingAccountName String?
+  bankAccount       String?
+  paymentMethod     String?
+  reference         String?
+  notes             String?
+  journalEntryId    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
 
   supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
 

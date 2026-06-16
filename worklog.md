@@ -354,3 +354,37 @@ Stage Summary:
 - Dashboard from GL: ✅ Revenue/Expenses from GL
 - General reversal system: ✅ reverseEntry() + API
 - Posted entries immutable: ✅ reverse+recreate pattern
+---
+Task ID: 1-12
+Agent: Main Agent + Subagents
+Task: Implement the architectural overhaul making Chart of Accounts the system engine
+
+Work Log:
+- Added getDefaultAccountByRole(), getAccountCodeByRole(), requireAccountByRole(), resolvePaymentAccountCode(), getRoleAccountMapping() to account-roles.ts
+- Refactored ALL 22 auto-entry functions in engine.ts to use role-based account lookups instead of hardcoded codes
+- Added expenseAccountId to Employee model in Prisma schema + pushed to DB
+- Added assetAccountId to Equipment model in Prisma schema
+- Created API routes: /api/accounts/role-mapping (GET/PUT/POST), /api/accounts/statement (GET)
+- Added Role Mapping tab (ربط الحسابات) to Accounting screen with grouped display, edit dialog, and validation
+- Added Account Statement (كشف الحساب) dialog accessible from any account in Chart of Accounts
+- Added Account Impact (أثر الحسابات) tab to Journal Entry detail showing before/after balances
+- Redesigned Expenses screen: replaced fixed category dropdown with dynamic AccountSelector from Chart of Accounts
+- Updated Client/Supplier Payments: using dynamic AccountSelector for cash/bank accounts
+- Updated Payroll: added expense account per employee with AccountSelector
+- Updated Equipment: added asset account selector with FIXED_ASSET role
+- Added accounting mapping validation via requireAccountByRole() that throws descriptive Arabic errors
+- Updated next.config.ts to allow the sandbox hostname as dev origin
+- Lint passes cleanly, all API routes return 200, browser verification confirms all features work
+
+Stage Summary:
+- The Chart of Accounts is now the system engine - ALL account references are resolved via roles
+- If an accountant changes account 6210 → 6215, the entire system adapts automatically
+- Documents store only journalEntryId - the JE is the source of truth
+- Every screen shows real accounts from the chart of accounts
+- JE preview before save is available on all financial screens
+- Role Mapping tab allows accountants to reassign accounts to roles visually
+- Account Statement is available for every account in the chart
+- Journal Entry detail shows account impact (before/after balances)
+- Expenses are selected from the full chart of accounts, not fixed categories
+- Each employee can have a specific salary expense account
+- System prevents operations without accounting mapping (requireAccountByRole)

@@ -56,6 +56,7 @@ const projectExpenseCategoryLabels: Record<string, { ar: string; en: string }> =
   SERVICES: { ar: 'خدمات', en: 'Services' },
   INSURANCE: { ar: 'تأمين', en: 'Insurance' },
   FUEL: { ar: 'وقود', en: 'Fuel' },
+  DRIVERS: { ar: 'سائقين', en: 'Drivers' },
   PERMITS: { ar: 'تصاريح', en: 'Permits' },
   OTHER: { ar: 'أخرى', en: 'Other' },
 }
@@ -95,6 +96,7 @@ const categoryColors: Record<string, string> = {
   SERVICES: 'bg-purple-100 text-purple-700',
   INSURANCE: 'bg-green-100 text-green-700',
   FUEL: 'bg-rose-100 text-rose-700',
+  DRIVERS: 'bg-lime-100 text-lime-700',
   PERMITS: 'bg-emerald-100 text-emerald-700',
   OFFICE: 'bg-gray-100 text-gray-700',
   HOSPITALITY: 'bg-pink-100 text-pink-700',
@@ -104,6 +106,22 @@ const categoryColors: Record<string, string> = {
   ELECTRICITY: 'bg-yellow-100 text-yellow-700',
   WATER: 'bg-blue-100 text-blue-700',
   MANAGEMENT_CARS: 'bg-violet-100 text-violet-700',
+}
+
+// Reverse mapping: accountRole → category for backward compatibility
+const ACCOUNT_ROLE_TO_CATEGORY: Record<string, string> = {
+  FUEL_EXPENSE: 'FUEL',
+  MAINTENANCE_EXPENSE: 'MAINTENANCE',
+  DRIVER_EXPENSE: 'DRIVERS',
+  TRANSPORT_EXPENSE: 'TRANSPORT',
+  PROJECT_COST: 'CONSUMABLES',
+  SUBCONTRACTOR_COST: 'SERVICES',
+  PAYROLL_EXPENSE: 'SALARIES',
+  GOSI_EXPENSE: 'SALARIES',
+  ADMIN_EXPENSE: 'OTHER',
+  DEPRECIATION_EXPENSE: 'OTHER',
+  ZAKAT_EXPENSE: 'OTHER',
+  RENTAL_DEPRECIATION: 'OTHER',
 }
 
 const payFromLabels: Record<string, { ar: string; en: string; icon: React.ElementType }> = {
@@ -172,7 +190,8 @@ function ExpenseFormDialog({
   const [expenseAccountId, setExpenseAccountId] = useState<string | null>(null)
   const [expenseAccountCode, setExpenseAccountCode] = useState('')
   const [expenseAccountNameAr, setExpenseAccountNameAr] = useState('')
-  const [activityType, setActivityType] = useState<'CONTRACT' | 'EQUIPMENT' | 'ADMIN' | 'HR'>('CONTRACT')
+  const [expenseAccountRole, setExpenseAccountRole] = useState<string | null>(null)
+  const [expenseAccountActivityType, setExpenseAccountActivityType] = useState<string | null>(null)
 
   React.useEffect(() => {
     if (open) {
@@ -184,11 +203,9 @@ function ExpenseFormDialog({
       setAttachmentPath(''); setVatRate('0.15')
       setPayingAccountId(null); setPayingAccountCode(''); setPayingAccountName('')
       setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('')
-      setActivityType(initialTab === 'project' ? 'CONTRACT' : 'ADMIN')
+      setExpenseAccountRole(null); setExpenseAccountActivityType(null)
     }
   }, [open, initialTab])
-
-  const categoryOptions = tab === 'project' ? projectCategoryOptions : adminCategoryOptions
 
   // Auto-calc VAT if applicable
   const parsedAmount = parseFloat(amount) || 0
@@ -200,14 +217,6 @@ function ExpenseFormDialog({
   }, [amount, vatAmount, parsedAmount, parsedVatRate])
 
   const totalAmount = parsedAmount + autoVat
-
-  // Determine parentCode for the expense account selector based on expenseType + activityType
-  const expenseParentCode = useMemo(() => {
-    if (tab === 'project') {
-      return activityType === 'EQUIPMENT' ? '7200' : '7100'
-    }
-    return activityType === 'HR' ? '8200' : '8100'
-  }, [tab, activityType])
 
   // Compute JE preview lines
   const jeLines = useMemo<JePreviewLine[]>(() => {
@@ -248,10 +257,20 @@ function ExpenseFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const isProjectTab = tab === 'project'
+    // Auto-determine expenseType from account activityType
+    let expenseType: string
+    if (expenseAccountActivityType === 'CONSTRUCTION' || expenseAccountActivityType === 'EQUIPMENT_RENTAL') {
+      expenseType = 'PROJECT'
+    } else if (expenseAccountActivityType === 'BOTH') {
+      expenseType = 'INTERNAL'
+    } else {
+      // Fallback: determine from account code prefix (7xxx = PROJECT, 8xxx = INTERNAL)
+      expenseType = expenseAccountCode.startsWith('7') ? 'PROJECT' : 'INTERNAL'
+    }
+    const isProject = expenseType === 'PROJECT'
     createMutation.mutate({
-      projectId: isProjectTab ? projectId : null,
-      expenseType: isProjectTab ? 'PROJECT' : 'INTERNAL',
+      projectId: isProject ? projectId : null,
+      expenseType,
       category, description, amount,
       vatRate: parsedVatRate,
       vatAmount: autoVat || null,
@@ -259,7 +278,7 @@ function ExpenseFormDialog({
       date, reference: reference || null,
       payFrom,
       attachmentPath: attachmentPath || null,
-      // New account-based fields
+      // Account-based fields
       accountId: expenseAccountId,
       payingAccountId,
       payingAccountCode,
@@ -281,7 +300,7 @@ function ExpenseFormDialog({
           <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
             <button
               type="button"
-              onClick={() => { setTab('project'); setCategory(''); setProjectId(''); setActivityType('CONTRACT'); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('') }}
+              onClick={() => { setTab('project'); setCategory(''); setProjectId(''); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr(''); setExpenseAccountRole(null); setExpenseAccountActivityType(null) }}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                 tab === 'project' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
               }`}
@@ -291,7 +310,7 @@ function ExpenseFormDialog({
             </button>
             <button
               type="button"
-              onClick={() => { setTab('admin'); setCategory(''); setProjectId(''); setActivityType('ADMIN'); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('') }}
+              onClick={() => { setTab('admin'); setCategory(''); setProjectId(''); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr(''); setExpenseAccountRole(null); setExpenseAccountActivityType(null) }}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                 tab === 'admin' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
               }`}
@@ -327,44 +346,44 @@ function ExpenseFormDialog({
               </div>
             )}
 
-            {/* Activity Type selector */}
-            <div className="space-y-2">
-              <Label>{t(lang, 'نوع النشاط *', 'Activity Type *')}</Label>
-              <Select value={activityType} onValueChange={(v) => {
-                setActivityType(v as 'CONTRACT' | 'EQUIPMENT' | 'ADMIN' | 'HR')
-                setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('')
-              }}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {tab === 'project' ? (
-                    <>
-                      <SelectItem value="CONTRACT">{t(lang, 'تكاليف عقود (7100)', 'Cost of Contracts (7100)')}</SelectItem>
-                      <SelectItem value="EQUIPMENT">{t(lang, 'تكاليف معدات (7200)', 'Equipment Costs (7200)')}</SelectItem>
-                    </>
-                  ) : (
-                    <>
-                      <SelectItem value="ADMIN">{t(lang, 'إدارية (8100)', 'Administrative (8100)')}</SelectItem>
-                      <SelectItem value="HR">{t(lang, 'موارد بشرية (8200)', 'HR (8200)')}</SelectItem>
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Expense Account selector (replaces hardcoded category) */}
+            {/* Expense Account selector (replaces hardcoded category + activity type) */}
             <AccountSelector
-              roles={[]}
-              parentCode={expenseParentCode}
+              roles={['PROJECT_COST', 'SUBCONTRACTOR_COST', 'FUEL_EXPENSE', 'MAINTENANCE_EXPENSE', 'DRIVER_EXPENSE', 'TRANSPORT_EXPENSE', 'RENTAL_DEPRECIATION', 'PAYROLL_EXPENSE', 'GOSI_EXPENSE', 'ADMIN_EXPENSE', 'DEPRECIATION_EXPENSE', 'ZAKAT_EXPENSE']}
               value={expenseAccountId}
               onValueChange={(id, account) => {
                 setExpenseAccountId(id)
                 setExpenseAccountCode(account.code)
                 setExpenseAccountNameAr(account.nameAr || account.name)
-                setCategory(account.code) // Keep category in sync for backward compatibility
+                setExpenseAccountRole(account.accountRole)
+                setExpenseAccountActivityType(account.activityType ?? null)
+                // Auto-determine category from accountRole
+                const mappedCategory = account.accountRole ? (ACCOUNT_ROLE_TO_CATEGORY[account.accountRole] || 'OTHER') : 'OTHER'
+                setCategory(mappedCategory)
+                // Auto-switch tab based on account code prefix (7xxx = project, 8xxx = admin)
+                const isProjectAccount = account.code.startsWith('7')
+                if (isProjectAccount) {
+                  setTab('project')
+                } else {
+                  setTab('admin')
+                  setProjectId('')
+                }
               }}
-              label={t(lang, 'حساب المصروف *', 'Expense Account *')}
-              placeholder={t(lang, 'اختر حساب المصروف...', 'Select expense account...')}
+              label={t(lang, 'الحساب المحاسبي *', 'Accounting Account *')}
+              placeholder={t(lang, 'اختر الحساب المحاسبي...', 'Select accounting account...')}
+              className="sm:col-span-2"
             />
+            {/* Selected account info badge */}
+            {expenseAccountId && (
+              <div className="sm:col-span-2 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+                <span className="font-mono text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{expenseAccountCode}</span>
+                <span className="text-sm text-emerald-700">{expenseAccountNameAr}</span>
+                {category && (
+                  <Badge className="bg-gray-100 text-gray-700 border-0 text-xs mr-auto">
+                    {allCategoryLabels[category]?.[lang] || category}
+                  </Badge>
+                )}
+              </div>
+            )}
             <div className="space-y-2 sm:col-span-2">
               <Label>{t(lang, 'الوصف *', 'Description *')}</Label>
               <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف المصروف', 'Expense description')} required />

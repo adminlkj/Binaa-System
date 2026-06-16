@@ -135,12 +135,20 @@ export async function createClientPaymentJournalEntry(
 
   const entryNo = await getNextEntryNo(tx)
 
-  const treasuryAccount = await tx.account.findFirst({ where: { code: '1102' } }) // الصندوق/الخزينة
+  // Use the receiving account from the payment if available, otherwise fall back to hardcoded
+  let receivingAccount: { id: string } | null = null
+  if (payment.receivingAccountId) {
+    receivingAccount = await tx.account.findUnique({ where: { id: payment.receivingAccountId } })
+  }
+  if (!receivingAccount) {
+    receivingAccount = await tx.account.findFirst({ where: { code: '1102' } }) // الصندوق/الخزينة
+  }
+
   const clientAccount = await tx.account.findFirst({ where: { code: '1101' } }) // العملاء
 
-  if (!treasuryAccount || !clientAccount) {
+  if (!receivingAccount || !clientAccount) {
     console.error('[AutoJournal] Missing accounts for client payment journal:', {
-      treasuryAccount: !!treasuryAccount,
+      receivingAccount: !!receivingAccount,
       clientAccount: !!clientAccount
     })
     return
@@ -157,7 +165,7 @@ export async function createClientPaymentJournalEntry(
       status: 'POSTED',
       lines: {
         create: [
-          { accountId: treasuryAccount.id, debit: payment.amount, credit: 0, description: `تحصيل نقدي` },
+          { accountId: receivingAccount.id, debit: payment.amount, credit: 0, description: `تحصيل نقدي` },
           { accountId: clientAccount.id, debit: 0, credit: payment.amount, description: `تحصيل من ${payment.client.name}` },
         ]
       }
@@ -182,12 +190,20 @@ export async function createSupplierPaymentJournalEntry(
   const entryNo = await getNextEntryNo(tx)
 
   const supplierAccount = await tx.account.findFirst({ where: { code: '2101' } }) // الموردون
-  const treasuryAccount = await tx.account.findFirst({ where: { code: '1102' } }) // الصندوق
 
-  if (!supplierAccount || !treasuryAccount) {
+  // Use the paying account from the payment if available, otherwise fall back to hardcoded
+  let payingAccount: { id: string } | null = null
+  if (payment.payingAccountId) {
+    payingAccount = await tx.account.findUnique({ where: { id: payment.payingAccountId } })
+  }
+  if (!payingAccount) {
+    payingAccount = await tx.account.findFirst({ where: { code: '1102' } }) // الصندوق
+  }
+
+  if (!supplierAccount || !payingAccount) {
     console.error('[AutoJournal] Missing accounts for supplier payment journal:', {
       supplierAccount: !!supplierAccount,
-      treasuryAccount: !!treasuryAccount
+      payingAccount: !!payingAccount
     })
     return
   }
@@ -204,7 +220,7 @@ export async function createSupplierPaymentJournalEntry(
       lines: {
         create: [
           { accountId: supplierAccount.id, debit: payment.amount, credit: 0, description: `سداد مورد ${payment.supplier.name}` },
-          { accountId: treasuryAccount.id, debit: 0, credit: payment.amount, description: `صرف نقدي` },
+          { accountId: payingAccount.id, debit: 0, credit: payment.amount, description: `صرف نقدي` },
         ]
       }
     }

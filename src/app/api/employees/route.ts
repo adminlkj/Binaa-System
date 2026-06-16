@@ -35,6 +35,7 @@ export async function GET(request: Request) {
         where: whereClause,
         include: {
           branch: { select: { id: true, code: true, name: true } },
+          expenseAccount: { select: { id: true, code: true, name: true, nameAr: true, accountRole: true } },
         },
         orderBy: { code: 'asc' },
       })
@@ -46,6 +47,7 @@ export async function GET(request: Request) {
         where: whereClause,
         include: {
           branch: { select: { id: true, code: true, name: true } },
+          expenseAccount: { select: { id: true, code: true, name: true, nameAr: true, accountRole: true } },
         },
         orderBy: { code: 'asc' },
         skip: (page - 1) * pageSize,
@@ -95,9 +97,11 @@ export async function POST(request: Request) {
         phone: body.phone || null,
         email: body.email || null,
         isActive: body.isActive !== undefined ? body.isActive : true,
+        expenseAccountId: body.expenseAccountId || null,
       },
       include: {
         branch: { select: { id: true, code: true, name: true } },
+        expenseAccount: { select: { id: true, code: true, name: true, nameAr: true, accountRole: true } },
       },
     })
 

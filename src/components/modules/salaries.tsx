@@ -23,12 +23,17 @@ import {
 import { Label } from '@/components/ui/label'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
 import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============
-interface Employee { id: string; code: string; name: string; nameAr: string | null; basicSalary: number }
+interface ExpenseAccount {
+  id: string; code: string; name: string; nameAr: string | null; accountRole: string | null
+}
+
+interface Employee { id: string; code: string; name: string; nameAr: string | null; basicSalary: number; expenseAccountId: string | null; expenseAccount: ExpenseAccount | null }
 
 interface SalaryRecord {
   id: string; employeeId: string; month: number; year: number
@@ -441,6 +446,7 @@ export function SalariesModule() {
                 <TableHead className="text-right">{t('الإضافي', 'OT', lang)}</TableHead>
                 <TableHead className="text-right">{t('الخصومات', 'Ded.', lang)}</TableHead>
                 <TableHead className="text-right">{t('الصافي', 'Net', lang)}</TableHead>
+                <TableHead className="text-right">{t('حساب المصروف', 'Expense Acct', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
@@ -456,6 +462,12 @@ export function SalariesModule() {
                       <TableCell><MoneyDisplay value={s.overtimeAmount} lang={lang} size="sm" /></TableCell>
                       <TableCell><MoneyDisplay value={s.deductions} lang={lang} size="sm" /></TableCell>
                       <TableCell><MoneyDisplay value={s.netSalary} lang={lang} size="sm" bold /></TableCell>
+                      <TableCell>
+                        {s.employee.expenseAccount
+                          ? <span className="text-xs"><span className="font-mono text-cyan-600">{s.employee.expenseAccount.code}</span> - {s.employee.expenseAccount.nameAr || s.employee.expenseAccount.name}</span>
+                          : <span className="text-muted-foreground text-xs">—</span>
+                        }
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <SalaryStatusBadge status={s.status} lang={lang} />
@@ -484,6 +496,48 @@ export function SalariesModule() {
           </div>
         )}
       </CardContent></Card>
+
+      {/* JE Preview - Salary Distribution by Expense Account */}
+      {filtered.length > 0 && (() => {
+        // Aggregate salary amounts by expense account
+        const accountMap = new Map<string, { code: string; nameAr: string; totalDebit: number }>()
+        for (const s of filtered) {
+          const acct = s.employee.expenseAccount
+          const key = acct ? acct.id : '__none__'
+          const existing = accountMap.get(key)
+          const amount = s.netSalary
+          if (existing) {
+            existing.totalDebit += amount
+          } else {
+            accountMap.set(key, {
+              code: acct?.code || '—',
+              nameAr: acct?.nameAr || acct?.name || (lang === 'ar' ? 'غير محدد' : 'Unspecified'),
+              totalDebit: amount,
+            })
+          }
+        }
+        const totalSalaries = filtered.reduce((sum, s) => sum + s.netSalary, 0)
+        const jeLines: JePreviewLine[] = [
+          ...Array.from(accountMap.values()).map(a => ({
+            accountCode: a.code,
+            accountNameAr: a.nameAr,
+            debit: a.totalDebit,
+            credit: 0,
+          })),
+          {
+            accountCode: '1110',
+            accountNameAr: lang === 'ar' ? 'الصندوق' : 'Cash',
+            debit: 0,
+            credit: totalSalaries,
+          },
+        ]
+        return (
+          <JePreview
+            lines={jeLines}
+            title={t('توزيع الرواتب على حسابات المصروفات', 'Salary Distribution by Expense Account')}
+          />
+        )
+      })()}
 
       <SalaryFormDialog open={dialogOpen} onOpenChange={setDialogOpen} employees={employees} />
     </ModuleLayout>

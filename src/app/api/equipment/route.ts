@@ -95,6 +95,8 @@ export async function POST(request: Request) {
         monthlyRate: parseFloat(body.monthlyRate) || 0,
         purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
         warrantyExpiry: body.warrantyExpiry ? new Date(body.warrantyExpiry) : null,
+        assetAccountId: body.assetAccountId || null,
+        assetAccountCode: body.assetAccountCode || null,
         isActive: true,
       },
       include: {

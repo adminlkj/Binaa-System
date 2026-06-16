@@ -22,6 +22,7 @@ import {
 import { Label } from '@/components/ui/label'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { AccountSelector } from '@/components/shared/account-selector'
 import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { PrintButton } from '@/components/shared/print-button'
@@ -29,25 +30,33 @@ import { PrintButton } from '@/components/shared/print-button'
 // ============ Types ============
 interface Branch { id: string; name: string; nameAr: string | null }
 
+interface ExpenseAccount {
+  id: string; code: string; name: string; nameAr: string | null; accountRole: string | null
+}
+
 interface Employee {
   id: string; code: string; name: string; nameAr: string | null
   nationality: string | null; profession: string | null
   residenceNumber: string | null; residenceExpiry: string | null
   hireDate: string | null; basicSalary: number; status: string
   branchId: string | null; phone: string | null; email: string | null
+  expenseAccountId: string | null
   branch: Branch | null
+  expenseAccount: ExpenseAccount | null
 }
 
 interface EmployeeFormData {
   name: string; nameAr: string; nationality: string; profession: string
   residenceNumber: string; residenceExpiry: string; hireDate: string
   basicSalary: string; branchId: string; phone: string; email: string
+  expenseAccountId: string | null
 }
 
 const defaultForm: EmployeeFormData = {
   name: '', nameAr: '', nationality: '', profession: '',
   residenceNumber: '', residenceExpiry: '', hireDate: '',
   basicSalary: '', branchId: '', phone: '', email: '',
+  expenseAccountId: null,
 }
 
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
@@ -91,6 +100,7 @@ function EmployeeFormDialog({ open, onOpenChange, editingEmployee, branches }: {
           basicSalary: String(editingEmployee.basicSalary),
           branchId: editingEmployee.branchId || '',
           phone: editingEmployee.phone || '', email: editingEmployee.email || '',
+          expenseAccountId: editingEmployee.expenseAccountId || null,
         })
       } else { setForm(defaultForm) }
     }
@@ -113,6 +123,7 @@ function EmployeeFormDialog({ open, onOpenChange, editingEmployee, branches }: {
       branchId: form.branchId || null,
       residenceExpiry: form.residenceExpiry || null,
       hireDate: form.hireDate || null,
+      expenseAccountId: form.expenseAccountId || null,
     }
     if (isEdit) updateMutation.mutate(payload); else createMutation.mutate(payload)
   }
@@ -178,6 +189,23 @@ function EmployeeFormDialog({ open, onOpenChange, editingEmployee, branches }: {
               <div className="space-y-2"><Label>{t('الهاتف', 'Phone', lang)}</Label><Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} dir="ltr" /></div>
               <div className="space-y-2"><Label>{t('البريد الإلكتروني', 'Email', lang)}</Label><Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} dir="ltr" /></div>
             </div>
+          </div>
+
+          {/* Salary Expense Account */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm text-cyan-700 border-b border-cyan-200 pb-1">
+              {t('حساب مصروف الراتب', 'Salary Expense Account')}
+            </h4>
+            <AccountSelector
+              roles={['PAYROLL_EXPENSE', 'PROJECT_COST', 'DRIVER_EXPENSE', 'ADMIN_EXPENSE']}
+              value={form.expenseAccountId}
+              onValueChange={(id, _account) => {
+                setForm(prev => ({ ...prev, expenseAccountId: id }))
+              }}
+              label={t('حساب مصروف الراتب', 'Salary Expense Account')}
+              placeholder={t('اختر حساب المصروف...', 'Select expense account...')}
+            />
+            <p className="text-xs text-muted-foreground">{t('اختر حساب المصروف الذي ستُقيد فيه رواتب هذا الموظف', 'Select the expense account where this employee\'s salary will be posted')}</p>
           </div>
 
           <DialogFooter>
@@ -289,6 +317,7 @@ export function EmployeesModule() {
                 <TableHead className="text-right">{t('انتهاء الإقامة', 'Res. Expiry', lang)}</TableHead>
                 <TableHead className="text-right">{t('تاريخ التعيين', 'Hire Date', lang)}</TableHead>
                 <TableHead className="text-right">{t('الراتب', 'Salary', lang)}</TableHead>
+                <TableHead className="text-right">{t('حساب المصروف', 'Expense Acct', lang)}</TableHead>
                 <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
               </TableRow></TableHeader>
@@ -302,6 +331,7 @@ export function EmployeesModule() {
                     <TableCell>{e.residenceExpiry ? formatDate(e.residenceExpiry, lang) : '—'}</TableCell>
                     <TableCell>{e.hireDate ? formatDate(e.hireDate, lang) : '—'}</TableCell>
                     <TableCell><MoneyDisplay value={e.basicSalary} lang={lang} size="sm" /></TableCell>
+                    <TableCell>{e.expenseAccount ? <span className="text-xs"><span className="font-mono text-cyan-600">{e.expenseAccount.code}</span> - {e.expenseAccount.nameAr || e.expenseAccount.name}</span> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                     <TableCell><StatusBadge status={e.status} lang={lang} /></TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">

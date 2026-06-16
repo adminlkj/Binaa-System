@@ -86,7 +86,7 @@ export async function PUT(
 
         // Create journal entries for each activity type
         for (const [activity, totals] of Object.entries(linesByActivity)) {
-          const salaryAccountCode = getSalaryAccountCode(activity as 'PROJECT' | 'RENTAL' | 'ADMIN')
+          const salaryAccountCode = await getSalaryAccountCode(activity as 'PROJECT' | 'RENTAL' | 'ADMIN', tx)
           const activityNameAr = activity === 'PROJECT' ? 'مشاريع' : activity === 'RENTAL' ? 'تأجير' : 'إدارية'
 
           const jeLines = [

@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { supplierId, invoiceId, amount, date, paidFrom, bankAccount, paymentMethod, reference, notes } = body
+    const { supplierId, invoiceId, amount, date, paidFrom, payingAccountId, payingAccountCode, payingAccountName, bankAccount, paymentMethod, reference, notes } = body
 
     if (!supplierId || !amount || !date) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
@@ -102,6 +102,9 @@ export async function POST(request: Request) {
           amount: parseFloat(amount) || 0,
           date: new Date(date),
           paidFrom: paidFrom || 'TREASURY',
+          payingAccountId: payingAccountId || null,
+          payingAccountCode: payingAccountCode || null,
+          payingAccountName: payingAccountName || null,
           bankAccount: bankAccount || null,
           paymentMethod: paymentMethod || null,
           reference: reference || null,

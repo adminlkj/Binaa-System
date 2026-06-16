@@ -227,7 +227,7 @@ export const PURCHASE_WORKFLOW = [
 ]
 
 // Accounting sub-tabs
-export type AccountingTab = 'chart-of-accounts' | 'journal-entries' | 'general-ledger' | 'trial-balance' | 'receivables' | 'payables'
+export type AccountingTab = 'chart-of-accounts' | 'role-mapping' | 'journal-entries' | 'general-ledger' | 'trial-balance' | 'receivables' | 'payables'
 
 // ============ SUB-MODULE KEYS ============
 // Union of all sub-module keys used across section tab bars

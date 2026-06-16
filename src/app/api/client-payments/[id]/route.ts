@@ -89,6 +89,9 @@ export async function PATCH(
         if (body.amount !== undefined) updateData.amount = body.amount
         if (body.date !== undefined) updateData.date = new Date(body.date)
         if (body.receivedIn !== undefined) updateData.receivedIn = body.receivedIn
+        if (body.receivingAccountId !== undefined) updateData.receivingAccountId = body.receivingAccountId || null
+        if (body.receivingAccountCode !== undefined) updateData.receivingAccountCode = body.receivingAccountCode || null
+        if (body.receivingAccountName !== undefined) updateData.receivingAccountName = body.receivingAccountName || null
         if (body.reference !== undefined) updateData.reference = body.reference
         if (body.notes !== undefined) updateData.notes = body.notes
         if (body.invoiceId !== undefined) updateData.invoiceId = body.invoiceId || null
@@ -156,6 +159,9 @@ export async function PATCH(
     if (body.amount !== undefined) updateData.amount = body.amount
     if (body.date !== undefined) updateData.date = new Date(body.date)
     if (body.receivedIn !== undefined) updateData.receivedIn = body.receivedIn
+    if (body.receivingAccountId !== undefined) updateData.receivingAccountId = body.receivingAccountId || null
+    if (body.receivingAccountCode !== undefined) updateData.receivingAccountCode = body.receivingAccountCode || null
+    if (body.receivingAccountName !== undefined) updateData.receivingAccountName = body.receivingAccountName || null
     if (body.reference !== undefined) updateData.reference = body.reference
     if (body.notes !== undefined) updateData.notes = body.notes
     if (body.invoiceId !== undefined) updateData.invoiceId = body.invoiceId || null

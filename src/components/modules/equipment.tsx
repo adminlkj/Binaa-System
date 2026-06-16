@@ -46,6 +46,7 @@ interface Equipment {
   purchasePrice: number; sellingPrice: number
   hourlyRate: number; dailyRate: number; monthlyRate: number
   purchaseDate: string | null; warrantyExpiry: string | null
+  assetAccountId: string | null; assetAccountCode: string | null
   isActive: boolean
   supplier: Supplier | null
   usages?: EquipmentUsage[]
@@ -1649,6 +1650,7 @@ export function EquipmentModule() {
                     <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
                     <TableHead className="text-right">{t('النشاط', 'Activity')}</TableHead>
                     <TableHead className="text-right">{t('الملكية', 'Ownership')}</TableHead>
+                    <TableHead className="text-right">{t('حساب الأصل', 'Asset Acct')}</TableHead>
                     <TableHead className="text-right">{t('الأجر/ساعة', 'Hourly Rate')}</TableHead>
                     <TableHead className="text-right">{t('النشاط الحالي', 'Current Activity')}</TableHead>
                     <TableHead className="text-right">{t('عرض', 'View')}</TableHead>
@@ -1664,6 +1666,7 @@ export function EquipmentModule() {
                       <TableCell><StatusBadge status={eq.status} lang={lang} /></TableCell>
                       <TableCell><ActivityBadge status={eq.status} lang={lang} /></TableCell>
                       <TableCell><OwnershipBadge ownershipType={eq.ownershipType || 'COMPANY_OWNED'} lang={lang} /></TableCell>
+                      <TableCell>{eq.assetAccountCode ? <span className="text-xs font-mono text-cyan-600">{eq.assetAccountCode}</span> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                       <TableCell><MoneyDisplay value={eq.hourlyRate} lang={lang} size="sm" inline /></TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {eq.status === 'RENTED' ? t('تأجير', 'Rental') : eq.status === 'IN_USE' ? t('تنفيذي', 'Construction') : '—'}

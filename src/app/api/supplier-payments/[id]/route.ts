@@ -88,6 +88,9 @@ export async function PUT(
         if (body.amount !== undefined) updateData.amount = parseFloat(body.amount) || 0
         if (body.date !== undefined) updateData.date = new Date(body.date)
         if (body.paidFrom !== undefined) updateData.paidFrom = body.paidFrom
+        if (body.payingAccountId !== undefined) updateData.payingAccountId = body.payingAccountId || null
+        if (body.payingAccountCode !== undefined) updateData.payingAccountCode = body.payingAccountCode || null
+        if (body.payingAccountName !== undefined) updateData.payingAccountName = body.payingAccountName || null
         if (body.bankAccount !== undefined) updateData.bankAccount = body.bankAccount
         if (body.paymentMethod !== undefined) updateData.paymentMethod = body.paymentMethod
         if (body.reference !== undefined) updateData.reference = body.reference
@@ -154,6 +157,9 @@ export async function PUT(
     if (body.amount !== undefined) updateData.amount = parseFloat(body.amount) || 0
     if (body.date !== undefined) updateData.date = new Date(body.date)
     if (body.paidFrom !== undefined) updateData.paidFrom = body.paidFrom
+    if (body.payingAccountId !== undefined) updateData.payingAccountId = body.payingAccountId || null
+    if (body.payingAccountCode !== undefined) updateData.payingAccountCode = body.payingAccountCode || null
+    if (body.payingAccountName !== undefined) updateData.payingAccountName = body.payingAccountName || null
     if (body.bankAccount !== undefined) updateData.bankAccount = body.bankAccount
     if (body.paymentMethod !== undefined) updateData.paymentMethod = body.paymentMethod
     if (body.reference !== undefined) updateData.reference = body.reference

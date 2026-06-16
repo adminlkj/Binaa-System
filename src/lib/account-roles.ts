@@ -419,3 +419,195 @@ export async function getAccountsByParentCode(parentCode: string) {
     orderBy: { code: 'asc' },
   })
 }
+
+// ---------------------------------------------------------------------------
+// Default Account Resolution (THE CORE ENGINE FUNCTIONS)
+// ---------------------------------------------------------------------------
+// These functions are the backbone of the role-based accounting system.
+// They replace ALL hardcoded account codes throughout the engine.
+//
+// Flow: AccountRole → DB Query → Account Code/ID
+// If the accountant changes account 6210 → 6215, these functions
+// automatically pick up the new mapping. ZERO code changes needed.
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the DEFAULT (first) account for a given role.
+ * This is the primary function used by the accounting engine to resolve
+ * account roles to actual account codes at runtime.
+ *
+ * @param role - One of the `AccountRole` keys (e.g. 'CASH', 'RENTAL_REVENUE')
+ * @param tx - Optional Prisma transaction client for use within $transaction()
+ * @returns The first matching Account record, or null if none found
+ *
+ * @example
+ * const cashAccount = await getDefaultAccountByRole('CASH')
+ * // Returns: { id: '...', code: '1110', name: 'Cash - Treasury', ... }
+ *
+ * const revenueAccount = await getDefaultAccountByRole('RENTAL_REVENUE', tx)
+ * // Returns: { id: '...', code: '6210', name: 'Equipment Rental Revenue', ... }
+ */
+export async function getDefaultAccountByRole(
+  role: string,
+  tx?: { account: { findFirst: (args: any) => Promise<any> } }
+) {
+  const client = tx || db
+  return client.account.findFirst({
+    where: {
+      accountRole: role,
+      isActive: true,
+      allowPosting: true,
+    },
+    orderBy: { code: 'asc' },
+  })
+}
+
+/**
+ * Get the account code for a given role. Convenience wrapper around
+ * `getDefaultAccountByRole` that returns just the code string.
+ *
+ * @param role - One of the `AccountRole` keys
+ * @param tx - Optional Prisma transaction client
+ * @returns The account code string (e.g. '6210'), or null if not found
+ */
+export async function getAccountCodeByRole(
+  role: string,
+  tx?: { account: { findFirst: (args: any) => Promise<any> } }
+): Promise<string | null> {
+  const account = await getDefaultAccountByRole(role, tx)
+  return account?.code ?? null
+}
+
+/**
+ * REQUIRE an account for a given role. Throws a descriptive error if no
+ * account is mapped to the role. This is the validation gate that prevents
+ * any financial operation from proceeding without a proper accounting mapping.
+ *
+ * This implements the critical rule:
+ * ❌ لا يمكن إنشاء العملية - لا يوجد ربط محاسبي معتمد لهذا النوع من العمليات
+ *
+ * @param role - One of the `AccountRole` keys
+ * @param operationName - Human-readable name of the operation (for error message)
+ * @param tx - Optional Prisma transaction client
+ * @returns The Account record (guaranteed to exist)
+ * @throws Error if no account is mapped to the role
+ *
+ * @example
+ * const arAccount = await requireAccountByRole('CUSTOMER_AR', 'فاتورة مبيعات', tx)
+ * // If no CUSTOMER_AR account exists: throws "لا يمكن إنشاء فاتورة مبيعات - لا يوجد حساب مرتبط بدور CUSTOMER_AR في دليل الحسابات"
+ */
+export async function requireAccountByRole(
+  role: string,
+  operationName: string,
+  tx?: { account: { findFirst: (args: any) => Promise<any> } }
+) {
+  const account = await getDefaultAccountByRole(role, tx)
+  if (!account) {
+    const roleInfo = ACCOUNT_ROLES[role as AccountRoleKey]
+    const roleLabel = roleInfo?.labelAr || role
+    throw new Error(
+      `لا يمكن إنشاء ${operationName} - لا يوجد حساب مرتبط بدور "${roleLabel}" (${role}) في دليل الحسابات. ` +
+      `يرجى ربط حساب بهذا الدور من شاشة دليل الحسابات → تبويب ربط الحسابات.`
+    )
+  }
+  return account
+}
+
+/**
+ * Get all accounts for a role, optionally filtered by activity type.
+ * Used when a screen needs to show all available accounts for a role
+ * (e.g., showing all CASH + BANK accounts for payment method selection).
+ *
+ * @param role - One of the `AccountRole` keys
+ * @param activityType - Optional filter: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL' | 'BOTH'
+ * @param tx - Optional Prisma transaction client
+ * @returns Array of matching Account records
+ */
+export async function getAccountsByRoleFiltered(
+  role: string,
+  activityType?: string,
+  tx?: { account: { findMany: (args: any) => Promise<any> } }
+) {
+  const client = tx || db
+  return client.account.findMany({
+    where: {
+      accountRole: role,
+      isActive: true,
+      allowPosting: true,
+      ...(activityType && { activityType }),
+    },
+    orderBy: { code: 'asc' },
+  })
+}
+
+/**
+ * Resolve a payment method to an account code using role-based lookup.
+ * Replaces hardcoded: TREASURY → '1110', BANK → '1120', PETTY_CASH → '1130'
+ *
+ * @param payFrom - Payment method: 'TREASURY' | 'BANK' | 'PETTY_CASH'
+ * @param tx - Optional Prisma transaction client
+ * @returns The account code string
+ */
+export async function resolvePaymentAccountCode(
+  payFrom: 'TREASURY' | 'BANK' | 'PETTY_CASH',
+  tx?: { account: { findFirst: (args: any) => Promise<any> } }
+): Promise<string> {
+  const roleMap: Record<string, string> = {
+    'TREASURY': 'CASH',
+    'BANK': 'BANK',
+    'PETTY_CASH': 'CASH',
+  }
+  const role = roleMap[payFrom] || 'CASH'
+  const code = await getAccountCodeByRole(role, tx)
+  if (!code) {
+    // Fallback: if no role-mapped account, try the other cash role
+    if (payFrom === 'TREASURY') {
+      const bankCode = await getAccountCodeByRole('BANK', tx)
+      return bankCode || '1110'
+    }
+    return payFrom === 'BANK' ? '1120' : '1110'
+  }
+  return code
+}
+
+/**
+ * Get a complete mapping of all roles to their current account assignments.
+ * Used by the Chart of Accounts screen's "Role Mapping" tab to display
+ * which account is currently assigned to each role.
+ *
+ * @returns Array of { role, labelAr, labelEn, accountCode, accountNameAr, accountId }
+ */
+export async function getRoleAccountMapping() {
+  const allRoles = Object.values(AccountRole) as string[]
+  const mappings = []
+
+  for (const role of allRoles) {
+    const roleInfo = ACCOUNT_ROLES[role as AccountRoleKey]
+    if (!roleInfo) continue
+
+    const accounts = await db.account.findMany({
+      where: {
+        accountRole: role,
+        isActive: true,
+      },
+      orderBy: { code: 'asc' },
+    })
+
+    mappings.push({
+      role,
+      labelAr: roleInfo.labelAr,
+      labelEn: roleInfo.labelEn,
+      description: roleInfo.description,
+      defaultCodes: roleInfo.defaultCodes,
+      accounts: accounts.map(a => ({
+        id: a.id,
+        code: a.code,
+        nameAr: a.nameAr,
+        name: a.name,
+      })),
+      primaryAccount: accounts.find(a => a.allowPosting) || null,
+    })
+  }
+
+  return mappings
+}

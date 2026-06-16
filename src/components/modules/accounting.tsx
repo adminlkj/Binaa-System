@@ -10,7 +10,8 @@ import {
   CreditCard, Users, Package, Clock, AlertTriangle,
   Wallet, Landmark, FileSpreadsheet, CircleDollarSign,
   CalendarCheck, Wrench, Banknote, FolderClosed, CheckCircle2,
-  Printer, Download, Search,
+  Printer, Download, Search, Link2, Pencil, FileSearch, ArrowRightLeft,
+  Settings,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -69,6 +70,27 @@ interface StatementLine {
 interface TrialBalanceItem {
   account: { id: string; code: string; name: string; nameAr: string | null; type: string }
   totalDebit: number; totalCredit: number; netDebit: number; netCredit: number
+}
+
+interface RoleMappingItem {
+  role: string
+  labelAr: string
+  labelEn: string
+  description: string
+  defaultCodes: string[]
+  accounts: { id: string; code: string; name: string; nameAr: string | null }[]
+  primaryAccount: { id: string; code: string; name: string; nameAr: string | null } | null
+}
+
+interface AccountStatementData {
+  account: { id: string; code: string; name: string; nameAr: string | null; type: string; accountRole: string | null; roleLabel: string | null }
+  dateFrom: string | null
+  dateTo: string | null
+  openingBalance: number
+  lines: { date: string; entryNo: string; description: string; debit: number; credit: number; balance: number }[]
+  totalDebit: number
+  totalCredit: number
+  closingBalance: number
 }
 
 // ============ Helpers ============
@@ -225,9 +247,234 @@ function AccountDetailDialog({ account, open, onClose }: {
   )
 }
 
-// ============ Journal Entry Detail ============
-function JournalEntryDetail({ entry, onBack }: { entry: JournalEntry; onBack: () => void }) {
+// ============ Account Statement Dialog ============
+function AccountStatementDialog({ account, open, onClose }: {
+  account: Account | null; open: boolean; onClose: () => void
+}) {
   const { lang } = useAppStore()
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  const { data: statementData, isLoading, isError, refetch } = useQuery<AccountStatementData | null>({
+    queryKey: ['account-statement-detail', account?.id, dateFrom, dateTo],
+    queryFn: async () => {
+      if (!account) return null
+      const params = new URLSearchParams({ accountId: account.id })
+      if (dateFrom) params.set('dateFrom', dateFrom)
+      if (dateTo) params.set('dateTo', dateTo)
+      const res = await fetch(`/api/accounts/statement?${params}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    enabled: !!account && open,
+  })
+
+  // Reset dates when account changes
+  React.useEffect(() => {
+    if (account) {
+      setDateFrom('')
+      setDateTo('')
+    }
+  }, [account?.id])
+
+  if (!account) return null
+
+  const statement = statementData as AccountStatementData | null
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileSearch className="size-5 text-emerald-600" />
+            <span>{t('كشف حساب', 'Account Statement', lang)}</span>
+            <span className="font-mono">{account.code}</span>
+            <span>-</span>
+            <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 flex-1 overflow-hidden">
+          {/* Date Filters */}
+          <div className="flex flex-wrap gap-3 items-end">
+            <div className="space-y-1">
+              <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1">
+              <RefreshCw className="size-3.5" />
+              {t('تحديث', 'Refresh', lang)}
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <TableSkeleton />
+          ) : isError ? (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+            </div>
+          ) : statement ? (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Card className="bg-sky-50 border-sky-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-sky-600">{t('الرصيد الافتتاحي', 'Opening Balance', lang)}</p>
+                    <MoneyDisplay value={statement.openingBalance} lang={lang} bold className={statement.openingBalance >= 0 ? 'text-sky-700' : 'text-rose-700'} />
+                  </CardContent>
+                </Card>
+                <Card className="bg-emerald-50 border-emerald-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p>
+                    <MoneyDisplay value={statement.totalDebit} lang={lang} bold className="text-emerald-700" />
+                  </CardContent>
+                </Card>
+                <Card className="bg-rose-50 border-rose-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p>
+                    <MoneyDisplay value={statement.totalCredit} lang={lang} bold className="text-rose-700" />
+                  </CardContent>
+                </Card>
+                <Card className="bg-purple-50 border-purple-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p>
+                    <MoneyDisplay value={statement.closingBalance} lang={lang} bold className={statement.closingBalance >= 0 ? 'text-purple-700' : 'text-rose-700'} />
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Statement Lines Table */}
+              <Card className="flex-1 overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+                          <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+                          <TableHead className="text-right">{t('البيان', 'Description', lang)}</TableHead>
+                          <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+                          <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+                          <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {statement.lines.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                              {t('لا توجد حركات', 'No transactions found', lang)}
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          statement.lines.map((line, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell>{formatDate(line.date, lang)}</TableCell>
+                              <TableCell className="font-mono">{line.entryNo}</TableCell>
+                              <TableCell>{line.description || '—'}</TableCell>
+                              <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+                              <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+                              <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" bold className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                        {statement.lines.length > 0 && (
+                          <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                            <TableCell colSpan={3}>{t('الإجمالي', 'Total', lang)}</TableCell>
+                            <TableCell><MoneyDisplay value={statement.totalDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+                            <TableCell><MoneyDisplay value={statement.totalCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+                            <TableCell><MoneyDisplay value={statement.closingBalance} lang={lang} size="sm" bold className={statement.closingBalance >= 0 ? 'text-emerald-800' : 'text-rose-800'} /></TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ============ Journal Entry Detail ============
+function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; onBack: () => void; accounts: Account[] }) {
+  const { lang } = useAppStore()
+  const [detailTab, setDetailTab] = useState('lines')
+
+  // Compute account impact data for the أثر الحسابات tab
+  const accountImpactData = useMemo(() => {
+    // Get unique accounts in this JE
+    const uniqueAccounts = new Map<string, { code: string; name: string; nameAr: string | null; totalDebit: number; totalCredit: number }>()
+    for (const line of entry.lines) {
+      const existing = uniqueAccounts.get(line.accountId)
+      if (existing) {
+        existing.totalDebit += line.debit
+        existing.totalCredit += line.credit
+      } else {
+        uniqueAccounts.set(line.accountId, {
+          code: line.account.code,
+          name: line.account.name,
+          nameAr: line.account.nameAr,
+          totalDebit: line.debit,
+          totalCredit: line.credit,
+        })
+      }
+    }
+
+    // For each unique account, compute before/after balance
+    const impactItems: {
+      accountId: string; code: string; name: string; nameAr: string | null
+      beforeBalance: number; movementDebit: number; movementCredit: number; afterBalance: number
+    }[] = []
+
+    for (const [accountId, info] of uniqueAccounts) {
+      const accountData = accounts.find(a => a.id === accountId)
+      const currentBalance = accountData?.balance || 0
+      const normalBalance = accountData?.normalBalance || 'DEBIT'
+      const isPosted = entry.status === 'POSTED'
+
+      // Net movement effect on this account
+      // For DEBIT-normal accounts: balance increases with debit, decreases with credit
+      // For CREDIT-normal accounts: balance increases with credit, decreases with debit
+      const netMovement = normalBalance === 'DEBIT'
+        ? info.totalDebit - info.totalCredit
+        : info.totalCredit - info.totalDebit
+
+      let beforeBalance: number
+      let afterBalance: number
+
+      if (isPosted) {
+        // Current balance includes this JE's effect
+        beforeBalance = currentBalance - netMovement
+        afterBalance = currentBalance
+      } else {
+        // Current balance does NOT include this JE's effect (DRAFT)
+        beforeBalance = currentBalance
+        afterBalance = currentBalance + netMovement
+      }
+
+      impactItems.push({
+        accountId,
+        code: info.code,
+        name: info.name,
+        nameAr: info.nameAr,
+        beforeBalance,
+        movementDebit: info.totalDebit,
+        movementCredit: info.totalCredit,
+        afterBalance,
+      })
+    }
+
+    return impactItems.sort((a, b) => a.code.localeCompare(b.code))
+  }, [entry, accounts])
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -247,32 +494,92 @@ function JournalEntryDetail({ entry, onBack }: { entry: JournalEntry; onBack: ()
         <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={entry.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
         <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-gray-600">{t('عدد البنود', 'Lines', lang)}</p><p className="font-semibold">{formatNumber(entry.lines.length)}</p></CardContent></Card>
       </div>
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
-                  <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                  <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                  <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entry.lines.map(line => (
-                  <TableRow key={line.id}>
-                    <TableCell className="font-medium">{line.account.code} - {lang === 'ar' && line.account.nameAr ? line.account.nameAr : line.account.name}</TableCell>
-                    <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                    <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                    <TableCell className="text-muted-foreground">{line.description || '—'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+
+      {/* Sub-tabs for Lines and Account Impact */}
+      <Tabs value={detailTab} onValueChange={setDetailTab}>
+        <TabsList>
+          <TabsTrigger value="lines" className="gap-1 text-xs">
+            <FileText className="size-3.5" />
+            {t('بنود القيد', 'Entry Lines', lang)}
+          </TabsTrigger>
+          <TabsTrigger value="impact" className="gap-1 text-xs">
+            <ArrowRightLeft className="size-3.5" />
+            {t('أثر الحسابات', 'Account Impact', lang)}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="lines">
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {entry.lines.map(line => (
+                      <TableRow key={line.id}>
+                        <TableCell className="font-medium">{line.account.code} - {lang === 'ar' && line.account.nameAr ? line.account.nameAr : line.account.name}</TableCell>
+                        <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+                        <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+                        <TableCell className="text-muted-foreground">{line.description || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="impact">
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+                      <TableHead className="text-right">{t('رصيد قبل العملية', 'Before Balance', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الحركة مدين', 'Movement Debit', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الحركة دائن', 'Movement Credit', lang)}</TableHead>
+                      <TableHead className="text-right">{t('رصيد بعد العملية', 'After Balance', lang)}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {accountImpactData.map(item => (
+                      <TableRow key={item.accountId}>
+                        <TableCell className="font-medium">
+                          <span className="font-mono">{item.code}</span>
+                          <span className="mx-1">-</span>
+                          <span>{lang === 'ar' && item.nameAr ? item.nameAr : item.name}</span>
+                        </TableCell>
+                        <TableCell>
+                          <MoneyDisplay value={item.beforeBalance} lang={lang} size="sm" className={item.beforeBalance >= 0 ? 'text-gray-700' : 'text-rose-700'} />
+                        </TableCell>
+                        <TableCell>
+                          {item.movementDebit > 0 ? <MoneyDisplay value={item.movementDebit} lang={lang} size="sm" className="text-emerald-700" /> : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {item.movementCredit > 0 ? <MoneyDisplay value={item.movementCredit} lang={lang} size="sm" className="text-rose-700" /> : '—'}
+                        </TableCell>
+                        <TableCell>
+                          <MoneyDisplay value={item.afterBalance} lang={lang} size="sm" bold className={item.afterBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
@@ -292,6 +599,8 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   })
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [statementAccount, setStatementAccount] = useState<Account | null>(null)
+  const [statementOpen, setStatementOpen] = useState(false)
 
   const allParentIds = useMemo(() => {
     const ids = new Set<string>()
@@ -433,6 +742,7 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
                   <TableHead className="text-right">{t('النشاط', 'Activity', lang)}</TableHead>
                   <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
                   <TableHead className="text-right">{t('القيود', 'Entries', lang)}</TableHead>
+                  <TableHead className="text-right">{t('كشف', 'Statement', lang)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -458,6 +768,21 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
                       <TableCell><ActivityBadge activityType={a.activityType} lang={lang} /></TableCell>
                       <TableCell><MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
                       <TableCell className="text-center">{formatNumber(a._count.journalLines)}</TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setStatementAccount(a)
+                            setStatementOpen(true)
+                          }}
+                        >
+                          <FileSearch className="size-3.5" />
+                          {t('كشف', 'Statement', lang)}
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -468,13 +793,14 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
       </Card>
 
       <AccountDetailDialog account={selectedAccount} open={detailOpen} onClose={() => setDetailOpen(false)} />
+      <AccountStatementDialog account={statementAccount} open={statementOpen} onClose={() => setStatementOpen(false)} />
     </div>
   )
 }
 
 // ============ Tab 2: Journal Entries ============
-function JournalEntriesTab({ entries, isLoading, isError, refetch }: {
-  entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void
+function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
+  entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void; accounts: Account[]
 }) {
   const { lang } = useAppStore()
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
@@ -493,7 +819,7 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch }: {
     return f
   }, [entries, statusFilter, sourceFilter, searchTerm])
 
-  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} />
+  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} accounts={accounts} />
   if (isLoading) return <TableSkeleton />
   if (isError) return <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
 
@@ -1045,7 +1371,7 @@ function CashFlowTab() {
       {isLoading ? <TableSkeleton /> : data ? (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <SummaryCard title={t('تدفقات التشغيل', 'Operating CF', lang)} value={operatingCF} icon={Cog} color={operatingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
+            <SummaryCard title={t('تدفقات التشغيل', 'Operating CF', lang)} value={operatingCF} icon={Settings} color={operatingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
             <SummaryCard title={t('تدفقات الاستثمار', 'Investing CF', lang)} value={investingCF} icon={Building2} color={investingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
             <SummaryCard title={t('تدفقات التمويل', 'Financing CF', lang)} value={financingCF} icon={Banknote} color={financingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
           </div>
@@ -1789,6 +2115,242 @@ function BankReconciliationTab() {
   )
 }
 
+// ============ Tab: Role Mapping ============
+const roleCategories = [
+  { key: 'current-assets', labelAr: 'أصول متداولة', labelEn: 'Current Assets', roles: ['CASH', 'BANK', 'CUSTOMER_AR', 'RETENTION_RECEIVABLE', 'EMPLOYEE_ADVANCE'] },
+  { key: 'fixed-assets', labelAr: 'أصول ثابتة', labelEn: 'Fixed Assets', roles: ['FIXED_ASSET', 'ACCUM_DEPRECIATION'] },
+  { key: 'vat', labelAr: 'ضرائب', labelEn: 'VAT/Tax', roles: ['VAT_INPUT', 'VAT_OUTPUT', 'VAT_DUE'] },
+  { key: 'liabilities', labelAr: 'خصوم', labelEn: 'Liabilities', roles: ['SUPPLIER_AP', 'SUBCONTRACTOR_AP', 'SALARIES_PAYABLE', 'GOSI_PAYABLE', 'ZAKAT_PAYABLE', 'CUSTOMER_ADVANCE', 'EOS_PROVISION'] },
+  { key: 'revenue', labelAr: 'إيرادات', labelEn: 'Revenue', roles: ['RENTAL_REVENUE', 'PROJECT_REVENUE', 'SERVICE_REVENUE'] },
+  { key: 'direct-costs', labelAr: 'تكاليف مباشرة', labelEn: 'Direct Costs', roles: ['PROJECT_COST', 'SUBCONTRACTOR_COST', 'FUEL_EXPENSE', 'MAINTENANCE_EXPENSE', 'DRIVER_EXPENSE', 'TRANSPORT_EXPENSE', 'RENTAL_DEPRECIATION'] },
+  { key: 'admin-expenses', labelAr: 'مصروفات إدارية', labelEn: 'Admin Expenses', roles: ['PAYROLL_EXPENSE', 'GOSI_EXPENSE', 'ADMIN_EXPENSE', 'DEPRECIATION_EXPENSE', 'ZAKAT_EXPENSE'] },
+]
+
+function RoleMappingTab({ accounts }: { accounts: Account[] }) {
+  const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const [editRole, setEditRole] = useState<string | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [selectedAccountId, setSelectedAccountId] = useState('')
+
+  const { data: mappingData, isLoading, isError, refetch } = useQuery<{ mappings: RoleMappingItem[] }>({
+    queryKey: ['role-mapping'],
+    queryFn: async () => {
+      const res = await fetch('/api/accounts/role-mapping')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const mappings = mappingData?.mappings || []
+
+  // Posting-allowed accounts for the edit dialog
+  const postingAccounts = useMemo(
+    () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
+    [accounts]
+  )
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ accountId, accountRole }: { accountId: string; accountRole: string }) => {
+      const res = await fetch('/api/accounts/role-mapping', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, accountRole }),
+      })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['role-mapping'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      setEditDialogOpen(false)
+      setEditRole(null)
+    },
+  })
+
+  const handleEdit = (role: string) => {
+    setEditRole(role)
+    const currentMapping = mappings.find(m => m.role === role)
+    setSelectedAccountId(currentMapping?.primaryAccount?.id || '')
+    setEditDialogOpen(true)
+  }
+
+  const handleSave = () => {
+    if (!selectedAccountId || !editRole) return
+    updateMutation.mutate({ accountId: selectedAccountId, accountRole: editRole })
+  }
+
+  const currentEditMapping = mappings.find(m => m.role === editRole)
+
+  // Group mappings by category
+  const groupedMappings = useMemo(() => {
+    const mappedRoles = new Set(mappings.map(m => m.role))
+    const groups = roleCategories.map(cat => ({
+      ...cat,
+      items: cat.roles
+        .filter(role => mappedRoles.has(role))
+        .map(role => mappings.find(m => m.role === role)!)
+        .filter(Boolean),
+    })).filter(g => g.items.length > 0)
+
+    // Add any unmapped roles that aren't in any category
+    const categorizedRoles = new Set(roleCategories.flatMap(c => c.roles))
+    const uncategorized = mappings.filter(m => !categorizedRoles.has(m.role))
+    if (uncategorized.length > 0) {
+      groups.push({
+        key: 'other',
+        labelAr: 'أخرى',
+        labelEn: 'Other',
+        roles: uncategorized.map(m => m.role),
+        items: uncategorized,
+      })
+    }
+
+    return groups
+  }, [mappings])
+
+  const mappedCount = mappings.filter(m => m.primaryAccount).length
+  const unmappedCount = mappings.filter(m => !m.primaryAccount).length
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <SummaryCard title={t('إجمالي الأدوار', 'Total Roles', lang)} value={mappings.length} icon={Link2} color="teal" lang={lang} isMoney={false} />
+        <SummaryCard title={t('مرتبط', 'Mapped', lang)} value={mappedCount} icon={CheckCircle2} color="emerald" lang={lang} isMoney={false} />
+        <SummaryCard title={t('غير مربوط', 'Unmapped', lang)} value={unmappedCount} icon={AlertTriangle} color="rose" lang={lang} isMoney={false} />
+      </div>
+
+      {isLoading ? (
+        <TableSkeleton />
+      ) : isError ? (
+        <div className="flex flex-col items-center gap-3 py-10">
+          <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+          <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+        </div>
+      ) : (
+        groupedMappings.map(group => (
+          <Card key={group.key}>
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Link2 className="size-4 text-teal-600" />
+                <h4 className="font-bold text-sm">{lang === 'ar' ? group.labelAr : group.labelEn}</h4>
+                <Badge variant="outline" className="text-xs">{group.items.length}</Badge>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">{t('الدور', 'Role', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الحساب المرتبط', 'Linked Account', lang)}</TableHead>
+                      <TableHead className="text-right">{t('الأكواد الافتراضية', 'Default Codes', lang)}</TableHead>
+                      <TableHead className="text-right">{t('إجراء', 'Action', lang)}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {group.items.map(mapping => (
+                      <TableRow key={mapping.role}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium">{lang === 'ar' ? mapping.labelAr : mapping.labelEn}</p>
+                            <p className="text-xs text-muted-foreground">{mapping.role}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {mapping.primaryAccount ? (
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-sm">{mapping.primaryAccount.code}</span>
+                              <span>-</span>
+                              <span>{lang === 'ar' && mapping.primaryAccount.nameAr ? mapping.primaryAccount.nameAr : mapping.primaryAccount.name}</span>
+                            </div>
+                          ) : (
+                            <Badge className="bg-amber-100 text-amber-700 border-0 gap-1">
+                              <AlertTriangle className="size-3" />
+                              {t('غير مربوط', 'Unmapped', lang)}
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-1 flex-wrap">
+                            {mapping.defaultCodes.map(code => (
+                              <Badge key={code} variant="outline" className="text-xs font-mono">{code}</Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() => handleEdit(mapping.role)}
+                          >
+                            <Pencil className="size-3" />
+                            {t('تعديل', 'Edit', lang)}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        ))
+      )}
+
+      {/* Edit Role Mapping Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="size-5 text-teal-600" />
+              {t('ربط الحساب بالدور', 'Link Account to Role', lang)}
+            </DialogTitle>
+          </DialogHeader>
+          {currentEditMapping && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">{t('الدور', 'Role', lang)}</p>
+                <p className="text-lg font-bold">{lang === 'ar' ? currentEditMapping.labelAr : currentEditMapping.labelEn}</p>
+                <p className="text-xs text-muted-foreground">{currentEditMapping.description}</p>
+              </div>
+              <Separator />
+              <div className="space-y-1">
+                <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
+                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {postingAccounts.map(a => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setEditDialogOpen(false); setEditRole(null) }}>
+                  {t('إلغاء', 'Cancel', lang)}
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  disabled={!selectedAccountId || updateMutation.isPending}
+                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {updateMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                  {t('حفظ', 'Save', lang)}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
 // ============ Main Accounting Module ============
 export function AccountingModule() {
   const { lang } = useAppStore()
@@ -1832,6 +2394,7 @@ export function AccountingModule() {
 
   const tabConfig = [
     { value: 'chart-of-accounts', label: { ar: 'دليل الحسابات', en: 'Chart of Accounts' }, icon: TreePine, group: 'basic' },
+    { value: 'role-mapping', label: { ar: 'ربط الحسابات', en: 'Role Mapping' }, icon: Link2, group: 'basic' },
     { value: 'journal-entries', label: { ar: 'القيود اليومية', en: 'Journal Entries' }, icon: FileText, group: 'basic' },
     { value: 'general-ledger', label: { ar: 'الأستاذ العام', en: 'General Ledger' }, icon: BookOpen, group: 'basic' },
     { value: 'trial-balance', label: { ar: 'ميزان المراجعة', en: 'Trial Balance' }, icon: Scale, group: 'basic' },
@@ -1878,8 +2441,12 @@ export function AccountingModule() {
           <ChartOfAccountsTab accounts={accounts} isLoading={loadingAccounts} onInitialize={() => initMutation.mutate()} onReInitialize={() => reInitMutation.mutate()} isInitializing={isInitializing} />
         </TabsContent>
 
+        <TabsContent value="role-mapping">
+          <RoleMappingTab accounts={accounts} />
+        </TabsContent>
+
         <TabsContent value="journal-entries">
-          <JournalEntriesTab entries={entries} isLoading={loadingEntries} isError={entriesError} refetch={refetchEntries} />
+          <JournalEntriesTab entries={entries} isLoading={loadingEntries} isError={entriesError} refetch={refetchEntries} accounts={accounts} />
         </TabsContent>
 
         <TabsContent value="general-ledger">

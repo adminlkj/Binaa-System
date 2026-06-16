@@ -41,6 +41,7 @@ export interface AccountSelectorProps {
       name: string
       nameAr: string | null
       accountRole: string | null
+      activityType?: string | null
     }
   ) => void
   /** Label text (Arabic) */
@@ -111,6 +112,7 @@ export function AccountSelector({
         name: account.name,
         nameAr: account.nameAr,
         accountRole: account.accountRole,
+        activityType: account.activityType ?? null,
       })
     }
   }

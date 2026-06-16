@@ -67,7 +67,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { clientId, invoiceId, amount, date, receivedIn, reference, notes } = body
+    const { clientId, invoiceId, amount, date, receivedIn, receivingAccountId, receivingAccountCode, receivingAccountName, reference, notes } = body
 
     if (!clientId || !amount || !date) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
@@ -107,6 +107,9 @@ export async function POST(request: Request) {
           amount,
           date: new Date(date),
           receivedIn: receivedIn || 'TREASURY',
+          receivingAccountId: receivingAccountId || null,
+          receivingAccountCode: receivingAccountCode || null,
+          receivingAccountName: receivingAccountName || null,
           reference: reference || null,
           notes: notes || null,
         },
