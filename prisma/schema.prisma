@@ -1558,8 +1558,10 @@ model Account {
   nameAr        String?
   type          String
   parentId      String?
+  parentCode    String?  // كود الحساب الأب - للاستعلام الهرمي السريع
   isActive      Boolean  @default(true)
   activityType  String? // CONSTRUCTION | EQUIPMENT_RENTAL | BOTH
+  accountRole   String?  // الدور الوظيفي: CASH, BANK, CUSTOMER_AR, SUPPLIER_AP, RENTAL_REVENUE, PROJECT_REVENUE, FUEL_EXPENSE, MAINTENANCE_EXPENSE, PAYROLL_EXPENSE, FIXED_ASSET, VAT_INPUT, VAT_OUTPUT, etc.
   isSystem      Boolean  @default(false)
   allowPosting  Boolean  @default(true)
   level         Int      @default(0)
@@ -1580,6 +1582,8 @@ model Account {
   @@index([type])
   @@index([isActive])
   @@index([activityType])
+  @@index([accountRole])
+  @@index([parentCode])
 }
 
 model JournalEntry {

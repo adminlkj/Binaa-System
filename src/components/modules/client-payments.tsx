@@ -28,6 +28,8 @@ import {
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
+import { AccountSelector } from '@/components/shared/account-selector'
+import { JePreview, type JePreviewLine } from '@/components/shared/je-preview'
 import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { useToast } from '@/hooks/use-toast'
@@ -142,6 +144,9 @@ function AddPaymentDialog({
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [receivedIn, setReceivedIn] = useState('TREASURY')
+  const [receivingAccountId, setReceivingAccountId] = useState<string | null>(null)
+  const [receivingAccountCode, setReceivingAccountCode] = useState('')
+  const [receivingAccountName, setReceivingAccountName] = useState('')
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -191,6 +196,9 @@ function AddPaymentDialog({
       setAmount('')
       setDate(new Date().toISOString().split('T')[0])
       setReceivedIn('TREASURY')
+      setReceivingAccountId(null)
+      setReceivingAccountCode('')
+      setReceivingAccountName('')
       setReference('')
       setNotes('')
     }
@@ -227,6 +235,9 @@ function AddPaymentDialog({
       amount: parsedAmount,
       date,
       receivedIn,
+      receivingAccountId: receivingAccountId || null,
+      receivingAccountCode: receivingAccountCode || null,
+      receivingAccountName: receivingAccountName || null,
       reference: reference || null,
       notes: notes || null,
     })
@@ -329,28 +340,19 @@ function AddPaymentDialog({
               <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
-            <div className="space-y-2">
-              <Label>{tt(labels.receivedIn.ar, labels.receivedIn.en)}</Label>
-              <Select value={receivedIn} onValueChange={setReceivedIn}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TREASURY">
-                    <span className="flex items-center gap-2">
-                      <Landmark className="size-3.5" />
-                      {tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="BANK">
-                    <span className="flex items-center gap-2">
-                      <Building2 className="size-3.5" />
-                      {tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}
-                    </span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <AccountSelector
+              roles={['CASH', 'BANK']}
+              value={receivingAccountId}
+              onValueChange={(id, account) => {
+                setReceivingAccountId(id)
+                setReceivingAccountCode(account.code)
+                setReceivingAccountName(account.nameAr || account.name)
+                // Backward compatibility: map account role to old receivedIn field
+                setReceivedIn(account.accountRole === 'BANK' ? 'BANK' : 'TREASURY')
+              }}
+              label={tt(labels.receivedIn.ar, labels.receivedIn.en)}
+              placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...', lang)}
+            />
           </div>
 
           {/* Reference */}
@@ -364,6 +366,26 @@ function AddPaymentDialog({
             <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
             <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes', lang)} />
           </div>
+
+          {/* JE Preview */}
+          {parseFloat(amount) > 0 && receivingAccountId && (
+            <JePreview
+              lines={[
+                {
+                  accountCode: receivingAccountCode,
+                  accountNameAr: receivingAccountName,
+                  debit: parseFloat(amount) || 0,
+                  credit: 0,
+                },
+                {
+                  accountCode: '1210',
+                  accountNameAr: 'عملاء',
+                  debit: 0,
+                  credit: parseFloat(amount) || 0,
+                },
+              ]}
+            />
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
@@ -402,6 +424,9 @@ function EditPaymentDialog({
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState('')
   const [receivedIn, setReceivedIn] = useState('TREASURY')
+  const [receivingAccountId, setReceivingAccountId] = useState<string | null>(null)
+  const [receivingAccountCode, setReceivingAccountCode] = useState('')
+  const [receivingAccountName, setReceivingAccountName] = useState('')
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -410,6 +435,10 @@ function EditPaymentDialog({
       setAmount(String(payment.amount))
       setDate(payment.date ? new Date(payment.date).toISOString().split('T')[0] : '')
       setReceivedIn(payment.receivedIn || 'TREASURY')
+      // Reset account fields on edit open (will be set by AccountSelector if user picks one)
+      setReceivingAccountId(null)
+      setReceivingAccountCode('')
+      setReceivingAccountName('')
       setReference(payment.reference || '')
       setNotes(payment.notes || '')
     }
@@ -438,6 +467,9 @@ function EditPaymentDialog({
       amount: parseFloat(amount) || 0,
       date,
       receivedIn,
+      receivingAccountId: receivingAccountId || null,
+      receivingAccountCode: receivingAccountCode || null,
+      receivingAccountName: receivingAccountName || null,
       reference: reference || null,
       notes: notes || null,
     })
@@ -484,16 +516,18 @@ function EditPaymentDialog({
               <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required disabled={isPosted} />
             </div>
-            <div className="space-y-2">
-              <Label>{tt(labels.receivedIn.ar, labels.receivedIn.en)}</Label>
-              <Select value={receivedIn} onValueChange={setReceivedIn} disabled={isPosted}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TREASURY">{tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}</SelectItem>
-                  <SelectItem value="BANK">{tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <AccountSelector
+              roles={['CASH', 'BANK']}
+              value={receivingAccountId}
+              onValueChange={(id, account) => {
+                setReceivingAccountId(id)
+                setReceivingAccountCode(account.code)
+                setReceivingAccountName(account.nameAr || account.name)
+                setReceivedIn(account.accountRole === 'BANK' ? 'BANK' : 'TREASURY')
+              }}
+              label={tt(labels.receivedIn.ar, labels.receivedIn.en)}
+              placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...', lang)}
+            />
           </div>
 
           <div className="space-y-2">
@@ -505,6 +539,26 @@ function EditPaymentDialog({
             <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
             <Input value={notes} onChange={e => setNotes(e.target.value)} disabled={isPosted} />
           </div>
+
+          {/* JE Preview */}
+          {parseFloat(amount) > 0 && receivingAccountId && (
+            <JePreview
+              lines={[
+                {
+                  accountCode: receivingAccountCode,
+                  accountNameAr: receivingAccountName,
+                  debit: parseFloat(amount) || 0,
+                  credit: 0,
+                },
+                {
+                  accountCode: '1210',
+                  accountNameAr: 'عملاء',
+                  debit: 0,
+                  credit: parseFloat(amount) || 0,
+                },
+              ]}
+            />
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>{commonText.cancel[lang]}</Button>

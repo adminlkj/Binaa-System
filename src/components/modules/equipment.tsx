@@ -27,6 +27,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
+import { AccountSelector } from '@/components/shared/account-selector'
 import { useAppStore, formatSAR, formatNumber, formatDate, RENTAL_WORKFLOW } from '@/stores/app-store'
 import type { NavItem } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
@@ -253,6 +255,9 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
   const [monthlyRate, setMonthlyRate] = useState('')
   const [purchaseDate, setPurchaseDate] = useState('')
   const [warrantyExpiry, setWarrantyExpiry] = useState('')
+  const [assetAccountId, setAssetAccountId] = useState<string | null>(null)
+  const [assetAccountCode, setAssetAccountCode] = useState('2110')
+  const [assetAccountNameAr, setAssetAccountNameAr] = useState('معدات وآليات')
 
   React.useEffect(() => {
     if (open) {
@@ -260,6 +265,7 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
       setSerialNumber(''); setStatus('AVAILABLE'); setOwnershipType('COMPANY_OWNED'); setSupplierId(''); setOwnerId('')
       setPurchasePrice(''); setSellingPrice(''); setHourlyRate('')
       setDailyRate(''); setMonthlyRate(''); setPurchaseDate(''); setWarrantyExpiry('')
+      setAssetAccountId(null); setAssetAccountCode('2110'); setAssetAccountNameAr('معدات وآليات')
     }
   }, [open])
 
@@ -280,6 +286,8 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
       purchasePrice, sellingPrice, hourlyRate, dailyRate, monthlyRate,
       purchaseDate: purchaseDate || null,
       warrantyExpiry: warrantyExpiry || null,
+      assetAccountId: assetAccountId || undefined,
+      assetAccountCode: assetAccountCode || undefined,
     })
   }
 
@@ -357,6 +365,23 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
               </div>
             </div>
           )}
+          {/* Asset Account Selection */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">{t('حساب الأصل الثابت', 'Fixed Asset Account')}</h4>
+            <AccountSelector
+              roles={['FIXED_ASSET']}
+              value={assetAccountId}
+              onValueChange={(id, account) => {
+                setAssetAccountId(id)
+                setAssetAccountCode(account.code)
+                setAssetAccountNameAr(account.nameAr || account.name)
+              }}
+              label={t('حساب الأصل الثابت', 'Fixed Asset Account')}
+              placeholder={t('اختر حساب الأصل...', 'Select asset account...')}
+            />
+            <p className="text-xs text-muted-foreground">{t('اختر حساب الأصل الثابت الذي سيُقيد في الجانب المدين عند شراء المعدة', 'Select the fixed asset account to be debited when purchasing equipment')}</p>
+          </div>
+
           <div className="space-y-2">
             <h4 className="font-semibold text-sm text-teal-700 border-b border-teal-200 pb-1">{t('معلومات الشراء', 'Purchase Information')}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -391,6 +416,19 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
               <div className="space-y-2"><Label>{t('الأجر الشهري', 'Monthly Rate')}</Label><Input type="number" min="0" step="0.01" value={monthlyRate} onChange={e => setMonthlyRate(e.target.value)} dir="ltr" placeholder="0.00" /></div>
             </div>
           </div>
+          {/* JE Preview for equipment purchase */}
+          {purchasePrice && parseFloat(purchasePrice) > 0 && (
+            <JePreview
+              lines={[
+                { accountCode: assetAccountCode, accountNameAr: assetAccountNameAr, debit: parseFloat(purchasePrice) || 0, credit: 0 },
+                ...(ownershipType === 'LEASED_ASSET' && supplierId
+                  ? [{ accountCode: '3210', accountNameAr: 'الموردون', debit: 0, credit: parseFloat(purchasePrice) || 0 }]
+                  : [{ accountCode: '1110', accountNameAr: 'الصندوق', debit: 0, credit: parseFloat(purchasePrice) || 0 }]),
+              ]}
+              title={t('القيد المحاسبي المتوقع لشراء المعدة', 'Expected Journal Entry for Equipment Purchase')}
+            />
+          )}
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
             <Button type="submit" disabled={createMutation.isPending || !name || (ownershipType === 'LEASED_ASSET' && !supplierId) || (ownershipType === 'CUSTOMER_OWNED' && !ownerId)} className="bg-emerald-600 hover:bg-emerald-700">

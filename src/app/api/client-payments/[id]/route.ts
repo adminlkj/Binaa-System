@@ -1,4 +1,8 @@
 import { db } from '@/lib/db'
+import { reverseEntry } from '@/lib/accounting/engine'
+import type { PrismaTransaction } from '@/lib/accounting/engine'
+import { createClientPaymentJournalEntry } from '@/lib/auto-journal'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -43,14 +47,111 @@ export async function PATCH(
       return NextResponse.json({ error: 'تحصيل العميل غير موجود' }, { status: 404 })
     }
 
-    // Cannot modify payments with journal entries (approved/posted)
+    // If payment is posted (has a journal entry), use reverse+recreate
     if (existing.journalEntryId) {
-      return NextResponse.json(
-        { error: 'لا يمكن تعديل تحصيل مرحّل محاسبياً - يجب إنشاء قيد عكسي وتحصيل جديد' },
-        { status: 400 }
-      )
+      const result = await db.$transaction(async (tx: PrismaTransaction) => {
+        // 1. Reverse the original journal entry
+        await reverseEntry(existing.journalEntryId!, tx)
+
+        // 2. Unlink the old journal entry from the payment
+        await tx.clientPayment.update({
+          where: { id: existing.id },
+          data: { journalEntryId: null },
+        })
+
+        // 3. Reverse the invoice paidAmount update if linked
+        if (existing.invoiceId) {
+          const invoice = await tx.salesInvoice.findUnique({
+            where: { id: existing.invoiceId },
+          })
+          if (invoice) {
+            const reversedPaidAmount = toNumber(invoice.paidAmount) - toNumber(existing.amount)
+            let newStatus = invoice.status
+
+            if (reversedPaidAmount <= 0) {
+              newStatus = 'SENT'
+            } else if (reversedPaidAmount < toNumber(invoice.totalAmount)) {
+              newStatus = 'PARTIALLY_PAID'
+            }
+
+            await tx.salesInvoice.update({
+              where: { id: existing.invoiceId },
+              data: {
+                paidAmount: Math.max(0, reversedPaidAmount),
+                status: newStatus,
+              },
+            })
+          }
+        }
+
+        // 4. Build updated data for the payment
+        const updateData: Record<string, unknown> = {}
+        if (body.amount !== undefined) updateData.amount = body.amount
+        if (body.date !== undefined) updateData.date = new Date(body.date)
+        if (body.receivedIn !== undefined) updateData.receivedIn = body.receivedIn
+        if (body.reference !== undefined) updateData.reference = body.reference
+        if (body.notes !== undefined) updateData.notes = body.notes
+        if (body.invoiceId !== undefined) updateData.invoiceId = body.invoiceId || null
+
+        // 5. Update the payment with new data
+        const updated = await tx.clientPayment.update({
+          where: { id: existing.id },
+          data: updateData,
+          include: {
+            client: { select: { id: true, name: true, code: true } },
+            invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true, sourceType: true, invoiceType: true } },
+          },
+        })
+
+        // 6. Create a new journal entry for the updated payment
+        try {
+          await createClientPaymentJournalEntry(updated.id, tx)
+        } catch (accountingError) {
+          console.error('[API] Accounting entry failed for updated client payment:', accountingError)
+        }
+
+        // 7. Apply the new invoice paidAmount update if linked
+        const newInvoiceId = body.invoiceId !== undefined ? (body.invoiceId || null) : existing.invoiceId
+        const newAmount = body.amount !== undefined ? body.amount : toNumber(existing.amount)
+
+        if (newInvoiceId) {
+          const invoice = await tx.salesInvoice.findUnique({
+            where: { id: newInvoiceId },
+          })
+          if (invoice) {
+            const newPaidAmount = toNumber(invoice.paidAmount) + Number(newAmount)
+            let newStatus = invoice.status
+
+            if (newPaidAmount >= toNumber(invoice.totalAmount)) {
+              newStatus = 'PAID'
+            } else if (newPaidAmount > 0) {
+              newStatus = 'PARTIALLY_PAID'
+            }
+
+            await tx.salesInvoice.update({
+              where: { id: newInvoiceId },
+              data: {
+                paidAmount: newPaidAmount,
+                status: newStatus,
+              },
+            })
+          }
+        }
+
+        // 8. Re-fetch to include journalEntryId
+        return await tx.clientPayment.findUnique({
+          where: { id: existing.id },
+          include: {
+            client: { select: { id: true, name: true, code: true } },
+            invoice: { select: { id: true, invoiceNo: true, totalAmount: true, status: true, sourceType: true, invoiceType: true } },
+          },
+        })
+      })
+
+      return NextResponse.json(result)
     }
 
+    // Not posted — simple update (no accounting implications)
     const updateData: Record<string, unknown> = {}
     if (body.amount !== undefined) updateData.amount = body.amount
     if (body.date !== undefined) updateData.date = new Date(body.date)
@@ -71,7 +172,8 @@ export async function PATCH(
     return NextResponse.json(updated)
   } catch (error) {
     console.error('Error updating client payment:', error)
-    return NextResponse.json({ error: 'فشل في تحديث تحصيل العميل' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في تحديث تحصيل العميل'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 

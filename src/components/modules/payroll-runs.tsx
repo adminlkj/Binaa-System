@@ -24,6 +24,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
+import { AccountSelector } from '@/components/shared/account-selector'
 import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { PrintButton } from '@/components/shared/print-button'
@@ -298,10 +300,36 @@ function PayrollRunDetail({ payrollRun, onBack }: {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
   const lines = payrollRun.lines || []
+  const [bankAccountId, setBankAccountId] = useState<string | null>(null)
+  const [bankAccountCode, setBankAccountCode] = useState('1120')
+  const [bankAccountNameAr, setBankAccountNameAr] = useState('البنك')
 
   // Calculate totals from lines
   const totalGosi = lines.reduce((sum, l) => sum + (l.gosiDeduction || 0), 0)
   const totalOvertime = lines.reduce((sum, l) => sum + (l.overtimeAmount || 0), 0)
+
+  // Compute JE preview lines for payroll payment
+  const jeLines = useMemo<JePreviewLine[]>(() => {
+    const totalAmount = payrollRun.totalAmount
+    const totalNet = payrollRun.totalNet
+    if (totalAmount <= 0 || !['APPROVED', 'PARTIALLY_PAID'].includes(payrollRun.status)) return []
+    const lines: JePreviewLine[] = []
+    // Debit: Salaries & Wages
+    lines.push({ accountCode: '8110', accountNameAr: 'رواتب وأجور', debit: totalAmount, credit: 0 })
+    // Debit: GOSI Expense if GOSI > 0
+    if (totalGosi > 0) {
+      lines.push({ accountCode: '8210', accountNameAr: 'تأمينات اجتماعية', debit: totalGosi, credit: 0 })
+    }
+    // Credit: Salaries Payable
+    lines.push({ accountCode: '3310', accountNameAr: 'رواتب مستحقة', debit: 0, credit: totalAmount })
+    // Credit: GOSI Payable if GOSI > 0
+    if (totalGosi > 0) {
+      lines.push({ accountCode: '3830', accountNameAr: 'تأمينات اجتماعية مستحقة', debit: 0, credit: totalGosi })
+    }
+    // Credit: Selected bank account
+    lines.push({ accountCode: bankAccountCode, accountNameAr: bankAccountNameAr, debit: 0, credit: totalNet })
+    return lines
+  }, [payrollRun.totalAmount, payrollRun.totalNet, payrollRun.status, totalGosi, bankAccountCode, bankAccountNameAr])
 
   const statusMutation = useMutation({
     mutationFn: (status: PayrollRunStatus) => fetch(`/api/payroll-runs/${payrollRun.id}`, {
@@ -461,6 +489,29 @@ function PayrollRunDetail({ payrollRun, onBack }: {
           <MoneyDisplay value={payrollRun.totalNet} lang={lang} size="lg" bold />
         </CardContent></Card>
       </div>
+
+      {/* Bank Account Selection & JE Preview - only for APPROVED or PARTIALLY_PAID */}
+      {['APPROVED', 'PARTIALLY_PAID'].includes(payrollRun.status) && payrollRun.totalAmount > 0 && (
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg">{t('حساب الدفع والقيد المحاسبي', 'Payment Account & Journal Entry', lang)}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <AccountSelector
+              roles={['BANK']}
+              value={bankAccountId}
+              onValueChange={(id, account) => {
+                setBankAccountId(id)
+                setBankAccountCode(account.code)
+                setBankAccountNameAr(account.nameAr || account.name)
+              }}
+              label={t('حساب البنك للدفع', 'Bank Account for Payment', lang)}
+              placeholder={t('اختر حساب البنك...', 'Select bank account...', lang)}
+            />
+            <JePreview lines={jeLines} title={t('القيد المحاسبي المتوقع', 'Expected Journal Entry', lang)} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lines Table */}
       <Card>

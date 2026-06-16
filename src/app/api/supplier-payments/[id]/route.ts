@@ -1,4 +1,8 @@
 import { db } from '@/lib/db'
+import { reverseEntry } from '@/lib/accounting/engine'
+import type { PrismaTransaction } from '@/lib/accounting/engine'
+import { createSupplierPaymentJournalEntry } from '@/lib/auto-journal'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -42,14 +46,110 @@ export async function PUT(
       return NextResponse.json({ error: 'دفعة المورد غير موجودة' }, { status: 404 })
     }
 
-    // Cannot modify payments with journal entries (approved/posted)
+    // If payment is posted (has a journal entry), use reverse+recreate
     if (existing.journalEntryId) {
-      return NextResponse.json(
-        { error: 'لا يمكن تعديل دفعة مورد مرحلة محاسبياً - يجب إنشاء قيد عكسي ودفعة جديدة' },
-        { status: 400 }
-      )
+      const result = await db.$transaction(async (tx: PrismaTransaction) => {
+        // 1. Reverse the original journal entry
+        await reverseEntry(existing.journalEntryId!, tx)
+
+        // 2. Unlink the old journal entry from the payment
+        await tx.supplierPayment.update({
+          where: { id: existing.id },
+          data: { journalEntryId: null },
+        })
+
+        // 3. Reverse the invoice paidAmount update if linked
+        if (existing.invoiceId) {
+          const invoice = await tx.purchaseInvoice.findUnique({
+            where: { id: existing.invoiceId },
+          })
+          if (invoice) {
+            const reversedPaidAmount = toNumber(invoice.paidAmount) - toNumber(existing.amount)
+            let newStatus = invoice.status
+
+            if (reversedPaidAmount <= 0) {
+              newStatus = 'DRAFT'
+            } else if (reversedPaidAmount < toNumber(invoice.totalAmount)) {
+              newStatus = 'PARTIALLY_PAID'
+            }
+
+            await tx.purchaseInvoice.update({
+              where: { id: existing.invoiceId },
+              data: {
+                paidAmount: Math.max(0, reversedPaidAmount),
+                status: newStatus,
+              },
+            })
+          }
+        }
+
+        // 4. Build updated data for the payment
+        const updateData: Record<string, unknown> = {}
+        if (body.amount !== undefined) updateData.amount = parseFloat(body.amount) || 0
+        if (body.date !== undefined) updateData.date = new Date(body.date)
+        if (body.paidFrom !== undefined) updateData.paidFrom = body.paidFrom
+        if (body.bankAccount !== undefined) updateData.bankAccount = body.bankAccount
+        if (body.paymentMethod !== undefined) updateData.paymentMethod = body.paymentMethod
+        if (body.reference !== undefined) updateData.reference = body.reference
+        if (body.notes !== undefined) updateData.notes = body.notes
+
+        // 5. Update the payment with new data
+        const updated = await tx.supplierPayment.update({
+          where: { id: existing.id },
+          data: updateData,
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+          },
+        })
+
+        // 6. Create a new journal entry for the updated payment
+        try {
+          await createSupplierPaymentJournalEntry(updated.id, tx)
+        } catch (accountingError) {
+          console.error('[API] Accounting entry failed for updated supplier payment:', accountingError)
+        }
+
+        // 7. Apply the new invoice paidAmount update if linked
+        const newInvoiceId = existing.invoiceId // supplier payments don't change invoiceId on edit
+        const newAmount = body.amount !== undefined ? (parseFloat(body.amount) || 0) : toNumber(existing.amount)
+
+        if (newInvoiceId) {
+          const invoice = await tx.purchaseInvoice.findUnique({
+            where: { id: newInvoiceId },
+          })
+          if (invoice) {
+            const newPaidAmount = toNumber(invoice.paidAmount) + Number(newAmount)
+            let newStatus = invoice.status
+
+            if (newPaidAmount >= toNumber(invoice.totalAmount)) {
+              newStatus = 'PAID'
+            } else if (newPaidAmount > 0) {
+              newStatus = 'PARTIALLY_PAID'
+            }
+
+            await tx.purchaseInvoice.update({
+              where: { id: newInvoiceId },
+              data: {
+                paidAmount: newPaidAmount,
+                status: newStatus,
+              },
+            })
+          }
+        }
+
+        // 8. Re-fetch to include journalEntryId
+        return await tx.supplierPayment.findUnique({
+          where: { id: existing.id },
+          include: {
+            supplier: { select: { id: true, name: true, code: true } },
+          },
+        })
+      })
+
+      return NextResponse.json(result)
     }
 
+    // Not posted — simple update (no accounting implications)
     const updateData: Record<string, unknown> = {}
     if (body.amount !== undefined) updateData.amount = parseFloat(body.amount) || 0
     if (body.date !== undefined) updateData.date = new Date(body.date)
@@ -70,7 +170,8 @@ export async function PUT(
     return NextResponse.json(updated)
   } catch (error) {
     console.error('Error updating supplier payment:', error)
-    return NextResponse.json({ error: 'فشل في تحديث دفعة المورد' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في تحديث دفعة المورد'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 

@@ -1,27 +1,45 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { getAccountBalance } from '@/lib/accounting/engine'
 
-// Inline account balance calculation to avoid importing the heavy accounting engine
-async function getAccountBalance(accountCode: string): Promise<number> {
-  const account = await db.account.findUnique({ where: { code: accountCode } })
-  if (!account) return 0
+/**
+ * Aggregate GL balances by account type with optional date range and activity type filters.
+ * Returns the normal balance (positive for revenue/expense in their natural direction).
+ */
+async function getGLBalance(
+  accountType: 'REVENUE' | 'EXPENSE' | 'ASSET' | 'LIABILITY',
+  options?: {
+    activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL'
+    startDate?: Date
+    endDate?: Date
+  }
+): Promise<number> {
+  const accountWhere: Record<string, unknown> = { type: accountType, allowPosting: true }
+  if (options?.activityType) {
+    accountWhere.activityType = { in: [options.activityType, 'BOTH'] }
+  }
+
+  const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+  if (options?.startDate || options?.endDate) {
+    jeWhere.date = {}
+    if (options.startDate) jeWhere.date.gte = options.startDate
+    if (options.endDate) jeWhere.date.lt = options.endDate
+  }
 
   const result = await db.journalLine.aggregate({
     _sum: { debit: true, credit: true },
     where: {
-      accountId: account.id,
-      journalEntry: { status: 'POSTED' },
+      account: accountWhere,
+      journalEntry: jeWhere,
     },
   })
 
-  const totalDebit = result._sum.debit || 0
-  const totalCredit = result._sum.credit || 0
-  const normalBalanceMap: Record<string, 'DEBIT' | 'CREDIT'> = {
-    ASSET: 'DEBIT', LIABILITY: 'CREDIT', EQUITY: 'CREDIT', REVENUE: 'CREDIT', EXPENSE: 'DEBIT',
-  }
-  const normalBalance = normalBalanceMap[account.type] || 'DEBIT'
+  const totalDebit = Number(result._sum.debit || 0)
+  const totalCredit = Number(result._sum.credit || 0)
 
-  return normalBalance === 'DEBIT' ? totalDebit - totalCredit : totalCredit - totalDebit
+  // Revenue, Liability → normal balance is CREDIT; Asset, Expense → DEBIT
+  const isCreditNormal = accountType === 'REVENUE' || accountType === 'LIABILITY'
+  return isCreditNormal ? totalCredit - totalDebit : totalDebit - totalCredit
 }
 
 export async function GET() {
@@ -73,66 +91,14 @@ export async function GET() {
       })
     }
 
+    // Monthly Revenue & Expenses from General Ledger (last 6 months)
     const monthlyData = await Promise.all(
       months.map(async (m) => {
         const startDate = new Date(m.year, m.month - 1, 1)
         const endDate = new Date(m.year, m.month, 1)
 
-        // Revenue: sales invoices only (invoices from progress claims are already in sales invoices,
-        // so we avoid double-counting by not adding progress claim amounts separately)
-        const salesAgg = await db.salesInvoice.aggregate({
-          _sum: { subtotal: true },
-          where: {
-            date: { gte: startDate, lt: endDate },
-            status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] },
-          },
-        })
-        // Uninvoiced approved progress claims (revenue earned but not yet billed)
-        const claimsAgg = await db.progressClaim.aggregate({
-          _sum: { amount: true },
-          where: {
-            date: { gte: startDate, lt: endDate },
-            status: { in: ['APPROVED', 'SUBMITTED'] },
-            invoiced: false,
-          },
-        })
-        const revenue = (salesAgg._sum.subtotal || 0) + (claimsAgg._sum.amount || 0)
-
-        // Expenses: expenses + purchase invoices + salaries + labor + equipment costs
-        const expenseAgg = await db.expense.aggregate({
-          _sum: { amount: true },
-          where: { date: { gte: startDate, lt: endDate } },
-        })
-        const purchaseAgg = await db.purchaseInvoice.aggregate({
-          _sum: { subtotal: true },
-          where: {
-            date: { gte: startDate, lt: endDate },
-            status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] },
-          },
-        })
-        const salaryAgg = await db.salary.aggregate({
-          _sum: { netSalary: true },
-          where: {
-            month: m.month,
-            year: m.year,
-            status: { in: ['APPROVED', 'PAID'] },
-          },
-        })
-        const laborAgg = await db.laborCost.aggregate({
-          _sum: { totalAmount: true },
-          where: { date: { gte: startDate, lt: endDate } },
-        })
-        const equipCostAgg = await db.equipmentUsage.aggregate({
-          _sum: { cost: true },
-          where: { date: { gte: startDate, lt: endDate } },
-        })
-
-        const expenses =
-          (expenseAgg._sum.amount || 0) +
-          (purchaseAgg._sum.subtotal || 0) +
-          (salaryAgg._sum.netSalary || 0) +
-          (laborAgg._sum.totalAmount || 0) +
-          (equipCostAgg._sum.cost || 0)
+        const revenue = await getGLBalance('REVENUE', { startDate, endDate })
+        const expenses = await getGLBalance('EXPENSE', { startDate, endDate })
 
         return {
           month: m.key,
@@ -145,9 +111,9 @@ export async function GET() {
       })
     )
 
-    // ===== 5. Total Revenue & Expenses (all time) =====
-    const totalRevenue = monthlyData.reduce((s, m) => s + m.revenue, 0)
-    const totalExpenses = monthlyData.reduce((s, m) => s + m.expenses, 0)
+    // ===== 5. Total Revenue & Expenses (all time from GL) =====
+    const totalRevenue = await getGLBalance('REVENUE')
+    const totalExpenses = await getGLBalance('EXPENSE')
     const netProfit = totalRevenue - totalExpenses
 
     // ===== 5b. Activity-Based Metrics =====
@@ -166,81 +132,11 @@ export async function GET() {
       select: { id: true },
     })).map(p => p.id)
 
-    // Construction revenue: progress claims + sales invoices linked to CONSTRUCTION projects
-    const constructionClaimsAgg = await db.progressClaim.aggregate({
-      _sum: { totalAmount: true },
-      where: { projectId: { in: constructionProjectIds }, status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] } },
-    })
-    const constructionSalesAgg = await db.salesInvoice.aggregate({
-      _sum: { subtotal: true },
-      where: { projectId: { in: constructionProjectIds }, status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] } },
-    })
-    const constructionRevenue = (constructionClaimsAgg._sum.totalAmount || 0) + (constructionSalesAgg._sum.subtotal || 0)
-
-    // Rental revenue: sales invoices where sourceType = TIMESHEET or linked to EQUIPMENT_RENTAL projects
-    const rentalSalesAgg = await db.salesInvoice.aggregate({
-      _sum: { subtotal: true },
-      where: {
-        OR: [
-          { sourceType: 'TIMESHEET' },
-          { projectId: { in: rentalProjectIds } },
-        ],
-        status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] },
-      },
-    })
-    const rentalRevenue = rentalSalesAgg._sum.subtotal || 0
-
-    // Construction costs: expenses + purchase invoices + labor + equipment + subcontractor for CONSTRUCTION projects
-    const constructionExpenseAgg = await db.expense.aggregate({
-      _sum: { amount: true },
-      where: { projectId: { in: constructionProjectIds } },
-    })
-    const constructionPurchaseAgg = await db.purchaseInvoice.aggregate({
-      _sum: { subtotal: true },
-      where: { projectId: { in: constructionProjectIds }, status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] } },
-    })
-    const constructionLaborAgg = await db.laborCost.aggregate({
-      _sum: { totalAmount: true },
-      where: { projectId: { in: constructionProjectIds } },
-    })
-    const constructionEquipCostAgg = await db.equipmentCost.aggregate({
-      _sum: { amount: true },
-      where: { projectId: { in: constructionProjectIds } },
-    })
-    const constructionSubcontractorAgg = await db.subcontractorInvoice.aggregate({
-      _sum: { totalAmount: true },
-      where: { projectId: { in: constructionProjectIds } },
-    })
-    const constructionCosts =
-      (constructionExpenseAgg._sum.amount || 0) +
-      (constructionPurchaseAgg._sum.subtotal || 0) +
-      (constructionLaborAgg._sum.totalAmount || 0) +
-      (constructionEquipCostAgg._sum.amount || 0) +
-      (constructionSubcontractorAgg._sum.totalAmount || 0)
-
-    // Rental costs: expenses + purchase invoices + equipment maintenance + fuel for EQUIPMENT_RENTAL projects
-    const rentalExpenseAgg = await db.expense.aggregate({
-      _sum: { amount: true },
-      where: { projectId: { in: rentalProjectIds } },
-    })
-    const rentalPurchaseAgg = await db.purchaseInvoice.aggregate({
-      _sum: { subtotal: true },
-      where: { projectId: { in: rentalProjectIds }, status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] } },
-    })
-    const rentalEquipCostAgg = await db.equipmentCost.aggregate({
-      _sum: { amount: true },
-      where: { projectId: { in: rentalProjectIds } },
-    })
-    const rentalFuelAgg = await db.equipmentFuelLog.aggregate({
-      _sum: { totalCost: true },
-      where: { projectId: { in: rentalProjectIds } },
-    })
-    const rentalCosts =
-      (rentalExpenseAgg._sum.amount || 0) +
-      (rentalPurchaseAgg._sum.subtotal || 0) +
-      (rentalEquipCostAgg._sum.amount || 0) +
-      (rentalFuelAgg._sum.totalCost || 0)
-
+    // Construction & Rental revenue/costs from General Ledger
+    const constructionRevenue = await getGLBalance('REVENUE', { activityType: 'CONSTRUCTION' })
+    const rentalRevenue = await getGLBalance('REVENUE', { activityType: 'EQUIPMENT_RENTAL' })
+    const constructionCosts = await getGLBalance('EXPENSE', { activityType: 'CONSTRUCTION' })
+    const rentalCosts = await getGLBalance('EXPENSE', { activityType: 'EQUIPMENT_RENTAL' })
     const constructionProfit = constructionRevenue - constructionCosts
     const rentalProfit = rentalRevenue - rentalCosts
 
@@ -294,7 +190,15 @@ export async function GET() {
       }
     })
 
-    // ===== 7. Overdue Receivables (unpaid client invoices past due) =====
+    // ===== 7. Receivables from General Ledger =====
+    const clientsReceivable = await getAccountBalance('1210')
+    const retentionReceivable = await getAccountBalance('1220')
+    const employeeAdvances = await getAccountBalance('1230')
+    const supplierAdvances = await getAccountBalance('1240')
+    const otherReceivablesBalance = await getAccountBalance('1250')
+    const outstandingReceivables = clientsReceivable + retentionReceivable + employeeAdvances + supplierAdvances + otherReceivablesBalance
+
+    // Overdue Receivables (still from operational tables - GL has no due-date concept)
     const overdueReceivablesInvoices = await db.salesInvoice.findMany({
       where: {
         status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
@@ -306,16 +210,14 @@ export async function GET() {
       (s, i) => s + (i.totalAmount - i.paidAmount), 0
     )
 
-    // Total outstanding receivables
-    const allReceivablesInvoices = await db.salesInvoice.findMany({
-      where: { status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] } },
-      select: { totalAmount: true, paidAmount: true },
-    })
-    const outstandingReceivables = allReceivablesInvoices.reduce(
-      (s, i) => s + (i.totalAmount - i.paidAmount), 0
-    )
+    // ===== 8. Payables from General Ledger =====
+    const suppliersPayable = await getAccountBalance('3210')
+    const subcontractorsPayable = await getAccountBalance('3220')
+    const salariesPayable = await getAccountBalance('3310')
+    const otherAccrued = await getAccountBalance('3320')
+    const outstandingPayables = suppliersPayable + subcontractorsPayable + salariesPayable + otherAccrued
 
-    // ===== 8. Overdue Payables (unpaid supplier invoices past due) =====
+    // Overdue Payables (still from operational tables - GL has no due-date concept)
     const overduePayablesInvoices = await db.purchaseInvoice.findMany({
       where: {
         status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
@@ -324,14 +226,6 @@ export async function GET() {
       select: { totalAmount: true, paidAmount: true },
     })
     const overduePayables = overduePayablesInvoices.reduce(
-      (s, i) => s + (i.totalAmount - i.paidAmount), 0
-    )
-
-    const allPayablesInvoices = await db.purchaseInvoice.findMany({
-      where: { status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] } },
-      select: { totalAmount: true, paidAmount: true },
-    })
-    const outstandingPayables = allPayablesInvoices.reduce(
       (s, i) => s + (i.totalAmount - i.paidAmount), 0
     )
 

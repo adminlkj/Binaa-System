@@ -30,6 +30,8 @@ import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+import { AccountSelector } from '@/components/shared/account-selector'
+import { JePreview, type JePreviewLine } from '@/components/shared/je-preview'
 
 // ============ Types ============
 interface ProjectOption { id: string; code: string; name: string }
@@ -163,6 +165,15 @@ function ExpenseFormDialog({
   const [attachmentPath, setAttachmentPath] = useState('')
   const [vatRate, setVatRate] = useState('0.15')
 
+  // Account-based fields (replacing hardcoded payFrom & category)
+  const [payingAccountId, setPayingAccountId] = useState<string | null>(null)
+  const [payingAccountCode, setPayingAccountCode] = useState('')
+  const [payingAccountName, setPayingAccountName] = useState('')
+  const [expenseAccountId, setExpenseAccountId] = useState<string | null>(null)
+  const [expenseAccountCode, setExpenseAccountCode] = useState('')
+  const [expenseAccountNameAr, setExpenseAccountNameAr] = useState('')
+  const [activityType, setActivityType] = useState<'CONTRACT' | 'EQUIPMENT' | 'ADMIN' | 'HR'>('CONTRACT')
+
   React.useEffect(() => {
     if (open) {
       setTab(initialTab)
@@ -171,6 +182,9 @@ function ExpenseFormDialog({
       setAmount(''); setVatAmount(''); setDate('')
       setReference(''); setPayFrom('TREASURY')
       setAttachmentPath(''); setVatRate('0.15')
+      setPayingAccountId(null); setPayingAccountCode(''); setPayingAccountName('')
+      setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('')
+      setActivityType(initialTab === 'project' ? 'CONTRACT' : 'ADMIN')
     }
   }, [open, initialTab])
 
@@ -186,6 +200,44 @@ function ExpenseFormDialog({
   }, [amount, vatAmount, parsedAmount, parsedVatRate])
 
   const totalAmount = parsedAmount + autoVat
+
+  // Determine parentCode for the expense account selector based on expenseType + activityType
+  const expenseParentCode = useMemo(() => {
+    if (tab === 'project') {
+      return activityType === 'EQUIPMENT' ? '7200' : '7100'
+    }
+    return activityType === 'HR' ? '8200' : '8100'
+  }, [tab, activityType])
+
+  // Compute JE preview lines
+  const jeLines = useMemo<JePreviewLine[]>(() => {
+    if (parsedAmount <= 0 || !expenseAccountId || !payingAccountId) return []
+    const lines: JePreviewLine[] = []
+    // Debit: Expense account
+    lines.push({
+      accountCode: expenseAccountCode,
+      accountNameAr: expenseAccountNameAr,
+      debit: parsedAmount,
+      credit: 0,
+    })
+    // Debit: VAT Input (1410) if VAT > 0
+    if (autoVat > 0) {
+      lines.push({
+        accountCode: '1410',
+        accountNameAr: 'ضريبة مدخلات',
+        debit: autoVat,
+        credit: 0,
+      })
+    }
+    // Credit: Paying account
+    lines.push({
+      accountCode: payingAccountCode,
+      accountNameAr: payingAccountName,
+      debit: 0,
+      credit: totalAmount,
+    })
+    return lines
+  }, [parsedAmount, autoVat, totalAmount, expenseAccountId, expenseAccountCode, expenseAccountNameAr, payingAccountId, payingAccountCode, payingAccountName])
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -207,6 +259,13 @@ function ExpenseFormDialog({
       date, reference: reference || null,
       payFrom,
       attachmentPath: attachmentPath || null,
+      // New account-based fields
+      accountId: expenseAccountId,
+      payingAccountId,
+      payingAccountCode,
+      payingAccountName,
+      expenseAccountCode,
+      expenseAccountNameAr,
     })
   }
 
@@ -222,7 +281,7 @@ function ExpenseFormDialog({
           <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
             <button
               type="button"
-              onClick={() => { setTab('project'); setCategory(''); setProjectId('') }}
+              onClick={() => { setTab('project'); setCategory(''); setProjectId(''); setActivityType('CONTRACT'); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('') }}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                 tab === 'project' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
               }`}
@@ -232,7 +291,7 @@ function ExpenseFormDialog({
             </button>
             <button
               type="button"
-              onClick={() => { setTab('admin'); setCategory(''); setProjectId('') }}
+              onClick={() => { setTab('admin'); setCategory(''); setProjectId(''); setActivityType('ADMIN'); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('') }}
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
                 tab === 'admin' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
               }`}
@@ -268,15 +327,44 @@ function ExpenseFormDialog({
               </div>
             )}
 
+            {/* Activity Type selector */}
             <div className="space-y-2">
-              <Label>{t(lang, 'الفئة *', 'Category *')}</Label>
-              <Select value={category} onValueChange={setCategory}>
-                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر الفئة', 'Select category')} /></SelectTrigger>
+              <Label>{t(lang, 'نوع النشاط *', 'Activity Type *')}</Label>
+              <Select value={activityType} onValueChange={(v) => {
+                setActivityType(v as 'CONTRACT' | 'EQUIPMENT' | 'ADMIN' | 'HR')
+                setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('')
+              }}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {categoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c[lang]}</SelectItem>)}
+                  {tab === 'project' ? (
+                    <>
+                      <SelectItem value="CONTRACT">{t(lang, 'تكاليف عقود (7100)', 'Cost of Contracts (7100)')}</SelectItem>
+                      <SelectItem value="EQUIPMENT">{t(lang, 'تكاليف معدات (7200)', 'Equipment Costs (7200)')}</SelectItem>
+                    </>
+                  ) : (
+                    <>
+                      <SelectItem value="ADMIN">{t(lang, 'إدارية (8100)', 'Administrative (8100)')}</SelectItem>
+                      <SelectItem value="HR">{t(lang, 'موارد بشرية (8200)', 'HR (8200)')}</SelectItem>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Expense Account selector (replaces hardcoded category) */}
+            <AccountSelector
+              roles={[]}
+              parentCode={expenseParentCode}
+              value={expenseAccountId}
+              onValueChange={(id, account) => {
+                setExpenseAccountId(id)
+                setExpenseAccountCode(account.code)
+                setExpenseAccountNameAr(account.nameAr || account.name)
+                setCategory(account.code) // Keep category in sync for backward compatibility
+              }}
+              label={t(lang, 'حساب المصروف *', 'Expense Account *')}
+              placeholder={t(lang, 'اختر حساب المصروف...', 'Select expense account...')}
+            />
             <div className="space-y-2 sm:col-span-2">
               <Label>{t(lang, 'الوصف *', 'Description *')}</Label>
               <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف المصروف', 'Expense description')} required />
@@ -293,19 +381,22 @@ function ExpenseFormDialog({
               <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
-            <div className="space-y-2">
-              <Label>{t(lang, 'السداد من', 'Pay From')}</Label>
-              <Select value={payFrom} onValueChange={setPayFrom}>
-                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {payFromOptions.map(p => (
-                    <SelectItem key={p.value} value={p.value}>
-                      {lang === 'ar' ? p.labelAr : p.labelEn}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Paying Account selector (replaces hardcoded payFrom) */}
+            <AccountSelector
+              roles={['CASH', 'BANK']}
+              value={payingAccountId}
+              onValueChange={(id, account) => {
+                setPayingAccountId(id)
+                setPayingAccountCode(account.code)
+                setPayingAccountName(account.nameAr || account.name)
+                // Map account role back to payFrom for backward compatibility
+                if (account.accountRole === 'BANK') setPayFrom('BANK')
+                else if (account.accountRole === 'CASH') setPayFrom('PETTY_CASH')
+                else setPayFrom('TREASURY')
+              }}
+              label={t(lang, 'السداد من *', 'Pay From *')}
+              placeholder={t(lang, 'اختر حساب السداد...', 'Select paying account...')}
+            />
             <div className="space-y-2 sm:col-span-2">
               <Label>{t(lang, 'المرجع', 'Reference')}</Label>
               <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={t(lang, 'رقم المرجع', 'Reference number')} />
@@ -319,6 +410,9 @@ function ExpenseFormDialog({
               <Input value={attachmentPath} onChange={e => setAttachmentPath(e.target.value)} placeholder={t(lang, 'مسار الملف', 'File path')} />
             </div>
           </div>
+
+          {/* JE Preview */}
+          <JePreview lines={jeLines} />
 
           {/* Total Preview */}
           {parsedAmount > 0 && (
@@ -343,7 +437,7 @@ function ExpenseFormDialog({
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !category || !description || !amount || !date || (tab === 'project' && !projectId)} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button type="submit" disabled={createMutation.isPending || !expenseAccountId || !payingAccountId || !description || !amount || !date || (tab === 'project' && !projectId)} className="bg-emerald-600 hover:bg-emerald-700">
               {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إضافة المصروف', 'Add Expense')}
             </Button>
           </DialogFooter>

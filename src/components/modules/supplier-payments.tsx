@@ -25,6 +25,8 @@ import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
+import { AccountSelector } from '@/components/shared/account-selector'
+import { JePreview } from '@/components/shared/je-preview'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
@@ -46,11 +48,13 @@ interface SupplierPayment {
 interface PaymentFormData {
   supplierId: string; invoiceId: string; amount: string; date: string
   paidFrom: string; bankAccount: string; paymentMethod: string; reference: string; notes: string
+  payingAccountId: string; payingAccountCode: string; payingAccountName: string
 }
 
 const defaultForm: PaymentFormData = {
   supplierId: '', invoiceId: '', amount: '', date: new Date().toISOString().split('T')[0],
   paidFrom: 'TREASURY', bankAccount: '', paymentMethod: 'CASH', reference: '', notes: '',
+  payingAccountId: '', payingAccountCode: '', payingAccountName: '',
 }
 
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
@@ -82,7 +86,7 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
   const { lang } = useAppStore()
 
   React.useEffect(() => {
-    if (open) setForm(defaultForm)
+    if (open) setForm({ ...defaultForm, date: new Date().toISOString().split('T')[0] })
   }, [open])
 
   // Fetch invoices filtered by selected supplier
@@ -120,6 +124,9 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
       invoiceId: form.invoiceId || null,
       amount: parseFloat(form.amount) || 0,
       paidFrom: form.paidFrom || 'TREASURY',
+      payingAccountId: form.payingAccountId || null,
+      payingAccountCode: form.payingAccountCode || null,
+      payingAccountName: form.payingAccountName || null,
       bankAccount: form.bankAccount || null,
       paymentMethod: form.paymentMethod || null,
       date: form.date,
@@ -198,16 +205,22 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>{t('السداد من', 'Paid From', lang)}</Label>
-              <Select value={form.paidFrom} onValueChange={v => setForm(f => ({ ...f, paidFrom: v }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="TREASURY">{t('صندوق (نقدي)', 'Treasury (Cash)', lang)}</SelectItem>
-                  <SelectItem value="BANK">{t('بنك', 'Bank', lang)}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <AccountSelector
+              roles={['CASH', 'BANK']}
+              value={form.payingAccountId || null}
+              onValueChange={(id, account) => {
+                setForm(f => ({
+                  ...f,
+                  payingAccountId: id,
+                  payingAccountCode: account.code,
+                  payingAccountName: account.nameAr || account.name,
+                  // Backward compatibility: map account role to old paidFrom field
+                  paidFrom: account.accountRole === 'BANK' ? 'BANK' : 'TREASURY',
+                }))
+              }}
+              label={t('السداد من', 'Paid From', lang)}
+              placeholder={t('اختر حساب السداد...', 'Select paying account...', lang)}
+            />
             <div className="space-y-2">
               <Label>{t('طريقة الدفع', 'Payment Method', lang)}</Label>
               <Select value={form.paymentMethod} onValueChange={v => setForm(f => ({ ...f, paymentMethod: v }))}>
@@ -237,6 +250,26 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
             <Label>{t('ملاحظات', 'Notes', lang)}</Label>
             <Input value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder={t('ملاحظات إضافية', 'Additional notes', lang)} />
           </div>
+
+          {/* JE Preview */}
+          {parseFloat(form.amount) > 0 && form.payingAccountId && (
+            <JePreview
+              lines={[
+                {
+                  accountCode: '3210',
+                  accountNameAr: 'موردون',
+                  debit: parseFloat(form.amount) || 0,
+                  credit: 0,
+                },
+                {
+                  accountCode: form.payingAccountCode,
+                  accountNameAr: form.payingAccountName,
+                  debit: 0,
+                  credit: parseFloat(form.amount) || 0,
+                },
+              ]}
+            />
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>

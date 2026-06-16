@@ -25,6 +25,8 @@ import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
+import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
+import { AccountSelector } from '@/components/shared/account-selector'
 import { useAppStore, formatDate, formatNumber, commonText } from '@/stores/app-store'
 
 // ============ Arabic/English Month Names ============
@@ -153,6 +155,9 @@ function CreateRentalInvoicePage({
   const [date, setDate] = useState('')
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [rentalRevenueAccountId, setRentalRevenueAccountId] = useState<string | null>(null)
+  const [rentalRevenueAccountCode, setRentalRevenueAccountCode] = useState('6210')
+  const [rentalRevenueAccountNameAr, setRentalRevenueAccountNameAr] = useState('إيرادات تأجير المعدات')
 
   // Selected timesheet - RULE: User selects ONLY a Timesheet
   const selectedTimesheet = approvedTimesheets.find(ts => ts.id === timesheetId)
@@ -184,6 +189,39 @@ function CreateRentalInvoicePage({
   const deliveryVat = deliveryFeesTaxable && deliveryFees > 0 ? Math.round(deliveryFees * vatRate * 100) / 100 : 0
   const totalVat = rentalVat + deliveryVat
   const totalAmount = subtotal + deliveryFees + totalVat
+
+  // Compute JE preview lines
+  const jeLines = useMemo<JePreviewLine[]>(() => {
+    const ts = approvedTimesheets.find(t => t.id === timesheetId)
+    if (!ts) return []
+    const _hourlyRate = ts.rental?.hourlyRate || ts.contract?.hourlyRate || 0
+    const _operatingHours = ts.operatingHours || 0
+    const _deliveryFees = ts.rental?.deliveryFees || ts.contract?.deliveryFees || 0
+    const _deliveryFeesTaxable = ts.rental?.deliveryFeesTaxable ?? ts.contract?.deliveryFeesTaxable ?? true
+    const _subtotal = _operatingHours * _hourlyRate
+    const _rentalVat = Math.round(_subtotal * 0.15 * 100) / 100
+    const _deliveryVat = _deliveryFeesTaxable && _deliveryFees > 0 ? Math.round(_deliveryFees * 0.15 * 100) / 100 : 0
+    const _totalVat = _rentalVat + _deliveryVat
+    const _totalAmount = _subtotal + _deliveryFees + _totalVat
+    if (_totalAmount <= 0) return []
+    const lines: JePreviewLine[] = []
+    // Debit: Clients Receivable
+    lines.push({ accountCode: '1210', accountNameAr: 'عملاء', debit: _totalAmount, credit: 0 })
+    // Credit: Rental Revenue (or Delivery Revenue)
+    const revenueCode = rentalRevenueAccountCode || '6210'
+    const revenueName = rentalRevenueAccountNameAr || 'إيرادات تأجير المعدات'
+    if (_subtotal > 0) {
+      lines.push({ accountCode: revenueCode, accountNameAr: revenueName, debit: 0, credit: _subtotal })
+    }
+    if (_deliveryFees > 0) {
+      lines.push({ accountCode: '6220', accountNameAr: 'إيرادات نقل وتوصيل', debit: 0, credit: _deliveryFees })
+    }
+    // Credit: Output VAT if VAT > 0
+    if (_totalVat > 0) {
+      lines.push({ accountCode: '3110', accountNameAr: 'ضريبة مخرجات', debit: 0, credit: _totalVat })
+    }
+    return lines
+  }, [timesheetId, approvedTimesheets, rentalRevenueAccountCode, rentalRevenueAccountNameAr])
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -223,6 +261,8 @@ function CreateRentalInvoicePage({
       date,
       dueDate,
       notes,
+      rentalRevenueAccountId: rentalRevenueAccountId || undefined,
+      rentalRevenueAccountCode: rentalRevenueAccountCode || undefined,
     })
   }
 
@@ -376,6 +416,29 @@ function CreateRentalInvoicePage({
           </CardContent>
         </Card>
 
+        {/* Revenue Account Selection */}
+        {selectedTimesheet && (
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg">{t('حساب الإيرادات', 'Revenue Account')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AccountSelector
+                roles={['RENTAL_REVENUE']}
+                value={rentalRevenueAccountId}
+                onValueChange={(id, account) => {
+                  setRentalRevenueAccountId(id)
+                  setRentalRevenueAccountCode(account.code)
+                  setRentalRevenueAccountNameAr(account.nameAr || account.name)
+                }}
+                label={t('حساب إيرادات التأجير', 'Rental Revenue Account')}
+                placeholder={t('اختر حساب الإيرادات...', 'Select revenue account...')}
+              />
+              <p className="text-xs text-muted-foreground mt-2">{t('اختر حساب الإيرادات الذي سيُقيد في الجانب الدائن من القيد المحاسبي', 'Select the revenue account to be credited in the journal entry')}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Invoice Summary */}
         {selectedTimesheet && subtotal > 0 && (
           <Card className="bg-gray-50 border-dashed">
@@ -402,6 +465,11 @@ function CreateRentalInvoicePage({
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* JE Preview */}
+        {selectedTimesheet && totalAmount > 0 && (
+          <JePreview lines={jeLines} title={t('القيد المحاسبي المتوقع', 'Expected Journal Entry')} />
         )}
 
         {/* Actions */}
