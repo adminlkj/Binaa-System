@@ -1,0 +1,890 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  FileText, Plus, Search, RefreshCw, Eye, ArrowRight, Download, FileSpreadsheet, Trash2,
+     7→  RotateCcw, Send, XCircle,
+     8→} from 'lucide-react'
+     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import {
+    14→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    15→} from '@/components/ui/table'
+    16→import {
+    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→} from '@/components/ui/select'
+    19→import {
+    20→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    21→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    22→} from '@/components/ui/alert-dialog'
+    23→import { Label } from '@/components/ui/label'
+    24→import { Separator } from '@/components/ui/separator'
+    25→import { MoneyDisplay } from '@/components/ui/money-display'
+    26→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    27→import { PrintButton } from '@/components/shared/print-button'
+    28→import { useAppStore, formatDate, formatNumber, commonText } from '@/stores/app-store'
+    29→
+    30→// ============ Arabic/English Month Names ============
+    31→const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+    32→const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    33→
+    34→function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string {
+    35→  if (lang === 'ar') return `${arabicMonths[month - 1]} ${year}`
+    36→  return `${englishMonths[month - 1]} ${year}`
+    37→}
+    38→
+    39→// ============ Types ============
+    40→interface TimesheetOption {
+    41→  id: string
+    42→  contractId: string
+    43→  projectId: string
+    44→  equipmentId: string
+    45→  month: number
+    46→  year: number
+    47→  operatingHours: number
+    48→  status: string
+    49→  notes: string | null
+    50→  clientName?: string
+    51→  clientNameAr?: string
+    52→  contract: {
+    53→    id: string; contractNo: string; hourlyRate: number; deliveryFees: number
+    54→    deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentTerms: string | null
+    55→    clientId: string
+    56→    project: { id: string; name: string; nameAr: string | null; code: string }
+    57→  }
+    58→  project: { id: string; name: string; nameAr: string | null; code: string }
+    59→  equipment: { id: string; name: string; nameAr: string | null; code: string }
+    60→  rental: { id: string; hourlyRate: number; clientId: string; deliveryFees: number; deliveryFeesTaxable: boolean; salesOrderNo: string | null; paymentDuration: string | null }
+    61→  invoice: { id: string; invoiceNo: string } | null
+    62→}
+    63→
+    64→interface RentalInvoiceItem {
+    65→  id: string; description: string; quantity: number; unit?: string | null; unitPrice: number; totalPrice: number
+    66→}
+    67→
+    68→interface RentalInvoice {
+    69→  id: string; invoiceNo: string; projectId: string | null; contractId?: string | null; clientId: string
+    70→  date: string; dueDate: string; subtotal: number; discountRate: number; discountAmount: number; netAmount: number
+    71→  vatRate: number; vatAmount: number; totalAmount: number; paidAmount: number; status: string; invoiceType?: string
+    72→  notes: string | null; paymentTerms?: string | null
+    73→  timesheetId?: string | null; deliveryMonth?: string | null; includeDelivery?: boolean; deliveryAmount?: number
+    74→  deliveryFeesTaxable?: boolean; contractNo?: string | null; salesOrderNo?: string | null
+    75→  equipmentName?: string | null; operatingHours?: number | null; hourlyRate?: number | null
+    76→  client: { id: string; name: string; nameAr?: string | null; code: string }
+    77→  project: { id: string; name: string; nameAr?: string | null; code: string } | null
+    78→  items: RentalInvoiceItem[]
+    79→}
+    80→
+    81→// ============ Labels ============
+    82→const labels = {
+    83→  title: { ar: 'فواتير الإيجار', en: 'Rental Invoices' },
+    84→  subtitle: { ar: 'إدارة فواتير إيجار المعدات والآليات', en: 'Manage equipment and machinery rental invoices' },
+    85→  invoiceNo: { ar: 'رقم الفاتورة', en: 'Invoice No.' },
+    86→  client: { ar: 'العميل', en: 'Client' },
+    87→  project: { ar: 'المشروع', en: 'Project' },
+    88→  equipment: { ar: 'المعدة', en: 'Equipment' },
+    89→  date: { ar: 'التاريخ', en: 'Date' },
+    90→  dueDate: { ar: 'تاريخ الاستحقاق', en: 'Due Date' },
+    91→  subtotal: { ar: 'المجموع الفرعي', en: 'Subtotal' },
+    92→  vat: { ar: 'الضريبة (15%)', en: 'VAT (15%)' },
+    93→  total: { ar: 'الإجمالي', en: 'Total' },
+    94→  paid: { ar: 'المدفوع', en: 'Paid' },
+    95→  outstanding: { ar: 'المستحق', en: 'Outstanding' },
+    96→  status: { ar: 'الحالة', en: 'Status' },
+    97→  actions: { ar: 'الإجراءات', en: 'Actions' },
+    98→  newInvoice: { ar: 'فاتورة إيجار جديدة', en: 'New Rental Invoice' },
+    99→  search: { ar: 'بحث برقم الفاتورة أو العميل...', en: 'Search by invoice no. or client...' },
+   100→  allStatus: { ar: 'كل الحالات', en: 'All Status' },
+   101→  totalRevenue: { ar: 'إجمالي إيرادات الإيجار', en: 'Total Rental Revenue' },
+   102→  selectTimesheet: { ar: 'اختر سجل ساعات العمل المعتمد', en: 'Select Approved Timesheet' },
+   103→  contractNo: { ar: 'رقم العقد', en: 'Contract No.' },
+   104→  salesOrderNo: { ar: 'رقم طلب البيع', en: 'Sales Order No.' },
+   105→  hourlyRate: { ar: 'سعر الساعة', en: 'Hourly Rate' },
+   106→  operatingHours: { ar: 'ساعات التشغيل', en: 'Operating Hours' },
+   107→  deliveryFees: { ar: 'رسوم النقل', en: 'Delivery Fees' },
+   108→  deliveryFeesTaxable: { ar: 'رسوم النقل خاضعة للضريبة', en: 'Delivery Fees Taxable' },
+   109→  paymentTerms: { ar: 'شروط السداد', en: 'Payment Terms' },
+   110→  deliveryMonth: { ar: 'شهر التسليم', en: 'Delivery Month' },
+   111→  notes: { ar: 'ملاحظات', en: 'Notes' },
+   112→  invoiceSummary: { ar: 'ملخص الفاتورة', en: 'Invoice Summary' },
+   113→  autoFilledFromContract: { ar: 'تعبئة تلقائية من العقد', en: 'Auto-filled from Contract' },
+   114→  autoFilledFromTimesheet: { ar: 'تعبئة تلقائية من سجل الساعات', en: 'Auto-filled from Timesheet' },
+   115→  readOnlyFromContract: { ar: 'من العقد فقط - للقراءة فقط', en: 'From contract only - read only' },
+   116→  deleteTitle: { ar: 'حذف الفاتورة', en: 'Delete Invoice' },
+   117→  deleteConfirm: { ar: 'هل أنت متأكد من حذف هذه الفاتورة؟', en: 'Are you sure you want to delete this invoice?' },
+   118→  noInvoices: { ar: 'لا توجد فواتير إيجار', en: 'No rental invoices' },
+   119→  noApprovedTimesheets: { ar: 'لا توجد سجلات ساعات معتمدة غير مفوترة', en: 'No approved uninvoiced timesheets' },
+   120→  period: { ar: 'فترة العمل', en: 'Period' },
+   121→}
+   122→
+   123→// ============ View State ============
+   124→type ViewState = { type: 'list' } | { type: 'create' } | { type: 'detail'; invoiceId: string }
+   125→
+   126→// ============ Skeleton ============
+   127→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   128→  return (
+   129→    <div className="space-y-2 p-4">
+   130→      {Array.from({ length: rows }).map((_, i) => (
+   131→        <div key={i} className="flex gap-4 p-3">
+   132→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   133→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   134→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   135→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   136→        </div>
+   137→      ))}
+   138→    </div>
+   139→  )
+   140→}
+   141→
+   142→// ============ Create Rental Invoice Page ============
+   143→function CreateRentalInvoicePage({
+   144→  approvedTimesheets, onBack,
+   145→}: {
+   146→  approvedTimesheets: TimesheetOption[]; onBack: () => void
+   147→}) {
+   148→  const queryClient = useQueryClient()
+   149→  const { lang } = useAppStore()
+   150→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   151→
+   152→  const [timesheetId, setTimesheetId] = useState('')
+   153→  const [date, setDate] = useState('')
+   154→  const [dueDate, setDueDate] = useState('')
+   155→  const [notes, setNotes] = useState('')
+   156→
+   157→  // Selected timesheet - RULE: User selects ONLY a Timesheet
+   158→  const selectedTimesheet = approvedTimesheets.find(ts => ts.id === timesheetId)
+   159→
+   160→  // RULE: System auto-fills from contract and timesheet
+   161→  // Auto-filled from contract: client, project, equipment, contract no, sales order no, hourly rate, delivery fees, payment terms
+   162→  // Auto-filled from timesheet: month, year, operating hours
+   163→  // RULE: Rate is read-only (from contract)
+   164→  const contract = selectedTimesheet?.contract
+   165→  const rental = selectedTimesheet?.rental
+   166→  const hourlyRate = rental?.hourlyRate || contract?.hourlyRate || 0
+   167→  const operatingHours = selectedTimesheet?.operatingHours || 0
+   168→  const deliveryFees = rental?.deliveryFees || contract?.deliveryFees || 0
+   169→  const deliveryFeesTaxable = rental?.deliveryFeesTaxable ?? contract?.deliveryFeesTaxable ?? true
+   170→  const clientId = rental?.clientId || contract?.clientId || ''
+   171→  const clientName = selectedTimesheet?.clientName || selectedTimesheet?.clientNameAr || ''
+   172→  const projectId = selectedTimesheet?.projectId || ''
+   173→  const projectName = selectedTimesheet?.project?.name || ''
+   174→  const equipmentName = selectedTimesheet?.equipment?.nameAr || selectedTimesheet?.equipment?.name || ''
+   175→  const contractNo = contract?.contractNo || ''
+   176→  const salesOrderNo = rental?.salesOrderNo || contract?.salesOrderNo || ''
+   177→  const paymentTerms = rental?.paymentDuration || contract?.paymentTerms || '30 days'
+   178→
+   179→  // RULE: System auto-calculates: hours × rate = subtotal
+   180→  const subtotal = operatingHours * hourlyRate
+   181→  const vatRate = 0.15
+   182→  const rentalVat = Math.round(subtotal * vatRate * 100) / 100
+   183→  // Delivery fees (with/without VAT based on contract setting)
+   184→  const deliveryVat = deliveryFeesTaxable && deliveryFees > 0 ? Math.round(deliveryFees * vatRate * 100) / 100 : 0
+   185→  const totalVat = rentalVat + deliveryVat
+   186→  const totalAmount = subtotal + deliveryFees + totalVat
+   187→
+   188→  const createMutation = useMutation({
+   189→    mutationFn: (data: Record<string, unknown>) =>
+   190→      fetch('/api/sales-invoices', {
+   191→        method: 'POST',
+   192→        headers: { 'Content-Type': 'application/json' },
+   193→        body: JSON.stringify(data),
+   194→      }).then(async r => {
+   195→        if (!r.ok) {
+   196→          const err = await r.json().catch(() => ({}))
+   197→          throw new Error((err as { error?: string }).error || 'فشل في إنشاء الفاتورة')
+   198→        }
+   199→        return r.json()
+   200→      }),
+   201→    onSuccess: () => {
+   202→      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+   203→      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
+   204→      queryClient.invalidateQueries({ queryKey: ['approved-timesheets'] })
+   205→      onBack()
+   206→    },
+   207→  })
+   208→
+   209→  const handleSubmit = (e: React.FormEvent) => {
+   210→    e.preventDefault()
+   211→    if (!timesheetId || !date || !dueDate || !clientId) return
+   212→
+   213→    // Accounting Integration: When rental invoice is created,
+   214→    // the accounting engine should create journal entries:
+   215→    // Debit: Accounts Receivable (totalAmount)
+   216→    // Credit: Rental Revenue (subtotal)
+   217→    // Credit: Delivery Revenue (deliveryFees) if applicable
+   218→    // Credit: Output VAT (totalVat)
+   219→    // Also, timesheet status should be updated to INVOICED
+   220→    // This is handled via POST /api/journal-entries with sourceType: SALES_INVOICE
+   221→    createMutation.mutate({
+   222→      sourceType: 'TIMESHEET',
+   223→      timesheetId,
+   224→      date,
+   225→      dueDate,
+   226→      notes,
+   227→    })
+   228→  }
+   229→
+   230→  // RULE: Cannot create invoice without an approved timesheet
+   231→  if (approvedTimesheets.length === 0) {
+   232→    return (
+   233→      <div className="space-y-6">
+   234→        <div className="flex items-center gap-3">
+   235→          <Button variant="outline" size="icon" onClick={onBack}>
+   236→            <ArrowRight className="size-4" />
+   237→          </Button>
+   238→          <div className="flex-1">
+   239→            <h1 className="text-2xl font-bold text-gray-900">{t('فاتورة إيجار جديدة', 'New Rental Invoice')}</h1>
+   240→          </div>
+   241→        </div>
+   242→        <Card className="bg-amber-50 border-amber-200">
+   243→          <CardContent className="p-6 text-center">
+   244→            <p className="text-amber-700 font-medium">{t(labels.noApprovedTimesheets.ar, labels.noApprovedTimesheets.en)}</p>
+   245→            <p className="text-sm text-amber-600 mt-1">{t('يجب اعتماد سجل ساعات عمل أولاً من وحدة ساعات العمل', 'An approved timesheet must be created first from the Timesheets module')}</p>
+   246→          </CardContent>
+   247→        </Card>
+   248→      </div>
+   249→    )
+   250→  }
+   251→
+   252→  return (
+   253→    <div className="space-y-6">
+   254→      <div className="flex items-center gap-3">
+   255→        <Button variant="outline" size="icon" onClick={onBack}>
+   256→          <ArrowRight className="size-4" />
+   257→        </Button>
+   258→        <div className="flex-1">
+   259→          <h1 className="text-2xl font-bold text-gray-900">{t('فاتورة إيجار جديدة', 'New Rental Invoice')}</h1>
+   260→          <p className="text-sm text-muted-foreground">{t('إنشاء فاتورة إيجار من سجل ساعات عمل معتمد', 'Create rental invoice from an approved timesheet')}</p>
+   261→        </div>
+   262→      </div>
+   263→
+   264→      <form onSubmit={handleSubmit} className="space-y-6">
+   265→        {/* RULE: User selects ONLY a Timesheet */}
+   266→        <Card>
+   267→          <CardHeader className="pb-4">
+   268→            <CardTitle className="text-lg">{t('اختيار سجل الساعات', 'Select Timesheet')}</CardTitle>
+   269→          </CardHeader>
+   270→          <CardContent className="space-y-4">
+   271→            <div className="space-y-2">
+   272→              <Label>{t(labels.selectTimesheet.ar, labels.selectTimesheet.en)} *</Label>
+   273→              <Select value={timesheetId} onValueChange={setTimesheetId}>
+   274→                <SelectTrigger className="w-full"><SelectValue placeholder={t(labels.selectTimesheet.ar, labels.selectTimesheet.en)} /></SelectTrigger>
+   275→                <SelectContent>
+   276→                  {approvedTimesheets.map(ts => (
+   277→                    <SelectItem key={ts.id} value={ts.id}>
+   278→                      {ts.equipment?.name || '—'} - {formatMonthYear(ts.month, ts.year, lang)} ({formatNumber(ts.operatingHours)} {t('ساعة', 'hrs')}) [{ts.contract?.contractNo}]
+   279→                    </SelectItem>
+   280→                  ))}
+   281→                </SelectContent>
+   282→              </Select>
+   283→            </div>
+   284→
+   285→            {/* Auto-filled info from timesheet & contract */}
+   286→            {selectedTimesheet && (
+   287→              <div className="p-4 rounded-lg border bg-blue-50 space-y-3">
+   288→                <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
+   289→                  <FileText className="size-4" />
+   290→                  {t(labels.autoFilledFromContract.ar, labels.autoFilledFromContract.en)} / {t(labels.autoFilledFromTimesheet.ar, labels.autoFilledFromTimesheet.en)}
+   291→                </div>
+   292→                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   293→                  <div><span className="text-muted-foreground">{t(labels.client.ar, labels.client.en)}:</span><p className="font-medium">{clientName}</p></div>
+   294→                  <div><span className="text-muted-foreground">{t(labels.project.ar, labels.project.en)}:</span><p className="font-medium">{projectName}</p></div>
+   295→                  <div><span className="text-muted-foreground">{t(labels.equipment.ar, labels.equipment.en)}:</span><p className="font-medium">{equipmentName}</p></div>
+   296→                  <div><span className="text-muted-foreground">{t(labels.deliveryMonth.ar, labels.deliveryMonth.en)}:</span><p className="font-medium">{formatMonthYear(selectedTimesheet.month, selectedTimesheet.year, lang)}</p></div>
+   297→                  <div><span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span><p className="font-medium font-mono">{contractNo}</p></div>
+   298→                  <div><span className="text-muted-foreground">{t(labels.salesOrderNo.ar, labels.salesOrderNo.en)}:</span><p className="font-medium font-mono">{salesOrderNo || '—'}</p></div>
+   299→                  <div><span className="text-muted-foreground">{t(labels.paymentTerms.ar, labels.paymentTerms.en)}:</span><p className="font-medium">{paymentTerms}</p></div>
+   300→                </div>
+   301→              </div>
+   302→            )}
+   303→          </CardContent>
+   304→        </Card>
+   305→
+   306→        {/* Operating Hours & Rate - RULE: No manual editing of rate or hours */}
+   307→        <Card>
+   308→          <CardHeader className="pb-4">
+   309→            <CardTitle className="text-lg">{t('ساعات التشغيل والسعر', 'Operating Hours & Rate')}</CardTitle>
+   310→          </CardHeader>
+   311→          <CardContent>
+   312→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   313→              <div className="space-y-2">
+   314→                <Label>{t(labels.operatingHours.ar, labels.operatingHours.en)}</Label>
+   315→                {/* Auto-filled from timesheet - read only */}
+   316→                <Input type="number" value={operatingHours || ''} readOnly className="bg-gray-100" dir="ltr" />
+   317→                <p className="text-xs text-muted-foreground">{t('من سجل الساعات - للقراءة فقط', 'From timesheet - read only')}</p>
+   318→              </div>
+   319→              <div className="space-y-2">
+   320→                <Label>{t(labels.hourlyRate.ar, labels.hourlyRate.en)}</Label>
+   321→                {/* RULE: Rate is read-only (from contract) */}
+   322→                <Input type="number" value={hourlyRate || ''} readOnly className="bg-gray-100" dir="ltr" />
+   323→                <p className="text-xs text-muted-foreground">{t(labels.readOnlyFromContract.ar, labels.readOnlyFromContract.en)}</p>
+   324→              </div>
+   325→              <div className="space-y-2">
+   326→                <Label>{t(labels.subtotal.ar, labels.subtotal.en)} ({t('ساعات × سعر', 'hrs × rate')})</Label>
+   327→                <div className="h-9 flex items-center">
+   328→                  <MoneyDisplay value={subtotal} lang={lang} size="md" bold />
+   329→                </div>
+   330→              </div>
+   331→            </div>
+   332→          </CardContent>
+   333→        </Card>
+   334→
+   335→        {/* Delivery Fees (from contract) */}
+   336→        {deliveryFees > 0 && (
+   337→          <Card>
+   338→            <CardHeader className="pb-4">
+   339→              <CardTitle className="text-lg">{t(labels.deliveryFees.ar, labels.deliveryFees.en)}</CardTitle>
+   340→            </CardHeader>
+   341→            <CardContent>
+   342→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   343→                <div className="space-y-2">
+   344→                  <Label>{t(labels.deliveryFees.ar, labels.deliveryFees.en)}</Label>
+   345→                  <Input type="number" value={deliveryFees} readOnly className="bg-gray-100" dir="ltr" />
+   346→                </div>
+   347→                <div className="space-y-2 flex items-center gap-2 pt-6">
+   348→                  <Badge variant="outline" className={deliveryFeesTaxable ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}>
+   349→                    {deliveryFeesTaxable ? t('خاضعة للضريبة', 'Taxable') : t('غير خاضعة للضريبة', 'Not Taxable')}
+   350→                  </Badge>
+   351→                </div>
+   352→              </div>
+   353→            </CardContent>
+   354→          </Card>
+   355→        )}
+   356→
+   357→        {/* Dates */}
+   358→        <Card>
+   359→          <CardHeader className="pb-4">
+   360→            <CardTitle className="text-lg">{t('التواريخ', 'Dates')}</CardTitle>
+   361→          </CardHeader>
+   362→          <CardContent>
+   363→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   364→              <div className="space-y-2">
+   365→                <Label>{t(labels.date.ar, labels.date.en)} *</Label>
+   366→                <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   367→              </div>
+   368→              <div className="space-y-2">
+   369→                <Label>{t(labels.dueDate.ar, labels.dueDate.en)} *</Label>
+   370→                <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+   371→              </div>
+   372→              <div className="space-y-2">
+   373→                <Label>{t(labels.notes.ar, labels.notes.en)}</Label>
+   374→                <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات اختيارية', 'Optional notes')} />
+   375→              </div>
+   376→            </div>
+   377→          </CardContent>
+   378→        </Card>
+   379→
+   380→        {/* Invoice Summary */}
+   381→        {selectedTimesheet && subtotal > 0 && (
+   382→          <Card className="bg-gray-50 border-dashed">
+   383→            <CardContent className="p-6 space-y-3">
+   384→              <h3 className="text-lg font-semibold mb-2">{t(labels.invoiceSummary.ar, labels.invoiceSummary.en)}</h3>
+   385→              <div className="flex justify-between text-sm">
+   386→                <span>{t(labels.subtotal.ar, labels.subtotal.en)} ({formatNumber(operatingHours)} {t('ساعة', 'hrs')} × <MoneyDisplay value={hourlyRate} lang={lang} size="xs" inline showSymbol={false} />)</span>
+   387→                <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" inline /></span>
+   388→              </div>
+   389→              {deliveryFees > 0 && (
+   390→                <div className="flex justify-between text-sm text-amber-700">
+   391→                  <span>{t(labels.deliveryFees.ar, labels.deliveryFees.en)} {deliveryFeesTaxable ? `(${t('خاضعة للضريبة', 'taxable')})` : `(${t('غير خاضعة', 'not taxable')})`}</span>
+   392→                  <span className="font-medium"><MoneyDisplay value={deliveryFees} lang={lang} size="sm" inline /></span>
+   393→                </div>
+   394→              )}
+   395→              <div className="flex justify-between text-sm">
+   396→                <span>{t(labels.vat.ar, labels.vat.en)}</span>
+   397→                <span className="font-medium"><MoneyDisplay value={totalVat} lang={lang} size="sm" inline /></span>
+   398→              </div>
+   399→              <Separator />
+   400→              <div className="flex justify-between text-lg font-bold">
+   401→                <span>{t(labels.total.ar, labels.total.en)}</span>
+   402→                <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} size="lg" inline bold /></span>
+   403→              </div>
+   404→            </CardContent>
+   405→          </Card>
+   406→        )}
+   407→
+   408→        {/* Actions */}
+   409→        <div className="flex items-center justify-end gap-3">
+   410→          {createMutation.isError && (
+   411→            <p className="text-sm text-rose-600">{(createMutation.error as Error)?.message || t('فشل في إنشاء الفاتورة', 'Failed to create invoice')}</p>
+   412→          )}
+   413→          <Button type="button" variant="outline" onClick={onBack}>{commonText.cancel[lang]}</Button>
+   414→          <Button type="submit" disabled={createMutation.isPending || !timesheetId || !date || !dueDate || !clientId} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+   415→            {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء فاتورة الإيجار', 'Create Rental Invoice')}
+   416→          </Button>
+   417→        </div>
+   418→      </form>
+   419→    </div>
+   420→  )
+   421→}
+   422→
+   423→// ============ Main Rental Invoices Module ============
+   424→export function RentalInvoicesModule() {
+   425→  const { lang } = useAppStore()
+   426→  const queryClient = useQueryClient()
+   427→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   428→
+   429→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+   430→  const [search, setSearch] = useState('')
+   431→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   432→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   433→  const [actionId, setActionId] = useState<string | null>(null)
+   434→  const [actionType, setActionType] = useState<'revert' | 'cancel' | null>(null)
+   435→
+   436→  // Fetch rental invoices
+   437→  const { data: invoices = [], isLoading, isError, refetch } = useQuery<RentalInvoice[]>({
+   438→    queryKey: ['rental-invoices'],
+   439→    queryFn: async () => {
+   440→      const res = await fetch('/api/sales-invoices?invoiceType=RENTAL')
+   441→      if (!res.ok) throw new Error('Failed to fetch')
+   442→      const all: RentalInvoice[] = await res.json()
+   443→      return all.filter(i => i.invoiceType === 'RENTAL')
+   444→    },
+   445→  })
+   446→
+   447→  // Fetch approved uninvoiced timesheets for create form
+   448→  // RULE: Cannot create invoice without an approved timesheet
+   449→  // RULE: No duplicate invoice for same timesheet
+   450→  const { data: approvedTimesheets = [] } = useQuery<TimesheetOption[]>({
+   451→    queryKey: ['approved-timesheets'],
+   452→    queryFn: async () => {
+   453→      const res = await fetch('/api/equipment/timesheets?uninvoiced=true')
+   454→      if (!res.ok) return []
+   455→      const data = await res.json()
+   456→      // RULE: Only APPROVED timesheets that are not yet invoiced
+   457→      // Also accept timesheets where invoice exists but is CANCELLED (edge case safety)
+   458→      return (Array.isArray(data) ? data : []).filter((ts: { status: string; invoice: { id: string; invoiceNo: string; status: string } | null }) => 
+   459→        ts.status === 'APPROVED' && (!ts.invoice || ts.invoice.status === 'CANCELLED')
+   460→      )
+   461→    },
+   462→  })
+   463→
+   464→  // Delete mutation
+   465→  const deleteMutation = useMutation({
+   466→    mutationFn: (id: string) =>
+   467→      fetch(`/api/sales-invoices/${id}`, { method: 'DELETE' }).then(async r => {
+   468→        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error || 'فشل في الحذف') }
+   469→        return r.json()
+   470→      }),
+   471→    onSuccess: () => {
+   472→      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+   473→      queryClient.invalidateQueries({ queryKey: ['approved-timesheets'] })
+   474→      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
+   475→      setDeleteId(null)
+   476→    },
+   477→  })
+   478→
+   479→  // Status change mutation (revert to draft, cancel, send)
+   480→  const statusMutation = useMutation({
+   481→    mutationFn: ({ id, status }: { id: string; status: string }) =>
+   482→      fetch(`/api/sales-invoices/${id}`, {
+   483→        method: 'PATCH',
+   484→        headers: { 'Content-Type': 'application/json' },
+   485→        body: JSON.stringify({ status }),
+   486→      }).then(async r => {
+   487→        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error || 'فشل في تحديث الحالة') }
+   488→        return r.json()
+   489→      }),
+   490→    onSuccess: () => {
+   491→      queryClient.invalidateQueries({ queryKey: ['rental-invoices'] })
+   492→      queryClient.invalidateQueries({ queryKey: ['approved-timesheets'] })
+   493→      queryClient.invalidateQueries({ queryKey: ['equipment-timesheets'] })
+   494→      setActionId(null)
+   495→      setActionType(null)
+   496→    },
+   497→  })
+   498→
+   499→  // Handle status actions
+   500→  const handleRevertToDraft = (id: string) => {
+   501→    setActionId(id)
+   502→    setActionType('revert')
+   503→  }
+   504→
+   505→  const handleCancel = (id: string) => {
+   506→    setActionId(id)
+   507→    setActionType('cancel')
+   508→  }
+   509→
+   510→  const confirmAction = () => {
+   511→    if (!actionId || !actionType) return
+   512→    const status = actionType === 'revert' ? 'DRAFT' : 'CANCELLED'
+   513→    statusMutation.mutate({ id: actionId, status })
+   514→  }
+   515→
+   516→  // Filters
+   517→  const filtered = invoices.filter(inv => {
+   518→    const matchSearch = !search || inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
+   519→      inv.client?.name?.toLowerCase().includes(search.toLowerCase()) ||
+   520→      (inv.project?.name?.toLowerCase().includes(search.toLowerCase()))
+   521→    const matchStatus = statusFilter === 'all' || inv.status === statusFilter
+   522→    return matchSearch && matchStatus
+   523→  })
+   524→
+   525→  const totalRevenue = invoices.reduce((s, i) => s + (i.totalAmount ?? 0), 0)
+   526→  const totalPaid = invoices.reduce((s, i) => s + (i.paidAmount ?? 0), 0)
+   527→  const totalOutstanding = totalRevenue - totalPaid
+   528→
+   529→  const handleExport = () => {
+   530→    const csv = [
+   531→      [t('رقم الفاتورة', 'Invoice No'), t('العميل', 'Client'), t('المشروع', 'Project'), t('التاريخ', 'Date'), t('الإجمالي', 'Total'), t('المدفوع', 'Paid'), t('المتبقي', 'Outstanding'), t('الحالة', 'Status')].join(','),
+   532→      ...filtered.map(inv => [inv.invoiceNo, `"${inv.client?.name || ''}"`, `"${inv.project?.name || ''}"`, formatDate(inv.date, lang), Number(inv.totalAmount ?? 0).toFixed(2), Number(inv.paidAmount ?? 0).toFixed(2), (Number(inv.totalAmount ?? 0) - Number(inv.paidAmount ?? 0)).toFixed(2), inv.status].join(','))
+   533→    ].join('\n')
+   534→    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' })
+   535→    const link = document.createElement('a')
+   536→    link.href = URL.createObjectURL(blob)
+   537→    link.download = `rental-invoices-${new Date().toISOString().split('T')[0]}.csv`
+   538→    link.click()
+   539→  }
+   540→
+   541→  // ============ CREATE VIEW ============
+   542→  if (viewState.type === 'create') {
+   543→    return (
+   544→      <CreateRentalInvoicePage
+   545→        approvedTimesheets={approvedTimesheets}
+   546→        onBack={() => setViewState({ type: 'list' })}
+   547→      />
+   548→    )
+   549→  }
+   550→
+   551→  // ============ DETAIL VIEW ============
+   552→  if (viewState.type === 'detail') {
+   553→    const invoice = invoices.find(i => i.id === viewState.invoiceId)
+   554→    if (!invoice) {
+   555→      return (
+   556→        <div className="flex flex-col items-center gap-3 py-10">
+   557→          <p className="text-rose-600">{t('لم يتم العثور على الفاتورة', 'Invoice not found')}</p>
+   558→          <Button variant="outline" onClick={() => setViewState({ type: 'list' })}>{t('العودة', 'Back')}</Button>
+   559→        </div>
+   560→      )
+   561→    }
+   562→
+   563→    return (
+   564→      <div className="space-y-6">
+   565→        <div className="flex items-center gap-3">
+   566→          <Button variant="outline" size="icon" onClick={() => setViewState({ type: 'list' })}>
+   567→            <ArrowRight className="size-4" />
+   568→          </Button>
+   569→          <div className="flex-1">
+   570→            <div className="flex items-center gap-3">
+   571→              <h2 className="text-xl font-bold">{t('فاتورة إيجار', 'Rental Invoice')} {invoice.invoiceNo}</h2>
+   572→              <StatusBadge status={invoice.status} lang={lang} />
+   573→            </div>
+   574→            <p className="text-sm text-muted-foreground">{invoice.client?.name || '—'}</p>
+   575→          </div>
+   576→          <div className="flex items-center gap-2">
+   577→            <PrintButton type="rental-invoice" documentId={invoice.id} />
+   578→            {/* Status Actions */}
+   579→            {invoice.status === 'DRAFT' && (
+   580→              <Button variant="outline" size="sm" className="gap-1 text-blue-600" onClick={() => statusMutation.mutate({ id: invoice.id, status: 'SENT' })} disabled={statusMutation.isPending}>
+   581→                <Send className="size-4" /> {t('إرسال', 'Send')}
+   582→              </Button>
+   583→            )}
+   584→            {invoice.status !== 'DRAFT' && invoice.status !== 'CANCELLED' && (
+   585→              <Button variant="outline" size="sm" className="gap-1 text-amber-600" onClick={() => handleRevertToDraft(invoice.id)} disabled={statusMutation.isPending}>
+   586→                <RotateCcw className="size-4" /> {t('إرجاع كمسودة', 'Revert to Draft')}
+   587→              </Button>
+   588→            )}
+   589→            {invoice.status !== 'CANCELLED' && (
+   590→              <Button variant="outline" size="sm" className="gap-1 text-rose-600" onClick={() => handleCancel(invoice.id)} disabled={statusMutation.isPending}>
+   591→                <XCircle className="size-4" /> {t('إلغاء', 'Cancel')}
+   592→              </Button>
+   593→            )}
+   594→            {(invoice.status === 'DRAFT' || invoice.status === 'CANCELLED') && (
+   595→              <Button variant="outline" size="sm" className="gap-1 text-rose-600" onClick={() => setDeleteId(invoice.id)} disabled={deleteMutation.isPending}>
+   596→                <Trash2 className="size-4" /> {t('حذف', 'Delete')}
+   597→              </Button>
+   598→            )}
+   599→          </div>
+   600→        </div>
+   601→
+   602→        {/* Info Cards */}
+   603→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   604→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.client.ar, labels.client.en)}</p><p className="text-sm font-medium truncate">{invoice.client?.name || '—'}</p></CardContent></Card>
+   605→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.project.ar, labels.project.en)}</p><p className="text-sm font-medium truncate">{invoice.project?.name || '—'}</p></CardContent></Card>
+   606→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.date.ar, labels.date.en)}</p><p className="text-sm font-medium">{formatDate(invoice.date, lang)}</p></CardContent></Card>
+   607→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.dueDate.ar, labels.dueDate.en)}</p><p className="text-sm font-medium">{formatDate(invoice.dueDate, lang)}</p></CardContent></Card>
+   608→        </div>
+   609→
+   610→        {/* Rental Contract Info */}
+   611→        {(invoice.contractNo || invoice.salesOrderNo || invoice.equipmentName) && (
+   612→          <Card>
+   613→            <CardHeader className="pb-3"><CardTitle className="text-lg">{t('بيانات العقد', 'Contract Information')}</CardTitle></CardHeader>
+   614→            <CardContent>
+   615→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   616→                {invoice.contractNo && <div><span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span><p className="font-medium font-mono">{invoice.contractNo}</p></div>}
+   617→                {invoice.salesOrderNo && <div><span className="text-muted-foreground">{t(labels.salesOrderNo.ar, labels.salesOrderNo.en)}:</span><p className="font-medium font-mono">{invoice.salesOrderNo}</p></div>}
+   618→                {invoice.equipmentName && <div><span className="text-muted-foreground">{t(labels.equipment.ar, labels.equipment.en)}:</span><p className="font-medium">{invoice.equipmentName}</p></div>}
+   619→                {invoice.deliveryMonth && <div><span className="text-muted-foreground">{t(labels.deliveryMonth.ar, labels.deliveryMonth.en)}:</span><p className="font-medium">{invoice.deliveryMonth}</p></div>}
+   620→                {invoice.operatingHours !== null && invoice.operatingHours !== undefined && (
+   621→                  <div><span className="text-muted-foreground">{t(labels.operatingHours.ar, labels.operatingHours.en)}:</span><p className="font-medium">{formatNumber(invoice.operatingHours)} {t('ساعة', 'hrs')}</p></div>
+   622→                )}
+   623→                {invoice.hourlyRate !== null && invoice.hourlyRate !== undefined && (
+   624→                  <div><span className="text-muted-foreground">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}:</span><MoneyDisplay value={invoice.hourlyRate} lang={lang} size="sm" inline /></div>
+   625→                )}
+   626→              </div>
+   627→            </CardContent>
+   628→          </Card>
+   629→        )}
+   630→
+   631→        {/* Items Table */}
+   632→        <Card>
+   633→          <CardHeader><CardTitle className="text-lg">{t('بنود الإيجار', 'Rental Items')}</CardTitle></CardHeader>
+   634→          <CardContent className="px-0 pb-2">
+   635→            <div className="overflow-x-auto">
+   636→              <Table>
+   637→                <TableHeader>
+   638→                  <TableRow>
+   639→                    <TableHead className="text-right">{t('الوصف', 'Description')}</TableHead>
+   640→                    <TableHead className="text-right">{t('الكمية', 'Qty')}</TableHead>
+   641→                    <TableHead className="text-right">{t('سعر الوحدة', 'Unit Price')}</TableHead>
+   642→                    <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+   643→                  </TableRow>
+   644→                </TableHeader>
+   645→                <TableBody>
+   646→                  {invoice.items.map(item => (
+   647→                    <TableRow key={item.id}>
+   648→                      <TableCell>{item.description}</TableCell>
+   649→                      <TableCell>{formatNumber(item.quantity)}</TableCell>
+   650→                      <TableCell><MoneyDisplay value={item.unitPrice} lang={lang} size="sm" inline /></TableCell>
+   651→                      <TableCell className="font-semibold"><MoneyDisplay value={item.totalPrice} lang={lang} size="sm" inline bold /></TableCell>
+   652→                    </TableRow>
+   653→                  ))}
+   654→                  <TableRow className="bg-gray-50">
+   655→                    <TableCell colSpan={3} className="text-left font-medium">{t(labels.subtotal.ar, labels.subtotal.en)}</TableCell>
+   656→                    <TableCell className="font-semibold"><MoneyDisplay value={invoice.subtotal} lang={lang} size="sm" inline /></TableCell>
+   657→                  </TableRow>
+   658→                  {invoice.includeDelivery && (invoice.deliveryAmount ?? 0) > 0 && (
+   659→                    <TableRow className="bg-amber-50">
+   660→                      <TableCell colSpan={3} className="text-left font-medium text-amber-700">{t(labels.deliveryFees.ar, labels.deliveryFees.en)} {invoice.deliveryFeesTaxable ? `(${t('خاضعة للضريبة', 'Taxable')})` : `(${t('غير خاضعة', 'Not Taxable')})`}</TableCell>
+   661→                      <TableCell className="font-semibold text-amber-700"><MoneyDisplay value={invoice.deliveryAmount ?? 0} lang={lang} size="sm" inline /></TableCell>
+   662→                    </TableRow>
+   663→                  )}
+   664→                  <TableRow className="bg-gray-50">
+   665→                    <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({((invoice.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
+   666→                    <TableCell className="font-semibold"><MoneyDisplay value={invoice.vatAmount} lang={lang} size="sm" inline /></TableCell>
+   667→                  </TableRow>
+   668→                  <TableRow className="bg-emerald-50">
+   669→                    <TableCell colSpan={3} className="text-left font-bold text-emerald-700">{t(labels.total.ar, labels.total.en)}</TableCell>
+   670→                    <TableCell className="font-bold text-emerald-700"><MoneyDisplay value={invoice.totalAmount} lang={lang} size="md" inline bold /></TableCell>
+   671→                  </TableRow>
+   672→                  <TableRow className="bg-amber-50">
+   673→                    <TableCell colSpan={3} className="text-left font-medium text-amber-700">{t(labels.paid.ar, labels.paid.en)}</TableCell>
+   674→                    <TableCell className="font-medium text-amber-700"><MoneyDisplay value={invoice.paidAmount} lang={lang} size="sm" inline /></TableCell>
+   675→                  </TableRow>
+   676→                  <TableRow className="bg-rose-50">
+   677→                    <TableCell colSpan={3} className="text-left font-bold text-rose-700">{t(labels.outstanding.ar, labels.outstanding.en)}</TableCell>
+   678→                    <TableCell className="font-bold text-rose-700"><MoneyDisplay value={(invoice.totalAmount ?? 0) - (invoice.paidAmount ?? 0)} lang={lang} size="md" inline bold /></TableCell>
+   679→                  </TableRow>
+   680→                </TableBody>
+   681→              </Table>
+   682→            </div>
+   683→          </CardContent>
+   684→        </Card>
+   685→
+   686→        {invoice.notes && (
+   687→          <Card>
+   688→            <CardContent className="p-4">
+   689→              <p className="text-sm text-muted-foreground mb-1">{t(labels.notes.ar, labels.notes.en)}</p>
+   690→              <p className="text-sm">{invoice.notes}</p>
+   691→            </CardContent>
+   692→          </Card>
+   693→        )}
+   694→
+   695→        {/* Status Change Confirmation */}
+   696→        <AlertDialog open={!!actionId && !!actionType} onOpenChange={() => { setActionId(null); setActionType(null) }}>
+   697→          <AlertDialogContent>
+   698→            <AlertDialogHeader>
+   699→              <AlertDialogTitle>{actionType === 'revert' ? t('إرجاع الفاتورة كمسودة', 'Revert Invoice to Draft') : t('إلغاء الفاتورة', 'Cancel Invoice')}</AlertDialogTitle>
+   700→              <AlertDialogDescription>
+   701→                {actionType === 'revert'
+   702→                  ? t('هل أنت متأكد من إرجاع هذه الفاتورة كمسودة؟ سيتم إعادة سجل الساعات إلى حالة معتمد ويمكن إنشاء فاتورة جديدة.', 'Are you sure you want to revert this invoice to draft? The timesheet will be reverted to Approved status and a new invoice can be created.')
+   703→                  : t('هل أنت متأكد من إلغاء هذه الفاتورة؟ سيتم إعادة سجل الساعات إلى حالة معتمد.', 'Are you sure you want to cancel this invoice? The timesheet will be reverted to Approved status.')
+   704→                }
+   705→              </AlertDialogDescription>
+   706→            </AlertDialogHeader>
+   707→            <AlertDialogFooter>
+   708→              <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+   709→              <AlertDialogAction
+   710→                className={actionType === 'revert' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-rose-600 hover:bg-rose-700'}
+   711→                onClick={confirmAction}
+   712→                disabled={statusMutation.isPending}
+   713→              >
+   714→                {statusMutation.isPending ? t('جاري التنفيذ...', 'Processing...') : actionType === 'revert' ? t('إرجاع كمسودة', 'Revert to Draft') : t('إلغاء الفاتورة', 'Cancel Invoice')}
+   715→              </AlertDialogAction>
+   716→            </AlertDialogFooter>
+   717→          </AlertDialogContent>
+   718→        </AlertDialog>
+   719→      </div>
+   720→    )
+   721→  }
+   722→
+   723→  // ============ LIST VIEW ============
+   724→  return (
+   725→    <ModuleLayout
+   726→      title={labels.title}
+   727→      subtitle={labels.subtitle}
+   728→      actions={
+   729→        <>
+   730→          <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير', 'Export')}>
+   731→            <Download className="size-4" />
+   732→          </Button>
+   733→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
+   734→            <RefreshCw className="size-4" />
+   735→          </Button>
+   736→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   737→            <Plus className="size-4" /> {t(labels.newInvoice.ar, labels.newInvoice.en)}
+   738→          </Button>
+   739→        </>
+   740→      }
+   741→    >
+   742→      {/* Summary Cards */}
+   743→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   744→        <Card className="bg-emerald-50 border-emerald-200">
+   745→          <CardContent className="p-4">
+   746→            <p className="text-sm text-emerald-600">{t(labels.totalRevenue.ar, labels.totalRevenue.en)}</p>
+   747→            <MoneyDisplay value={totalRevenue} lang={lang} size="xl" bold className="text-emerald-700" />
+   748→          </CardContent>
+   749→        </Card>
+   750→        <Card className="bg-amber-50 border-amber-200">
+   751→          <CardContent className="p-4">
+   752→            <p className="text-sm text-amber-600">{t(labels.paid.ar, labels.paid.en)}</p>
+   753→            <MoneyDisplay value={totalPaid} lang={lang} size="xl" bold className="text-amber-700" />
+   754→          </CardContent>
+   755→        </Card>
+   756→        <Card className="bg-rose-50 border-rose-200">
+   757→          <CardContent className="p-4">
+   758→            <p className="text-sm text-rose-600">{t(labels.outstanding.ar, labels.outstanding.en)}</p>
+   759→            <MoneyDisplay value={totalOutstanding} lang={lang} size="xl" bold className="text-rose-700" />
+   760→          </CardContent>
+   761→        </Card>
+   762→      </div>
+   763→
+   764→      {/* Available Timesheets Notice */}
+   765→      {approvedTimesheets.length > 0 && (
+   766→        <Card className="bg-blue-50 border-blue-200">
+   767→          <CardContent className="p-3 flex items-center gap-3">
+   768→            <FileText className="size-5 text-blue-600" />
+   769→            <div>
+   770→              <p className="text-sm text-blue-700 font-medium">
+   771→                {t('سجلات ساعات معتمدة جاهزة للفاتورة', 'Approved timesheets ready for invoicing')}: {approvedTimesheets.length}
+   772→              </p>
+   773→              <Button variant="link" className="p-0 h-auto text-blue-700 text-sm" onClick={() => setViewState({ type: 'create' })}>
+   774→                {t('إنشاء فاتورة الآن', 'Create invoice now')} →
+   775→              </Button>
+   776→            </div>
+   777→          </CardContent>
+   778→        </Card>
+   779→      )}
+   780→
+   781→      {/* Filters */}
+   782→      <Card>
+   783→        <CardContent className="p-4">
+   784→          <div className="flex flex-col sm:flex-row gap-3">
+   785→            <div className="relative flex-1">
+   786→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   787→              <Input placeholder={t(labels.search.ar, labels.search.en)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   788→            </div>
+   789→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   790→              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t(labels.allStatus.ar, labels.allStatus.en)} /></SelectTrigger>
+   791→              <SelectContent>
+   792→                <SelectItem value="all">{t(labels.allStatus.ar, labels.allStatus.en)}</SelectItem>
+   793→                <SelectItem value="DRAFT">{t('مسودة', 'Draft')}</SelectItem>
+   794→                <SelectItem value="SENT">{t('مرسلة', 'Sent')}</SelectItem>
+   795→                <SelectItem value="PARTIALLY_PAID">{t('مدفوعة جزئياً', 'Partially Paid')}</SelectItem>
+   796→                <SelectItem value="PAID">{t('مدفوعة', 'Paid')}</SelectItem>
+   797→                <SelectItem value="OVERDUE">{t('متأخرة', 'Overdue')}</SelectItem>
+   798→                <SelectItem value="CANCELLED">{t('ملغاة', 'Cancelled')}</SelectItem>
+   799→              </SelectContent>
+   800→            </Select>
+   801→          </div>
+   802→        </CardContent>
+   803→      </Card>
+   804→
+   805→      {/* Table */}
+   806→      <Card>
+   807→        <CardContent className="p-0">
+   808→          {isLoading ? (
+   809→            <TableSkeleton />
+   810→          ) : isError ? (
+   811→            <div className="flex flex-col items-center gap-3 py-10">
+   812→              <p className="text-rose-600">{commonText.error[lang]}</p>
+   813→              <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   814→            </div>
+   815→          ) : filtered.length === 0 ? (
+   816→            <div className="flex flex-col items-center gap-3 py-10">
+   817→              <FileSpreadsheet className="size-12 text-gray-300" />
+   818→              <p className="text-muted-foreground">{t(labels.noInvoices.ar, labels.noInvoices.en)}</p>
+   819→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   820→                <Plus className="size-4 mr-1" /> {t(labels.newInvoice.ar, labels.newInvoice.en)}
+   821→              </Button>
+   822→            </div>
+   823→          ) : (
+   824→            <div className="overflow-x-auto">
+   825→              <Table>
+   826→                <TableHeader>
+   827→                  <TableRow>
+   828→                    <TableHead className="text-right">{t(labels.invoiceNo.ar, labels.invoiceNo.en)}</TableHead>
+   829→                    <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+   830→                    <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+   831→                    <TableHead className="text-right">{t(labels.equipment.ar, labels.equipment.en)}</TableHead>
+   832→                    <TableHead className="text-right">{t(labels.period.ar, labels.period.en)}</TableHead>
+   833→                    <TableHead className="text-right">{t(labels.total.ar, labels.total.en)}</TableHead>
+   834→                    <TableHead className="text-right">{t(labels.paid.ar, labels.paid.en)}</TableHead>
+   835→                    <TableHead className="text-right">{t(labels.status.ar, labels.status.en)}</TableHead>
+   836→                    <TableHead className="text-right">{t(labels.actions.ar, labels.actions.en)}</TableHead>
+   837→                  </TableRow>
+   838→                </TableHeader>
+   839→                <TableBody>
+   840→                  {filtered.map(inv => (
+   841→                    <TableRow key={inv.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })}>
+   842→                      <TableCell className="font-medium font-mono">{inv.invoiceNo}</TableCell>
+   843→                      <TableCell>{inv.client?.name || '—'}</TableCell>
+   844→                      <TableCell>{inv.project?.name || '—'}</TableCell>
+   845→                      <TableCell>{inv.equipmentName || '—'}</TableCell>
+   846→                      <TableCell>{inv.deliveryMonth || '—'}</TableCell>
+   847→                      <TableCell className="font-semibold"><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
+   848→                      <TableCell className="text-amber-700"><MoneyDisplay value={inv.paidAmount} lang={lang} size="sm" inline /></TableCell>
+   849→                      <TableCell><StatusBadge status={inv.status} lang={lang} /></TableCell>
+   850→                      <TableCell>
+   851→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   852→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })} title={t('عرض', 'View')}>
+   853→                            <Eye className="size-4" />
+   854→                          </Button>
+   855→                          <PrintButton type="rental-invoice" documentId={inv.id} size="icon" variant="ghost" className="size-8" />
+   856→                          {(inv.status === 'DRAFT' || inv.status === 'CANCELLED') && (
+   857→                            <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => setDeleteId(inv.id)} title={t('حذف', 'Delete')}>
+   858→                              <Trash2 className="size-4" />
+   859→                            </Button>
+   860→                          )}
+   861→                        </div>
+   862→                      </TableCell>
+   863→                    </TableRow>
+   864→                  ))}
+   865→                </TableBody>
+   866→              </Table>
+   867→            </div>
+   868→          )}
+   869→        </CardContent>
+   870→      </Card>
+   871→
+   872→      {/* Delete Confirmation */}
+   873→      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+   874→        <AlertDialogContent>
+   875→          <AlertDialogHeader>
+   876→            <AlertDialogTitle>{t(labels.deleteTitle.ar, labels.deleteTitle.en)}</AlertDialogTitle>
+   877→            <AlertDialogDescription>{t(labels.deleteConfirm.ar, labels.deleteConfirm.en)}</AlertDialogDescription>
+   878→          </AlertDialogHeader>
+   879→          <AlertDialogFooter>
+   880→            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+   881→            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+   882→              {commonText.delete[lang]}
+   883→            </AlertDialogAction>
+   884→          </AlertDialogFooter>
+   885→        </AlertDialogContent>
+   886→      </AlertDialog>
+   887→    </ModuleLayout>
+   888→  )
+   889→}
+   890→

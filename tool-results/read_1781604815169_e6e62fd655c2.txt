@@ -1,0 +1,818 @@
+  1100→  retentionRate   Decimal        @default(0)
+  1101→  status          ContractStatus @default(DRAFT)
+  1102→  description     String?
+  1103→  createdAt       DateTime       @default(now())
+  1104→  updatedAt       DateTime       @updatedAt
+  1105→
+  1106→  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+  1107→  project       Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  1108→
+  1109→  @@index([subcontractorId])
+  1110→  @@index([projectId])
+  1111→  @@index([status])
+  1112→  @@index([projectId, status])
+  1113→}
+  1114→
+  1115→// ============ SUBCONTRACTOR INVOICES ============
+  1116→
+  1117→model SubcontractorInvoice {
+  1118→  id              String        @id @default(cuid())
+  1119→  subcontractorId String
+  1120→  projectId       String?
+  1121→  invoiceNo       String        @unique
+  1122→  date            DateTime
+  1123→  amount          Decimal       @default(0)
+  1124→  vatRate         Decimal       @default(0.15)
+  1125→  vatAmount       Decimal       @default(0)
+  1126→  totalAmount     Decimal       @default(0)
+  1127→  paidAmount      Decimal       @default(0)
+  1128→  status          InvoiceStatus @default(DRAFT)
+  1129→  description     String?
+  1130→  journalEntryId  String?
+  1131→  createdAt       DateTime      @default(now())
+  1132→  updatedAt       DateTime      @updatedAt
+  1133→  deletedAt       DateTime?
+  1134→
+  1135→  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+  1136→  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  1137→
+  1138→  @@index([subcontractorId])
+  1139→  @@index([projectId])
+  1140→  @@index([status])
+  1141→  @@index([date])
+  1142→  @@index([subcontractorId, status])
+  1143→}
+  1144→
+  1145→// ============ EXPENSES ============
+  1146→
+  1147→model Expense {
+  1148→  id             String          @id @default(cuid())
+  1149→  projectId      String?
+  1150→  equipmentId    String? // ربط بالمعدة
+  1151→  expenseType    ExpenseType     @default(PROJECT)
+  1152→  activityType   String          @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
+  1153→  category       ExpenseCategory
+  1154→  description    String
+  1155→  amount         Decimal         @default(0)
+  1156→  vatRate        Decimal         @default(0.15)
+  1157→  vatAmount      Decimal         @default(0)
+  1158→  totalAmount    Decimal         @default(0)
+  1159→  date           DateTime
+  1160→  reference      String?
+  1161→  payFrom        String          @default("TREASURY")
+  1162→  attachmentPath String?
+  1163→  journalEntryId String?
+  1164→  createdAt      DateTime        @default(now())
+  1165→  updatedAt      DateTime        @updatedAt
+  1166→  deletedAt      DateTime?
+  1167→
+  1168→  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  1169→  equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  1170→
+  1171→  @@index([projectId])
+  1172→  @@index([equipmentId])
+  1173→  @@index([category])
+  1174→  @@index([date])
+  1175→  @@index([expenseType])
+  1176→}
+  1177→
+  1178→// ============ LABOR COSTS ============
+  1179→
+  1180→model LaborCost {
+  1181→  id          String   @id @default(cuid())
+  1182→  projectId   String
+  1183→  employeeId  String?  // ربط بالموظف
+  1184→  description String
+  1185→  workers     Int
+  1186→  days        Decimal  @default(0)
+  1187→  dailyRate   Decimal  @default(0)
+  1188→  totalAmount Decimal  @default(0)
+  1189→  date        DateTime
+  1190→  createdAt   DateTime @default(now())
+  1191→  updatedAt   DateTime @updatedAt
+  1192→
+  1193→  project  Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  1194→  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  1195→
+  1196→  @@index([projectId])
+  1197→  @@index([employeeId])
+  1198→  @@index([date])
+  1199→}
+  1200→
+  1201→// ============ EQUIPMENT ============
+  1202→
+  1203→model Equipment {
+  1204→  id              String              @id @default(cuid())
+  1205→  code            String              @unique
+  1206→  name            String
+  1207→  nameAr          String?
+  1208→  type            String?
+  1209→  model           String?
+  1210→  manufacturer    String?
+  1211→  manufactureYear Int?
+  1212→  plateNumber     String?
+  1213→  serialNumber    String?
+  1214→  status          EquipmentStatus     @default(AVAILABLE)
+  1215→  // ─── Ownership ───
+  1216→  ownershipType   EquipmentOwnershipType @default(COMPANY_OWNED)
+  1217→  supplierId      String?             // المورد (اختياري للشركة المملوكة، إلزامي للمستأجرة)
+  1218→  ownerId         String?             // مالك المعدة (للمعدات المملوكة للعميل)
+  1219→  purchasePrice   Decimal             @default(0)
+  1220→  sellingPrice    Decimal             @default(0)
+  1221→  hourlyRate      Decimal             @default(0)
+  1222→  dailyRate       Decimal             @default(0)
+  1223→  monthlyRate     Decimal             @default(0)
+  1224→  purchaseDate    DateTime?
+  1225→  warrantyExpiry  DateTime?
+  1226→  assetAccountId  String?             // حساب الأصل الثابت
+  1227→  assetAccountCode String?            // كود حساب الأصل (للعرض السريع)
+  1228→  isActive        Boolean             @default(true)
+  1229→  createdAt       DateTime            @default(now())
+  1230→  updatedAt       DateTime            @updatedAt
+  1231→
+  1232→  supplier         Supplier?                @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  1233→  assetAccount     Account?                 @relation("EquipmentAssetAccount", fields: [assetAccountId], references: [id], onDelete: SetNull)
+  1234→  usages           EquipmentUsage[]
+  1235→  maintenance      EquipmentMaintenance[]
+  1236→  fuelLogs         EquipmentFuelLog[]
+  1237→  rentals          EquipmentRental[]
+  1238→  expenses         EquipmentExpense[]
+  1239→  deliveryOrders   EquipmentDeliveryOrder[]
+  1240→  timesheets       Timesheet[]
+  1241→  operatorLogs     EquipmentOperation[]
+  1242→  purchaseInvoices PurchaseInvoice[]
+  1243→  costExpenses     Expense[] // المصروفات المرتبطة بالمعدة
+  1244→
+  1245→  @@index([supplierId])
+  1246→  @@index([status])
+  1247→  @@index([isActive])
+  1248→  @@index([ownershipType])
+  1249→}
+  1250→
+  1251→model EquipmentOperation {
+  1252→  id          String   @id @default(cuid())
+  1253→  equipmentId String
+  1254→  operatorId  String?
+  1255→  projectId   String?
+  1256→  date        DateTime
+  1257→  hours       Decimal  @default(0)
+  1258→  notes       String?
+  1259→  createdAt   DateTime @default(now())
+  1260→  updatedAt   DateTime @updatedAt
+  1261→
+  1262→  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1263→  operator  Employee? @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  1264→  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  1265→
+  1266→  @@index([equipmentId])
+  1267→  @@index([operatorId])
+  1268→  @@index([projectId])
+  1269→  @@index([date])
+  1270→}
+  1271→
+  1272→model EquipmentUsage {
+  1273→  id          String   @id @default(cuid())
+  1274→  equipmentId String
+  1275→  projectId   String
+  1276→  date        DateTime
+  1277→  hours       Decimal  @default(0)
+  1278→  description String?
+  1279→  cost        Decimal  @default(0)
+  1280→  createdAt   DateTime @default(now())
+  1281→  updatedAt   DateTime @updatedAt
+  1282→
+  1283→  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1284→  project   Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  1285→
+  1286→  @@index([equipmentId])
+  1287→  @@index([projectId])
+  1288→  @@index([date])
+  1289→}
+  1290→
+  1291→model EquipmentMaintenance {
+  1292→  id             String    @id @default(cuid())
+  1293→  equipmentId    String
+  1294→  date           DateTime
+  1295→  description    String
+  1296→  cost           Decimal   @default(0)
+  1297→  supplierId     String?
+  1298→  nextDate       DateTime?
+  1299→  journalEntryId String?
+  1300→  createdAt      DateTime  @default(now())
+  1301→  updatedAt      DateTime  @updatedAt
+  1302→
+  1303→  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1304→  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  1305→
+  1306→  @@index([equipmentId])
+  1307→  @@index([supplierId])
+  1308→  @@index([date])
+  1309→}
+  1310→
+  1311→model EquipmentFuelLog {
+  1312→  id             String   @id @default(cuid())
+  1313→  equipmentId    String
+  1314→  projectId      String?
+  1315→  date           DateTime
+  1316→  liters         Decimal  @default(0)
+  1317→  costPerLiter   Decimal  @default(0)
+  1318→  totalCost      Decimal  @default(0)
+  1319→  journalEntryId String?
+  1320→  createdAt      DateTime @default(now())
+  1321→  updatedAt      DateTime @updatedAt
+  1322→
+  1323→  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1324→  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  1325→
+  1326→  @@index([equipmentId])
+  1327→  @@index([projectId])
+  1328→  @@index([date])
+  1329→}
+  1330→
+  1331→model EquipmentCost {
+  1332→  id          String   @id @default(cuid())
+  1333→  projectId   String
+  1334→  description String
+  1335→  amount      Decimal  @default(0)
+  1336→  date        DateTime
+  1337→  createdAt   DateTime @default(now())
+  1338→  updatedAt   DateTime @updatedAt
+  1339→
+  1340→  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  1341→
+  1342→  @@index([projectId])
+  1343→  @@index([date])
+  1344→}
+  1345→
+  1346→// ============ EQUIPMENT RENTAL ============
+  1347→
+  1348→model EquipmentRental {
+  1349→  id                      String    @id @default(cuid())
+  1350→  contractId              String    @unique
+  1351→  equipmentId             String
+  1352→  clientId                String
+  1353→  projectId               String?
+  1354→  startDate               DateTime
+  1355→  endDate                 DateTime?
+  1356→  // ─── Pricing ───
+  1357→  pricingType             String    @default("HOURLY") // HOURLY, DAILY, MONTHLY, LUMP_SUM
+  1358→  referenceRate           Decimal   @default(0) // القيمة الشهرية المرجعية
+  1359→  referenceHours          Decimal   @default(0) // ساعات التسعير المرجعية
+  1360→  hourlyRate              Decimal   @default(0) // محسوب تلقائياً
+  1361→  dailyRate               Decimal   @default(0) // السعر اليومي
+  1362→  monthlyRate             Decimal   @default(0) // السعر الشهري
+  1363→  lumpSumAmount           Decimal   @default(0) // المبلغ المقطوع
+  1364→  // ─── Work Location ───
+  1365→  workCity                String? // مدينة المشروع
+  1366→  workLocation            String? // موقع العمل
+  1367→  siteSupervisor          String? // اسم المسؤول بالموقع
+  1368→  siteSupervisorPhone     String? // جوال المسؤول
+  1369→  // ─── Delivery & Transport ───
+  1370→  deliveryFeesType        String?   @default("NONE") // NONE, FIXED, ONE_WAY, ROUND_TRIP, BY_DISTANCE
+  1371→  deliveryFees            Decimal   @default(0)
+  1372→  deliveryFeesTaxable     Boolean   @default(true)
+  1373→  // ─── Operation & Responsibilities ───
+  1374→  operationMode           String    @default("WITHOUT_DRIVER") // WITHOUT_DRIVER, WITH_DRIVER, WITH_CREW
+  1375→  fuelResponsibility      String?   @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  1376→  insuranceResponsibility String?   @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  1377→  // ─── Reference Documents ───
+  1378→  salesOrderNo            String? // رقم طلب البيع (تلقائي)
+  1379→  purchaseOrderNo         String? // رقم طلب شراء العميل
+  1380→  quotationNo             String? // رقم عرض السعر
+  1381→  // ─── Status & Terms ───
+  1382→  status                  String    @default("DRAFT") // DRAFT, UNDER_REVIEW, ACTIVE, EXPIRED, CANCELLED
+  1383→  paymentDuration         String? // مدة السداد بالأيام
+  1384→  additionalTerms         String? // شروط إضافية
+  1385→  notes                   String?
+  1386→  totalAmount             Decimal   @default(0)
+  1387→  createdAt               DateTime  @default(now())
+  1388→  updatedAt               DateTime  @updatedAt
+  1389→
+  1390→  contract       Contract                 @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  1391→  equipment      Equipment                @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1392→  client         Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  1393→  project        Project?                 @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  1394→  deliveryOrders EquipmentDeliveryOrder[]
+  1395→  timesheets     Timesheet[]
+  1396→
+  1397→  @@index([contractId])
+  1398→  @@index([equipmentId])
+  1399→  @@index([clientId])
+  1400→  @@index([projectId])
+  1401→  @@index([status])
+  1402→  @@index([clientId, status])
+  1403→  @@index([equipmentId, status])
+  1404→}
+  1405→
+  1406→model EquipmentDeliveryOrder {
+  1407→  id           String              @id @default(cuid())
+  1408→  orderNo      String              @unique
+  1409→  rentalId     String?
+  1410→  equipmentId  String
+  1411→  clientId     String?
+  1412→  projectId    String?
+  1413→  site         String?
+  1414→  deliveryDate DateTime
+  1415→  returnDate   DateTime?
+  1416→  status       DeliveryOrderStatus @default(PENDING)
+  1417→  notes        String?
+  1418→  createdAt    DateTime            @default(now())
+  1419→  updatedAt    DateTime            @updatedAt
+  1420→  deletedAt    DateTime?
+  1421→
+  1422→  equipment Equipment        @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1423→  rental    EquipmentRental? @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  1424→  client    Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  1425→  project   Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  1426→
+  1427→  @@index([rentalId])
+  1428→  @@index([equipmentId])
+  1429→  @@index([clientId])
+  1430→  @@index([projectId])
+  1431→  @@index([status])
+  1432→  @@index([deliveryDate])
+  1433→}
+  1434→
+  1435→model EquipmentExpense {
+  1436→  id             String          @id @default(cuid())
+  1437→  equipmentId    String
+  1438→  category       ExpenseCategory
+  1439→  description    String
+  1440→  amount         Decimal         @default(0)
+  1441→  date           DateTime
+  1442→  reference      String?
+  1443→  journalEntryId String?
+  1444→  createdAt      DateTime        @default(now())
+  1445→  updatedAt      DateTime        @updatedAt
+  1446→
+  1447→  equipment Equipment @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1448→
+  1449→  @@index([equipmentId])
+  1450→  @@index([category])
+  1451→  @@index([date])
+  1452→}
+  1453→
+  1454→// ============ TIMESHEETS ============
+  1455→// يمنع إنشاء فاتورة تأجير يدوياً - الفاتورة تنشأ من التايم شيت فقط
+  1456→
+  1457→model Timesheet {
+  1458→  id             String          @id @default(cuid())
+  1459→  rentalId       String
+  1460→  contractId     String
+  1461→  projectId      String
+  1462→  equipmentId    String
+  1463→  month          Int
+  1464→  year           Int
+  1465→  operatingHours Decimal         @default(0)
+  1466→  status         TimesheetStatus @default(DRAFT)
+  1467→  approvedDate   DateTime?
+  1468→  notes          String?
+  1469→  // ─── Invoicing Control ───
+  1470→  invoiced       Boolean         @default(false)
+  1471→  invoiceId      String?         // ربط بالفاتورة بعد إصدارها
+  1472→  createdAt      DateTime        @default(now())
+  1473→  updatedAt      DateTime        @updatedAt
+  1474→
+  1475→  contract  Contract        @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  1476→  project   Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  1477→  equipment Equipment       @relation(fields: [equipmentId], references: [id], onDelete: Restrict)
+  1478→  rental    EquipmentRental @relation(fields: [rentalId], references: [id], onDelete: Restrict)
+  1479→  invoice   SalesInvoice?
+  1480→
+  1481→  @@index([rentalId])
+  1482→  @@index([contractId])
+  1483→  @@index([projectId])
+  1484→  @@index([equipmentId])
+  1485→  @@index([status])
+  1486→  @@index([year, month])
+  1487→  @@index([invoiced])
+  1488→}
+  1489→
+  1490→// ============ PETTY CASH & ADVANCES ============
+  1491→
+  1492→model PettyCash {
+  1493→  id             String   @id @default(cuid())
+  1494→  branchId       String
+  1495→  description    String
+  1496→  amount         Decimal  @default(0)
+  1497→  date           DateTime
+  1498→  category       String?
+  1499→  reference      String?
+  1500→  journalEntryId String?
+  1501→  createdAt      DateTime @default(now())
+  1502→  updatedAt      DateTime @updatedAt
+  1503→  deletedAt      DateTime?
+  1504→
+  1505→  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  1506→
+  1507→  @@index([branchId])
+  1508→  @@index([date])
+  1509→  @@index([category])
+  1510→}
+  1511→
+  1512→model EmployeeAdvance {
+  1513→  id             String        @id @default(cuid())
+  1514→  employeeId     String
+  1515→  amount         Decimal       @default(0)
+  1516→  date           DateTime
+  1517→  settledAmount  Decimal       @default(0)
+  1518→  status         AdvanceStatus @default(PENDING)
+  1519→  description    String?
+  1520→  journalEntryId String?
+  1521→  createdAt      DateTime      @default(now())
+  1522→  updatedAt      DateTime      @updatedAt
+  1523→  deletedAt      DateTime?
+  1524→
+  1525→  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  1526→
+  1527→  @@index([employeeId])
+  1528→  @@index([status])
+  1529→  @@index([date])
+  1530→}
+  1531→
+  1532→// ============ INVENTORY ============
+  1533→
+  1534→model InventoryItem {
+  1535→  id            String            @id @default(cuid())
+  1536→  code          String            @unique
+  1537→  name          String
+  1538→  nameAr        String?
+  1539→  itemType      InventoryItemType @default(PRODUCT)
+  1540→  unit          String
+  1541→  purchasePrice Decimal           @default(0)
+  1542→  sellingPrice  Decimal           @default(0)
+  1543→  quantity      Decimal           @default(0)
+  1544→  minQuantity   Decimal           @default(0)
+  1545→  warehouseId   String
+  1546→  category      String?
+  1547→  isActive      Boolean           @default(true)
+  1548→  createdAt     DateTime          @default(now())
+  1549→  updatedAt     DateTime          @updatedAt
+  1550→
+  1551→  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  1552→
+  1553→  @@index([warehouseId])
+  1554→  @@index([category])
+  1555→  @@index([isActive])
+  1556→}
+  1557→
+  1558→// ============ DOUBLE ENTRY ACCOUNTING ============
+  1559→
+  1560→model Account {
+  1561→  id            String   @id @default(cuid())
+  1562→  code          String   @unique
+  1563→  name          String
+  1564→  nameAr        String?
+  1565→  type          String
+  1566→  parentId      String?
+  1567→  parentCode    String?  // كود الحساب الأب - للاستعلام الهرمي السريع
+  1568→  isActive      Boolean  @default(true)
+  1569→  activityType  String? // CONSTRUCTION | EQUIPMENT_RENTAL | BOTH
+  1570→  accountRole   String?  // الدور الوظيفي: CASH, BANK, CUSTOMER_AR, SUPPLIER_AP, RENTAL_REVENUE, PROJECT_REVENUE, FUEL_EXPENSE, MAINTENANCE_EXPENSE, PAYROLL_EXPENSE, FIXED_ASSET, VAT_INPUT, VAT_OUTPUT, etc.
+  1571→  isSystem      Boolean  @default(false)
+  1572→  allowPosting  Boolean  @default(true)
+  1573→  level         Int      @default(0)
+  1574→  description   String?
+  1575→  descriptionAr String?
+  1576→  createdAt     DateTime @default(now())
+  1577→  updatedAt     DateTime @updatedAt
+  1578→
+  1579→  parent             Account?      @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  1580→  children           Account[]     @relation("AccountHierarchy")
+  1581→  journalLines       JournalLine[]
+  1582→  fixedAssets        FixedAsset[]  @relation("FixedAssetAccount")
+  1583→  depExpenseAccounts FixedAsset[]  @relation("FixedAssetDepExpense")
+  1584→  accumDepAccounts   FixedAsset[]  @relation("FixedAssetAccumDep")
+  1585→  bankAccounts       BankAccount[]
+  1586→  employees          Employee[]    // الموظفون المرتبطون بهذا الحساب كمصروف رواتب
+  1587→  equipmentAssets    Equipment[]   @relation("EquipmentAssetAccount")
+  1588→
+  1589→  @@index([parentId])
+  1590→  @@index([type])
+  1591→  @@index([isActive])
+  1592→  @@index([activityType])
+  1593→  @@index([accountRole])
+  1594→  @@index([parentCode])
+  1595→}
+  1596→
+  1597→model JournalEntry {
+  1598→  id              String             @id @default(cuid())
+  1599→  entryNo         String             @unique
+  1600→  date            DateTime
+  1601→  description     String?
+  1602→  status          JournalEntryStatus @default(POSTED)
+  1603→  sourceType      String? // SALES_INVOICE, PURCHASE_INVOICE, EXPENSE, CLIENT_PAYMENT, SUPPLIER_PAYMENT, etc.
+  1604→  sourceId        String?
+  1605→  isReversal      Boolean            @default(false)
+  1606→  reversedEntryId String?
+  1607→  isSystem        Boolean            @default(false) // قيد تلقائي من النظام
+  1608→  createdAt       DateTime           @default(now())
+  1609→  updatedAt       DateTime           @updatedAt
+  1610→  deletedAt       DateTime?
+  1611→
+  1612→  lines         JournalLine[]
+  1613→  reversedEntry JournalEntry?  @relation("JournalEntryReversal", fields: [reversedEntryId], references: [id], onDelete: SetNull)
+  1614→  reversedBy    JournalEntry[] @relation("JournalEntryReversal")
+  1615→
+  1616→  @@index([status])
+  1617→  @@index([date])
+  1618→  @@index([sourceType, sourceId])
+  1619→  @@index([reversedEntryId])
+  1620→  @@index([isSystem])
+  1621→}
+  1622→
+  1623→model JournalLine {
+  1624→  id             String    @id @default(cuid())
+  1625→  journalEntryId String
+  1626→  accountId      String
+  1627→  costCenterId   String?
+  1628→  debit          Decimal   @default(0)
+  1629→  credit         Decimal   @default(0)
+  1630→  description    String?
+  1631→  createdAt      DateTime  @default(now())
+  1632→  updatedAt      DateTime  @updatedAt
+  1633→  deletedAt      DateTime?
+  1634→
+  1635→  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  1636→  account      Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  1637→  costCenter   CostCenter?  @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
+  1638→
+  1639→  @@index([journalEntryId])
+  1640→  @@index([accountId])
+  1641→  @@index([costCenterId])
+  1642→}
+  1643→
+  1644→// ============ VAT / TAX DECLARATION ============
+  1645→
+  1646→model VATReturn {
+  1647→  id                 String          @id @default(cuid())
+  1648→  year               Int
+  1649→  quarter            Int
+  1650→  period             String          @unique
+  1651→  totalSales         Decimal         @default(0)
+  1652→  outputVat          Decimal         @default(0)
+  1653→  totalPurchases     Decimal         @default(0)
+  1654→  inputVat           Decimal         @default(0)
+  1655→  netVat             Decimal         @default(0)
+  1656→  salesInvoiceIds    String?
+  1657→  purchaseInvoiceIds String?
+  1658→  expenseIds         String?
+  1659→  status             VATReturnStatus @default(DRAFT)
+  1660→  filedDate          DateTime?
+  1661→  paymentDate        DateTime?
+  1662→  paymentReference   String?
+  1663→  journalEntryId     String?
+  1664→  createdAt          DateTime        @default(now())
+  1665→  updatedAt          DateTime        @updatedAt
+  1666→
+  1667→  @@index([status])
+  1668→  @@index([year, quarter])
+  1669→}
+  1670→
+  1671→// ============ CLIENT PAYMENTS ============
+  1672→
+  1673→model ClientPayment {
+  1674→  id                  String    @id @default(cuid())
+  1675→  clientId            String
+  1676→  invoiceId           String?
+  1677→  amount              Decimal   @default(0)
+  1678→  date                DateTime
+  1679→  receivedIn          String    @default("TREASURY")
+  1680→  receivingAccountId  String?
+  1681→  receivingAccountCode String?
+  1682→  receivingAccountName String?
+  1683→  reference           String?
+  1684→  notes               String?
+  1685→  journalEntryId      String?
+  1686→  createdAt           DateTime  @default(now())
+  1687→  updatedAt           DateTime  @updatedAt
+  1688→  deletedAt           DateTime?
+  1689→
+  1690→  client  Client        @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  1691→  invoice SalesInvoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  1692→
+  1693→  @@index([clientId])
+  1694→  @@index([invoiceId])
+  1695→  @@index([date])
+  1696→  @@index([clientId, date])
+  1697→}
+  1698→
+  1699→// ============ SUPPLIER PAYMENTS ============
+  1700→
+  1701→model SupplierPayment {
+  1702→  id                String    @id @default(cuid())
+  1703→  supplierId        String
+  1704→  invoiceId         String?
+  1705→  amount            Decimal   @default(0)
+  1706→  date              DateTime
+  1707→  paidFrom          String    @default("TREASURY")
+  1708→  payingAccountId   String?
+  1709→  payingAccountCode String?
+  1710→  payingAccountName String?
+  1711→  bankAccount       String?
+  1712→  paymentMethod     String?
+  1713→  reference         String?
+  1714→  notes             String?
+  1715→  journalEntryId    String?
+  1716→  createdAt         DateTime  @default(now())
+  1717→  updatedAt         DateTime  @updatedAt
+  1718→  deletedAt         DateTime?
+  1719→
+  1720→  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  1721→
+  1722→  @@index([supplierId])
+  1723→  @@index([date])
+  1724→  @@index([supplierId, date])
+  1725→}
+  1726→
+  1727→// ============ RESOURCE DISTRIBUTION ============
+  1728→
+  1729→model ResourceAllocation {
+  1730→  id           String    @id @default(cuid())
+  1731→  projectId    String
+  1732→  resourceType String // EMPLOYEE, TEAM, EQUIPMENT
+  1733→  resourceId   String // ID of Employee/WorkTeam/Equipment
+  1734→  startDate    DateTime
+  1735→  endDate      DateTime?
+  1736→  notes        String?
+  1737→  createdAt    DateTime  @default(now())
+  1738→  updatedAt    DateTime  @updatedAt
+  1739→
+  1740→  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  1741→
+  1742→  @@index([projectId])
+  1743→  @@index([resourceType])
+  1744→}
+  1745→
+  1746→// ============ FIXED ASSETS ============
+  1747→
+  1748→model FixedAsset {
+  1749→  id                      String   @id @default(cuid())
+  1750→  assetCode               String   @unique
+  1751→  name                    String
+  1752→  nameAr                  String?
+  1753→  category                String // EQUIPMENT, VEHICLE, OFFICE_EQUIPMENT, SOFTWARE, OTHER
+  1754→  acquisitionDate         DateTime
+  1755→  acquisitionCost         Decimal  @default(0)
+  1756→  residualValue           Decimal  @default(0)
+  1757→  usefulLifeMonths        Int
+  1758→  depreciationMethod      String   @default("STRAIGHT_LINE")
+  1759→  accumulatedDepreciation Decimal  @default(0)
+  1760→  netBookValue            Decimal  @default(0)
+  1761→  status                  String   @default("ACTIVE") // ACTIVE, SOLD, DISPOSED, FULLY_DEPRECIATED
+  1762→  accountId               String? // Fixed Asset Account
+  1763→  depExpenseAccountId     String? // Depreciation Expense Account
+  1764→  accumDepAccountId       String? // Accumulated Depreciation Account
+  1765→  journalEntryId          String? // Acquisition journal entry
+  1766→  createdAt               DateTime @default(now())
+  1767→  updatedAt               DateTime @updatedAt
+  1768→
+  1769→  account           Account?            @relation("FixedAssetAccount", fields: [accountId], references: [id], onDelete: SetNull)
+  1770→  depExpenseAccount Account?            @relation("FixedAssetDepExpense", fields: [depExpenseAccountId], references: [id], onDelete: SetNull)
+  1771→  accumDepAccount   Account?            @relation("FixedAssetAccumDep", fields: [accumDepAccountId], references: [id], onDelete: SetNull)
+  1772→  depreciations     AssetDepreciation[]
+  1773→
+  1774→  @@index([status])
+  1775→  @@index([category])
+  1776→  @@index([accountId])
+  1777→  @@index([depExpenseAccountId])
+  1778→  @@index([accumDepAccountId])
+  1779→}
+  1780→
+  1781→model AssetDepreciation {
+  1782→  id                 String   @id @default(cuid())
+  1783→  fixedAssetId       String
+  1784→  year               Int
+  1785→  month              Int
+  1786→  depreciationAmount Decimal  @default(0)
+  1787→  journalEntryId     String?
+  1788→  createdAt          DateTime @default(now())
+  1789→  updatedAt          DateTime @updatedAt
+  1790→
+  1791→  fixedAsset FixedAsset @relation(fields: [fixedAssetId], references: [id], onDelete: Cascade)
+  1792→
+  1793→  @@index([fixedAssetId])
+  1794→  @@index([year, month])
+  1795→}
+  1796→
+  1797→// ============ PROVISIONS ============
+  1798→
+  1799→model Provision {
+  1800→  id             String    @id @default(cuid())
+  1801→  code           String    @unique
+  1802→  name           String
+  1803→  nameAr         String?
+  1804→  type           String // END_OF_SERVICE, WARRANTY, MAINTENANCE, OTHER
+  1805→  totalAmount    Decimal   @default(0)
+  1806→  currentBalance Decimal   @default(0)
+  1807→  startDate      DateTime
+  1808→  endDate        DateTime?
+  1809→  status         String    @default("ACTIVE") // ACTIVE, RELEASED, CLOSED
+  1810→  journalEntryId String?
+  1811→  createdAt      DateTime  @default(now())
+  1812→  updatedAt      DateTime  @updatedAt
+  1813→
+  1814→  movements ProvisionMovement[]
+  1815→
+  1816→  @@index([status])
+  1817→  @@index([type])
+  1818→}
+  1819→
+  1820→model ProvisionMovement {
+  1821→  id             String   @id @default(cuid())
+  1822→  provisionId    String
+  1823→  amount         Decimal  @default(0)
+  1824→  movementType   String // INCREASE, DECREASE, RELEASE
+  1825→  date           DateTime
+  1826→  description    String?
+  1827→  journalEntryId String?
+  1828→  createdAt      DateTime @default(now())
+  1829→  updatedAt      DateTime @updatedAt
+  1830→
+  1831→  provision Provision @relation(fields: [provisionId], references: [id], onDelete: Cascade)
+  1832→
+  1833→  @@index([provisionId])
+  1834→  @@index([date])
+  1835→}
+  1836→
+  1837→// ============ BANK ACCOUNTS & RECONCILIATION ============
+  1838→
+  1839→model BankAccount {
+  1840→  id            String   @id @default(cuid())
+  1841→  bankName      String
+  1842→  accountName   String
+  1843→  accountNumber String
+  1844→  iban          String?
+  1845→  currency      String   @default("SAR")
+  1846→  accountId     String? // Link to Chart of Accounts
+  1847→  isActive      Boolean  @default(true)
+  1848→  createdAt     DateTime @default(now())
+  1849→  updatedAt     DateTime @updatedAt
+  1850→
+  1851→  account         Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  1852→  transactions    BankTransaction[]
+  1853→  reconciliations BankReconciliation[]
+  1854→
+  1855→  @@index([accountId])
+  1856→  @@index([isActive])
+  1857→}
+  1858→
+  1859→model BankTransaction {
+  1860→  id              String   @id @default(cuid())
+  1861→  bankAccountId   String
+  1862→  date            DateTime
+  1863→  description     String?
+  1864→  reference       String?
+  1865→  amount          Decimal  @default(0)
+  1866→  transactionType String // DEPOSIT, WITHDRAWAL
+  1867→  reconciled      Boolean  @default(false)
+  1868→  journalEntryId  String?
+  1869→  createdAt       DateTime @default(now())
+  1870→  updatedAt       DateTime @updatedAt
+  1871→
+  1872→  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  1873→
+  1874→  @@index([bankAccountId])
+  1875→  @@index([date])
+  1876→  @@index([reconciled])
+  1877→}
+  1878→
+  1879→model BankReconciliation {
+  1880→  id            String    @id @default(cuid())
+  1881→  bankAccountId String
+  1882→  year          Int
+  1883→  month         Int
+  1884→  bookBalance   Decimal   @default(0)
+  1885→  bankBalance   Decimal   @default(0)
+  1886→  difference    Decimal   @default(0)
+  1887→  status        String    @default("DRAFT") // DRAFT, COMPLETED
+  1888→  completedAt   DateTime?
+  1889→  notes         String?
+  1890→  createdAt     DateTime  @default(now())
+  1891→  updatedAt     DateTime  @updatedAt
+  1892→
+  1893→  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  1894→
+  1895→  @@index([bankAccountId])
+  1896→  @@index([year, month])
+  1897→}
+  1898→
+  1899→// ============ PERIOD CLOSING ============
+  1900→
+  1901→model PeriodClosing {
+  1902→  id             String   @id @default(cuid())
+  1903→  year           Int
+  1904→  month          Int
+  1905→  type           String   @default("MONTHLY") // MONTHLY, YEARLY
+  1906→  status         String   @default("CLOSED") // CLOSED, OPEN, REOPENED
+  1907→  closingEntryId String? // Journal entry for closing
+  1908→  closedAt       DateTime @default(now())
+  1909→  closedBy       String?
+  1910→  createdAt      DateTime @default(now())
+  1911→  updatedAt      DateTime @updatedAt
+  1912→
+  1913→  @@unique([year, month, type])
+  1914→  @@index([status])
+  1915→  @@index([year, month])
+  1916→}
+  1917→

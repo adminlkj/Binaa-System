@@ -1,0 +1,668 @@
+     1→import { db } from '@/lib/db'
+     2→import { NextResponse } from 'next/server'
+     3→import { getFinancialSummaryFromGL } from '@/lib/accounting/engine'
+     4→
+     5→// Helper: safely convert Prisma Decimal (or null) to a JavaScript number.
+     6→// Prisma Decimal.valueOf() returns a string, so using `+` between two
+     7→// Decimal values causes string concatenation instead of numeric addition.
+     8→// ALWAYS use this helper when performing arithmetic on Decimal fields.
+     9→function toNum(value: { valueOf(): string | number } | null | undefined): number {
+    10→  return Number(value ?? 0)
+    11→}
+    12→
+    13→// Inline account balance calculation to avoid importing the heavy accounting engine
+    14→async function getAccountBalance(accountCode: string): Promise<number> {
+    15→  const account = await db.account.findUnique({ where: { code: accountCode } })
+    16→  if (!account) return 0
+    17→
+    18→  const result = await db.journalLine.aggregate({
+    19→    _sum: { debit: true, credit: true },
+    20→    where: {
+    21→      accountId: account.id,
+    22→      journalEntry: { status: 'POSTED' },
+    23→    },
+    24→  })
+    25→
+    26→  const totalDebit = toNum(result._sum.debit)
+    27→  const totalCredit = toNum(result._sum.credit)
+    28→  const normalBalanceMap: Record<string, 'DEBIT' | 'CREDIT'> = {
+    29→    ASSET: 'DEBIT', LIABILITY: 'CREDIT', EQUITY: 'CREDIT', REVENUE: 'CREDIT', EXPENSE: 'DEBIT',
+    30→  }
+    31→  const normalBalance = normalBalanceMap[account.type] || 'DEBIT'
+    32→
+    33→  const debit = totalDebit
+    34→  const credit = totalCredit
+    35→  return normalBalance === 'DEBIT' ? debit - credit : credit - debit
+    36→}
+    37→
+    38→export async function GET() {
+    39→  try {
+    40→    const now = new Date()
+    41→
+    42→    // ===== 1. Active Projects count & Total Contract Value =====
+    43→    const activeProjects = await db.project.count({
+    44→      where: { status: { in: ['ACTIVE', 'PLANNING'] } },
+    45→    })
+    46→    const totalProjects = await db.project.count()
+    47→    const contractAgg = await db.contract.aggregate({
+    48→      _sum: { totalValue: true },
+    49→      where: { status: 'ACTIVE' },
+    50→    })
+    51→    const totalContractValue = toNum(contractAgg._sum.totalValue)
+    52→
+    53→    // ===== 2. Active Employees count =====
+    54→    const activeEmployees = await db.employee.count({
+    55→      where: { status: 'ACTIVE' },
+    56→    })
+    57→
+    58→    // ===== 3. Equipment count by status =====
+    59→    const equipmentByStatus = await db.equipment.groupBy({
+    60→      by: ['status'],
+    61→      _count: { status: true },
+    62→    })
+    63→    const equipmentStatusMap: Record<string, number> = {}
+    64→    let totalEquipment = 0
+    65→    for (const e of equipmentByStatus) {
+    66→      equipmentStatusMap[e.status] = e._count.status
+    67→      totalEquipment += e._count.status
+    68→    }
+    69→
+    70→    // ===== 4. Monthly Revenue & Expenses (last 6 months) =====
+    71→    const months: { key: string; labelAr: string; labelEn: string; year: number; month: number }[] = []
+    72→    for (let i = 5; i >= 0; i--) {
+    73→      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    74→      const y = d.getFullYear()
+    75→      const m = d.getMonth() + 1
+    76→      const monthNamesAr = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+    77→      const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    78→      months.push({
+    79→        key: `${y}-${String(m).padStart(2, '0')}`,
+    80→        labelAr: `${monthNamesAr[m - 1]} ${y}`,
+    81→        labelEn: `${monthNamesEn[m - 1]} ${y}`,
+    82→        year: y,
+    83→        month: m,
+    84→      })
+    85→    }
+    86→
+    87→    const monthlyData = await Promise.all(
+    88→      months.map(async (m) => {
+    89→        const startDate = new Date(m.year, m.month - 1, 1)
+    90→        const endDate = new Date(m.year, m.month, 1)
+    91→
+    92→        // Revenue: sales invoices only (invoices from progress claims are already in sales invoices,
+    93→        // so we avoid double-counting by not adding progress claim amounts separately)
+    94→        const salesAgg = await db.salesInvoice.aggregate({
+    95→          _sum: { subtotal: true },
+    96→          where: {
+    97→            date: { gte: startDate, lt: endDate },
+    98→            status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] },
+    99→          },
+   100→        })
+   101→        // Uninvoiced approved progress claims (revenue earned but not yet billed)
+   102→        const claimsAgg = await db.progressClaim.aggregate({
+   103→          _sum: { amount: true },
+   104→          where: {
+   105→            date: { gte: startDate, lt: endDate },
+   106→            status: { in: ['APPROVED', 'SUBMITTED'] },
+   107→            invoiced: false,
+   108→          },
+   109→        })
+   110→        const revenue = toNum(salesAgg._sum.subtotal) + toNum(claimsAgg._sum.amount)
+   111→
+   112→        // Expenses: expenses + purchase invoices + salaries + labor + equipment costs
+   113→        const expenseAgg = await db.expense.aggregate({
+   114→          _sum: { amount: true },
+   115→          where: { date: { gte: startDate, lt: endDate } },
+   116→        })
+   117→        const purchaseAgg = await db.purchaseInvoice.aggregate({
+   118→          _sum: { subtotal: true },
+   119→          where: {
+   120→            date: { gte: startDate, lt: endDate },
+   121→            status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] },
+   122→          },
+   123→        })
+   124→        const salaryAgg = await db.salary.aggregate({
+   125→          _sum: { netSalary: true },
+   126→          where: {
+   127→            month: m.month,
+   128→            year: m.year,
+   129→            status: { in: ['APPROVED', 'PAID'] },
+   130→          },
+   131→        })
+   132→        const laborAgg = await db.laborCost.aggregate({
+   133→          _sum: { totalAmount: true },
+   134→          where: { date: { gte: startDate, lt: endDate } },
+   135→        })
+   136→        const equipCostAgg = await db.equipmentUsage.aggregate({
+   137→          _sum: { cost: true },
+   138→          where: { date: { gte: startDate, lt: endDate } },
+   139→        })
+   140→
+   141→        const expenses =
+   142→          toNum(expenseAgg._sum.amount) +
+   143→          toNum(purchaseAgg._sum.subtotal) +
+   144→          toNum(salaryAgg._sum.netSalary) +
+   145→          toNum(laborAgg._sum.totalAmount) +
+   146→          toNum(equipCostAgg._sum.cost)
+   147→
+   148→        return {
+   149→          month: m.key,
+   150→          labelAr: m.labelAr,
+   151→          labelEn: m.labelEn,
+   152→          revenue,
+   153→          expenses,
+   154→          profit: revenue - expenses,
+   155→        }
+   156→      })
+   157→    )
+   158→
+   159→    // ===== 5. Total Revenue & Expenses =====
+   160→    // NOTE: Computed after activity-based metrics (section 5b) to aggregate
+   161→    // from all-time construction + rental figures instead of only the last 6 months.
+   162→    // The monthlyData-based totals were returning 0 when no transactions fell
+   163→    // within the 6-month window, even though all-time data existed.
+   164→
+   165→    // ===== 5b. Activity-Based Metrics =====
+   166→    const constructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION' } })
+   167→    const rentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL' } })
+   168→    const activeConstructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION', status: { in: ['ACTIVE', 'PLANNING'] } } })
+   169→    const activeRentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL', status: { in: ['ACTIVE', 'PLANNING'] } } })
+   170→
+   171→    // Get project IDs by type for filtering
+   172→    const constructionProjectIds = (await db.project.findMany({
+   173→      where: { projectType: 'CONSTRUCTION' },
+   174→      select: { id: true },
+   175→    })).map(p => p.id)
+   176→    const rentalProjectIds = (await db.project.findMany({
+   177→      where: { projectType: 'EQUIPMENT_RENTAL' },
+   178→      select: { id: true },
+   179→    })).map(p => p.id)
+   180→
+   181→    // Construction revenue: progress claims + sales invoices linked to CONSTRUCTION projects
+   182→    const constructionClaimsAgg = await db.progressClaim.aggregate({
+   183→      _sum: { totalAmount: true },
+   184→      where: { projectId: { in: constructionProjectIds }, status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] } },
+   185→    })
+   186→    const constructionSalesAgg = await db.salesInvoice.aggregate({
+   187→      _sum: { subtotal: true },
+   188→      where: { projectId: { in: constructionProjectIds }, status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] } },
+   189→    })
+   190→    const constructionRevenue = toNum(constructionClaimsAgg._sum.totalAmount) + toNum(constructionSalesAgg._sum.subtotal)
+   191→
+   192→    // Rental revenue: sales invoices where sourceType = TIMESHEET or linked to EQUIPMENT_RENTAL projects
+   193→    const rentalSalesAgg = await db.salesInvoice.aggregate({
+   194→      _sum: { subtotal: true },
+   195→      where: {
+   196→        OR: [
+   197→          { sourceType: 'TIMESHEET' },
+   198→          { projectId: { in: rentalProjectIds } },
+   199→        ],
+   200→        status: { in: ['PAID', 'PARTIALLY_PAID', 'SENT'] },
+   201→      },
+   202→    })
+   203→    const rentalRevenue = toNum(rentalSalesAgg._sum.subtotal)
+   204→
+   205→    // Construction costs: expenses + purchase invoices + labor + equipment + subcontractor for CONSTRUCTION projects
+   206→    const constructionExpenseAgg = await db.expense.aggregate({
+   207→      _sum: { amount: true },
+   208→      where: { projectId: { in: constructionProjectIds } },
+   209→    })
+   210→    const constructionPurchaseAgg = await db.purchaseInvoice.aggregate({
+   211→      _sum: { subtotal: true },
+   212→      where: { projectId: { in: constructionProjectIds }, status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] } },
+   213→    })
+   214→    const constructionLaborAgg = await db.laborCost.aggregate({
+   215→      _sum: { totalAmount: true },
+   216→      where: { projectId: { in: constructionProjectIds } },
+   217→    })
+   218→    const constructionEquipCostAgg = await db.equipmentCost.aggregate({
+   219→      _sum: { amount: true },
+   220→      where: { projectId: { in: constructionProjectIds } },
+   221→    })
+   222→    const constructionSubcontractorAgg = await db.subcontractorInvoice.aggregate({
+   223→      _sum: { totalAmount: true },
+   224→      where: { projectId: { in: constructionProjectIds } },
+   225→    })
+   226→    const constructionCosts =
+   227→      toNum(constructionExpenseAgg._sum.amount) +
+   228→      toNum(constructionPurchaseAgg._sum.subtotal) +
+   229→      toNum(constructionLaborAgg._sum.totalAmount) +
+   230→      toNum(constructionEquipCostAgg._sum.amount) +
+   231→      toNum(constructionSubcontractorAgg._sum.totalAmount)
+   232→
+   233→    // Rental costs: expenses + purchase invoices + equipment maintenance + fuel for EQUIPMENT_RENTAL projects
+   234→    const rentalExpenseAgg = await db.expense.aggregate({
+   235→      _sum: { amount: true },
+   236→      where: { projectId: { in: rentalProjectIds } },
+   237→    })
+   238→    const rentalPurchaseAgg = await db.purchaseInvoice.aggregate({
+   239→      _sum: { subtotal: true },
+   240→      where: { projectId: { in: rentalProjectIds }, status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID'] } },
+   241→    })
+   242→    const rentalEquipCostAgg = await db.equipmentCost.aggregate({
+   243→      _sum: { amount: true },
+   244→      where: { projectId: { in: rentalProjectIds } },
+   245→    })
+   246→    const rentalFuelAgg = await db.equipmentFuelLog.aggregate({
+   247→      _sum: { totalCost: true },
+   248→      where: { projectId: { in: rentalProjectIds } },
+   249→    })
+   250→    const rentalCosts =
+   251→      toNum(rentalExpenseAgg._sum.amount) +
+   252→      toNum(rentalPurchaseAgg._sum.subtotal) +
+   253→      toNum(rentalEquipCostAgg._sum.amount) +
+   254→      toNum(rentalFuelAgg._sum.totalCost)
+   255→
+   256→    const constructionProfit = constructionRevenue - constructionCosts
+   257→    const rentalProfit = rentalRevenue - rentalCosts
+   258→
+   259→    // ===== 5c. Aggregate top-level totals from activity-based metrics (all-time) =====
+   260→    // All-time salaries (not captured by construction/rental cost breakdowns)
+   261→    const allTimeSalaryAgg = await db.salary.aggregate({
+   262→      _sum: { netSalary: true },
+   263→      where: { status: { in: ['APPROVED', 'PAID'] } },
+   264→    })
+   265→    const allTimeSalaries = toNum(allTimeSalaryAgg._sum.netSalary)
+   266→
+   267→    const totalRevenue = constructionRevenue + rentalRevenue
+   268→    const totalExpenses = constructionCosts + rentalCosts + allTimeSalaries
+   269→    const netProfit = totalRevenue - totalExpenses
+   270→
+   271→    // Equipment rented out count
+   272→    const rentedEquipment = equipmentStatusMap['RENTED'] || 0
+   273→    const inUseEquipment = equipmentStatusMap['IN_USE'] || 0
+   274→
+   275→    // ===== 6. Project Profitability Summary =====
+   276→    const projects = await db.project.findMany({
+   277→      where: { status: { in: ['ACTIVE', 'PLANNING', 'COMPLETED'] } },
+   278→      include: {
+   279→        client: { select: { name: true } },
+   280→        contracts: { select: { totalValue: true } },
+   281→        expenses: { select: { amount: true } },
+   282→        laborCosts: { select: { totalAmount: true } },
+   283→        equipmentCosts: { select: { amount: true } },
+   284→        purchaseOrders: { select: { totalAmount: true } },
+   285→        progressClaims: { select: { totalAmount: true, status: true } },
+   286→        subcontractorInvoices: { select: { totalAmount: true } },
+   287→        salesInvoices: { select: { subtotal: true } },
+   288→      },
+   289→      orderBy: { contractValue: 'desc' },
+   290→      take: 10,
+   291→    })
+   292→
+   293→    const projectProfitability = projects.map(p => {
+   294→      const contractValue = toNum(p.contractValue) || p.contracts.reduce((s, c) => s + toNum(c.totalValue), 0)
+   295→      const totalCosts =
+   296→        p.expenses.reduce((s, e) => s + toNum(e.amount), 0) +
+   297→        p.laborCosts.reduce((s, l) => s + toNum(l.totalAmount), 0) +
+   298→        p.equipmentCosts.reduce((s, e) => s + toNum(e.amount), 0) +
+   299→        p.purchaseOrders.reduce((s, po) => s + toNum(po.totalAmount), 0) +
+   300→        p.subcontractorInvoices.reduce((s, si) => s + toNum(si.totalAmount), 0)
+   301→      const totalRevenue = p.progressClaims.reduce((s, c) => s + toNum(c.totalAmount), 0) +
+   302→        p.salesInvoices.reduce((s, si) => s + toNum(si.subtotal), 0)
+   303→      const profit = contractValue - totalCosts
+   304→      const margin = contractValue > 0 ? (profit / contractValue) * 100 : 0
+   305→
+   306→      return {
+   307→        id: p.id,
+   308→        code: p.code,
+   309→        name: p.name,
+   310→        status: p.status,
+   311→        projectType: p.projectType,
+   312→        clientName: p.client.name,
+   313→        contractValue,
+   314→        totalCosts,
+   315→        totalRevenue,
+   316→        profit,
+   317→        margin,
+   318→      }
+   319→    })
+   320→
+   321→    // ===== 7. Overdue Receivables (unpaid client invoices past due) =====
+   322→    const overdueReceivablesInvoices = await db.salesInvoice.findMany({
+   323→      where: {
+   324→        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+   325→        dueDate: { lt: now },
+   326→      },
+   327→      select: { totalAmount: true, paidAmount: true },
+   328→    })
+   329→    const overdueReceivables = overdueReceivablesInvoices.reduce(
+   330→      (s, i) => s + (toNum(i.totalAmount) - toNum(i.paidAmount)), 0
+   331→    )
+   332→
+   333→    // Total outstanding receivables
+   334→    const allReceivablesInvoices = await db.salesInvoice.findMany({
+   335→      where: { status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] } },
+   336→      select: { totalAmount: true, paidAmount: true },
+   337→    })
+   338→    const outstandingReceivables = allReceivablesInvoices.reduce(
+   339→      (s, i) => s + (toNum(i.totalAmount) - toNum(i.paidAmount)), 0
+   340→    )
+   341→
+   342→    // ===== 8. Overdue Payables (unpaid supplier invoices past due) =====
+   343→    const overduePayablesInvoices = await db.purchaseInvoice.findMany({
+   344→      where: {
+   345→        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+   346→        dueDate: { lt: now },
+   347→      },
+   348→      select: { totalAmount: true, paidAmount: true },
+   349→    })
+   350→    const overduePayables = overduePayablesInvoices.reduce(
+   351→      (s, i) => s + (toNum(i.totalAmount) - toNum(i.paidAmount)), 0
+   352→    )
+   353→
+   354→    const allPayablesInvoices = await db.purchaseInvoice.findMany({
+   355→      where: { status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] } },
+   356→      select: { totalAmount: true, paidAmount: true },
+   357→    })
+   358→    const outstandingPayables = allPayablesInvoices.reduce(
+   359→      (s, i) => s + (toNum(i.totalAmount) - toNum(i.paidAmount)), 0
+   360→    )
+   361→
+   362→    // ===== 9. Recent Transactions (last 10 journal entries) =====
+   363→    const recentEntries = await db.journalEntry.findMany({
+   364→      where: { status: 'POSTED', isReversal: false },
+   365→      include: {
+   366→        lines: {
+   367→          include: {
+   368→            account: { select: { code: true, name: true, nameAr: true } },
+   369→          },
+   370→        },
+   371→      },
+   372→      orderBy: { date: 'desc' },
+   373→      take: 10,
+   374→    })
+   375→
+   376→    const recentTransactions = recentEntries.map(e => ({
+   377→      id: e.id,
+   378→      entryNo: e.entryNo,
+   379→      date: e.date.toISOString(),
+   380→      description: e.description,
+   381→      totalDebit: e.lines.reduce((s, l) => s + toNum(l.debit), 0),
+   382→      totalCredit: e.lines.reduce((s, l) => s + toNum(l.credit), 0),
+   383→      sourceType: e.sourceType,
+   384→    }))
+   385→
+   386→    // ===== 10. Equipment Utilization Rate =====
+   387→    const availableEquipment = equipmentStatusMap['AVAILABLE'] || 0
+   388→    const equipmentUtilizationRate = totalEquipment > 0
+   389→      ? ((inUseEquipment + rentedEquipment) / totalEquipment) * 100
+   390→      : 0
+   391→
+   392→    // ===== 11. Upcoming Contract Expirations =====
+   393→    const ninetyDaysFromNow = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000)
+   394→    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+   395→
+   396→    // Employee residence expirations
+   397→    const expiringResidences = await db.employee.findMany({
+   398→      where: {
+   399→        status: 'ACTIVE',
+   400→        residenceExpiry: { lte: ninetyDaysFromNow, gte: now },
+   401→      },
+   402→      select: { id: true, code: true, name: true, residenceExpiry: true },
+   403→      take: 5,
+   404→    })
+   405→
+   406→    // Equipment maintenance due
+   407→    const maintenanceDue = await db.equipmentMaintenance.findMany({
+   408→      where: { nextDate: { lte: thirtyDaysFromNow, gte: now } },
+   409→      include: { equipment: { select: { code: true, name: true } } },
+   410→      take: 5,
+   411→    })
+   412→
+   413→    // Contract expirations
+   414→    const expiringContracts = await db.contract.findMany({
+   415→      where: {
+   416→        status: 'ACTIVE',
+   417→        endDate: { lte: ninetyDaysFromNow, not: null },
+   418→      },
+   419→      include: { project: { select: { name: true } } },
+   420→      take: 5,
+   421→    })
+   422→
+   423→    const alerts = [
+   424→      ...expiringResidences.map(e => ({
+   425→        type: 'RESIDENCE_EXPIRY' as const,
+   426→        title: e.name,
+   427→        detail: e.residenceExpiry ? `إقامة تنتهي: ${e.residenceExpiry.toISOString().split('T')[0]}` : '',
+   428→        date: e.residenceExpiry?.toISOString() || '',
+   429→        severity: 'warning' as const,
+   430→      })),
+   431→      ...maintenanceDue.map(m => ({
+   432→        type: 'MAINTENANCE_DUE' as const,
+   433→        title: m.equipment.name,
+   434→        detail: m.description,
+   435→        date: m.nextDate?.toISOString() || '',
+   436→        severity: 'info' as const,
+   437→      })),
+   438→      ...expiringContracts.map(c => ({
+   439→        type: 'CONTRACT_EXPIRY' as const,
+   440→        title: c.contractNo,
+   441→        detail: c.project?.name || '',
+   442→        date: c.endDate?.toISOString() || '',
+   443→        severity: 'warning' as const,
+   444→      })),
+   445→    ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(0, 10)
+   446→
+   447→    // ===== 12. Cash Position (treasury + bank balances) =====
+   448→    const cashBalance = await getAccountBalance('1110')
+   449→    const bankBalance = await getAccountBalance('1120')
+   450→    const pettyCashBalance = await getAccountBalance('1130')
+   451→    let cashPosition = cashBalance + bankBalance + pettyCashBalance
+   452→
+   453→    // Fallback: if the accounting ledger has no posted entries for cash/bank
+   454→    // accounts, compute a simplified cash position from actual payment data
+   455→    // (cash received from clients minus cash paid to suppliers & employees).
+   456→    if (cashPosition === 0) {
+   457→      const salesPaidAgg = await db.salesInvoice.aggregate({
+   458→        _sum: { paidAmount: true },
+   459→        where: { status: { in: ['PAID', 'PARTIALLY_PAID'] } },
+   460→      })
+   461→      const purchasePaidAgg = await db.purchaseInvoice.aggregate({
+   462→        _sum: { paidAmount: true },
+   463→        where: { status: { in: ['PAID', 'PARTIALLY_PAID'] } },
+   464→      })
+   465→      const salaryPaidAgg = await db.salary.aggregate({
+   466→        _sum: { netSalary: true },
+   467→        where: { status: 'PAID' },
+   468→      })
+   469→      const cashIn = toNum(salesPaidAgg._sum.paidAmount)
+   470→      const cashOut = toNum(purchasePaidAgg._sum.paidAmount) + toNum(salaryPaidAgg._sum.netSalary)
+   471→      cashPosition = cashIn - cashOut
+   472→    }
+   473→
+   474→    // ===== 13. VAT Position =====
+   475→    const outputVat = await getAccountBalance('3110')  // Output VAT (ضريبة مخرجات)
+   476→    const inputVat = await getAccountBalance('3120')    // Input VAT (ضريبة مدخلات)
+   477→    const vatDue = await getAccountBalance('3130')      // VAT Due (ضريبة مستحقة)
+   478→    const netVAT = outputVat - inputVat
+   479→
+   480→    // ===== 14. Low Inventory Items =====
+   481→    // Use $queryRaw to compare quantity against minQuantity (column-to-column comparison)
+   482→    const lowInventoryResult = await db.$queryRaw<Array<{ count: bigint }>>`
+   483→      SELECT COUNT(*) as count FROM InventoryItem WHERE quantity <= minQuantity AND isActive = 1
+   484→    `
+   485→    const lowInventoryItems = Number(lowInventoryResult[0]?.count || 0)
+   486→
+   487→    // ===== 15. Project Status Distribution =====
+   488→    const statusCounts = await db.project.groupBy({
+   489→      by: ['status'],
+   490→      _count: { status: true },
+   491→    })
+   492→    const projectStatusDistribution = statusCounts.map(s => ({
+   493→      status: s.status,
+   494→      count: s._count.status,
+   495→    }))
+   496→
+   497→    // ===== 16. Hub-specific data =====
+   498→    // Recent construction projects (last 5)
+   499→    const recentConstructionProjects = await db.project.findMany({
+   500→      where: { projectType: 'CONSTRUCTION' },
+   501→      select: {
+   502→        id: true, code: true, name: true, status: true, contractValue: true,
+   503→        client: { select: { name: true } },
+   504→        startDate: true, endDate: true,
+   505→      },
+   506→      orderBy: { createdAt: 'desc' },
+   507→      take: 5,
+   508→    })
+   509→
+   510→    // Recent rental contracts (last 5)
+   511→    const recentRentalContracts = await db.equipmentRental.findMany({
+   512→      select: {
+   513→        id: true, status: true, startDate: true, endDate: true,
+   514→        referenceRate: true, pricingType: true, hourlyRate: true, deliveryFees: true, totalAmount: true,
+   515→        contract: { select: { contractNo: true } },
+   516→        equipment: { select: { id: true, code: true, name: true } },
+   517→        client: { select: { id: true, name: true } },
+   518→      },
+   519→      orderBy: { createdAt: 'desc' },
+   520→      take: 5,
+   521→    })
+   522→
+   523→    // Total extracts (progress claims) count
+   524→    const totalExtracts = await db.progressClaim.count()
+   525→
+   526→    // Total client invoices count
+   527→    const totalClientInvoices = await db.salesInvoice.count()
+   528→
+   529→    // Outstanding construction collections (unpaid construction invoices)
+   530→    const constructionReceivablesInvoices = await db.salesInvoice.findMany({
+   531→      where: {
+   532→        projectId: { in: constructionProjectIds },
+   533→        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+   534→      },
+   535→      select: { totalAmount: true, paidAmount: true },
+   536→    })
+   537→    const outstandingConstructionCollections = constructionReceivablesInvoices.reduce(
+   538→      (s, i) => s + (toNum(i.totalAmount) - toNum(i.paidAmount)), 0
+   539→    )
+   540→
+   541→    // Outstanding rental collections (unpaid rental invoices)
+   542→    const rentalReceivablesInvoices = await db.salesInvoice.findMany({
+   543→      where: {
+   544→        OR: [
+   545→          { sourceType: 'TIMESHEET' },
+   546→          { projectId: { in: rentalProjectIds } },
+   547→        ],
+   548→        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
+   549→      },
+   550→      select: { totalAmount: true, paidAmount: true },
+   551→    })
+   552→    const outstandingRentalCollections = rentalReceivablesInvoices.reduce(
+   553→      (s, i) => s + (toNum(i.totalAmount) - toNum(i.paidAmount)), 0
+   554→    )
+   555→
+   556→    // Construction contract value (sum of all active construction project contracts)
+   557→    const constructionContractAgg = await db.contract.aggregate({
+   558→      _sum: { totalValue: true },
+   559→      where: { project: { projectType: 'CONSTRUCTION' }, status: 'ACTIVE' },
+   560→    })
+   561→    const constructionContractValue = toNum(constructionContractAgg._sum.totalValue)
+   562→
+   563→    // Total extracts amount
+   564→    const extractsAgg = await db.progressClaim.aggregate({
+   565→      _sum: { totalAmount: true },
+   566→      where: { status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] } },
+   567→    })
+   568→    const totalExtractsAmount = toNum(extractsAgg._sum.totalAmount)
+   569→
+   570→    // ===== 16b. GL-Driven Financial Summary =====
+   571→    // القاعدة رقم 9: المحاسبة هي المحرك الأساسي للنظام
+   572→    // القاعدة رقم 10: القيد هو المصدر الوحيد للحقيقة المالية
+   573→    const glSummary = await getFinancialSummaryFromGL()
+   574→
+   575→    return NextResponse.json({
+   576→      // KPIs
+   577→      activeProjects,
+   578→      totalProjects,
+   579→      totalContractValue,
+   580→      activeEmployees,
+   581→      totalEquipment,
+   582→      equipmentStatusMap,
+   583→      equipmentUtilizationRate,
+   584→      totalRevenue,
+   585→      totalExpenses,
+   586→      netProfit,
+   587→      cashPosition,
+   588→      outstandingReceivables,
+   589→      outstandingPayables,
+   590→      overdueReceivables,
+   591→      overduePayables,
+   592→      netVAT,
+   593→      vatPayable: outputVat,
+   594→      vatReceivable: inputVat,
+   595→      outputVat,
+   596→      inputVat,
+   597→      vatDue,
+   598→      lowInventoryItems,
+   599→
+   600→      // Activity-Based Metrics
+   601→      constructionProjects,
+   602→      rentalProjects,
+   603→      activeConstructionProjects,
+   604→      activeRentalProjects,
+   605→      constructionRevenue,
+   606→      rentalRevenue,
+   607→      constructionCosts,
+   608→      rentalCosts,
+   609→      constructionProfit,
+   610→      rentalProfit,
+   611→      rentedEquipment,
+   612→      inUseEquipment,
+   613→      availableEquipment: equipmentStatusMap['AVAILABLE'] || 0,
+   614→
+   615→      // Hub-specific Data
+   616→      recentConstructionProjects: recentConstructionProjects.map(p => ({
+   617→        ...p,
+   618→        contractValue: toNum(p.contractValue),
+   619→        startDate: p.startDate.toISOString(),
+   620→        endDate: p.endDate?.toISOString() || null,
+   621→      })),
+   622→      recentRentalContracts: recentRentalContracts.map(c => ({
+   623→        id: c.id,
+   624→        contractNo: c.contract.contractNo,
+   625→        status: c.status,
+   626→        startDate: c.startDate.toISOString(),
+   627→        endDate: c.endDate?.toISOString() || null,
+   628→        rate: toNum(c.referenceRate),
+   629→        rateType: c.pricingType,
+   630→        deliveryFees: toNum(c.deliveryFees),
+   631→        totalAmount: toNum(c.totalAmount),
+   632→        equipment: c.equipment,
+   633→        client: c.client,
+   634→      })),
+   635→      totalExtracts,
+   636→      totalExtractsAmount,
+   637→      totalClientInvoices,
+   638→      outstandingConstructionCollections,
+   639→      outstandingRentalCollections,
+   640→      constructionContractValue,
+   641→
+   642→      // Charts & Tables
+   643→      monthlyData,
+   644→      projectProfitability,
+   645→      recentTransactions,
+   646→      projectStatusDistribution,
+   647→      alerts,
+   648→
+   649→      // GL-Driven Financial Summary (مصدر: الأستاذ العام)
+   650→      glSummary: {
+   651→        cashBalance: glSummary.cashBalance,
+   652→        revenue: glSummary.revenue,
+   653→        expenses: glSummary.expenses,
+   654→        netProfit: glSummary.netProfit,
+   655→        receivables: glSummary.receivables,
+   656→        payables: glSummary.payables,
+   657→        source: 'GENERAL_LEDGER',
+   658→      },
+   659→    })
+   660→  } catch (error) {
+   661→    console.error('Dashboard API error:', error)
+   662→    return NextResponse.json(
+   663→      { error: 'حدث خطأ أثناء تحميل بيانات لوحة التحكم' },
+   664→      { status: 500 }
+   665→    )
+   666→  }
+   667→}
+   668→

@@ -1,0 +1,602 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
+     7→     7→  Send, CheckCircle, Trash2, ArrowLeft, Building2, HardHat,
+     8→     8→  ChevronLeft, ChevronRight, Clock,
+     9→     9→} from 'lucide-react'
+    10→    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→    11→import { Button } from '@/components/ui/button'
+    12→    12→import { Input } from '@/components/ui/input'
+    13→    13→import { Badge } from '@/components/ui/badge'
+    14→    14→import {
+    15→    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→    16→} from '@/components/ui/table'
+    17→    17→import {
+    18→    18→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    19→    19→} from '@/components/ui/select'
+    20→    20→import {
+    21→    21→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    22→    22→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    23→    23→} from '@/components/ui/alert-dialog'
+    24→    24→import { Label } from '@/components/ui/label'
+    25→    25→import { Textarea } from '@/components/ui/textarea'
+    26→    26→import { Separator } from '@/components/ui/separator'
+    27→    27→import { MoneyDisplay } from '@/components/ui/money-display'
+    28→    28→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    29→    29→import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+    30→    30→import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+    31→    31→import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+    32→    32→import { PrintButton } from '@/components/shared/print-button'
+    33→    33→
+    34→    34→// ============ Types ============
+    35→    35→interface ProgressClaimSource {
+    36→    36→  id: string; claimNo: string; date: string; amount: number; vatAmount: number; totalAmount: number
+    37→    37→  project: { id: string; name: string; code: string; client: { id: string; name: string } }
+    38→    38→  contract: { id: string; contractNo: string }
+    39→    39→  invoiced: boolean; status: string
+    40→    40→}
+    41→    41→
+    42→    42→interface TimesheetSource {
+    43→    43→  id: string; operatingHours: number; month: number; year: number; status: string
+    44→    44→  project: { id: string; name: string; code: string; client: { id: string; name: string } }
+    45→    45→  equipment: { id: string; name: string; code: string; nameAr: string | null }
+    46→    46→  rental: { id: string; hourlyRate: number; deliveryFees: number; deliveryFeesTaxable: boolean }
+    47→    47→  contract: { id: string; contractNo: string; hourlyRate: number; paymentTerms: string }
+    48→    48→  clientName?: string; clientNameAr?: string
+    49→    49→}
+    50→    50→
+    51→    51→interface SalesInvoiceItem {
+    52→    52→  id: string; description: string; quantity: number; unit?: string | null; unitPrice: number; totalPrice: number
+    53→    53→}
+    54→    54→
+    55→    55→interface SalesInvoice {
+    56→    56→  id: string; invoiceNo: string; sourceType: string; invoiceType: string
+    57→    57→  clientId: string; projectId: string | null; contractId: string | null
+    58→    58→  date: string; dueDate: string; subtotal: number; vatRate: number; vatAmount: number; totalAmount: number
+    59→    59→  paidAmount: number; status: string; notes: string | null
+    60→    60→  progressClaimId: string | null; timesheetId: string | null
+    61→    61→  journalEntryId: string | null
+    62→    62→  client: { id: string; name: string; code: string }
+    63→    63→  project: { id: string; name: string; code: string; projectType?: string } | null
+    64→    64→  contract: { id: string; contractNo: string } | null
+    65→    65→  items: SalesInvoiceItem[]
+    66→    66→  timesheet?: TimesheetSource | null
+    67→    67→  progressClaim?: ProgressClaimSource | null
+    68→    68→  operatingHours?: number | null
+    69→    69→  hourlyRate?: number | null
+    70→    70→  equipmentName?: string | null
+    71→    71→  includeDelivery?: boolean
+    72→    72→  deliveryAmount?: number
+    73→    73→  deliveryFeesTaxable?: boolean
+    74→    74→  deliveryMonth?: string | null
+    75→    75→  contractPeriodStart?: string | null
+    76→    76→  contractPeriodEnd?: string | null
+    77→    77→}
+    78→    78→
+    79→    79→// ============ Arabic/English Month Names ============
+    80→    80→const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+    81→    81→const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    82→    82→
+    83→    83→function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string {
+    84→    84→  if (lang === 'ar') return `${arabicMonths[month - 1]} ${year}`
+    85→    85→  return `${englishMonths[month - 1]} ${year}`
+    86→    86→}
+    87→    87→
+    88→    88→// ============ Labels ============
+    89→    89→const labels = {
+    90→    90→  title: { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
+    91→    91→  subtitle: { ar: 'إدارة فواتير المبيعات من المستخلصات وسجلات الساعات', en: 'Manage sales invoices from extracts and timesheets' },
+    92→    92→  invoiceNo: { ar: 'رقم الفاتورة', en: 'Invoice No.' },
+    93→    93→  sourceType: { ar: 'نوع المصدر', en: 'Source Type' },
+    94→    94→  client: { ar: 'العميل', en: 'Client' },
+    95→    95→  project: { ar: 'المشروع', en: 'Project' },
+    96→    96→  date: { ar: 'التاريخ', en: 'Date' },
+    97→    97→  dueDate: { ar: 'تاريخ الاستحقاق', en: 'Due Date' },
+    98→    98→  subtotal: { ar: 'المجموع الفرعي', en: 'Subtotal' },
+    99→    99→  vat: { ar: 'الضريبة (15%)', en: 'VAT (15%)' },
+   100→   100→  total: { ar: 'الإجمالي', en: 'Total' },
+   101→   101→  paid: { ar: 'المدفوع', en: 'Paid' },
+   102→   102→  outstanding: { ar: 'المستحق', en: 'Outstanding' },
+   103→   103→  status: { ar: 'الحالة', en: 'Status' },
+   104→   104→  actions: { ar: 'الإجراءات', en: 'Actions' },
+   105→   105→  createInvoice: { ar: 'إنشاء فاتورة', en: 'Create Invoice' },
+   106→   106→  search: { ar: 'بحث برقم الفاتورة أو العميل...', en: 'Search by invoice no. or client...' },
+   107→   107→  allStatus: { ar: 'كل الحالات', en: 'All Status' },
+   108→   108→  allSources: { ar: 'كل المصادر', en: 'All Sources' },
+   109→   109→  totalSales: { ar: 'إجمالي المبيعات', en: 'Total Sales' },
+   110→   110→  notes: { ar: 'ملاحظات', en: 'Notes' },
+   111→   111→  invoiceItems: { ar: 'بنود الفاتورة', en: 'Invoice Items' },
+   112→   112→  invoiceSummary: { ar: 'ملخص الفاتورة', en: 'Invoice Summary' },
+   113→   113→  deleteTitle: { ar: 'حذف الفاتورة', en: 'Delete Invoice' },
+   114→   114→  deleteConfirm: { ar: 'هل أنت متأكد من حذف هذه الفاتورة؟', en: 'Are you sure you want to delete this invoice?' },
+   115→   115→  noInvoices: { ar: 'لا توجد فواتير مبيعات', en: 'No sales invoices' },
+   116→   116→  sendInvoice: { ar: 'إرسال', en: 'Send' },
+   117→   117→  markPaid: { ar: 'تأكيد الدفع', en: 'Mark Paid' },
+   118→   118→  print: { ar: 'طباعة', en: 'Print' },
+   119→   119→  // Source type labels
+   120→   120→  extractSource: { ar: 'مستخلص مشروع', en: 'Project Extract' },
+   121→   121→  extractSourceDesc: { ar: 'فاتورة من مستخلص مشروع إنشائي', en: 'Invoice from a construction project extract' },
+   122→   122→  timesheetSource: { ar: 'تايم شيت تأجير معدات', en: 'Equipment Rental Timesheet' },
+   123→   123→  timesheetSourceDesc: { ar: 'فاتورة من سجل ساعات تأجير معدات', en: 'Invoice from equipment rental timesheet' },
+   124→   124→  // Create flow steps
+   125→   125→  step1Title: { ar: 'اختيار نوع المصدر', en: 'Select Source Type' },
+   126→   126→  step2Title: { ar: 'اختيار المستند المصدر', en: 'Select Source Document' },
+   127→   127→  step3Title: { ar: 'معاينة الفاتورة', en: 'Invoice Preview' },
+   128→   128→  step: { ar: 'خطوة', en: 'Step' },
+   129→   129→  of: { ar: 'من', en: 'of' },
+   130→   130→  next: { ar: 'التالي', en: 'Next' },
+   131→   131→  back: { ar: 'رجوع', en: 'Back' },
+   132→   132→  // Extract-specific
+   133→   133→  claimNo: { ar: 'رقم المستخلص', en: 'Claim No.' },
+   134→   134→  claimAmount: { ar: 'مبلغ المستخلص', en: 'Claim Amount' },
+   135→   135→  // Timesheet-specific
+   136→   136→  tsNo: { ar: 'رقم السجل', en: 'TS No.' },
+   137→   137→  equipment: { ar: 'المعدة', en: 'Equipment' },
+   138→   138→  operatingHours: { ar: 'ساعات التشغيل', en: 'Operating Hours' },
+   139→   139→  hourlyRate: { ar: 'سعر الساعة', en: 'Hourly Rate' },
+   140→   140→  deliveryFees: { ar: 'رسوم النقل', en: 'Delivery Fees' },
+   141→   141→  contractNo: { ar: 'رقم العقد', en: 'Contract No.' },
+   142→   142→  // Read-only notices
+   143→   143→  autoFromClaim: { ar: 'تعبئة تلقائية من المستخلص - للقراءة فقط', en: 'Auto-filled from claim - read only' },
+   144→   144→  autoFromTimesheet: { ar: 'تعبئة تلقائية من سجل الساعات والعقد - للقراءة فقط', en: 'Auto-filled from timesheet & contract - read only' },
+   145→   145→  // No sources available
+   146→   146→  noApprovedClaims: { ar: 'لا توجد مستخلصات معتمدة غير مفوترة', en: 'No approved uninvoiced extracts' },
+   147→   147→  noApprovedTimesheets: { ar: 'لا توجد سجلات ساعات معتمدة غير مفوترة', en: 'No approved uninvoiced timesheets' },
+   148→   148→  // Source reference in detail
+   149→   149→  sourceRef: { ar: 'المستند المصدر', en: 'Source Document' },
+   150→   150→  financialDetails: { ar: 'التفاصيل المالية', en: 'Financial Details' },
+   151→   151→  rentalInfo: { ar: 'بيانات الإيجار', en: 'Rental Information' },
+   152→   152→}
+   153→   153→
+   154→   154→// ============ View State ============
+   155→   155→type ViewState =
+   156→   156→  | { type: 'list' }
+   157→   157→  | { type: 'create'; step: number; sourceType: 'EXTRACT' | 'TIMESHEET' | null; selectedSourceId: string | null }
+   158→   158→  | { type: 'detail'; invoiceId: string }
+   159→   159→
+   160→   160→// ============ Skeleton ============
+   161→   161→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   162→   162→  return (
+   163→   163→    <div className="space-y-2 p-4">
+   164→   164→      {Array.from({ length: rows }).map((_, i) => (
+   165→   165→        <div key={i} className="flex gap-4 p-3">
+   166→   166→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   167→   167→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   168→   168→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   169→   169→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   170→   170→        </div>
+   171→   171→      ))}
+   172→   172→    </div>
+   173→   173→  )
+   174→   174→}
+   175→   175→
+   176→   176→// ============ Source Type Badge ============
+   177→   177→function SourceTypeBadge({ sourceType, lang }: { sourceType: string; lang: 'ar' | 'en' }) {
+   178→   178→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   179→   179→  if (sourceType === 'EXTRACT') {
+   180→   180→    return (
+   181→   181→      <Badge className="bg-teal-100 text-teal-700 border-teal-200 gap-1 text-xs">
+   182→   182→        <Building2 className="size-3" />
+   183→   183→        {t('مستخلص', 'Extract')}
+   184→   184→      </Badge>
+   185→   185→    )
+   186→   186→  }
+   187→   187→  if (sourceType === 'TIMESHEET') {
+   188→   188→    return (
+   189→   189→      <Badge className="bg-purple-100 text-purple-700 border-purple-200 gap-1 text-xs">
+   190→   190→        <Clock className="size-3" />
+   191→   191→        {t('تايم شيت', 'Timesheet')}
+   192→   192→      </Badge>
+   193→   193→    )
+   194→   194→  }
+   195→   195→  return <Badge variant="outline" className="text-xs">{sourceType}</Badge>
+   196→   196→}
+   197→   197→
+   198→   198→// ============ Create Invoice Flow ============
+   199→   199→function CreateInvoiceFlow({
+   200→   200→  initialState,
+   201→   201→  onBack,
+   202→   202→  onComplete,
+   203→   203→}: {
+   204→   204→  initialState: ViewState & { type: 'create' }
+   205→   205→  onBack: () => void
+   206→   206→  onComplete: () => void
+   207→   207→}) {
+   208→   208→  const queryClient = useQueryClient()
+   209→   209→  const { lang } = useAppStore()
+   210→   210→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   211→   211→
+   212→   212→  const [step, setStep] = useState(initialState.step || 1)
+   213→   213→  const [sourceType, setSourceType] = useState<'EXTRACT' | 'TIMESHEET' | null>(initialState.sourceType || null)
+   214→   214→  const [selectedClaimId, setSelectedClaimId] = useState<string>(initialState.selectedSourceId || '')
+   215→   215→  const [selectedTimesheetId, setSelectedTimesheetId] = useState<string>(initialState.selectedSourceId || '')
+   216→   216→  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+   217→   217→  const [dueDate, setDueDate] = useState('')
+   218→   218→  const [notes, setNotes] = useState('')
+   219→   219→
+   220→   220→  // Fetch uninvoiced approved claims
+   221→   221→  const { data: approvedClaims = [], isLoading: claimsLoading } = useQuery<ProgressClaimSource[]>({
+   222→   222→    queryKey: ['uninvoiced-claims'],
+   223→   223→    queryFn: async () => {
+   224→   224→      const res = await fetch('/api/progress-claims?status=APPROVED&invoiced=false')
+   225→   225→      if (!res.ok) return []
+   226→   226→      return res.json()
+   227→   227→    },
+   228→   228→    enabled: sourceType === 'EXTRACT' || step === 2,
+   229→   229→  })
+   230→   230→
+   231→   231→  // Fetch uninvoiced approved timesheets
+   232→   232→  const { data: approvedTimesheets = [], isLoading: timesheetsLoading } = useQuery<TimesheetSource[]>({
+   233→   233→    queryKey: ['uninvoiced-timesheets'],
+   234→   234→    queryFn: async () => {
+   235→   235→      const res = await fetch('/api/equipment/timesheets?status=APPROVED')
+   236→   236→      if (!res.ok) return []
+   237→   237→      const data = await res.json()
+   238→   238→      // Filter: only timesheets not yet invoiced (no invoice linked)
+   239→   239→      return (Array.isArray(data) ? data : []).filter(
+   240→   240→        (ts: { status: string; invoice: null }) => ts.status === 'APPROVED' && !ts.invoice
+   241→   241→      )
+   242→   242→    },
+   243→   243→    enabled: sourceType === 'TIMESHEET' || step === 2,
+   244→   244→  })
+   245→   245→
+   246→   246→  // Selected source
+   247→   247→  const selectedClaim = approvedClaims.find(c => c.id === selectedClaimId)
+   248→   248→  const selectedTimesheet = approvedTimesheets.find(ts => ts.id === selectedTimesheetId)
+   249→   249→
+   250→   250→  // Auto-calculations for EXTRACT source
+   251→   251→  const extractSubtotal = selectedClaim?.amount || 0
+   252→   252→  const extractVat = selectedClaim?.vatAmount || 0
+   253→   253→  const extractTotal = selectedClaim?.totalAmount || 0
+   254→   254→
+   255→   255→  // Auto-calculations for TIMESHEET source
+   256→   256→  const tsHourlyRate = selectedTimesheet?.rental?.hourlyRate || selectedTimesheet?.contract?.hourlyRate || 0
+   257→   257→  const tsOperatingHours = selectedTimesheet?.operatingHours || 0
+   258→   258→  const tsDeliveryFees = selectedTimesheet?.rental?.deliveryFees || 0
+   259→   259→  const tsDeliveryFeesTaxable = selectedTimesheet?.rental?.deliveryFeesTaxable ?? true
+   260→   260→  const tsSubtotal = tsOperatingHours * tsHourlyRate
+   261→   261→  const tsVatRate = 0.15
+   262→   262→  const tsRentalVat = Math.round(tsSubtotal * tsVatRate * 100) / 100
+   263→   263→  const tsDeliveryVat = tsDeliveryFeesTaxable && tsDeliveryFees > 0 ? Math.round(tsDeliveryFees * tsVatRate * 100) / 100 : 0
+   264→   264→  const tsTotalVat = tsRentalVat + tsDeliveryVat
+   265→   265→  const tsTotalAmount = tsSubtotal + tsDeliveryFees + tsTotalVat
+   266→   266→
+   267→   267→  const currentSubtotal = sourceType === 'EXTRACT' ? extractSubtotal : tsSubtotal
+   268→   268→  const currentVat = sourceType === 'EXTRACT' ? extractVat : tsTotalVat
+   269→   269→  const currentTotal = sourceType === 'EXTRACT' ? extractTotal : tsTotalAmount
+   270→   270→
+   271→   271→  // Create mutation
+   272→   272→  const createMutation = useMutation({
+   273→   273→    mutationFn: (data: Record<string, unknown>) =>
+   274→   274→      fetch('/api/sales-invoices', {
+   275→   275→        method: 'POST',
+   276→   276→        headers: { 'Content-Type': 'application/json' },
+   277→   277→        body: JSON.stringify(data),
+   278→   278→      }).then(async r => {
+   279→   279→        if (!r.ok) {
+   280→   280→          const err = await r.json().catch(() => ({}))
+   281→   281→          throw new Error((err as { error?: string }).error || 'Failed')
+   282→   282→        }
+   283→   283→        return r.json()
+   284→   284→      }),
+   285→   285→    onSuccess: () => {
+   286→   286→      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] })
+   287→   287→      queryClient.invalidateQueries({ queryKey: ['uninvoiced-claims'] })
+   288→   288→      queryClient.invalidateQueries({ queryKey: ['uninvoiced-timesheets'] })
+   289→   289→      onComplete()
+   290→   290→    },
+   291→   291→  })
+   292→   292→
+   293→   293→  const handleNext = () => {
+   294→   294→    if (step === 1 && sourceType) {
+   295→   295→      setStep(2)
+   296→   296→    } else if (step === 2 && (selectedClaimId || selectedTimesheetId)) {
+   297→   297→      setStep(3)
+   298→   298→    }
+   299→   299→  }
+   300→   300→
+   301→   301→  const handleBack = () => {
+   302→   302→    if (step === 1) {
+   303→   303→      onBack()
+   304→   304→    } else {
+   305→   305→      setStep(step - 1)
+   306→   306→    }
+   307→   307→  }
+   308→   308→
+   309→   309→  const handleSubmit = () => {
+   310→   310→    if (sourceType === 'EXTRACT' && selectedClaimId) {
+   311→   311→      createMutation.mutate({
+   312→   312→        sourceType: 'EXTRACT',
+   313→   313→        progressClaimId: selectedClaimId,
+   314→   314→        date,
+   315→   315→        dueDate,
+   316→   316→        notes,
+   317→   317→      })
+   318→   318→    } else if (sourceType === 'TIMESHEET' && selectedTimesheetId) {
+   319→   319→      createMutation.mutate({
+   320→   320→        sourceType: 'TIMESHEET',
+   321→   321→        timesheetId: selectedTimesheetId,
+   322→   322→        date,
+   323→   323→        dueDate,
+   324→   324→        notes,
+   325→   325→      })
+   326→   326→    }
+   327→   327→  }
+   328→   328→
+   329→   329→  const canProceed = () => {
+   330→   330→    if (step === 1) return !!sourceType
+   331→   331→    if (step === 2) {
+   332→   332→      if (sourceType === 'EXTRACT') return !!selectedClaimId
+   333→   333→      if (sourceType === 'TIMESHEET') return !!selectedTimesheetId
+   334→   334→    }
+   335→   335→    if (step === 3) return !!date && !!dueDate
+   336→   336→    return false
+   337→   337→  }
+   338→   338→
+   339→   339→  // ============ STEP 1: Select Source Type ============
+   340→   340→  const renderStep1 = () => (
+   341→   341→    <div className="space-y-6">
+   342→   342→      <div className="text-center mb-6">
+   343→   343→        <h3 className="text-lg font-semibold mb-1">{t(labels.step1Title.ar, labels.step1Title.en)}</h3>
+   344→   344→        <p className="text-sm text-muted-foreground">
+   345→   345→          {t('اختر نوع المستند المصدر لإنشاء الفاتورة', 'Select the source document type to create an invoice')}
+   346→   346→        </p>
+   347→   347→      </div>
+   348→   348→
+   349→   349→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+   350→   350→        {/* Extract Source Card */}
+   351→   351→        <button
+   352→   352→          type="button"
+   353→   353→          onClick={() => setSourceType('EXTRACT')}
+   354→   354→          className={`relative p-6 rounded-xl border-2 transition-all text-start ${
+   355→   355→            sourceType === 'EXTRACT'
+   356→   356→              ? 'border-teal-500 bg-teal-50 shadow-md'
+   357→   357→              : 'border-gray-200 bg-white hover:border-teal-300 hover:bg-teal-50/30'
+   358→   358→          }`}
+   359→   359→        >
+   360→   360→          {sourceType === 'EXTRACT' && (
+   361→   361→            <div className="absolute top-3 end-3">
+   362→   362→              <CheckCircle className="size-5 text-teal-600" />
+   363→   363→            </div>
+   364→   364→          )}
+   365→   365→          <div className="flex items-center gap-3 mb-3">
+   366→   366→            <div className={`flex size-12 items-center justify-center rounded-xl ${sourceType === 'EXTRACT' ? 'bg-teal-100' : 'bg-gray-100'}`}>
+   367→   367→              <Building2 className={`size-6 ${sourceType === 'EXTRACT' ? 'text-teal-600' : 'text-gray-500'}`} />
+   368→   368→            </div>
+   369→   369→            <div>
+   370→   370→              <h4 className="font-semibold">{t(labels.extractSource.ar, labels.extractSource.en)}</h4>
+   371→   371→              <p className="text-xs text-muted-foreground">{t('للمشاريع الإنشائية', 'For construction projects')}</p>
+   372→   372→            </div>
+   373→   373→          </div>
+   374→   374→          <p className="text-sm text-muted-foreground">{t(labels.extractSourceDesc.ar, labels.extractSourceDesc.en)}</p>
+   375→   375→        </button>
+   376→   376→
+   377→   377→        {/* Timesheet Source Card */}
+   378→   378→        <button
+   379→   379→          type="button"
+   380→   380→          onClick={() => setSourceType('TIMESHEET')}
+   381→   381→          className={`relative p-6 rounded-xl border-2 transition-all text-start ${
+   382→   382→            sourceType === 'TIMESHEET'
+   383→   383→              ? 'border-purple-500 bg-purple-50 shadow-md'
+   384→   384→              : 'border-gray-200 bg-white hover:border-purple-300 hover:bg-purple-50/30'
+   385→   385→          }`}
+   386→   386→        >
+   387→   387→          {sourceType === 'TIMESHEET' && (
+   388→   388→            <div className="absolute top-3 end-3">
+   389→   389→              <CheckCircle className="size-5 text-purple-600" />
+   390→   390→            </div>
+   391→   391→          )}
+   392→   392→          <div className="flex items-center gap-3 mb-3">
+   393→   393→            <div className={`flex size-12 items-center justify-center rounded-xl ${sourceType === 'TIMESHEET' ? 'bg-purple-100' : 'bg-gray-100'}`}>
+   394→   394→              <HardHat className={`size-6 ${sourceType === 'TIMESHEET' ? 'text-purple-600' : 'text-gray-500'}`} />
+   395→   395→            </div>
+   396→   396→            <div>
+   397→   397→              <h4 className="font-semibold">{t(labels.timesheetSource.ar, labels.timesheetSource.en)}</h4>
+   398→   398→              <p className="text-xs text-muted-foreground">{t('لتأجير المعدات', 'For equipment rental')}</p>
+   399→   399→            </div>
+   400→   400→          </div>
+   401→   401→          <p className="text-sm text-muted-foreground">{t(labels.timesheetSourceDesc.ar, labels.timesheetSourceDesc.en)}</p>
+   402→   402→        </button>
+   403→   403→      </div>
+   404→   404→    </div>
+   405→   405→  )
+   406→   406→
+   407→   407→  // ============ STEP 2: Select Source Document ============
+   408→   408→  const renderStep2 = () => {
+   409→   409→    if (sourceType === 'EXTRACT') {
+   410→   410→      if (claimsLoading) {
+   411→   411→        return (
+   412→   412→          <div className="flex flex-col items-center py-10">
+   413→   413→            <div className="size-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-600" />
+   414→   414→            <p className="mt-3 text-sm text-muted-foreground">{commonText.loading[lang]}</p>
+   415→   415→          </div>
+   416→   416→        )
+   417→   417→      }
+   418→   418→
+   419→   419→      if (approvedClaims.length === 0) {
+   420→   420→        return (
+   421→   421→          <Card className="bg-amber-50 border-amber-200">
+   422→   422→            <CardContent className="p-6 text-center">
+   423→   423→              <Building2 className="size-10 text-amber-400 mx-auto mb-3" />
+   424→   424→              <p className="text-amber-700 font-medium">{t(labels.noApprovedClaims.ar, labels.noApprovedClaims.en)}</p>
+   425→   425→              <p className="text-sm text-amber-600 mt-1">
+   426→   426→                {t('يجب اعتماد مستخلص أولاً من وحدة المستخلصات', 'An extract must be approved first from the Extracts module')}
+   427→   427→              </p>
+   428→   428→            </CardContent>
+   429→   429→          </Card>
+   430→   430→        )
+   431→   431→      }
+   432→   432→
+   433→   433→      return (
+   434→   434→        <div className="space-y-4">
+   435→   435→          <h3 className="text-lg font-semibold">{t(labels.step2Title.ar, labels.step2Title.en)}</h3>
+   436→   436→          <p className="text-sm text-muted-foreground">
+   437→   437→            {t('اختر مستخلص معتمد غير مفوتر', 'Select an approved uninvoiced extract')}
+   438→   438→          </p>
+   439→   439→          <div className="overflow-x-auto">
+   440→   440→            <Table>
+   441→   441→              <TableHeader>
+   442→   442→                <TableRow>
+   443→   443→                  <TableHead />
+   444→   444→                  <TableHead className="text-right">{t(labels.claimNo.ar, labels.claimNo.en)}</TableHead>
+   445→   445→                  <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+   446→   446→                  <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+   447→   447→                  <TableHead className="text-right">{t(labels.claimAmount.ar, labels.claimAmount.en)}</TableHead>
+   448→   448→                  <TableHead className="text-right">{t(labels.vat.ar, labels.vat.en)}</TableHead>
+   449→   449→                  <TableHead className="text-right">{t(labels.total.ar, labels.total.en)}</TableHead>
+   450→   450→                </TableRow>
+   451→   451→              </TableHeader>
+   452→   452→              <TableBody>
+   453→   453→                {approvedClaims.map(claim => (
+   454→   454→                  <TableRow
+   455→   455→                    key={claim.id}
+   456→   456→                    className={`cursor-pointer transition-colors ${selectedClaimId === claim.id ? 'bg-teal-50 ring-1 ring-teal-300' : 'hover:bg-gray-50'}`}
+   457→   457→                    onClick={() => setSelectedClaimId(claim.id)}
+   458→   458→                  >
+   459→   459→                    <TableCell className="w-10">
+   460→   460→                      <div className={`size-5 rounded-full border-2 flex items-center justify-center ${selectedClaimId === claim.id ? 'border-teal-500 bg-teal-500' : 'border-gray-300'}`}>
+   461→   461→                        {selectedClaimId === claim.id && <CheckCircle className="size-3 text-white" />}
+   462→   462→                      </div>
+   463→   463→                    </TableCell>
+   464→   464→                    <TableCell className="font-mono font-medium">{claim.claimNo}</TableCell>
+   465→   465→                    <TableCell>{claim.project?.client?.name || '—'}</TableCell>
+   466→   466→                    <TableCell>{claim.project?.name || '—'}</TableCell>
+   467→   467→                    <TableCell><MoneyDisplay value={claim.amount} lang={lang} size="sm" inline /></TableCell>
+   468→   468→                    <TableCell><MoneyDisplay value={claim.vatAmount} lang={lang} size="sm" inline /></TableCell>
+   469→   469→                    <TableCell className="font-semibold"><MoneyDisplay value={claim.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
+   470→   470→                  </TableRow>
+   471→   471→                ))}
+   472→   472→              </TableBody>
+   473→   473→            </Table>
+   474→   474→          </div>
+   475→   475→        </div>
+   476→   476→      )
+   477→   477→    }
+   478→   478→
+   479→   479→    // TIMESHEET
+   480→   480→    if (timesheetsLoading) {
+   481→   481→      return (
+   482→   482→        <div className="flex flex-col items-center py-10">
+   483→   483→          <div className="size-8 animate-spin rounded-full border-4 border-purple-200 border-t-purple-600" />
+   484→   484→          <p className="mt-3 text-sm text-muted-foreground">{commonText.loading[lang]}</p>
+   485→   485→        </div>
+   486→   486→      )
+   487→   487→    }
+   488→   488→
+   489→   489→    if (approvedTimesheets.length === 0) {
+   490→   490→      return (
+   491→   491→        <Card className="bg-amber-50 border-amber-200">
+   492→   492→          <CardContent className="p-6 text-center">
+   493→   493→            <HardHat className="size-10 text-amber-400 mx-auto mb-3" />
+   494→   494→            <p className="text-amber-700 font-medium">{t(labels.noApprovedTimesheets.ar, labels.noApprovedTimesheets.en)}</p>
+   495→   495→            <p className="text-sm text-amber-600 mt-1">
+   496→   496→              {t('يجب اعتماد سجل ساعات أولاً من وحدة ساعات العمل', 'An approved timesheet must be created first from the Timesheets module')}
+   497→   497→            </p>
+   498→   498→          </CardContent>
+   499→   499→        </Card>
+   500→   500→      )
+   501→   501→    }
+   502→   502→
+   503→   503→    return (
+   504→   504→      <div className="space-y-4">
+   505→   505→        <h3 className="text-lg font-semibold">{t(labels.step2Title.ar, labels.step2Title.en)}</h3>
+   506→   506→        <p className="text-sm text-muted-foreground">
+   507→   507→          {t('اختر سجل ساعات معتمد غير مفوتر', 'Select an approved uninvoiced timesheet')}
+   508→   508→        </p>
+   509→   509→        <div className="overflow-x-auto">
+   510→   510→          <Table>
+   511→   511→            <TableHeader>
+   512→   512→              <TableRow>
+   513→   513→                <TableHead />
+   514→   514→                <TableHead className="text-right">{t(labels.equipment.ar, labels.equipment.en)}</TableHead>
+   515→   515→                <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+   516→   516→                <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+   517→   517→                <TableHead className="text-right">{t(labels.operatingHours.ar, labels.operatingHours.en)}</TableHead>
+   518→   518→                <TableHead className="text-right">{t(labels.contractNo.ar, labels.contractNo.en)}</TableHead>
+   519→   519→              </TableRow>
+   520→   520→            </TableHeader>
+   521→   521→            <TableBody>
+   522→   522→              {approvedTimesheets.map(ts => (
+   523→   523→                <TableRow
+   524→   524→                  key={ts.id}
+   525→   525→                  className={`cursor-pointer transition-colors ${selectedTimesheetId === ts.id ? 'bg-purple-50 ring-1 ring-purple-300' : 'hover:bg-gray-50'}`}
+   526→   526→                  onClick={() => setSelectedTimesheetId(ts.id)}
+   527→   527→                >
+   528→   528→                  <TableCell className="w-10">
+   529→   529→                    <div className={`size-5 rounded-full border-2 flex items-center justify-center ${selectedTimesheetId === ts.id ? 'border-purple-500 bg-purple-500' : 'border-gray-300'}`}>
+   530→   530→                      {selectedTimesheetId === ts.id && <CheckCircle className="size-3 text-white" />}
+   531→   531→                    </div>
+   532→   532→                  </TableCell>
+   533→   533→                  <TableCell className="font-medium">{ts.equipment?.name || '—'}</TableCell>
+   534→   534→                  <TableCell>{ts.clientName || ts.project?.client?.name || '—'}</TableCell>
+   535→   535→                  <TableCell>{ts.project?.name || '—'}</TableCell>
+   536→   536→                  <TableCell>{formatNumber(ts.operatingHours)} {t('ساعة', 'hrs')}</TableCell>
+   537→   537→                  <TableCell className="font-mono">{ts.contract?.contractNo || '—'}</TableCell>
+   538→   538→                </TableRow>
+   539→   539→              ))}
+   540→   540→            </TableBody>
+   541→   541→          </Table>
+   542→   542→        </div>
+   543→   543→      </div>
+   544→   544→    )
+   545→   545→  }
+   546→   546→
+   547→   547→  // ============ STEP 3: Invoice Preview ============
+   548→   548→  const renderStep3 = () => (
+   549→   549→    <div className="space-y-6">
+   550→   550→      <h3 className="text-lg font-semibold">{t(labels.step3Title.ar, labels.step3Title.en)}</h3>
+   551→   551→
+   552→   552→      {/* Read-only notice */}
+   553→   553→      <Card className={sourceType === 'EXTRACT' ? 'bg-teal-50 border-teal-200' : 'bg-purple-50 border-purple-200'}>
+   554→   554→        <CardContent className="p-3 flex items-center gap-2">
+   555→   555→          {sourceType === 'EXTRACT' ? (
+   556→   556→            <>
+   557→   557→              <Building2 className="size-4 text-teal-600" />
+   558→   558→              <p className="text-sm text-teal-700 font-medium">
+   559→   559→                {t(labels.autoFromClaim.ar, labels.autoFromClaim.en)}
+   560→   560→              </p>
+   561→   561→            </>
+   562→   562→          ) : (
+   563→   563→            <>
+   564→   564→              <HardHat className="size-4 text-purple-600" />
+   565→   565→              <p className="text-sm text-purple-700 font-medium">
+   566→   566→                {t(labels.autoFromTimesheet.ar, labels.autoFromTimesheet.en)}
+   567→   567→              </p>
+   568→   568→            </>
+   569→   569→          )}
+   570→   570→        </CardContent>
+   571→   571→      </Card>
+   572→   572→
+   573→   573→      {/* Source Reference Info */}
+   574→   574→      {sourceType === 'EXTRACT' && selectedClaim && (
+   575→   575→        <Card>
+   576→   576→          <CardHeader className="pb-3">
+   577→   577→            <CardTitle className="text-lg">{t(labels.sourceRef.ar, labels.sourceRef.en)}</CardTitle>
+   578→   578→          </CardHeader>
+   579→   579→          <CardContent>
+   580→   580→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   581→   581→              <div>
+   582→   582→                <span className="text-muted-foreground">{t(labels.claimNo.ar, labels.claimNo.en)}:</span>
+   583→   583→                <p className="font-medium font-mono">{selectedClaim.claimNo}</p>
+   584→   584→              </div>
+   585→   585→              <div>
+   586→   586→                <span className="text-muted-foreground">{t(labels.client.ar, labels.client.en)}:</span>
+   587→   587→                <p className="font-medium">{selectedClaim.project?.client?.name || '—'}</p>
+   588→   588→              </div>
+   589→   589→              <div>
+   590→   590→                <span className="text-muted-foreground">{t(labels.project.ar, labels.project.en)}:</span>
+   591→   591→                <p className="font-medium">{selectedClaim.project?.name || '—'}</p>
+   592→   592→              </div>
+   593→   593→              <div>
+   594→   594→                <span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span>
+   595→   595→                <p className="font-medium font-mono">{selectedClaim.contract?.contractNo || '—'}</p>
+   596→   596→              </div>
+   597→   597→            </div>
+   598→   598→          </CardContent>
+   599→   599→        </Card>
+   600→   600→      )}
+
+[showing lines 1-600 of 1362; use offset=601 with limit to continue reading]

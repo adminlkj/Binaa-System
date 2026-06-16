@@ -1,0 +1,502 @@
+  1000→      {/* Filters */}
+  1001→      <Card className="bg-gray-50/50">
+  1002→        <CardContent className="p-4">
+  1003→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1004→            <div className="space-y-1 flex-1 min-w-[120px]">
+  1005→              <Label className="text-xs">{t('الحالة', 'Status', lang)}</Label>
+  1006→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1007→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1008→                <SelectContent>
+  1009→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+  1010→                  <SelectItem value="POSTED">{t('مرحّل', 'Posted', lang)}</SelectItem>
+  1011→                  <SelectItem value="DRAFT">{t('مسودة', 'Draft', lang)}</SelectItem>
+  1012→                  <SelectItem value="CANCELLED">{t('ملغي', 'Cancelled', lang)}</SelectItem>
+  1013→                </SelectContent>
+  1014→              </Select>
+  1015→            </div>
+  1016→            <div className="space-y-1 flex-1 min-w-[150px]">
+  1017→              <Label className="text-xs">{t('المصدر', 'Source', lang)}</Label>
+  1018→              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+  1019→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1020→                <SelectContent>
+  1021→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+  1022→                  {Object.entries(sourceTypeLabels).map(([key, label]) => (
+  1023→                    <SelectItem key={key} value={key}>{label[lang]}</SelectItem>
+  1024→                  ))}
+  1025→                </SelectContent>
+  1026→              </Select>
+  1027→            </div>
+  1028→            <div className="space-y-1 flex-1 min-w-[180px]">
+  1029→              <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+  1030→              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث برقم القيد أو الوصف...', 'Search by entry no or description...', lang)} className="h-9" />
+  1031→            </div>
+  1032→          </div>
+  1033→        </CardContent>
+  1034→      </Card>
+  1035→
+  1036→      {filtered.length === 0 ? (
+  1037→        <div className="flex flex-col items-center gap-3 py-10"><FileText className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد قيود', 'No journal entries found', lang)}</p></div>
+  1038→      ) : (
+  1039→        <Card>
+  1040→          <CardContent className="p-0">
+  1041→            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+  1042→              <Table>
+  1043→                <TableHeader>
+  1044→                  <TableRow>
+  1045→                    <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+  1046→                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1047→                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1048→                    <TableHead className="text-right">{t('المصدر', 'Source', lang)}</TableHead>
+  1049→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1050→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1051→                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+  1052→                  </TableRow>
+  1053→                </TableHeader>
+  1054→                <TableBody>
+  1055→                  {filtered.map(entry => (
+  1056→                    <TableRow key={entry.id} className="cursor-pointer hover:bg-emerald-50/30" onClick={() => setSelectedEntry(entry)}>
+  1057→                      <TableCell className="font-mono font-medium">{entry.entryNo}</TableCell>
+  1058→                      <TableCell>{formatDate(entry.date, lang)}</TableCell>
+  1059→                      <TableCell className="max-w-[200px] truncate">{entry.description || '—'}</TableCell>
+  1060→                      <TableCell>{entry.sourceType ? <Badge variant="outline" className="text-xs">{sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType}</Badge> : '—'}</TableCell>
+  1061→                      <TableCell><MoneyDisplay value={entry.totalDebit} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+  1062→                      <TableCell><MoneyDisplay value={entry.totalCredit} lang={lang} size="sm" className="text-rose-700" /></TableCell>
+  1063→                      <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
+  1064→                    </TableRow>
+  1065→                  ))}
+  1066→                </TableBody>
+  1067→              </Table>
+  1068→            </div>
+  1069→          </CardContent>
+  1070→        </Card>
+  1071→      )}
+  1072→    </div>
+  1073→  )
+  1074→}
+  1075→
+  1076→// ============ Tab 3: General Ledger ============
+  1077→function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; preselectedCode?: string }) {
+  1078→  const { lang } = useAppStore()
+  1079→  const postingAccounts = useMemo(() => accounts.filter(a => a.allowPosting).sort((a, b) => a.code.localeCompare(b.code)), [accounts])
+  1080→  const [selectedCode, setSelectedCode] = useState(preselectedCode || '')
+  1081→  const [dateFrom, setDateFrom] = useState('')
+  1082→  const [dateTo, setDateTo] = useState('')
+  1083→
+  1084→  // Sync with preselectedCode from parent
+  1085→  React.useEffect(() => {
+  1086→    if (preselectedCode) {
+  1087→      setSelectedCode(preselectedCode)
+  1088→    }
+  1089→  }, [preselectedCode])
+  1090→
+  1091→  const { data: ledgerData, isLoading, isError, refetch } = useQuery<{
+  1092→    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+  1093→    lines: StatementLine[]
+  1094→    totalDebit: number; totalCredit: number; closingBalance: number
+  1095→  } | null>({
+  1096→    queryKey: ['general-ledger', selectedCode, dateFrom, dateTo],
+  1097→    queryFn: async () => {
+  1098→      if (!selectedCode) return null
+  1099→      const params = new URLSearchParams({ accountCode: selectedCode })
+  1100→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1101→      if (dateTo) params.set('dateTo', dateTo)
+  1102→      const res = await fetch(`/api/general-ledger?${params}`)
+  1103→      if (!res.ok) throw new Error()
+  1104→      return res.json()
+  1105→    },
+  1106→    enabled: !!selectedCode,
+  1107→  })
+  1108→
+  1109→  return (
+  1110→    <div className="space-y-4">
+  1111→      <Card className="bg-gray-50/50">
+  1112→        <CardContent className="p-4">
+  1113→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1114→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1115→              <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
+  1116→              <Select value={selectedCode} onValueChange={setSelectedCode}>
+  1117→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} /></SelectTrigger>
+  1118→                <SelectContent>
+  1119→                  {postingAccounts.map(a => (
+  1120→                    <SelectItem key={a.id} value={a.code}>{a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}</SelectItem>
+  1121→                  ))}
+  1122→                </SelectContent>
+  1123→              </Select>
+  1124→            </div>
+  1125→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1126→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1127→            {selectedCode && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>}
+  1128→          </div>
+  1129→        </CardContent>
+  1130→      </Card>
+  1131→
+  1132→      {!selectedCode ? (
+  1133→        <div className="flex flex-col items-center gap-3 py-10"><BookOpen className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر حساباً لعرض حركته', 'Select an account to view its ledger', lang)}</p></div>
+  1134→      ) : isLoading ? <TableSkeleton /> : isError ? (
+  1135→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+  1136→      ) : ledgerData ? (
+  1137→        <>
+  1138→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1139→            <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('الحساب', 'Account', lang)}</p><p className="font-bold font-mono">{ledgerData.account.code}</p></CardContent></Card>
+  1140→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('مدين', 'Debit', lang)}</p><MoneyDisplay value={ledgerData.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+  1141→            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={ledgerData.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+  1142→            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p><MoneyDisplay value={ledgerData.closingBalance} lang={lang} bold className="text-purple-700" /></CardContent></Card>
+  1143→          </div>
+  1144→          <Card>
+  1145→            <CardContent className="p-0">
+  1146→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1147→                <Table>
+  1148→                  <TableHeader>
+  1149→                    <TableRow>
+  1150→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1151→                      <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+  1152→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1153→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1154→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1155→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1156→                    </TableRow>
+  1157→                  </TableHeader>
+  1158→                  <TableBody>
+  1159→                    {ledgerData.lines.map((line, idx) => (
+  1160→                      <TableRow key={idx}>
+  1161→                        <TableCell>{formatDate(line.date, lang)}</TableCell>
+  1162→                        <TableCell className="font-mono">{line.entryNo}</TableCell>
+  1163→                        <TableCell>{line.description || line.lineDescription || '—'}</TableCell>
+  1164→                        <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1165→                        <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1166→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} bold /></TableCell>
+  1167→                      </TableRow>
+  1168→                    ))}
+  1169→                  </TableBody>
+  1170→                </Table>
+  1171→              </div>
+  1172→            </CardContent>
+  1173→          </Card>
+  1174→        </>
+  1175→      ) : null}
+  1176→    </div>
+  1177→  )
+  1178→}
+  1179→
+  1180→// ============ Tab 4: Trial Balance ============
+  1181→function TrialBalanceTab() {
+  1182→  const { lang } = useAppStore()
+  1183→  const [dateFrom, setDateFrom] = useState('')
+  1184→  const [dateTo, setDateTo] = useState('')
+  1185→
+  1186→  const { data: trialData, isLoading, isError, refetch } = useQuery<TrialBalanceItem[]>({
+  1187→    queryKey: ['trial-balance', dateFrom, dateTo],
+  1188→    queryFn: async () => {
+  1189→      const params = new URLSearchParams()
+  1190→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1191→      if (dateTo) params.set('dateTo', dateTo)
+  1192→      const res = await fetch(`/api/trial-balance?${params}`)
+  1193→      if (!res.ok) throw new Error()
+  1194→      const data = await res.json()
+  1195→      return Array.isArray(data) ? data : (data.items || [])
+  1196→    },
+  1197→  })
+  1198→
+  1199→  const safeData = trialData || []
+  1200→  const totals = useMemo(() => ({
+  1201→    netDebit: safeData.reduce((s, i) => s + i.netDebit, 0),
+  1202→    netCredit: safeData.reduce((s, i) => s + i.netCredit, 0),
+  1203→  }), [safeData])
+  1204→
+  1205→  return (
+  1206→    <div className="space-y-4">
+  1207→      <Card className="bg-gray-50/50">
+  1208→        <CardContent className="p-4">
+  1209→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1210→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1211→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1212→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>
+  1213→            <div className="mr-auto">
+  1214→              <Badge className={Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-rose-100 text-rose-700 border-0'}>
+  1215→                {Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? t('✓ متوازن', '✓ Balanced', lang) : t('✗ غير متوازن', '✗ Unbalanced', lang)}
+  1216→              </Badge>
+  1217→            </div>
+  1218→          </div>
+  1219→        </CardContent>
+  1220→      </Card>
+  1221→
+  1222→      {isLoading ? <TableSkeleton /> : isError ? (
+  1223→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p></div>
+  1224→      ) : safeData.length === 0 ? (
+  1225→        <div className="flex flex-col items-center gap-3 py-10"><Scale className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أرصدة', 'No balances found', lang)}</p></div>
+  1226→      ) : (
+  1227→        <Card>
+  1228→          <CardContent className="p-0">
+  1229→            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+  1230→              <Table>
+  1231→                <TableHeader>
+  1232→                  <TableRow>
+  1233→                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+  1234→                    <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+  1235→                    <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+  1236→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1237→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1238→                  </TableRow>
+  1239→                </TableHeader>
+  1240→                <TableBody>
+  1241→                  {safeData.map((item, idx) => (
+  1242→                    <TableRow key={idx}>
+  1243→                      <TableCell className="font-mono text-sm">{item.account.code}</TableCell>
+  1244→                      <TableCell className="font-medium">{lang === 'ar' && item.account.nameAr ? item.account.nameAr : item.account.name}</TableCell>
+  1245→                      <TableCell><TypeBadge type={item.account.type} lang={lang} /></TableCell>
+  1246→                      <TableCell>{item.netDebit > 0 ? <MoneyDisplay value={item.netDebit} lang={lang} size="sm" className="text-emerald-700" bold /> : '—'}</TableCell>
+  1247→                      <TableCell>{item.netCredit > 0 ? <MoneyDisplay value={item.netCredit} lang={lang} size="sm" className="text-rose-700" bold /> : '—'}</TableCell>
+  1248→                    </TableRow>
+  1249→                  ))}
+  1250→                  <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+  1251→                    <TableCell colSpan={3} className="text-lg">{t('الإجمالي', 'Total', lang)}</TableCell>
+  1252→                    <TableCell><MoneyDisplay value={totals.netDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+  1253→                    <TableCell><MoneyDisplay value={totals.netCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+  1254→                  </TableRow>
+  1255→                </TableBody>
+  1256→              </Table>
+  1257→            </div>
+  1258→          </CardContent>
+  1259→        </Card>
+  1260→      )}
+  1261→    </div>
+  1262→  )
+  1263→}
+  1264→
+  1265→// ============ Tab 5: Income Statement ============
+  1266→function IncomeStatementTab() {
+  1267→  const { lang } = useAppStore()
+  1268→  const [dateFrom, setDateFrom] = useState('')
+  1269→  const [dateTo, setDateTo] = useState('')
+  1270→
+  1271→  const { data, isLoading, isError, refetch } = useQuery({
+  1272→    queryKey: ['financial-reports', 'income-statement', dateFrom, dateTo],
+  1273→    queryFn: async () => {
+  1274→      const params = new URLSearchParams({ type: 'income-statement' })
+  1275→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1276→      if (dateTo) params.set('dateTo', dateTo)
+  1277→      const res = await fetch(`/api/financial-reports?${params}`)
+  1278→      if (!res.ok) throw new Error()
+  1279→      return res.json()
+  1280→    },
+  1281→  })
+  1282→
+  1283→  const report = data as Record<string, unknown> | undefined
+  1284→  const revenues = (report?.revenues as Record<string, number>) || {}
+  1285→  const projectCosts = (report?.projectCosts as Record<string, number>) || {}
+  1286→  const rentalCosts = (report?.rentalCosts as Record<string, number>) || {}
+  1287→  const operatingExpenses = (report?.operatingExpenses as Record<string, number>) || {}
+  1288→  const grossProfit = (report?.grossProfit as number) || 0
+  1289→  const netProfit = (report?.netProfit as number) || 0
+  1290→  const totalRevenue = (report?.totalRevenue as number) || 0
+  1291→  const totalProjectCosts = (report?.totalProjectCosts as number) || 0
+  1292→  const totalRentalCosts = (report?.totalRentalCosts as number) || 0
+  1293→  const totalOperatingExpenses = (report?.totalOperatingExpenses as number) || 0
+  1294→
+  1295→  return (
+  1296→    <div className="space-y-4">
+  1297→      <Card className="bg-gray-50/50">
+  1298→        <CardContent className="p-4">
+  1299→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1300→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1301→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1302→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض التقرير', 'Generate', lang)}</Button>
+  1303→          </div>
+  1304→        </CardContent>
+  1305→      </Card>
+  1306→
+  1307→      {isLoading ? <TableSkeleton /> : isError ? (
+  1308→        <div className="text-center py-10 text-rose-600">{t('حدث خطأ', 'Error', lang)}</div>
+  1309→      ) : data ? (
+  1310→        <>
+  1311→          {/* Summary Cards */}
+  1312→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1313→            <SummaryCard title={t('إجمالي الإيرادات', 'Total Revenue', lang)} value={totalRevenue} icon={TrendingUp} color="emerald" lang={lang} />
+  1314→            <SummaryCard title={t('تكاليف المشاريع', 'Project Costs', lang)} value={totalProjectCosts + totalRentalCosts} icon={Building2} color="rose" lang={lang} />
+  1315→            <SummaryCard title={t('مجمل الربح', 'Gross Profit', lang)} value={grossProfit} icon={BarChart3} color={grossProfit >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1316→            <SummaryCard title={t('صافي الربح', 'Net Profit', lang)} value={netProfit} icon={CircleDollarSign} color={netProfit >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1317→          </div>
+  1318→
+  1319→          {/* Revenue Section */}
+  1320→          <Card>
+  1321→            <CardContent className="p-4">
+  1322→              <SectionTitle icon={TrendingUp} title={{ ar: 'الإيرادات', en: 'Revenue' }} lang={lang} />
+  1323→              <Table>
+  1324→                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
+  1325→                <TableBody>
+  1326→                  {Object.entries(revenues).map(([key, val]) => (
+  1327→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-emerald-700" /></TableCell></TableRow>
+  1328→                  ))}
+  1329→                  <TableRow className="font-bold bg-emerald-50"><TableCell>{t('إجمالي الإيرادات', 'Total Revenue', lang)}</TableCell><TableCell><MoneyDisplay value={totalRevenue} lang={lang} bold className="text-emerald-700" /></TableCell></TableRow>
+  1330→                </TableBody>
+  1331→              </Table>
+  1332→            </CardContent>
+  1333→          </Card>
+  1334→
+  1335→          {/* Costs Section */}
+  1336→          <Card>
+  1337→            <CardContent className="p-4">
+  1338→              <SectionTitle icon={Building2} title={{ ar: 'تكاليف المشاريع والتأجير', en: 'Project & Rental Costs' }} lang={lang} />
+  1339→              <Table>
+  1340→                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
+  1341→                <TableBody>
+  1342→                  {Object.entries(projectCosts).map(([key, val]) => (
+  1343→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-rose-700" /></TableCell></TableRow>
+  1344→                  ))}
+  1345→                  {Object.entries(rentalCosts).map(([key, val]) => (
+  1346→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-rose-700" /></TableCell></TableRow>
+  1347→                  ))}
+  1348→                  <TableRow className="font-bold bg-rose-50"><TableCell>{t('إجمالي التكاليف', 'Total Costs', lang)}</TableCell><TableCell><MoneyDisplay value={totalProjectCosts + totalRentalCosts} lang={lang} bold className="text-rose-700" /></TableCell></TableRow>
+  1349→                </TableBody>
+  1350→              </Table>
+  1351→            </CardContent>
+  1352→          </Card>
+  1353→
+  1354→          {/* Operating Expenses */}
+  1355→          <Card>
+  1356→            <CardContent className="p-4">
+  1357→              <SectionTitle icon={Calculator} title={{ ar: 'المصاريف الإدارية والتشغيلية', en: 'Operating Expenses' }} lang={lang} />
+  1358→              <Table>
+  1359→                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
+  1360→                <TableBody>
+  1361→                  {Object.entries(operatingExpenses).map(([key, val]) => (
+  1362→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-orange-700" /></TableCell></TableRow>
+  1363→                  ))}
+  1364→                  <TableRow className="font-bold bg-orange-50"><TableCell>{t('إجمالي المصاريف', 'Total Operating', lang)}</TableCell><TableCell><MoneyDisplay value={totalOperatingExpenses} lang={lang} bold className="text-orange-700" /></TableCell></TableRow>
+  1365→                </TableBody>
+  1366→              </Table>
+  1367→            </CardContent>
+  1368→          </Card>
+  1369→
+  1370→          {/* Net Profit */}
+  1371→          <Card className={`border-2 ${netProfit >= 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}>
+  1372→            <CardContent className="p-6 text-center">
+  1373→              <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
+  1374→                {t('صافي الربح', 'Net Profit', lang)}: <MoneyDisplay value={netProfit} lang={lang} bold className="text-3xl" />
+  1375→              </p>
+  1376→              {totalRevenue > 0 && (
+  1377→                <p className={`text-sm mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+  1378→                  {t('هامش الربح', 'Profit Margin', lang)}: {((netProfit / totalRevenue) * 100).toFixed(1)}%
+  1379→                </p>
+  1380→              )}
+  1381→            </CardContent>
+  1382→          </Card>
+  1383→        </>
+  1384→      ) : (
+  1385→        <div className="flex flex-col items-center gap-3 py-10"><BarChart3 className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد الفترة ثم اضغط عرض التقرير', 'Select period and click Generate', lang)}</p></div>
+  1386→      )}
+  1387→    </div>
+  1388→  )
+  1389→}
+  1390→
+  1391→// ============ Tab 6: Balance Sheet ============
+  1392→function BalanceSheetTab() {
+  1393→  const { lang } = useAppStore()
+  1394→  const [dateTo, setDateTo] = useState('')
+  1395→
+  1396→  const { data, isLoading, isError, refetch } = useQuery({
+  1397→    queryKey: ['financial-reports', 'balance-sheet', dateTo],
+  1398→    queryFn: async () => {
+  1399→      const params = new URLSearchParams({ type: 'balance-sheet' })
+  1400→      if (dateTo) params.set('dateTo', dateTo)
+  1401→      const res = await fetch(`/api/financial-reports?${params}`)
+  1402→      if (!res.ok) throw new Error()
+  1403→      return res.json()
+  1404→    },
+  1405→  })
+  1406→
+  1407→  const report = data as Record<string, unknown> | undefined
+  1408→  const currentAssets = (report?.currentAssets as Record<string, number>) || {}
+  1409→  const nonCurrentAssets = (report?.nonCurrentAssets as Record<string, number>) || {}
+  1410→  const currentLiabilities = (report?.currentLiabilities as Record<string, number>) || {}
+  1411→  const nonCurrentLiabilities = (report?.nonCurrentLiabilities as Record<string, number>) || {}
+  1412→  const equity = (report?.equity as Record<string, number>) || {}
+  1413→  const totalAssets = (report?.totalAssets as number) || 0
+  1414→  const totalLiabilities = (report?.totalLiabilities as number) || 0
+  1415→  const totalEquity = (report?.totalEquity as number) || 0
+  1416→  const isBalanced = (report?.isBalanced as boolean) || false
+  1417→
+  1418→  return (
+  1419→    <div className="space-y-4">
+  1420→      <Card className="bg-gray-50/50">
+  1421→        <CardContent className="p-4">
+  1422→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1423→            <div className="space-y-1"><Label className="text-xs">{t('حتى تاريخ', 'As of Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1424→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'Generate', lang)}</Button>
+  1425→          </div>
+  1426→        </CardContent>
+  1427→      </Card>
+  1428→
+  1429→      {isLoading ? <TableSkeleton /> : data ? (
+  1430→        <>
+  1431→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1432→            <SummaryCard title={t('إجمالي الأصول', 'Total Assets', lang)} value={totalAssets} icon={Wallet} color="sky" lang={lang} />
+  1433→            <SummaryCard title={t('إجمالي الخصوم', 'Total Liabilities', lang)} value={totalLiabilities} icon={CreditCard} color="orange" lang={lang} />
+  1434→            <SummaryCard title={t('حقوق الملكية', 'Equity', lang)} value={totalEquity} icon={Banknote} color="purple" lang={lang} />
+  1435→            <Card className={`${isBalanced ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'} border`}>
+  1436→              <CardContent className="p-4 text-center">
+  1437→                <p className="text-xs font-medium">{t('التحقق', 'Verification', lang)}</p>
+  1438→                <p className={`text-lg font-bold ${isBalanced ? 'text-emerald-700' : 'text-rose-700'}`}>
+  1439→                  {isBalanced ? t('✓ متوازنة', '✓ Balanced', lang) : t('✗ غير متوازنة', '✗ Unbalanced', lang)}
+  1440→                </p>
+  1441→              </CardContent>
+  1442→            </Card>
+  1443→          </div>
+  1444→
+  1445→          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  1446→            {/* Assets Column */}
+  1447→            <div className="space-y-4">
+  1448→              <Card>
+  1449→                <CardContent className="p-4">
+  1450→                  <SectionTitle icon={Wallet} title={{ ar: 'الأصول المتداولة', en: 'Current Assets' }} lang={lang} />
+  1451→                  <Table>
+  1452→                    <TableBody>
+  1453→                      {Object.entries(currentAssets).map(([key, val]) => (
+  1454→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-sky-700" /></TableCell></TableRow>
+  1455→                      ))}
+  1456→                    </TableBody>
+  1457→                  </Table>
+  1458→                </CardContent>
+  1459→              </Card>
+  1460→              <Card>
+  1461→                <CardContent className="p-4">
+  1462→                  <SectionTitle icon={Wallet} title={{ ar: 'الأصول غير المتداولة', en: 'Non-Current Assets' }} lang={lang} />
+  1463→                  <Table>
+  1464→                    <TableBody>
+  1465→                      {Object.entries(nonCurrentAssets).map(([key, val]) => (
+  1466→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-sky-700" /></TableCell></TableRow>
+  1467→                      ))}
+  1468→                    </TableBody>
+  1469→                  </Table>
+  1470→                </CardContent>
+  1471→              </Card>
+  1472→              <Card className="bg-sky-50 border-sky-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-sky-800">{t('إجمالي الأصول', 'Total Assets', lang)}: <MoneyDisplay value={totalAssets} lang={lang} bold /></p></CardContent></Card>
+  1473→            </div>
+  1474→
+  1475→            {/* Liabilities & Equity Column */}
+  1476→            <div className="space-y-4">
+  1477→              <Card>
+  1478→                <CardContent className="p-4">
+  1479→                  <SectionTitle icon={CreditCard} title={{ ar: 'الخصوم المتداولة', en: 'Current Liabilities' }} lang={lang} />
+  1480→                  <Table>
+  1481→                    <TableBody>
+  1482→                      {Object.entries(currentLiabilities).map(([key, val]) => (
+  1483→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-orange-700" /></TableCell></TableRow>
+  1484→                      ))}
+  1485→                    </TableBody>
+  1486→                  </Table>
+  1487→                </CardContent>
+  1488→              </Card>
+  1489→              <Card>
+  1490→                <CardContent className="p-4">
+  1491→                  <SectionTitle icon={Banknote} title={{ ar: 'حقوق الملكية', en: 'Equity' }} lang={lang} />
+  1492→                  <Table>
+  1493→                    <TableBody>
+  1494→                      {Object.entries(equity).map(([key, val]) => (
+  1495→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-purple-700" /></TableCell></TableRow>
+  1496→                      ))}
+  1497→                    </TableBody>
+  1498→                  </Table>
+  1499→                </CardContent>
+
+[showing lines 1000-1499 of 2691; use offset=1500 with limit to continue reading]

@@ -1,0 +1,1426 @@
+     1→// نظام بِنَاء ERP - Complete Schema
+     2→// Binaa Construction ERP
+     3→// Updated: Resources + Supply Chain + Accounting Integration
+     4→
+     5→generator client {
+     6→  provider = "prisma-client-js"
+     7→}
+     8→
+     9→datasource db {
+    10→  provider = "sqlite"
+    11→  url      = env("DATABASE_URL")
+    12→}
+    13→
+    14→// ============ ENUMS ============
+    15→
+    16→enum ProjectStatus {
+    17→  PLANNING
+    18→  ACTIVE
+    19→  ON_HOLD
+    20→  COMPLETED
+    21→  CANCELLED
+    22→}
+    23→
+    24→enum ContractStatus {
+    25→  DRAFT
+    26→  UNDER_REVIEW
+    27→  ACTIVE
+    28→  EXPIRED
+    29→  TERMINATED
+    30→  CANCELLED
+    31→}
+    32→
+    33→enum InvoiceStatus {
+    34→  DRAFT
+    35→  SENT
+    36→  PARTIALLY_PAID
+    37→  PAID
+    38→  OVERDUE
+    39→  CANCELLED
+    40→}
+    41→
+    42→enum PurchaseOrderStatus {
+    43→  DRAFT
+    44→  PENDING_APPROVAL
+    45→  APPROVED
+    46→  PARTIALLY_RECEIVED
+    47→  RECEIVED
+    48→  CANCELLED
+    49→}
+    50→
+    51→enum PurchaseRequestStatus {
+    52→  NEW
+    53→  APPROVED
+    54→  CONVERTED_TO_PO
+    55→  CANCELLED
+    56→}
+    57→
+    58→enum ClaimStatus {
+    59→  DRAFT
+    60→  SUBMITTED
+    61→  APPROVED
+    62→  PARTIALLY_PAID
+    63→  PAID
+    64→  REJECTED
+    65→}
+    66→
+    67→enum JournalEntryStatus {
+    68→  DRAFT
+    69→  POSTED
+    70→  CANCELLED
+    71→}
+    72→
+    73→enum EquipmentStatus {
+    74→  AVAILABLE
+    75→  IN_USE
+    76→  MAINTENANCE
+    77→  OUT_OF_SERVICE
+    78→  RENTED
+    79→}
+    80→
+    81→enum AdvanceStatus {
+    82→  PENDING
+    83→  PARTIALLY_SETTLED
+    84→  SETTLED
+    85→  CANCELLED
+    86→}
+    87→
+    88→enum InventoryItemType {
+    89→  PRODUCT
+    90→  SERVICE
+    91→}
+    92→
+    93→enum ProjectType {
+    94→  CONSTRUCTION
+    95→  EQUIPMENT_RENTAL
+    96→}
+    97→
+    98→enum ExpenseType {
+    99→  PROJECT
+   100→  INTERNAL
+   101→}
+   102→
+   103→enum ExpenseCategory {
+   104→  RENT
+   105→  MAINTENANCE
+   106→  TRANSPORT
+   107→  DELIVERY
+   108→  CONSUMABLES
+   109→  SERVICES
+   110→  INSURANCE
+   111→  FUEL
+   112→  PERMITS
+   113→  OFFICE
+   114→  HOSPITALITY
+   115→  OTHER
+   116→  SALARIES
+   117→  INTERNET
+   118→  ELECTRICITY
+   119→  WATER
+   120→  MANAGEMENT_CARS
+   121→  DRIVERS
+   122→}
+   123→
+   124→enum TimesheetStatus {
+   125→  DRAFT
+   126→  SUBMITTED
+   127→  APPROVED
+   128→  INVOICED
+   129→}
+   130→
+   131→enum DeliveryOrderStatus {
+   132→  PENDING
+   133→  DELIVERED
+   134→  RETURNED
+   135→  CANCELLED
+   136→}
+   137→
+   138→enum AccountActivityType {
+   139→  CONSTRUCTION
+   140→  EQUIPMENT_RENTAL
+   141→  BOTH
+   142→}
+   143→
+   144→// Activity type for business flow - every record knows which hub it belongs to
+   145→enum ActivityType {
+   146→  EXECUTION    // مشاريع تنفيذية
+   147→  RENTAL       // تأجير معدات
+   148→  GENERAL      // مشترك / عام
+   149→}
+   150→
+   151→enum VATReturnStatus {
+   152→  DRAFT
+   153→  FILED
+   154→  PAID
+   155→}
+   156→
+   157→enum EmployeeStatus {
+   158→  ACTIVE
+   159→  ON_LEAVE
+   160→  TERMINATED
+   161→  RESIGNED
+   162→}
+   163→
+   164→enum SalaryType {
+   165→  MONTHLY
+   166→  HOURLY
+   167→}
+   168→
+   169→enum SalaryStatus {
+   170→  DRAFT
+   171→  REVIEW
+   172→  APPROVED
+   173→  PARTIALLY_PAID
+   174→  PAID
+   175→}
+   176→
+   177→enum PayrollRunStatus {
+   178→  DRAFT
+   179→  REVIEW
+   180→  APPROVED
+   181→  PARTIALLY_PAID
+   182→  PAID
+   183→}
+   184→
+   185→enum PaymentMethod {
+   186→  BANK
+   187→  CASH
+   188→}
+   189→
+   190→enum GoodsReceiptStatus {
+   191→  PENDING
+   192→  PARTIAL
+   193→  COMPLETED
+   194→  CANCELLED
+   195→}
+   196→
+   197→// ============ COMPANY SETTINGS ============
+   198→
+   199→model CompanySetting {
+   200→  id              String   @id @default(cuid())
+   201→  nameAr          String
+   202→  nameEn          String
+   203→  logo            String?
+   204→  logoUrl         String?
+   205→  commercialReg   String?
+   206→  taxNumber       String?
+   207→  address         String?
+   208→  phone           String?
+   209→  email           String?
+   210→  website         String?
+   211→  bankName        String?
+   212→  bankIban        String?
+   213→  bankAccountName String?
+   214→  stamp           String?
+   215→  defaultVatRate  Float    @default(0.15)
+   216→  currency        String   @default("SAR")
+   217→  currencySymbol    String?
+   218→  currencySymbolEn  String?
+   219→  currencySymbolAr  String?
+   220→  invoiceTerms    String?
+   221→  currencySymbolImage String?
+   222→  headerImage         String?
+   223→  footerImage         String?
+   224→  useThousandSeparatorsSystem  Boolean  @default(true)
+   225→  useThousandSeparatorsOfficial Boolean @default(false)
+   226→
+   227→  // ──── Invoice Print Settings ────
+   228→  invoiceTemplate        String?  @default("classic")     // classic | modern | minimal | corporate
+   229→  invoiceFontSize        String?  @default("medium")      // small | medium | large
+   230→  invoiceExportDPI       Int      @default(2)             // 1=standard, 2=high, 3=ultra (scale factor for html2canvas)
+   231→  invoicePrimaryColor    String?  @default("#1a2332")     // header bg, table header, dark accents
+   232→  invoiceSecondaryColor  String?  @default("#c9a96e")     // gold/accent color
+   233→  invoiceAccentBgColor   String?  @default("#faf8f0")     // light background for info items, totals grand
+   234→  invoiceShowStamp       Boolean  @default(true)
+   235→  invoiceShowBankInfo    Boolean  @default(true)
+   236→  invoiceShowTerms       Boolean  @default(true)
+   237→  invoiceShowQR          Boolean  @default(true)
+   238→  invoiceShowAmountWords Boolean  @default(true)
+   239→  invoiceShowDelivery    Boolean  @default(true)
+   240→
+   241→  createdAt       DateTime  @default(now())
+   242→  updatedAt       DateTime  @updatedAt
+   243→}
+   244→
+   245→// ============ CORE / SETTINGS ============
+   246→
+   247→model Branch {
+   248→  id        String   @id @default(cuid())
+   249→  code      String   @unique
+   250→  name      String
+   251→  address   String?
+   252→  isActive  Boolean  @default(true)
+   253→  createdAt DateTime @default(now())
+   254→  updatedAt DateTime @updatedAt
+   255→
+   256→  projects     Project[]
+   257→  warehouses   Warehouse[]
+   258→  employees    Employee[]
+   259→  pettyCashes  PettyCash[]
+   260→}
+   261→
+   262→model Warehouse {
+   263→  id       String  @id @default(cuid())
+   264→  code     String  @unique
+   265→  name     String
+   266→  branchId String
+   267→  isActive Boolean @default(true)
+   268→
+   269→  branch         Branch       @relation(fields: [branchId], references: [id])
+   270→  inventoryItems InventoryItem[]
+   271→}
+   272→
+   273→model CostCenter {
+   274→  id        String  @id @default(cuid())
+   275→  code      String  @unique
+   276→  name      String
+   277→  parentId  String?
+   278→  projectId String?  @unique  // ربط مركز التكلفة بالمشروع تلقائياً
+   279→
+   280→  parent    CostCenter?  @relation("CostCenterHierarchy", fields: [parentId], references: [id])
+   281→  children  CostCenter[] @relation("CostCenterHierarchy")
+   282→  project   Project?     @relation(fields: [projectId], references: [id])
+   283→  journalLines JournalLine[]
+   284→}
+   285→
+   286→model Attachment {
+   287→  id         String   @id @default(cuid())
+   288→  entityId   String
+   289→  entityType String
+   290→  fileName   String
+   291→  filePath   String
+   292→  fileSize   Int
+   293→  mimeType   String
+   294→  createdAt  DateTime @default(now())
+   295→}
+   296→
+   297→model AuditLog {
+   298→  id        String   @id @default(cuid())
+   299→  userId    String?
+   300→  action    String
+   301→  entity    String
+   302→  entityId  String?
+   303→  details   String?
+   304→  createdAt DateTime @default(now())
+   305→}
+   306→
+   307→// ============ CLIENTS & SUPPLIERS ============
+   308→
+   309→model Client {
+   310→  id            String   @id @default(cuid())
+   311→  code          String   @unique
+   312→  name          String
+   313→  nameAr        String?
+   314→  nameEn        String?
+   315→  contactPerson String?
+   316→  email         String?
+   317→  phone         String?
+   318→  address       String?
+   319→  taxNumber     String?
+   320→  isActive      Boolean  @default(true)
+   321→  createdAt     DateTime @default(now())
+   322→  updatedAt     DateTime @updatedAt
+   323→
+   324→  projects      Project[]
+   325→  contracts     Contract[]
+   326→  salesInvoices SalesInvoice[]
+   327→  rentalContracts EquipmentRental[]
+   328→  deliveryOrders EquipmentDeliveryOrder[]
+   329→  clientPayments ClientPayment[]
+   330→}
+   331→
+   332→model Supplier {
+   333→  id              String   @id @default(cuid())
+   334→  code            String   @unique
+   335→  name            String
+   336→  nameAr          String?
+   337→  nameEn          String?
+   338→  contactPerson   String?
+   339→  email           String?
+   340→  phone           String?
+   341→  address         String?
+   342→  taxNumber       String?
+   343→  commercialReg   String?
+   344→  paymentTerms    String?
+   345→  creditLimit     Float    @default(0)
+   346→  isActive        Boolean  @default(true)
+   347→  createdAt       DateTime @default(now())
+   348→  updatedAt       DateTime @updatedAt
+   349→
+   350→  purchaseOrders  PurchaseOrder[]
+   351→  purchaseInvoices PurchaseInvoice[]
+   352→  equipment       Equipment[]
+   353→  goodsReceipts   GoodsReceipt[]
+   354→  supplierPayments SupplierPayment[]
+   355→  equipmentMaintenance EquipmentMaintenance[]
+   356→}
+   357→
+   358→model Subcontractor {
+   359→  id            String   @id @default(cuid())
+   360→  code          String   @unique
+   361→  name          String
+   362→  nameAr        String?
+   363→  nameEn        String?
+   364→  specialty     String?
+   365→  idOrRegNumber String?
+   366→  contactPerson String?
+   367→  email         String?
+   368→  phone         String?
+   369→  address       String?
+   370→  taxNumber     String?
+   371→  isActive      Boolean  @default(true)
+   372→  createdAt     DateTime @default(now())
+   373→  updatedAt     DateTime @updatedAt
+   374→
+   375→  invoices SubcontractorInvoice[]
+   376→  contracts SubcontractorContract[]
+   377→}
+   378→
+   379→// ============ EMPLOYEES ============
+   380→
+   381→model Employee {
+   382→  id                     String         @id @default(cuid())
+   383→  code                   String         @unique
+   384→  name                   String
+   385→  nameAr                 String?
+   386→  nationality            String?
+   387→  profession             String?
+   388→  residenceNumber        String?
+   389→  residenceExpiry        DateTime?
+   390→  hireDate               DateTime?
+   391→  basicSalary            Float          @default(0)
+   392→  salaryType             SalaryType     @default(MONTHLY)
+   393→  // Monthly salary fields
+   394→  housingAllowance       Float          @default(0)
+   395→  transportAllowance     Float          @default(0)
+   396→  otherAllowances        Float          @default(0)
+   397→  // Hourly salary fields
+   398→  referenceMonthlySalary Float          @default(0)
+   399→  referenceMonthlyHours  Float          @default(0)
+   400→  // Project assignment
+   401→  projectId              String?
+   402→  // GOSI (Social Insurance)
+   403→  gosiNumber             String?
+   404→  gosiPercentage         Float          @default(0)
+   405→  hasGosi                Boolean        @default(false)
+   406→  // General
+   407→  status                 EmployeeStatus @default(ACTIVE)
+   408→  branchId               String
+   409→  phone                  String?
+   410→  email                  String?
+   411→  isActive               Boolean        @default(true)
+   412→  createdAt              DateTime       @default(now())
+   413→  updatedAt              DateTime       @updatedAt
+   414→
+   415→  branch              Branch              @relation(fields: [branchId], references: [id])
+   416→  project             Project?            @relation(fields: [projectId], references: [id])
+   417→  advances            EmployeeAdvance[]
+   418→  contracts           EmployeeContract[]
+   419→  attendance          Attendance[]
+   420→  salaries            Salary[]
+   421→  payrollRunLines     PayrollRunLine[]
+   422→  teamMemberships     TeamMember[]
+   423→  operatorLogs        EquipmentOperation[]
+   424→}
+   425→
+   426→model EmployeeContract {
+   427→  id                String     @id @default(cuid())
+   428→  employeeId        String
+   429→  startDate         DateTime
+   430→  endDate           DateTime?
+   431→  salaryType        SalaryType @default(MONTHLY)
+   432→  basicSalary       Float
+   433→  housingAllowance  Float      @default(0)
+   434→  transportAllowance Float     @default(0)
+   435→  otherAllowances   Float      @default(0)
+   436→  // Hourly fields
+   437→  referenceMonthlySalary Float @default(0)
+   438→  referenceMonthlyHours  Float @default(0)
+   439→  createdAt         DateTime   @default(now())
+   440→  updatedAt         DateTime   @updatedAt
+   441→
+   442→  employee Employee @relation(fields: [employeeId], references: [id])
+   443→}
+   444→
+   445→model Attendance {
+   446→  id           String   @id @default(cuid())
+   447→  employeeId   String
+   448→  date         DateTime
+   449→  checkIn      DateTime?
+   450→  checkOut     DateTime?
+   451→  workHours    Float    @default(0)
+   452→  overtimeHours Float   @default(0)
+   453→  notes        String?
+   454→  createdAt    DateTime @default(now())
+   455→  updatedAt    DateTime @updatedAt
+   456→
+   457→  employee Employee @relation(fields: [employeeId], references: [id])
+   458→}
+   459→
+   460→model Salary {
+   461→  id              String       @id @default(cuid())
+   462→  employeeId      String
+   463→  projectId       String?
+   464→  activityType    String       @default("GENERAL")
+   465→  month           Int
+   466→  year            Int
+   467→  basicSalary     Float
+   468→  housingAllowance Float      @default(0)
+   469→  transportAllowance Float    @default(0)
+   470→  otherAllowances Float       @default(0)
+   471→  overtimeAmount  Float       @default(0)
+   472→  deductions      Float       @default(0)
+   473→  netSalary       Float       @default(0)
+   474→  status          SalaryStatus @default(DRAFT)
+   475→  journalEntryId  String?
+   476→  createdAt       DateTime    @default(now())
+   477→  updatedAt       DateTime    @updatedAt
+   478→
+   479→  employee Employee @relation(fields: [employeeId], references: [id])
+   480→  project  Project? @relation(fields: [projectId], references: [id])
+   481→}
+   482→
+   483→// ============ PAYROLL RUNS (مسيرات الرواتب) ============
+   484→
+   485→model PayrollRun {
+   486→  id              String           @id @default(cuid())
+   487→  code            String           @unique
+   488→  month           Int              // 1-12
+   489→  year            Int
+   490→  status          PayrollRunStatus @default(DRAFT)
+   491→  totalAmount     Float            @default(0)
+   492→  totalDeductions Float            @default(0)
+   493→  totalNet        Float            @default(0)
+   494→  notes           String?
+   495→  journalEntryId  String?
+   496→  createdAt       DateTime         @default(now())
+   497→  updatedAt       DateTime         @updatedAt
+   498→
+   499→  lines         PayrollRunLine[]
+   500→  salaryPayments SalaryPayment[]
+   501→}
+   502→
+   503→model PayrollRunLine {
+   504→  id              String   @id @default(cuid())
+   505→  payrollRunId    String
+   506→  employeeId      String
+   507→  salaryType      SalaryType @default(MONTHLY)
+   508→  // Monthly fields
+   509→  basicSalary     Float    @default(0)
+   510→  housingAllowance Float   @default(0)
+   511→  transportAllowance Float @default(0)
+   512→  otherAllowances Float    @default(0)
+   513→  // Hourly fields
+   514→  workHours       Float    @default(0)
+   515→  hourlyRate      Float    @default(0)
+   516→  hourlySalary    Float    @default(0)
+   517→  // Common
+   518→  overtimeAmount  Float    @default(0)
+   519→  deductions      Float    @default(0)
+   520→  gosiDeduction   Float    @default(0)
+   521→  totalEntitlement Float   @default(0)
+   522→  netSalary       Float    @default(0)
+   523→  // Project cost allocation
+   524→  projectId       String?
+   525→  journalEntryId  String?
+   526→  createdAt       DateTime @default(now())
+   527→  updatedAt       DateTime @updatedAt
+   528→
+   529→  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+   530→  employee   Employee   @relation(fields: [employeeId], references: [id])
+   531→  project    Project?   @relation(fields: [projectId], references: [id])
+   532→}
+   533→
+   534→// ============ SALARY PAYMENTS (سداد الرواتب) ============
+   535→
+   536→model SalaryPayment {
+   537→  id              String        @id @default(cuid())
+   538→  payrollRunId    String
+   539→  paymentMethod   PaymentMethod @default(BANK)
+   540→  amount          Float
+   541→  referenceNumber String?
+   542→  paymentDate     DateTime
+   543→  notes           String?
+   544→  journalEntryId  String?
+   545→  createdAt       DateTime      @default(now())
+   546→  updatedAt       DateTime      @updatedAt
+   547→
+   548→  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id])
+   549→}
+   550→
+   551→model WorkTeam {
+   552→  id          String   @id @default(cuid())
+   553→  code        String   @unique
+   554→  name        String
+   555→  nameAr      String?
+   556→  specialty   String?
+   557→  projectId   String?
+   558→  isActive    Boolean  @default(true)
+   559→  createdAt   DateTime @default(now())
+   560→  updatedAt   DateTime @updatedAt
+   561→
+   562→  project     Project?     @relation(fields: [projectId], references: [id])
+   563→  members     TeamMember[]
+   564→}
+   565→
+   566→model TeamMember {
+   567→  id        String   @id @default(cuid())
+   568→  teamId    String
+   569→  employeeId String
+   570→  role      String?
+   571→  isLeader  Boolean  @default(false)
+   572→  createdAt DateTime @default(now())
+   573→
+   574→  team     WorkTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+   575→  employee Employee @relation(fields: [employeeId], references: [id])
+   576→}
+   577→
+   578→// ============ PROJECTS ============
+   579→
+   580→model Project {
+   581→  id            String        @id @default(cuid())
+   582→  code          String        @unique
+   583→  name          String
+   584→  nameAr        String?
+   585→  location      String?
+   586→  branchId      String
+   587→  clientId      String
+   588→  projectType   ProjectType   @default(CONSTRUCTION)
+   589→  startDate     DateTime
+   590→  endDate       DateTime?
+   591→  contractValue Float         @default(0)
+   592→  status        ProjectStatus @default(PLANNING)
+   593→  description   String?
+   594→  createdAt     DateTime      @default(now())
+   595→  updatedAt     DateTime      @updatedAt
+   596→
+   597→  branch         Branch           @relation(fields: [branchId], references: [id])
+   598→  client         Client           @relation(fields: [clientId], references: [id])
+   599→  contracts      Contract[]
+   600→  boqItems       BOQItem[]
+   601→  progressClaims ProgressClaim[]
+   602→  salesInvoices  SalesInvoice[]
+   603→  purchaseOrders PurchaseOrder[]
+   604→  purchaseRequests PurchaseRequest[]
+   605→  expenses       Expense[]
+   606→  laborCosts     LaborCost[]
+   607→  equipmentCosts EquipmentCost[]
+   608→  equipmentUsages EquipmentUsage[]
+   609→  subcontractorInvoices SubcontractorInvoice[]
+   610→  timesheets     Timesheet[]
+   611→  rentalContracts EquipmentRental[]
+   612→  workTeams      WorkTeam[]
+   613→  goodsReceipts  GoodsReceipt[]
+   614→  purchaseInvoices PurchaseInvoice[]
+   615→  fuelLogs       EquipmentFuelLog[]
+   616→  resourceAllocations ResourceAllocation[]
+   617→  equipmentOperations EquipmentOperation[]
+   618→  salaries       Salary[]             // الرواتب المرتبطة بالمشروع
+   619→  employees      Employee[]           // الموظفون المرتبطون بالمشروع
+   620→  payrollRunLines PayrollRunLine[]    // بنود مسيرات الرواتب
+   621→  costCenter     CostCenter?          // مركز التكلفة المرتبط بالمشروع
+   622→}
+   623→
+   624→model Contract {
+   625→  id              String         @id @default(cuid())
+   626→  projectId       String
+   627→  contractNo      String         @unique
+   628→  date            DateTime
+   629→  value           Float
+   630→  vatRate         Float          @default(0.15)
+   631→  vatAmount       Float          @default(0)
+   632→  totalValue      Float          @default(0)
+   633→  startDate       DateTime
+   634→  endDate         DateTime?
+   635→  status          ContractStatus @default(DRAFT)
+   636→  description     String?
+   637→  contractType    String?        // PROJECT, RENTAL, SERVICE
+   638→  clientId        String?
+   639→  equipmentId     String?
+   640→  hourlyRate      Float?
+   641→  deliveryFees    Float          @default(0)
+   642→  deliveryFeesTaxable Boolean    @default(true)
+   643→  paymentTerms    String?
+   644→  salesOrderNo    String?
+   645→  journalEntryId  String?
+   646→  // ─── Project Contract Fields ───
+   647→  quotationNo     String?        // رقم عرض السعر
+   648→  loaNo           String?        // رقم أمر الترسية
+   649→  purchaseOrderNo String?        // رقم أمر الشراء PO
+   650→  projectDuration String?        // مدة المشروع
+   651→  warrantyPeriod  String?        // مدة الضمان
+   652→  maintenancePeriod String?      // مدة الصيانة
+   653→  billingMethod   String?        // PROGRESS_CLAIMS, MILESTONES
+   654→  firstClaimNo    String?        // رقم أول مستخلص
+   655→  advancePaymentPercent Float?   @default(0) // نسبة الدفعة المقدمة
+   656→  retentionPercent Float?        @default(0) // نسبة الاحتجاز
+   657→  projectManager  String?        // مدير المشروع
+   658→  projectEngineer String?        // مهندس المشروع
+   659→  projectLocation String?        // الموقع
+   660→  projectCity     String?        // المدينة
+   661→  projectType     String?        // RESIDENTIAL, COMMERCIAL, GOVERNMENT, INFRASTRUCTURE, MAINTENANCE_OPS
+   662→  createdAt       DateTime       @default(now())
+   663→  updatedAt       DateTime       @updatedAt
+   664→
+   665→  project        Project        @relation(fields: [projectId], references: [id])
+   666→  client         Client?        @relation(fields: [clientId], references: [id])
+   667→  progressClaims ProgressClaim[]
+   668→  salesInvoices  SalesInvoice[]
+   669→  timesheets     Timesheet[]
+   670→  rental         EquipmentRental?
+   671→}
+   672→
+   673→// ============ BOQ ============
+   674→
+   675→model BOQItem {
+   676→  id          String   @id @default(cuid())
+   677→  projectId   String
+   678→  code        String
+   679→  description String
+   680→  unit        String
+   681→  quantity    Float
+   682→  unitPrice   Float
+   683→  totalPrice  Float
+   684→  category    String?
+   685→  createdAt   DateTime @default(now())
+   686→  updatedAt   DateTime @updatedAt
+   687→
+   688→  project Project @relation(fields: [projectId], references: [id])
+   689→}
+   690→
+   691→// ============ PROGRESS CLAIMS ============
+   692→
+   693→model ProgressClaim {
+   694→  id            String      @id @default(cuid())
+   695→  projectId     String
+   696→  contractId    String
+   697→  claimNo       String
+   698→  date          DateTime
+   699→  percentage    Float
+   700→  amount        Float
+   701→  vatRate       Float       @default(0.15)
+   702→  vatAmount     Float       @default(0)
+   703→  totalAmount   Float       @default(0)
+   704→  status        ClaimStatus @default(DRAFT)
+   705→  approvedDate  DateTime?
+   706→  notes         String?
+   707→  journalEntryId String?
+   708→  invoiced      Boolean     @default(false)
+   709→  createdAt     DateTime    @default(now())
+   710→  updatedAt     DateTime    @updatedAt
+   711→
+   712→  project      Project       @relation(fields: [projectId], references: [id])
+   713→  contract     Contract      @relation(fields: [contractId], references: [id])
+   714→  salesInvoice SalesInvoice?
+   715→}
+   716→
+   717→// ============ SALES / CLIENT INVOICES ============
+   718→
+   719→model SalesInvoice {
+   720→  id            String        @id @default(cuid())
+   721→  invoiceNo     String        @unique
+   722→  projectId     String?
+   723→  contractId    String?
+   724→  clientId      String
+   725→  date          DateTime
+   726→  dueDate       DateTime
+   727→  subtotal      Float
+   728→  discountRate  Float         @default(0)
+   729→  discountAmount Float        @default(0)
+   730→  netAmount     Float         @default(0)
+   731→  vatRate       Float         @default(0.15)
+   732→  vatAmount     Float
+   733→  totalAmount   Float
+   734→  paidAmount    Float         @default(0)
+   735→  status        InvoiceStatus @default(DRAFT)
+   736→  invoiceType   String        @default("PROGRESS_CLAIM")
+   737→  notes         String?
+   738→  paymentTerms  String?
+   739→  referenceNo   String?
+   740→  sourceType    String        @default("EXTRACT")  // EXTRACT or TIMESHEET
+   741→  timesheetId   String?       @unique
+   742→  progressClaimId String?     @unique
+   743→  deliveryMonth String?
+   744→  includeDelivery Boolean     @default(false)
+   745→  deliveryAmount Float        @default(0)
+   746→  deliveryFeesTaxable Boolean @default(true)
+   747→  includeVat    Boolean       @default(true)
+   748→  contractNo    String?
+   749→  contractType  String?
+   750→  contractPeriodStart DateTime?
+   751→  contractPeriodEnd   DateTime?
+   752→  salesOrderNo  String?
+   753→  equipmentName String?
+   754→  operatingHours Float?
+   755→  hourlyRate    Float?
+   756→  amountInWordsAr String?
+   757→  amountInWordsEn String?
+   758→  journalEntryId String?
+   759→  createdAt     DateTime      @default(now())
+   760→  updatedAt     DateTime      @updatedAt
+   761→
+   762→  project       Project?       @relation(fields: [projectId], references: [id])
+   763→  contract      Contract?      @relation(fields: [contractId], references: [id])
+   764→  client        Client         @relation(fields: [clientId], references: [id])
+   765→  items         SalesInvoiceItem[]
+   766→  timesheet     Timesheet?     @relation(fields: [timesheetId], references: [id])
+   767→  progressClaim ProgressClaim? @relation(fields: [progressClaimId], references: [id])
+   768→  clientPayments ClientPayment[]
+   769→}
+   770→
+   771→model SalesInvoiceItem {
+   772→  id            String   @id @default(cuid())
+   773→  invoiceId     String
+   774→  description   String
+   775→  descriptionEn String?
+   776→  quantity      Float
+   777→  unit          String?
+   778→  unitPrice     Float
+   779→  totalPrice    Float
+   780→  itemType      String   @default("PRODUCT")
+   781→
+   782→  invoice SalesInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+   783→}
+   784→
+   785→// ============ PURCHASE WORKFLOW ============
+   786→
+   787→model PurchaseRequest {
+   788→  id          String              @id @default(cuid())
+   789→  requestNo   String              @unique
+   790→  projectId   String?
+   791→  source      String              @default("PROJECT") // PROJECT, INVENTORY, WORKSHOP, ADMIN
+   792→  date        DateTime
+   793→  description String?
+   794→  status      PurchaseRequestStatus @default(NEW)
+   795→  requestedBy String?
+   796→  createdAt   DateTime            @default(now())
+   797→  updatedAt   DateTime            @updatedAt
+   798→
+   799→  project Project? @relation(fields: [projectId], references: [id])
+   800→  items   PurchaseRequestItem[]
+   801→  purchaseOrders PurchaseOrder[]
+   802→}
+   803→
+   804→model PurchaseRequestItem {
+   805→  id          String   @id @default(cuid())
+   806→  requestId   String
+   807→  description String
+   808→  quantity    Float
+   809→  unit        String?
+   810→  notes       String?
+   811→
+   812→  request PurchaseRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+   813→}
+   814→
+   815→model PurchaseOrder {
+   816→  id                String              @id @default(cuid())
+   817→  orderNo           String              @unique
+   818→  projectId         String?
+   819→  supplierId        String
+   820→  purchaseRequestId String?
+   821→  date              DateTime
+   822→  deliveryDate      DateTime?
+   823→  paymentTerms      String?
+   824→  subtotal          Float
+   825→  vatRate           Float               @default(0.15)
+   826→  vatAmount         Float
+   827→  totalAmount       Float
+   828→  paidAmount        Float               @default(0)
+   829→  status            PurchaseOrderStatus @default(DRAFT)
+   830→  notes             String?
+   831→  journalEntryId    String?
+   832→  createdAt         DateTime            @default(now())
+   833→  updatedAt         DateTime            @updatedAt
+   834→
+   835→  project         Project?         @relation(fields: [projectId], references: [id])
+   836→  supplier        Supplier         @relation(fields: [supplierId], references: [id])
+   837→  purchaseRequest PurchaseRequest? @relation(fields: [purchaseRequestId], references: [id])
+   838→  items           PurchaseOrderItem[]
+   839→  invoices        PurchaseInvoice[]
+   840→  goodsReceipts   GoodsReceipt[]
+   841→}
+   842→
+   843→model PurchaseOrderItem {
+   844→  id          String   @id @default(cuid())
+   845→  orderId     String
+   846→  description String
+   847→  quantity    Float
+   848→  unit        String?
+   849→  unitPrice   Float
+   850→  vatRate     Float    @default(0.15)
+   851→  totalPrice  Float
+   852→
+   853→  order PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+   854→}
+   855→
+   856→model GoodsReceipt {
+   857→  id             String             @id @default(cuid())
+   858→  receiptNo      String             @unique
+   859→  purchaseOrderId String
+   860→  supplierId     String
+   861→  projectId      String?
+   862→  date           DateTime
+   863→  status         GoodsReceiptStatus @default(PENDING)
+   864→  notes          String?
+   865→  journalEntryId String?
+   866→  createdAt      DateTime           @default(now())
+   867→  updatedAt      DateTime           @updatedAt
+   868→
+   869→  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+   870→  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+   871→  project       Project?      @relation(fields: [projectId], references: [id])
+   872→  items         GoodsReceiptItem[]
+   873→  purchaseInvoice PurchaseInvoice?
+   874→}
+   875→
+   876→model GoodsReceiptItem {
+   877→  id              String   @id @default(cuid())
+   878→  goodsReceiptId  String
+   879→  description     String
+   880→  quantityOrdered Float
+   881→  quantityReceived Float
+   882→  quantityRemaining Float
+   883→  unitPrice       Float
+   884→  totalPrice      Float
+   885→  destination     String   @default("INVENTORY") // INVENTORY or PROJECT
+   886→
+   887→  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+   888→}
+   889→
+   890→model PurchaseInvoice {
+   891→  id               String        @id @default(cuid())
+   892→  invoiceNo        String        @unique
+   893→  purchaseOrderId  String?
+   894→  goodsReceiptId   String?          @unique
+   895→  projectId        String?
+   896→  equipmentId      String?           // ربط بالمعدة
+   897→  activityType     String        @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
+   898→  supplierId       String
+   899→  date             DateTime
+   900→  dueDate          DateTime
+   901→  supplierInvoiceNo String?
+   902→  supplierInvoiceDate DateTime?
+   903→  attachmentPath   String?
+   904→  subtotal         Float
+   905→  vatRate          Float         @default(0.15)
+   906→  vatAmount        Float
+   907→  totalAmount      Float
+   908→  paidAmount       Float         @default(0)
+   909→  status           InvoiceStatus @default(DRAFT)
+   910→  notes            String?
+   911→  referenceNo      String?
+   912→  expenseCategory  String?
+   913→  journalEntryId   String?
+   914→  createdAt        DateTime      @default(now())
+   915→  updatedAt        DateTime      @updatedAt
+   916→
+   917→  purchaseOrder PurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id])
+   918→  goodsReceipt  GoodsReceipt?   @relation(fields: [goodsReceiptId], references: [id])
+   919→  supplier      Supplier        @relation(fields: [supplierId], references: [id])
+   920→  project       Project?        @relation(fields: [projectId], references: [id])
+   921→  equipment     Equipment?      @relation(fields: [equipmentId], references: [id])
+   922→  items         PurchaseInvoiceItem[]
+   923→}
+   924→
+   925→model PurchaseInvoiceItem {
+   926→  id          String   @id @default(cuid())
+   927→  invoiceId   String
+   928→  description String
+   929→  quantity    Float
+   930→  unitPrice   Float
+   931→  totalPrice  Float
+   932→
+   933→  invoice PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+   934→}
+   935→
+   936→// ============ SUBCONTRACTOR CONTRACTS ============
+   937→
+   938→model SubcontractorContract {
+   939→  id              String   @id @default(cuid())
+   940→  subcontractorId String
+   941→  projectId       String
+   942→  contractNo      String   @unique
+   943→  startDate       DateTime
+   944→  endDate         DateTime?
+   945→  value           Float
+   946→  vatRate         Float    @default(0.15)
+   947→  vatAmount       Float    @default(0)
+   948→  totalValue      Float    @default(0)
+   949→  retentionRate   Float    @default(0)
+   950→  status          ContractStatus @default(DRAFT)
+   951→  description     String?
+   952→  createdAt       DateTime @default(now())
+   953→  updatedAt       DateTime @updatedAt
+   954→
+   955→  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+   956→}
+   957→
+   958→// ============ SUBCONTRACTOR INVOICES ============
+   959→
+   960→model SubcontractorInvoice {
+   961→  id              String        @id @default(cuid())
+   962→  subcontractorId String
+   963→  projectId       String?
+   964→  invoiceNo       String        @unique
+   965→  date            DateTime
+   966→  amount          Float
+   967→  vatRate         Float         @default(0.15)
+   968→  vatAmount       Float
+   969→  totalAmount     Float
+   970→  paidAmount      Float         @default(0)
+   971→  status          InvoiceStatus @default(DRAFT)
+   972→  description     String?
+   973→  journalEntryId  String?
+   974→  createdAt       DateTime      @default(now())
+   975→  updatedAt       DateTime      @updatedAt
+   976→
+   977→  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+   978→  project       Project?      @relation(fields: [projectId], references: [id])
+   979→}
+   980→
+   981→// ============ EXPENSES ============
+   982→
+   983→model Expense {
+   984→  id               String          @id @default(cuid())
+   985→  projectId        String?
+   986→  equipmentId      String?         // ربط بالمعدة
+   987→  expenseType      ExpenseType     @default(PROJECT)
+   988→  activityType     String          @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
+   989→  category         ExpenseCategory
+   990→  description      String
+   991→  amount           Float
+   992→  vatRate          Float           @default(0.15)
+   993→  vatAmount        Float           @default(0)
+   994→  totalAmount      Float           @default(0)
+   995→  date             DateTime
+   996→  reference        String?
+   997→  payFrom          String          @default("TREASURY")
+   998→  attachmentPath   String?
+   999→  journalEntryId   String?
+  1000→  createdAt        DateTime        @default(now())
+  1001→  updatedAt        DateTime        @updatedAt
+  1002→
+  1003→  project   Project?   @relation(fields: [projectId], references: [id])
+  1004→  equipment Equipment? @relation(fields: [equipmentId], references: [id])
+  1005→}
+  1006→
+  1007→// ============ LABOR COSTS ============
+  1008→
+  1009→model LaborCost {
+  1010→  id          String   @id @default(cuid())
+  1011→  projectId   String
+  1012→  description String
+  1013→  workers     Int
+  1014→  days        Float
+  1015→  dailyRate   Float
+  1016→  totalAmount Float
+  1017→  date        DateTime
+  1018→  createdAt   DateTime @default(now())
+  1019→  updatedAt   DateTime @updatedAt
+  1020→
+  1021→  project Project @relation(fields: [projectId], references: [id])
+  1022→}
+  1023→
+  1024→// ============ EQUIPMENT ============
+  1025→
+  1026→model Equipment {
+  1027→  id               String          @id @default(cuid())
+  1028→  code             String          @unique
+  1029→  name             String
+  1030→  nameAr           String?
+  1031→  type             String?
+  1032→  model            String?
+  1033→  manufacturer     String?
+  1034→  manufactureYear  Int?
+  1035→  plateNumber      String?
+  1036→  serialNumber     String?
+  1037→  status           EquipmentStatus @default(AVAILABLE)
+  1038→  supplierId       String?
+  1039→  purchasePrice    Float           @default(0)
+  1040→  hourlyRate       Float           @default(0)
+  1041→  dailyRate        Float           @default(0)
+  1042→  monthlyRate      Float           @default(0)
+  1043→  purchaseDate     DateTime?
+  1044→  warrantyExpiry   DateTime?
+  1045→  isActive         Boolean         @default(true)
+  1046→  createdAt        DateTime        @default(now())
+  1047→  updatedAt        DateTime        @updatedAt
+  1048→
+  1049→  supplier       Supplier?             @relation(fields: [supplierId], references: [id])
+  1050→  usages         EquipmentUsage[]
+  1051→  maintenance    EquipmentMaintenance[]
+  1052→  fuelLogs       EquipmentFuelLog[]
+  1053→  rentals        EquipmentRental[]
+  1054→  expenses       EquipmentExpense[]
+  1055→  deliveryOrders EquipmentDeliveryOrder[]
+  1056→  timesheets     Timesheet[]
+  1057→  operatorLogs   EquipmentOperation[]
+  1058→  purchaseInvoices PurchaseInvoice[]
+  1059→  costExpenses   Expense[]          // المصروفات المرتبطة بالمعدة
+  1060→}
+  1061→
+  1062→model EquipmentOperation {
+  1063→  id          String   @id @default(cuid())
+  1064→  equipmentId String
+  1065→  operatorId  String?
+  1066→  projectId   String?
+  1067→  date        DateTime
+  1068→  hours       Float    @default(0)
+  1069→  notes       String?
+  1070→  createdAt   DateTime @default(now())
+  1071→
+  1072→  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  1073→  operator  Employee? @relation(fields: [operatorId], references: [id])
+  1074→  project   Project?  @relation(fields: [projectId], references: [id])
+  1075→}
+  1076→
+  1077→model EquipmentUsage {
+  1078→  id          String   @id @default(cuid())
+  1079→  equipmentId String
+  1080→  projectId   String
+  1081→  date        DateTime
+  1082→  hours       Float
+  1083→  description String?
+  1084→  cost        Float
+  1085→  createdAt   DateTime @default(now())
+  1086→
+  1087→  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  1088→  project   Project   @relation(fields: [projectId], references: [id])
+  1089→}
+  1090→
+  1091→model EquipmentMaintenance {
+  1092→  id          String   @id @default(cuid())
+  1093→  equipmentId String
+  1094→  date        DateTime
+  1095→  description String
+  1096→  cost        Float
+  1097→  supplierId  String?
+  1098→  nextDate    DateTime?
+  1099→  journalEntryId String?
+  1100→  createdAt   DateTime @default(now())
+  1101→
+  1102→  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  1103→  supplier  Supplier? @relation(fields: [supplierId], references: [id])
+  1104→}
+  1105→
+  1106→model EquipmentFuelLog {
+  1107→  id           String   @id @default(cuid())
+  1108→  equipmentId  String
+  1109→  projectId    String?
+  1110→  date         DateTime
+  1111→  liters       Float
+  1112→  costPerLiter Float
+  1113→  totalCost    Float
+  1114→  journalEntryId String?
+  1115→  createdAt    DateTime @default(now())
+  1116→
+  1117→  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  1118→  project   Project?  @relation(fields: [projectId], references: [id])
+  1119→}
+  1120→
+  1121→model EquipmentCost {
+  1122→  id          String   @id @default(cuid())
+  1123→  projectId   String
+  1124→  description String
+  1125→  amount      Float
+  1126→  date        DateTime
+  1127→  createdAt   DateTime @default(now())
+  1128→
+  1129→  project Project @relation(fields: [projectId], references: [id])
+  1130→}
+  1131→
+  1132→// ============ EQUIPMENT RENTAL ============
+  1133→
+  1134→model EquipmentRental {
+  1135→  id              String     @id @default(cuid())
+  1136→  contractId      String     @unique
+  1137→  equipmentId     String
+  1138→  clientId        String
+  1139→  projectId       String?
+  1140→  startDate       DateTime
+  1141→  endDate         DateTime?
+  1142→  // ─── Pricing ───
+  1143→  pricingType     String     @default("HOURLY") // HOURLY, DAILY, MONTHLY, LUMP_SUM
+  1144→  referenceRate   Float      @default(0)  // القيمة الشهرية المرجعية
+  1145→  referenceHours  Float      @default(0)  // ساعات التسعير المرجعية
+  1146→  hourlyRate      Float      @default(0)  // محسوب تلقائياً
+  1147→  dailyRate       Float      @default(0)  // السعر اليومي
+  1148→  monthlyRate     Float      @default(0)  // السعر الشهري
+  1149→  lumpSumAmount   Float      @default(0)  // المبلغ المقطوع
+  1150→  // ─── Work Location ───
+  1151→  workCity        String?    // مدينة المشروع
+  1152→  workLocation    String?    // موقع العمل
+  1153→  siteSupervisor  String?    // اسم المسؤول بالموقع
+  1154→  siteSupervisorPhone String? // جوال المسؤول
+  1155→  // ─── Delivery & Transport ───
+  1156→  deliveryFeesType String?   @default("NONE") // NONE, FIXED, ONE_WAY, ROUND_TRIP, BY_DISTANCE
+  1157→  deliveryFees    Float      @default(0)
+  1158→  deliveryFeesTaxable Boolean @default(true)
+  1159→  // ─── Operation & Responsibilities ───
+  1160→  operationMode   String     @default("WITHOUT_DRIVER") // WITHOUT_DRIVER, WITH_DRIVER, WITH_CREW
+  1161→  fuelResponsibility String? @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  1162→  insuranceResponsibility String? @default("ON_CLIENT") // ON_CLIENT, ON_COMPANY
+  1163→  // ─── Reference Documents ───
+  1164→  salesOrderNo    String?    // رقم طلب البيع (تلقائي)
+  1165→  purchaseOrderNo String?    // رقم طلب شراء العميل
+  1166→  quotationNo     String?    // رقم عرض السعر
+  1167→  // ─── Status & Terms ───
+  1168→  status          String     @default("DRAFT") // DRAFT, UNDER_REVIEW, ACTIVE, EXPIRED, CANCELLED
+  1169→  paymentDuration String?    // مدة السداد بالأيام
+  1170→  additionalTerms String?    // شروط إضافية
+  1171→  notes           String?
+  1172→  totalAmount     Float      @default(0)
+  1173→  createdAt       DateTime   @default(now())
+  1174→  updatedAt       DateTime   @updatedAt
+  1175→
+  1176→  contract       Contract       @relation(fields: [contractId], references: [id])
+  1177→  equipment      Equipment      @relation(fields: [equipmentId], references: [id])
+  1178→  client         Client         @relation(fields: [clientId], references: [id])
+  1179→  project        Project?       @relation(fields: [projectId], references: [id])
+  1180→  deliveryOrders EquipmentDeliveryOrder[]
+  1181→  timesheets     Timesheet[]
+  1182→}
+  1183→
+  1184→model EquipmentDeliveryOrder {
+  1185→  id            String   @id @default(cuid())
+  1186→  orderNo       String   @unique
+  1187→  rentalId      String?
+  1188→  equipmentId   String
+  1189→  clientId      String?
+  1190→  projectId     String?
+  1191→  site          String?
+  1192→  deliveryDate  DateTime
+  1193→  returnDate    DateTime?
+  1194→  status        DeliveryOrderStatus @default(PENDING)
+  1195→  notes         String?
+  1196→  createdAt     DateTime @default(now())
+  1197→  updatedAt     DateTime @updatedAt
+  1198→
+  1199→  equipment Equipment        @relation(fields: [equipmentId], references: [id])
+  1200→  rental    EquipmentRental? @relation(fields: [rentalId], references: [id])
+  1201→  client    Client?          @relation(fields: [clientId], references: [id])
+  1202→}
+  1203→
+  1204→model EquipmentExpense {
+  1205→  id             String         @id @default(cuid())
+  1206→  equipmentId    String
+  1207→  category       ExpenseCategory
+  1208→  description    String
+  1209→  amount         Float
+  1210→  date           DateTime
+  1211→  reference      String?
+  1212→  journalEntryId String?
+  1213→  createdAt      DateTime       @default(now())
+  1214→
+  1215→  equipment Equipment @relation(fields: [equipmentId], references: [id])
+  1216→}
+  1217→
+  1218→// ============ TIMESHEETS ============
+  1219→
+  1220→model Timesheet {
+  1221→  id            String          @id @default(cuid())
+  1222→  rentalId      String
+  1223→  contractId    String
+  1224→  projectId     String
+  1225→  equipmentId   String
+  1226→  month         Int
+  1227→  year          Int
+  1228→  operatingHours Float          @default(0)
+  1229→  status        TimesheetStatus @default(DRAFT)
+  1230→  approvedDate  DateTime?
+  1231→  notes         String?
+  1232→  createdAt     DateTime        @default(now())
+  1233→  updatedAt     DateTime        @updatedAt
+  1234→
+  1235→  contract  Contract       @relation(fields: [contractId], references: [id])
+  1236→  project   Project        @relation(fields: [projectId], references: [id])
+  1237→  equipment Equipment      @relation(fields: [equipmentId], references: [id])
+  1238→  rental    EquipmentRental @relation(fields: [rentalId], references: [id])
+  1239→  invoice   SalesInvoice?
+  1240→}
+  1241→
+  1242→// ============ PETTY CASH & ADVANCES ============
+  1243→
+  1244→model PettyCash {
+  1245→  id            String   @id @default(cuid())
+  1246→  branchId      String
+  1247→  description   String
+  1248→  amount        Float
+  1249→  date          DateTime
+  1250→  category      String?
+  1251→  reference     String?
+  1252→  journalEntryId String?
+  1253→  createdAt     DateTime @default(now())
+  1254→  updatedAt     DateTime @updatedAt
+  1255→
+  1256→  branch Branch @relation(fields: [branchId], references: [id])
+  1257→}
+  1258→
+  1259→model EmployeeAdvance {
+  1260→  id            String        @id @default(cuid())
+  1261→  employeeId    String
+  1262→  amount        Float
+  1263→  date          DateTime
+  1264→  settledAmount Float         @default(0)
+  1265→  status        AdvanceStatus @default(PENDING)
+  1266→  description   String?
+  1267→  journalEntryId String?
+  1268→  createdAt     DateTime      @default(now())
+  1269→  updatedAt     DateTime      @updatedAt
+  1270→
+  1271→  employee Employee @relation(fields: [employeeId], references: [id])
+  1272→}
+  1273→
+  1274→// ============ INVENTORY ============
+  1275→
+  1276→model InventoryItem {
+  1277→  id            String            @id @default(cuid())
+  1278→  code          String            @unique
+  1279→  name          String
+  1280→  nameAr        String?
+  1281→  itemType      InventoryItemType @default(PRODUCT)
+  1282→  unit          String
+  1283→  purchasePrice Float             @default(0)
+  1284→  sellingPrice  Float             @default(0)
+  1285→  quantity      Float             @default(0)
+  1286→  minQuantity   Float             @default(0)
+  1287→  warehouseId   String
+  1288→  category      String?
+  1289→  isActive      Boolean           @default(true)
+  1290→  createdAt     DateTime          @default(now())
+  1291→  updatedAt     DateTime          @updatedAt
+  1292→
+  1293→  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  1294→}
+  1295→
+  1296→// ============ DOUBLE ENTRY ACCOUNTING ============
+  1297→
+  1298→model Account {
+  1299→  id           String   @id @default(cuid())
+  1300→  code         String   @unique
+  1301→  name         String
+  1302→  nameAr       String?
+  1303→  type         String
+  1304→  parentId     String?
+  1305→  isActive     Boolean  @default(true)
+  1306→  activityType String?  // CONSTRUCTION | EQUIPMENT_RENTAL | BOTH
+  1307→  isSystem     Boolean  @default(false)
+  1308→  allowPosting Boolean  @default(true)
+  1309→  level        Int      @default(0)
+  1310→  description   String?
+  1311→  descriptionAr String?
+  1312→
+  1313→  parent      Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  1314→  children    Account[]     @relation("AccountHierarchy")
+  1315→  journalLines JournalLine[]
+  1316→}
+  1317→
+  1318→model JournalEntry {
+  1319→  id          String             @id @default(cuid())
+  1320→  entryNo     String             @unique
+  1321→  date        DateTime
+  1322→  description String?
+  1323→  status      JournalEntryStatus @default(POSTED)
+  1324→  sourceType  String?
+  1325→  sourceId    String?
+  1326→  isReversal  Boolean            @default(false)
+  1327→  reversedEntryId String?
+  1328→  createdAt   DateTime           @default(now())
+  1329→  updatedAt   DateTime           @updatedAt
+  1330→
+  1331→  lines JournalLine[]
+  1332→}
+  1333→
+  1334→model JournalLine {
+  1335→  id             String   @id @default(cuid())
+  1336→  journalEntryId String
+  1337→  accountId      String
+  1338→  costCenterId   String?
+  1339→  debit          Float    @default(0)
+  1340→  credit         Float    @default(0)
+  1341→  description    String?
+  1342→
+  1343→  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  1344→  account      Account      @relation(fields: [accountId], references: [id])
+  1345→  costCenter   CostCenter?  @relation(fields: [costCenterId], references: [id])
+  1346→}
+  1347→
+  1348→// ============ VAT / TAX DECLARATION ============
+  1349→
+  1350→model VATReturn {
+  1351→  id              String         @id @default(cuid())
+  1352→  year            Int
+  1353→  quarter         Int
+  1354→  period          String         @unique
+  1355→  totalSales      Float          @default(0)
+  1356→  outputVat       Float          @default(0)
+  1357→  totalPurchases  Float          @default(0)
+  1358→  inputVat        Float          @default(0)
+  1359→  netVat          Float          @default(0)
+  1360→  salesInvoiceIds String?
+  1361→  purchaseInvoiceIds String?
+  1362→  expenseIds      String?
+  1363→  status          VATReturnStatus @default(DRAFT)
+  1364→  filedDate       DateTime?
+  1365→  paymentDate     DateTime?
+  1366→  paymentReference String?
+  1367→  journalEntryId  String?
+  1368→  createdAt       DateTime       @default(now())
+  1369→  updatedAt       DateTime       @updatedAt
+  1370→}
+  1371→
+  1372→// ============ CLIENT PAYMENTS ============
+  1373→
+  1374→model ClientPayment {
+  1375→  id            String   @id @default(cuid())
+  1376→  clientId      String
+  1377→  invoiceId     String?
+  1378→  amount        Float
+  1379→  date          DateTime
+  1380→  receivedIn    String   @default("TREASURY")
+  1381→  reference     String?
+  1382→  notes         String?
+  1383→  journalEntryId String?
+  1384→  createdAt     DateTime @default(now())
+  1385→  updatedAt     DateTime @updatedAt
+  1386→
+  1387→  client  Client       @relation(fields: [clientId], references: [id])
+  1388→  invoice SalesInvoice? @relation(fields: [invoiceId], references: [id])
+  1389→}
+  1390→
+  1391→// ============ SUPPLIER PAYMENTS ============
+  1392→
+  1393→model SupplierPayment {
+  1394→  id            String   @id @default(cuid())
+  1395→  supplierId    String
+  1396→  invoiceId     String?
+  1397→  amount        Float
+  1398→  date          DateTime
+  1399→  paidFrom      String   @default("TREASURY")
+  1400→  bankAccount   String?
+  1401→  paymentMethod String?
+  1402→  reference     String?
+  1403→  notes         String?
+  1404→  journalEntryId String?
+  1405→  createdAt     DateTime @default(now())
+  1406→  updatedAt     DateTime @updatedAt
+  1407→
+  1408→  supplier Supplier @relation(fields: [supplierId], references: [id])
+  1409→}
+  1410→
+  1411→// ============ RESOURCE DISTRIBUTION ============
+  1412→
+  1413→model ResourceAllocation {
+  1414→  id          String   @id @default(cuid())
+  1415→  projectId   String
+  1416→  resourceType String  // EMPLOYEE, TEAM, EQUIPMENT
+  1417→  resourceId  String   // ID of Employee/WorkTeam/Equipment
+  1418→  startDate   DateTime
+  1419→  endDate     DateTime?
+  1420→  notes       String?
+  1421→  createdAt   DateTime @default(now())
+  1422→  updatedAt   DateTime @updatedAt
+  1423→
+  1424→  project Project @relation(fields: [projectId], references: [id])
+  1425→}
+  1426→

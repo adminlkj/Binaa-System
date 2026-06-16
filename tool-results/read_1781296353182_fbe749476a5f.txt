@@ -1,0 +1,815 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  ShoppingCart, Plus, Search, RefreshCw, Eye, ArrowRight, X,
+     7→  Download, CheckCircle, Clock, AlertCircle, Link2, Package, Trash2,
+     8→} from 'lucide-react'
+     9→import { toast } from 'sonner'
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→} from '@/components/ui/table'
+    17→import {
+    18→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    19→} from '@/components/ui/select'
+    20→import { Label } from '@/components/ui/label'
+    21→import { Textarea } from '@/components/ui/textarea'
+    22→import { Separator } from '@/components/ui/separator'
+    23→import { MoneyDisplay } from '@/components/ui/money-display'
+    24→import { ModuleLayout } from '@/components/shared/module-layout'
+    25→import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+    26→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    27→import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+    28→import { PrintButton } from '@/components/shared/print-button'
+    29→import { DataTablePagination } from '@/components/shared/data-table-pagination'
+    30→
+    31→// ============ Types ============
+    32→type ViewState =
+    33→  | { type: 'list' }
+    34→  | { type: 'create' }
+    35→  | { type: 'detail'; id: string }
+    36→
+    37→interface SupplierOption { id: string; code: string; name: string }
+    38→interface ProjectOption { id: string; code: string; name: string }
+    39→
+    40→interface PRItem {
+    41→  id: string; description: string; quantity: number; unit: string | null; notes: string | null
+    42→}
+    43→
+    44→interface PurchaseRequestOption {
+    45→  id: string; requestNo: string; source: string | null; projectId: string | null
+    46→  project: { id: string; name: string } | null
+    47→  items: PRItem[]
+    48→}
+    49→
+    50→interface POLineItem {
+    51→  id: string; description: string; quantity: number; unit: string | null
+    52→  unitPrice: number; totalPrice: number
+    53→}
+    54→
+    55→interface PurchaseOrder {
+    56→  id: string; orderNo: string; projectId: string | null; supplierId: string
+    57→  purchaseRequestId: string | null
+    58→  date: string; deliveryDate: string | null; subtotal: number; vatRate: number
+    59→  vatAmount: number; totalAmount: number; paidAmount: number; status: string
+    60→  receiptStatus?: string; notes: string | null
+    61→  supplier: { id: string; name: string; code: string }
+    62→  project: { id: string; name: string; code: string; projectType?: string } | null
+    63→  purchaseRequest: { id: string; requestNo: string; status: string } | null
+    64→  items: POLineItem[]
+    65→  goodsReceipts: { id: string; receiptNo: string; status: string; date: string }[]
+    66→  invoices: { id: string; invoiceNo: string; status: string; totalAmount: number; paidAmount: number }[]
+    67→  _count: { invoices: number }
+    68→}
+    69→
+    70→interface LineItemForm {
+    71→  description: string; quantity: number; unit: string; unitPrice: number
+    72→}
+    73→
+    74→// ============ Constants ============
+    75→const poStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+    76→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-yellow-700', bg: 'bg-yellow-100' },
+    77→  PENDING_APPROVAL: { label: { ar: 'بانتظار الاعتماد', en: 'Pending Approval' }, color: 'text-orange-700', bg: 'bg-orange-100' },
+    78→  APPROVED: { label: { ar: 'معتمد', en: 'Approved' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+    79→  PARTIALLY_RECEIVED: { label: { ar: 'مستلم جزئياً', en: 'Partial Receipt' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+    80→  RECEIVED: { label: { ar: 'مستلم بالكامل', en: 'Received' }, color: 'text-teal-700', bg: 'bg-teal-100' },
+    81→  CANCELLED: { label: { ar: 'ملغي', en: 'Cancelled' }, color: 'text-red-700', bg: 'bg-red-100' },
+    82→}
+    83→
+    84→const defaultLineItem: LineItemForm = { description: '', quantity: 1, unit: '', unitPrice: 0 }
+    85→
+    86→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    87→
+    88→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    89→  return (
+    90→    <div className="space-y-2">
+    91→      {Array.from({ length: rows }).map((_, i) => (
+    92→        <div key={i} className="flex gap-4 p-3">
+    93→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+    94→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+    95→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+    96→        </div>
+    97→      ))}
+    98→    </div>
+    99→  )
+   100→}
+   101→
+   102→// ============ Create View ============
+   103→function POCreateView({ onBack }: { onBack: () => void }) {
+   104→  const { lang } = useAppStore()
+   105→  const queryClient = useQueryClient()
+   106→
+   107→  const [purchaseRequestId, setPurchaseRequestId] = useState('')
+   108→  const [supplierId, setSupplierId] = useState('')
+   109→  const [projectId, setProjectId] = useState('')
+   110→  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+   111→  const [deliveryDate, setDeliveryDate] = useState('')
+   112→  const [notes, setNotes] = useState('')
+   113→  const [lineItems, setLineItems] = useState<LineItemForm[]>([{ ...defaultLineItem }])
+   114→
+   115→  const { data: suppliers = [] } = useQuery<SupplierOption[]>({
+   116→    queryKey: ['suppliers-simple'],
+   117→    queryFn: async () => {
+   118→      const res = await fetch('/api/suppliers')
+   119→      if (!res.ok) return []
+   120→      const data = await res.json()
+   121→      return data.map((s: { id: string; code: string; name: string }) => ({ id: s.id, code: s.code, name: s.name }))
+   122→    },
+   123→  })
+   124→
+   125→  const { data: projects = [] } = useQuery<ProjectOption[]>({
+   126→    queryKey: ['projects-list'],
+   127→    queryFn: async () => {
+   128→      const res = await fetch('/api/projects/list')
+   129→      if (!res.ok) return []
+   130→      return res.json()
+   131→    },
+   132→  })
+   133→
+   134→  const { data: purchaseRequests = [] } = useQuery<PurchaseRequestOption[]>({
+   135→    queryKey: ['purchase-requests-approved'],
+   136→    queryFn: async () => {
+   137→      const res = await fetch('/api/purchase-requests?status=APPROVED')
+   138→      if (!res.ok) return []
+   139→      return res.json()
+   140→    },
+   141→  })
+   142→
+   143→  React.useEffect(() => {
+   144→    if (purchaseRequestId) {
+   145→      const pr = purchaseRequests.find(p => p.id === purchaseRequestId)
+   146→      if (pr) {
+   147→        setLineItems(pr.items.map(i => ({
+   148→          description: i.description,
+   149→          quantity: i.quantity,
+   150→          unit: i.unit || '',
+   151→          unitPrice: 0,
+   152→        })))
+   153→        if (pr.projectId) setProjectId(pr.projectId)
+   154→      }
+   155→    }
+   156→  }, [purchaseRequestId, purchaseRequests])
+   157→
+   158→  const subtotal = useMemo(() => lineItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0), [lineItems])
+   159→  const vatRate = 0.15
+   160→  const vatAmount = subtotal * vatRate
+   161→  const totalAmount = subtotal + vatAmount
+   162→
+   163→  const addLine = () => setLineItems([...lineItems, { ...defaultLineItem }])
+   164→  const removeLine = (idx: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, i) => i !== idx)) }
+   165→  const updateLine = (idx: number, field: keyof LineItemForm, value: string | number) => {
+   166→    setLineItems(lineItems.map((item, i) => i === idx ? { ...item, [field]: value } : item))
+   167→  }
+   168→
+   169→  const createMutation = useMutation({
+   170→    mutationFn: (data: Record<string, unknown>) =>
+   171→      fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   172→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم إنشاء أمر الشراء بنجاح', 'Purchase order created successfully', lang)); onBack() },
+   173→    onError: () => toast.error(t('فشل في إنشاء أمر الشراء', 'Failed to create purchase order', lang)),
+   174→  })
+   175→
+   176→  const handleSubmit = (e: React.FormEvent) => {
+   177→    e.preventDefault()
+   178→    createMutation.mutate({
+   179→      supplierId, projectId: projectId || null, purchaseRequestId: purchaseRequestId || null,
+   180→      date, deliveryDate: deliveryDate || null, notes,
+   181→      items: lineItems.map(i => ({ description: i.description, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice })),
+   182→    })
+   183→  }
+   184→
+   185→  const selectedPR = purchaseRequestId ? purchaseRequests.find(p => p.id === purchaseRequestId) : null
+   186→
+   187→  return (
+   188→    <div className="space-y-6">
+   189→      <div className="flex items-center gap-3">
+   190→        <Button variant="outline" size="icon" onClick={onBack}><ArrowRight className="size-4" /></Button>
+   191→        <div>
+   192→          <h1 className="text-2xl font-bold text-gray-900">{t('أمر شراء جديد', 'New Purchase Order', lang)}</h1>
+   193→          <p className="text-sm text-muted-foreground">{t('إنشاء أمر شراء جديد من طلب معتمد', 'Create a new PO from approved request', lang)}</p>
+   194→        </div>
+   195→      </div>
+   196→
+   197→      <form onSubmit={handleSubmit} className="space-y-6">
+   198→        <Card>
+   199→          <CardHeader><CardTitle className="text-lg">{t('معلومات أساسية', 'Basic Information', lang)}</CardTitle></CardHeader>
+   200→          <CardContent className="space-y-4">
+   201→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   202→              <div className="space-y-2">
+   203→                <Label className="flex items-center gap-1">
+   204→                  <Link2 className="size-3" />
+   205→                  {t('طلب الشراء (اختياري)', 'Purchase Request (optional)', lang)}
+   206→                </Label>
+   207→                <Select value={purchaseRequestId} onValueChange={setPurchaseRequestId}>
+   208→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر طلب شراء معتمد', 'Select approved PR', lang)} /></SelectTrigger>
+   209→                  <SelectContent>
+   210→                    {purchaseRequests.map(pr => (
+   211→                      <SelectItem key={pr.id} value={pr.id}>{pr.requestNo} - {pr.project?.name || t('بدون مشروع', 'No project', lang)}</SelectItem>
+   212→                    ))}
+   213→                  </SelectContent>
+   214→                </Select>
+   215→                {selectedPR && (
+   216→                  <p className="text-xs text-emerald-600">{t('سيتم تحميل البنود من الطلب تلقائياً', 'Items will be loaded from the request automatically', lang)}</p>
+   217→                )}
+   218→              </div>
+   219→              <div className="space-y-2">
+   220→                <Label>{t('المورد *', 'Supplier *', lang)}</Label>
+   221→                <Select value={supplierId} onValueChange={setSupplierId}>
+   222→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المورد', 'Select supplier', lang)} /></SelectTrigger>
+   223→                  <SelectContent>
+   224→                    {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+   225→                  </SelectContent>
+   226→                </Select>
+   227→              </div>
+   228→              <div className="space-y-2">
+   229→                <Label>{t('المشروع (اختياري)', 'Project (optional)', lang)}</Label>
+   230→                <Select value={projectId} onValueChange={setProjectId}>
+   231→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المشروع', 'Select project', lang)} /></SelectTrigger>
+   232→                  <SelectContent>
+   233→                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   234→                  </SelectContent>
+   235→                </Select>
+   236→              </div>
+   237→              <div className="space-y-2">
+   238→                <Label>{t('تاريخ الأمر *', 'Order Date *', lang)}</Label>
+   239→                <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   240→              </div>
+   241→              <div className="space-y-2">
+   242→                <Label>{t('تاريخ التسليم', 'Delivery Date', lang)}</Label>
+   243→                <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+   244→              </div>
+   245→            </div>
+   246→          </CardContent>
+   247→        </Card>
+   248→
+   249→        <Card>
+   250→          <CardHeader>
+   251→            <div className="flex items-center justify-between">
+   252→              <CardTitle className="text-lg">{t('بنود أمر الشراء', 'PO Line Items', lang)}</CardTitle>
+   253→              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={addLine}>
+   254→                <Plus className="size-3" /> {t('إضافة بند', 'Add Item', lang)}
+   255→              </Button>
+   256→            </div>
+   257→          </CardHeader>
+   258→          <CardContent className="space-y-3">
+   259→            <div className="space-y-2 max-h-96 overflow-y-auto">
+   260→              {lineItems.map((item, idx) => (
+   261→                <div key={idx} className="flex items-end gap-2 p-3 rounded-lg border bg-gray-50">
+   262→                  <div className="flex-1 min-w-0">
+   263→                    <Label className="text-xs">{t('الوصف', 'Description', lang)}</Label>
+   264→                    <Input value={item.description} onChange={e => updateLine(idx, 'description', e.target.value)} placeholder={t('وصف البند', 'Item description', lang)} className="h-9" />
+   265→                  </div>
+   266→                  <div className="w-20">
+   267→                    <Label className="text-xs">{t('الكمية', 'Qty', lang)}</Label>
+   268→                    <Input type="number" min="0" step="0.0001" value={item.quantity || ''} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
+   269→                  </div>
+   270→                  <div className="w-20">
+   271→                    <Label className="text-xs">{t('الوحدة', 'Unit', lang)}</Label>
+   272→                    <Input value={item.unit} onChange={e => updateLine(idx, 'unit', e.target.value)} placeholder={t('وحدة', 'Unit', lang)} className="h-9" />
+   273→                  </div>
+   274→                  <div className="w-28">
+   275→                    <Label className="text-xs">{t('سعر الوحدة', 'Unit Price', lang)}</Label>
+   276→                    <Input type="number" min="0" step="0.0001" value={item.unitPrice || ''} onChange={e => updateLine(idx, 'unitPrice', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
+   277→                  </div>
+   278→                  <div className="w-28 text-left">
+   279→                    <Label className="text-xs">{t('الإجمالي', 'Total', lang)}</Label>
+   280→                    <p className="text-sm font-medium mt-1.5">
+   281→                      <MoneyDisplay value={item.quantity * item.unitPrice} mode="system" lang={lang} size="sm" />
+   282→                    </p>
+   283→                  </div>
+   284→                  <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 text-rose-500" onClick={() => removeLine(idx)} disabled={lineItems.length <= 1}>
+   285→                    <X className="size-4" />
+   286→                  </Button>
+   287→                </div>
+   288→              ))}
+   289→            </div>
+   290→          </CardContent>
+   291→        </Card>
+   292→
+   293→        <Card className="bg-gray-50 border-dashed">
+   294→          <CardContent className="p-4 space-y-2">
+   295→            <div className="flex justify-between text-sm">
+   296→              <span>{t('المجموع قبل الضريبة', 'Subtotal', lang)}</span>
+   297→              <span className="font-medium"><MoneyDisplay value={subtotal} mode="system" lang={lang} size="sm" /></span>
+   298→            </div>
+   299→            <div className="flex justify-between text-sm">
+   300→              <span>{t('ضريبة القيمة المضافة (15%)', 'VAT (15%)', lang)}</span>
+   301→              <span className="font-medium"><MoneyDisplay value={vatAmount} mode="system" lang={lang} size="sm" /></span>
+   302→            </div>
+   303→            <Separator />
+   304→            <div className="flex justify-between text-lg font-bold">
+   305→              <span>{t('الإجمالي', 'Total', lang)}</span>
+   306→              <span className="text-emerald-700"><MoneyDisplay value={totalAmount} mode="system" lang={lang} bold size="lg" /></span>
+   307→            </div>
+   308→          </CardContent>
+   309→        </Card>
+   310→
+   311→        <Card>
+   312→          <CardHeader><CardTitle className="text-lg">{t('ملاحظات', 'Notes', lang)}</CardTitle></CardHeader>
+   313→          <CardContent><Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات إضافية', 'Additional notes', lang)} rows={3} /></CardContent>
+   314→        </Card>
+   315→
+   316→        <div className="flex justify-end gap-3">
+   317→          <Button type="button" variant="outline" onClick={onBack}>{t('إلغاء', 'Cancel', lang)}</Button>
+   318→          <Button type="submit" disabled={createMutation.isPending || !supplierId || !date} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+   319→            {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إنشاء أمر الشراء', 'Create PO', lang)}
+   320→          </Button>
+   321→        </div>
+   322→      </form>
+   323→    </div>
+   324→  )
+   325→}
+   326→
+   327→// ============ Detail View ============
+   328→function PODetailView({ id, onBack }: { id: string; onBack: () => void }) {
+   329→  const { lang } = useAppStore()
+   330→  const queryClient = useQueryClient()
+   331→
+   332→  const { data: order, isLoading, isError } = useQuery<PurchaseOrder>({
+   333→    queryKey: ['purchase-orders', id],
+   334→    queryFn: async () => {
+   335→      const res = await fetch(`/api/purchase-orders/${id}`)
+   336→      if (!res.ok) throw new Error()
+   337→      return res.json()
+   338→    },
+   339→    enabled: !!id,
+   340→  })
+   341→
+   342→  // Approve mutation: DRAFT → PENDING_APPROVAL → APPROVED
+   343→  const approveMutation = useMutation({
+   344→    mutationFn: (targetStatus: string) => fetch(`/api/purchase-orders/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: targetStatus }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   345→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders', id] }); queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الاعتماد بنجاح', 'Approved successfully', lang)) },
+   346→    onError: () => toast.error(t('فشل في الاعتماد', 'Failed to approve', lang)),
+   347→  })
+   348→
+   349→  const deleteMutation = useMutation({
+   350→    mutationFn: () => fetch(`/api/purchase-orders/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   351→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الحذف', 'Deleted', lang)); onBack() },
+   352→    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
+   353→  })
+   354→
+   355→  if (isLoading) return <div className="p-6"><TableSkeleton /></div>
+   356→  if (isError || !order) return (
+   357→    <div className="flex flex-col items-center gap-3 py-10">
+   358→      <AlertCircle className="size-12 text-rose-300" />
+   359→      <p className="text-rose-600">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data', lang)}</p>
+   360→      <Button variant="outline" onClick={onBack}>{t('رجوع', 'Go Back', lang)}</Button>
+   361→    </div>
+   362→  )
+   363→
+   364→  const statusCfg = poStatusConfig[order.status] || poStatusConfig.DRAFT
+   365→
+   366→  return (
+   367→    <div className="space-y-6">
+   368→      <div className="flex items-center gap-3">
+   369→        <Button variant="outline" size="icon" onClick={onBack}><ArrowRight className="size-4" /></Button>
+   370→        <div className="flex-1">
+   371→          <div className="flex items-center gap-3">
+   372→            <h2 className="text-xl font-bold">{t('أمر شراء', 'Purchase Order', lang)} {order.orderNo}</h2>
+   373→            <Badge className={`${statusCfg.bg} ${statusCfg.color} border-0`}>{statusCfg.label[lang]}</Badge>
+   374→          </div>
+   375→          <p className="text-sm text-muted-foreground">{order.supplier.name}</p>
+   376→        </div>
+   377→        {/* Approval buttons */}
+   378→        {order.status === 'DRAFT' && (
+   379→          <Button className="gap-2 bg-orange-600 hover:bg-orange-700" onClick={() => approveMutation.mutate('PENDING_APPROVAL')} disabled={approveMutation.isPending}>
+   380→            <Clock className="size-4" /> {t('إرسال للاعتماد', 'Submit for Approval', lang)}
+   381→          </Button>
+   382→        )}
+   383→        {order.status === 'PENDING_APPROVAL' && (
+   384→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => approveMutation.mutate('APPROVED')} disabled={approveMutation.isPending}>
+   385→            <CheckCircle className="size-4" /> {t('اعتماد', 'Approve', lang)}
+   386→          </Button>
+   387→        )}
+   388→        {order.status === 'DRAFT' && (
+   389→          <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => { if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate() }}><Trash2 className="size-4" /></Button>
+   390→        )}
+   391→        <PrintButton type="purchase-order" documentId={order.id} />
+   392→      </div>
+   393→
+   394→      {/* Info Cards */}
+   395→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   396→        <Card><CardContent className="p-3">
+   397→          <p className="text-xs text-muted-foreground">{t('المورد', 'Supplier', lang)}</p>
+   398→          <p className="text-sm font-medium truncate">{order.supplier.name}</p>
+   399→        </CardContent></Card>
+   400→        <Card><CardContent className="p-3">
+   401→          <p className="text-xs text-muted-foreground">{t('المشروع', 'Project', lang)}</p>
+   402→          <p className="text-sm font-medium truncate">{order.project?.name || '—'}</p>
+   403→        </CardContent></Card>
+   404→        <Card><CardContent className="p-3">
+   405→          <p className="text-xs text-muted-foreground">{t('تاريخ الأمر', 'Order Date', lang)}</p>
+   406→          <p className="text-sm font-medium">{formatDate(order.date, lang)}</p>
+   407→        </CardContent></Card>
+   408→        <Card><CardContent className="p-3">
+   409→          <p className="text-xs text-muted-foreground">{t('تاريخ التسليم', 'Delivery Date', lang)}</p>
+   410→          <p className="text-sm font-medium">{order.deliveryDate ? formatDate(order.deliveryDate, lang) : '—'}</p>
+   411→        </CardContent></Card>
+   412→      </div>
+   413→
+   414→      {/* Linked PR */}
+   415→      {order.purchaseRequest && (
+   416→        <Card className="bg-blue-50 border-blue-200">
+   417→          <CardContent className="p-3 flex items-center gap-2">
+   418→            <Link2 className="size-4 text-blue-600" />
+   419→            <span className="text-sm text-blue-700">{t('مرتبط بطلب شراء', 'Linked to PR', lang)}: <strong>{order.purchaseRequest.requestNo}</strong></span>
+   420→          </CardContent>
+   421→        </Card>
+   422→      )}
+   423→
+   424→      {/* Financial Summary */}
+   425→      <div className="grid grid-cols-3 gap-3">
+   426→        <Card className="bg-emerald-50 border-emerald-200">
+   427→          <CardContent className="p-3 text-center">
+   428→            <p className="text-xs text-emerald-600">{t('الإجمالي', 'Total', lang)}</p>
+   429→            <MoneyDisplay value={order.totalAmount} mode="system" lang={lang} bold size="lg" className="text-emerald-700" />
+   430→          </CardContent>
+   431→        </Card>
+   432→        <Card className="bg-teal-50 border-teal-200">
+   433→          <CardContent className="p-3 text-center">
+   434→            <p className="text-xs text-teal-600">{t('المدفوع', 'Paid', lang)}</p>
+   435→            <MoneyDisplay value={order.paidAmount} mode="system" lang={lang} bold size="lg" className="text-teal-700" />
+   436→          </CardContent>
+   437→        </Card>
+   438→        <Card className="bg-amber-50 border-amber-200">
+   439→          <CardContent className="p-3 text-center">
+   440→            <p className="text-xs text-amber-600">{t('المتبقي', 'Balance', lang)}</p>
+   441→            <MoneyDisplay value={order.totalAmount - order.paidAmount} mode="system" lang={lang} bold size="lg" className="text-amber-700" />
+   442→          </CardContent>
+   443→        </Card>
+   444→      </div>
+   445→
+   446→      {/* Items Table */}
+   447→      <Card>
+   448→        <CardHeader><CardTitle className="text-lg">{t('بنود أمر الشراء', 'PO Line Items', lang)}</CardTitle></CardHeader>
+   449→        <CardContent className="px-0 pb-2">
+   450→          <div className="overflow-x-auto">
+   451→            <Table>
+   452→              <TableHeader><TableRow>
+   453→                <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   454→                <TableHead className="text-right">{t('الكمية', 'Qty', lang)}</TableHead>
+   455→                <TableHead className="text-right">{t('الوحدة', 'Unit', lang)}</TableHead>
+   456→                <TableHead className="text-right">{t('سعر الوحدة', 'Unit Price', lang)}</TableHead>
+   457→                <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   458→              </TableRow></TableHeader>
+   459→              <TableBody>
+   460→                {order.items.map(item => (
+   461→                  <TableRow key={item.id}>
+   462→                    <TableCell>{item.description}</TableCell>
+   463→                    <TableCell>{formatNumber(item.quantity)}</TableCell>
+   464→                    <TableCell>{item.unit || '—'}</TableCell>
+   465→                    <TableCell><MoneyDisplay value={item.unitPrice} mode="system" lang={lang} size="sm" /></TableCell>
+   466→                    <TableCell className="font-semibold"><MoneyDisplay value={item.totalPrice} mode="system" lang={lang} bold size="sm" /></TableCell>
+   467→                  </TableRow>
+   468→                ))}
+   469→                <TableRow className="bg-gray-50">
+   470→                  <TableCell colSpan={4} className="text-left font-medium">{t('المجموع قبل الضريبة', 'Subtotal', lang)}</TableCell>
+   471→                  <TableCell className="font-semibold"><MoneyDisplay value={order.subtotal} mode="system" lang={lang} size="sm" /></TableCell>
+   472→                </TableRow>
+   473→                <TableRow className="bg-gray-50">
+   474→                  <TableCell colSpan={4} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT', lang)} ({((order.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
+   475→                  <TableCell className="font-semibold"><MoneyDisplay value={order.vatAmount} mode="system" lang={lang} size="sm" /></TableCell>
+   476→                </TableRow>
+   477→                <TableRow className="bg-emerald-50">
+   478→                  <TableCell colSpan={4} className="text-left font-bold text-emerald-700">{t('الإجمالي', 'Total', lang)}</TableCell>
+   479→                  <TableCell className="font-bold text-emerald-700"><MoneyDisplay value={order.totalAmount} mode="system" lang={lang} bold size="md" /></TableCell>
+   480→                </TableRow>
+   481→              </TableBody>
+   482→            </Table>
+   483→          </div>
+   484→        </CardContent>
+   485→      </Card>
+   486→
+   487→      {/* Linked Goods Receipts */}
+   488→      {order.goodsReceipts && order.goodsReceipts.length > 0 && (
+   489→        <Card>
+   490→          <CardHeader>
+   491→            <div className="flex items-center gap-2">
+   492→              <CardTitle className="text-lg">{t('إيصالات الاستلام', 'Goods Receipts', lang)}</CardTitle>
+   493→              <Badge className="bg-teal-100 text-teal-700 border-0">{order.goodsReceipts.length}</Badge>
+   494→            </div>
+   495→          </CardHeader>
+   496→          <CardContent>
+   497→            <div className="flex flex-wrap gap-2">
+   498→              {order.goodsReceipts.map(gr => {
+   499→                const grStatusColor = gr.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : gr.status === 'PENDING' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+   500→                return (
+   501→                  <Badge key={gr.id} className={`${grStatusColor} border-0 gap-1`}>
+   502→                    <Package className="size-3" />
+   503→                    {gr.receiptNo} - {gr.status}
+   504→                  </Badge>
+   505→                )
+   506→              })}
+   507→            </div>
+   508→          </CardContent>
+   509→        </Card>
+   510→      )}
+   511→
+   512→      {/* Linked Supplier Invoices */}
+   513→      {order.invoices && order.invoices.length > 0 && (
+   514→        <Card>
+   515→          <CardHeader>
+   516→            <div className="flex items-center gap-2">
+   517→              <CardTitle className="text-lg">{t('فواتير الموردين', 'Supplier Invoices', lang)}</CardTitle>
+   518→              <Badge className="bg-purple-100 text-purple-700 border-0">{order.invoices.length}</Badge>
+   519→            </div>
+   520→          </CardHeader>
+   521→          <CardContent>
+   522→            <div className="flex flex-wrap gap-2">
+   523→              {order.invoices.map(inv => {
+   524→                const invStatusColor = inv.status === 'PAID' ? 'bg-emerald-100 text-emerald-700' : inv.status === 'DRAFT' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'
+   525→                return (
+   526→                  <Badge key={inv.id} className={`${invStatusColor} border-0 gap-1`}>
+   527→                    {inv.invoiceNo} - {inv.status}
+   528→                  </Badge>
+   529→                )
+   530→              })}
+   531→            </div>
+   532→          </CardContent>
+   533→        </Card>
+   534→      )}
+   535→
+   536→      {/* Workflow indicator for APPROVED POs */}
+   537→      {(order.status === 'APPROVED' || order.status === 'PARTIALLY_RECEIVED') && (
+   538→        <Card className="bg-emerald-50 border-emerald-200 border-dashed">
+   539→          <CardContent className="p-4">
+   540→            <div className="flex items-center justify-center gap-2 text-sm flex-wrap">
+   541→              <Badge className="bg-emerald-100 text-emerald-700 border-0">✓ {t('معتمد', 'Approved', lang)}</Badge>
+   542→              <span className="text-gray-400">→</span>
+   543→              <Badge className={order.goodsReceipts?.length > 0 ? 'bg-teal-100 text-teal-700 border-0' : 'bg-gray-100 text-gray-500 border-0'}>
+   544→                {order.goodsReceipts?.length > 0 ? `✓ ${t('استلام', 'Received', lang)}` : t('استلام بضائع', 'Receive Goods', lang)}
+   545→              </Badge>
+   546→              <span className="text-gray-400">→</span>
+   547→              <Badge className={order.invoices?.length > 0 ? 'bg-blue-100 text-blue-700 border-0' : 'bg-gray-100 text-gray-500 border-0'}>
+   548→                {order.invoices?.length > 0 ? `✓ ${t('فاتورة', 'Invoice', lang)}` : t('فاتورة مورد', 'Supplier Invoice', lang)}
+   549→              </Badge>
+   550→            </div>
+   551→          </CardContent>
+   552→        </Card>
+   553→      )}
+   554→
+   555→      {order.notes && (
+   556→        <Card>
+   557→          <CardHeader><CardTitle className="text-lg">{t('ملاحظات', 'Notes', lang)}</CardTitle></CardHeader>
+   558→          <CardContent><p className="text-sm text-gray-700 whitespace-pre-wrap">{order.notes}</p></CardContent>
+   559→        </Card>
+   560→      )}
+   561→    </div>
+   562→  )
+   563→}
+   564→
+   565→// ============ Main Module ============
+   566→export function PurchaseOrdersModule() {
+   567→  const { lang } = useAppStore()
+   568→  const queryClient = useQueryClient()
+   569→  const [search, setSearch] = useState('')
+   570→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   571→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+   572→  const [page, setPage] = useState(1)
+   573→  const [pageSize, setPageSize] = useState(20)
+   574→
+   575→  const { data: purchaseOrders = [], isLoading, isError, refetch } = useQuery<PurchaseOrder[]>({
+   576→    queryKey: ['purchase-orders'],
+   577→    queryFn: async () => {
+   578→      const res = await fetch('/api/purchase-orders')
+   579→      if (!res.ok) throw new Error('Failed to fetch')
+   580→      return res.json()
+   581→    },
+   582→  })
+   583→
+   584→  const approveMutation = useMutation({
+   585→    mutationFn: ({ id, targetStatus }: { id: string; targetStatus: string }) => fetch(`/api/purchase-orders/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: targetStatus }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   586→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الاعتماد', 'Approved', lang)) },
+   587→    onError: () => toast.error(t('فشل في الاعتماد', 'Failed to approve', lang)),
+   588→  })
+   589→
+   590→  const deleteMutation = useMutation({
+   591→    mutationFn: (id: string) => fetch(`/api/purchase-orders/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   592→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); toast.success(t('تم الحذف', 'Deleted', lang)) },
+   593→    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
+   594→  })
+   595→
+   596→  const filtered = useMemo(() => purchaseOrders.filter(po => {
+   597→    const matchSearch = !search || po.orderNo.toLowerCase().includes(search.toLowerCase()) || po.supplier.name.toLowerCase().includes(search.toLowerCase())
+   598→    const matchStatus = statusFilter === 'all' || po.status === statusFilter
+   599→    return matchSearch && matchStatus
+   600→  }), [purchaseOrders, search, statusFilter])
+   601→
+   602→  const paginatedData = (() => {
+   603→    const maxPage = Math.max(1, Math.ceil(filtered.length / pageSize))
+   604→    const effectivePage = Math.min(page, maxPage)
+   605→    return filtered.slice((effectivePage - 1) * pageSize, effectivePage * pageSize)
+   606→  })()
+   607→
+   608→  const totalPOAmount = purchaseOrders.reduce((s, o) => s + (o.totalAmount ?? 0), 0)
+   609→  const approvedCount = purchaseOrders.filter(o => o.status === 'APPROVED').length
+   610→  const pendingCount = purchaseOrders.filter(o => o.status === 'PENDING_APPROVAL' || o.status === 'DRAFT').length
+   611→
+   612→  // Print data for header-level print button
+   613→  const printData = {
+   614→    columns: [
+   615→      { key: 'orderNo', label: t('رقم الأمر', 'PO Number', lang) },
+   616→      { key: 'supplierName', label: t('المورد', 'Supplier', lang) },
+   617→      { key: 'projectName', label: t('المشروع', 'Project', lang) },
+   618→      { key: 'date', label: t('التاريخ', 'Date', lang) },
+   619→      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), align: 'amount' as const },
+   620→      { key: 'status', label: t('الحالة', 'Status', lang) },
+   621→    ],
+   622→    rows: filtered.map(po => ({
+   623→      orderNo: po.orderNo,
+   624→      supplierName: po.supplier.name,
+   625→      projectName: po.project?.name || '',
+   626→      date: formatDate(po.date, lang),
+   627→      totalAmount: po.totalAmount,
+   628→      status: po.status,
+   629→    })),
+   630→    infoItems: [
+   631→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   632→      { label: lang === 'ar' ? 'إجمالي أوامر الشراء' : 'Total POs', value: String(totalPOAmount) },
+   633→    ],
+   634→    totals: [
+   635→      { label: lang === 'ar' ? 'إجمالي أوامر الشراء' : 'Total POs', value: totalPOAmount, isGrand: true },
+   636→    ],
+   637→  }
+   638→
+   639→  const handleExport = () => {
+   640→    const columns: CSVColumn[] = [
+   641→      { key: 'orderNo', label: t('رقم الأمر', 'PO Number', lang) },
+   642→      { key: 'supplierName', label: t('المورد', 'Supplier', lang) },
+   643→      { key: 'projectName', label: t('المشروع', 'Project', lang) },
+   644→      { key: 'date', label: t('التاريخ', 'Date', lang) },
+   645→      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), format: (v) => (Number(v) || 0).toFixed(4) },
+   646→      { key: 'status', label: t('الحالة', 'Status', lang) },
+   647→    ]
+   648→    exportToCSV(filtered.map(po => ({
+   649→      orderNo: po.orderNo, supplierName: po.supplier.name,
+   650→      projectName: po.project?.name || '', date: formatDate(po.date, lang),
+   651→      totalAmount: po.totalAmount, status: po.status,
+   652→    })), `purchase-orders-${new Date().toISOString().slice(0, 10)}`, columns)
+   653→  }
+   654→
+   655→  if (viewState.type === 'create') return <POCreateView onBack={() => setViewState({ type: 'list' })} />
+   656→  if (viewState.type === 'detail') return <PODetailView id={viewState.id} onBack={() => setViewState({ type: 'list' })} />
+   657→
+   658→  return (
+   659→    <ModuleLayout
+   660→      title={{ ar: 'أوامر الشراء', en: 'Purchase Orders' }}
+   661→      subtitle={{ ar: 'إدارة أوامر شراء المواد والخدمات', en: 'Manage purchase orders for materials and services' }}
+   662→      actions={
+   663→        <div className="flex items-center gap-2">
+   664→          <PrintButton type="generic-table" data={printData} size="icon" />
+   665→          <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
+   666→          <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+   667→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   668→            <Plus className="size-4" /> {t('أمر شراء جديد', 'New PO', lang)}
+   669→          </Button>
+   670→        </div>
+   671→      }
+   672→    >
+   673→      {/* Summary Cards */}
+   674→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   675→        <Card className="bg-emerald-50 border-emerald-200">
+   676→          <CardContent className="p-4 flex items-center gap-3">
+   677→            <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center"><ShoppingCart className="size-5 text-emerald-600" /></div>
+   678→            <div>
+   679→              <p className="text-sm text-emerald-600">{t('إجمالي أوامر الشراء', 'Total POs', lang)}</p>
+   680→              <MoneyDisplay value={totalPOAmount} mode="system" lang={lang} bold size="lg" className="text-emerald-700" />
+   681→            </div>
+   682→          </CardContent>
+   683→        </Card>
+   684→        <Card className="bg-blue-50 border-blue-200">
+   685→          <CardContent className="p-4 flex items-center gap-3">
+   686→            <div className="size-10 rounded-full bg-blue-100 flex items-center justify-center"><CheckCircle className="size-5 text-blue-600" /></div>
+   687→            <div>
+   688→              <p className="text-sm text-blue-600">{t('أوامر معتمدة', 'Approved', lang)}</p>
+   689→              <p className="text-xl font-bold text-blue-700">{formatNumber(approvedCount)}</p>
+   690→            </div>
+   691→          </CardContent>
+   692→        </Card>
+   693→        <Card className="bg-amber-50 border-amber-200">
+   694→          <CardContent className="p-4 flex items-center gap-3">
+   695→            <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center"><Clock className="size-5 text-amber-600" /></div>
+   696→            <div>
+   697→              <p className="text-sm text-amber-600">{t('بانتظار الاعتماد', 'Pending', lang)}</p>
+   698→              <p className="text-xl font-bold text-amber-700">{formatNumber(pendingCount)}</p>
+   699→            </div>
+   700→          </CardContent>
+   701→        </Card>
+   702→      </div>
+   703→
+   704→      <Card><CardContent className="p-4">
+   705→        <div className="flex flex-col sm:flex-row gap-3">
+   706→          <div className="relative flex-1">
+   707→            <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   708→            <Input placeholder={t('بحث بالرقم أو اسم المورد...', 'Search by number or supplier...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   709→          </div>
+   710→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   711→            <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={t('كل الحالات', 'All Statuses', lang)} /></SelectTrigger>
+   712→            <SelectContent>
+   713→              <SelectItem value="all">{t('كل الحالات', 'All Statuses', lang)}</SelectItem>
+   714→              {Object.entries(poStatusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>)}
+   715→            </SelectContent>
+   716→          </Select>
+   717→        </div>
+   718→      </CardContent></Card>
+   719→
+   720→      <Card><CardContent className="p-0">
+   721→        {isLoading ? (
+   722→          <div className="p-6"><TableSkeleton /></div>
+   723→        ) : isError ? (
+   724→          <div className="flex flex-col items-center gap-3 py-10">
+   725→            <AlertCircle className="size-12 text-rose-300" />
+   726→            <p className="text-rose-600">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data', lang)}</p>
+   727→            <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+   728→          </div>
+   729→        ) : filtered.length === 0 ? (
+   730→          <div className="flex flex-col items-center gap-3 py-10">
+   731→            <ShoppingCart className="size-12 text-gray-300" />
+   732→            <p className="text-muted-foreground">{t('لا توجد أوامر شراء', 'No purchase orders', lang)}</p>
+   733→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   734→              <Plus className="size-4 mr-1" /> {t('إنشاء أمر شراء', 'Create PO', lang)}
+   735→            </Button>
+   736→          </div>
+   737→        ) : (
+   738→          <div className="overflow-x-auto">
+   739→            <Table>
+   740→              <TableHeader><TableRow>
+   741→                <TableHead className="text-right">{t('رقم الأمر', 'PO Number', lang)}</TableHead>
+   742→                <TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead>
+   743→                <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+   744→                <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   745→                <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   746→                <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   747→                <TableHead className="text-right">{t('الاستلام', 'Receipt', lang)}</TableHead>
+   748→                <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   749→              </TableRow></TableHeader>
+   750→              <TableBody>
+   751→                {paginatedData.map(po => {
+   752→                  const statusCfg = poStatusConfig[po.status] || poStatusConfig.DRAFT
+   753→                  const hasGR = po.goodsReceipts && po.goodsReceipts.length > 0
+   754→                  const hasPR = !!po.purchaseRequest
+   755→                  return (
+   756→                    <TableRow key={po.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', id: po.id })}>
+   757→                      <TableCell>
+   758→                        <div className="flex items-center gap-1">
+   759→                          <span className="font-mono font-medium">{po.orderNo}</span>
+   760→                          {hasPR && <Link2 className="size-3 text-blue-500" title={t('مرتبط بطلب شراء', 'Linked to PR', lang)} />}
+   761→                        </div>
+   762→                      </TableCell>
+   763→                      <TableCell>{po.supplier.name}</TableCell>
+   764→                      <TableCell>
+   765→                        <div className="flex items-center gap-1">
+   766→                          {po.project?.name || '—'}
+   767→                          {po.project?.projectType && <ProjectTypeBadge projectType={po.project.projectType} lang={lang} />}
+   768→                        </div>
+   769→                      </TableCell>
+   770→                      <TableCell>{formatDate(po.date, lang)}</TableCell>
+   771→                      <TableCell className="font-semibold"><MoneyDisplay value={po.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
+   772→                      <TableCell><Badge className={`${statusCfg.bg} ${statusCfg.color} border-0`}>{statusCfg.label[lang]}</Badge></TableCell>
+   773→                      <TableCell>
+   774→                        {hasGR ? (
+   775→                          <Badge className="bg-teal-100 text-teal-700 border-0">{po.goodsReceipts.length} {t('إيصال', 'GR', lang)}</Badge>
+   776→                        ) : (
+   777→                          <span className="text-xs text-muted-foreground">—</span>
+   778→                        )}
+   779→                      </TableCell>
+   780→                      <TableCell>
+   781→                        <div className="flex items-center gap-1">
+   782→                          {po.status === 'DRAFT' && (
+   783→                            <Button variant="ghost" size="icon" className="size-8 text-orange-600" onClick={e => { e.stopPropagation(); approveMutation.mutate({ id: po.id, targetStatus: 'PENDING_APPROVAL' }) }} title={t('إرسال للاعتماد', 'Submit for Approval', lang)}><Clock className="size-4" /></Button>
+   784→                          )}
+   785→                          {po.status === 'PENDING_APPROVAL' && (
+   786→                            <Button variant="ghost" size="icon" className="size-8 text-emerald-600" onClick={e => { e.stopPropagation(); approveMutation.mutate({ id: po.id, targetStatus: 'APPROVED' }) }} title={t('اعتماد', 'Approve', lang)}><CheckCircle className="size-4" /></Button>
+   787→                          )}
+   788→                          <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: po.id }) }} title={t('عرض', 'View', lang)}>
+   789→                            <Eye className="size-4" />
+   790→                          </Button>
+   791→                          {po.status === 'DRAFT' && (
+   792→                            <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={e => { e.stopPropagation(); if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate(po.id) }}><Trash2 className="size-4" /></Button>
+   793→                          )}
+   794→                        </div>
+   795→                      </TableCell>
+   796→                    </TableRow>
+   797→                  )
+   798→                })}
+   799→              </TableBody>
+   800→            </Table>
+   801→          </div>
+   802→        )}
+   803→        <DataTablePagination
+   804→          totalItems={filtered.length}
+   805→          pageSize={pageSize}
+   806→          currentPage={page}
+   807→          onPageChange={setPage}
+   808→          onPageSizeChange={setPageSize}
+   809→          labels={lang === 'ar' ? { page: 'صفحة', of: 'من', items: 'عنصر', show: 'عرض' } : { page: 'Page', of: 'of', items: 'items', show: 'Show' }}
+   810→        />
+   811→      </CardContent></Card>
+   812→    </ModuleLayout>
+   813→  )
+   814→}
+   815→

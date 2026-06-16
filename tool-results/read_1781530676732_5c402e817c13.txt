@@ -1,0 +1,1007 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Receipt, Plus, Search, RefreshCw, TrendingUp,
+     7→  Building2, Briefcase, Download, Landmark, Wallet, Banknote,
+     8→  Zap, ArrowLeftRight, BookOpen, Clock,
+     9→} from 'lucide-react'
+    10→import { Card, CardContent } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→} from '@/components/ui/table'
+    17→import {
+    18→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    19→} from '@/components/ui/dialog'
+    20→import {
+    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→} from '@/components/ui/select'
+    23→import { Label } from '@/components/ui/label'
+    24→import { Separator } from '@/components/ui/separator'
+    25→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    26→import { ModuleLayout } from '@/components/shared/module-layout'
+    27→import { PrintButton } from '@/components/shared/print-button'
+    28→import { StatusBadge } from '@/components/shared/module-layout'
+    29→import { MoneyDisplay } from '@/components/ui/money-display'
+    30→import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
+    31→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    32→import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+    33→import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+    34→import {
+    35→  EXPENSE_CATEGORY_ACCOUNT_MAP,
+    36→  PAYMENT_METHOD_ACCOUNT_MAP,
+    37→  SUPPLIER_ACCOUNT,
+    38→} from '@/lib/accounting/mapping'
+    39→import { useToast } from '@/hooks/use-toast'
+    40→
+    41→// ============ Types ============
+    42→interface ProjectOption { id: string; code: string; name: string }
+    43→
+    44→interface Expense {
+    45→  id: string; projectId: string | null; expenseType: string; category: string; description: string
+    46→  amount: number; vatRate: number; vatAmount: number | null; totalAmount: number; date: string
+    47→  reference: string | null; payFrom: string; attachmentPath: string | null; journalEntryId: string | null
+    48→  supplierId: string | null
+    49→  project: { id: string; code: string; name: string; projectType?: string } | null
+    50→  supplier?: { id: string; name: string; nameAr?: string | null } | null
+    51→}
+    52→
+    53→// ============ Bilingual Helpers ============
+    54→const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
+    55→
+    56→// Project expenses - linked to projects
+    57→const projectExpenseCategoryLabels: Record<string, { ar: string; en: string }> = {
+    58→  RENT: { ar: 'إيجارات', en: 'Rent' },
+    59→  MAINTENANCE: { ar: 'صيانة', en: 'Maintenance' },
+    60→  TRANSPORT: { ar: 'نقل', en: 'Transport' },
+    61→  DELIVERY: { ar: 'توصيل', en: 'Delivery' },
+    62→  CONSUMABLES: { ar: 'مواد استهلاكية', en: 'Consumables' },
+    63→  SERVICES: { ar: 'خدمات', en: 'Services' },
+    64→  INSURANCE: { ar: 'تأمين', en: 'Insurance' },
+    65→  FUEL: { ar: 'وقود', en: 'Fuel' },
+    66→  PERMITS: { ar: 'تصاريح', en: 'Permits' },
+    67→  OTHER: { ar: 'أخرى', en: 'Other' },
+    68→}
+    69→
+    70→// Administrative expenses
+    71→const adminExpenseCategoryLabels: Record<string, { ar: string; en: string }> = {
+    72→  SALARIES: { ar: 'رواتب', en: 'Salaries' },
+    73→  DRIVERS: { ar: 'سائقين', en: 'Drivers' },
+    74→  INTERNET: { ar: 'إنترنت', en: 'Internet' },
+    75→  ELECTRICITY: { ar: 'كهرباء', en: 'Electricity' },
+    76→  WATER: { ar: 'مياه', en: 'Water' },
+    77→  MANAGEMENT_CARS: { ar: 'سيارات الإدارة', en: 'Management Cars' },
+    78→  RENT: { ar: 'إيجارات', en: 'Rent' },
+    79→  OFFICE: { ar: 'قرطاسية', en: 'Office' },
+    80→  HOSPITALITY: { ar: 'ضيافة', en: 'Hospitality' },
+    81→  OTHER: { ar: 'أخرى', en: 'Other' },
+    82→}
+    83→
+    84→const allCategoryLabels: Record<string, { ar: string; en: string }> = {
+    85→  ...projectExpenseCategoryLabels,
+    86→  ...adminExpenseCategoryLabels,
+    87→}
+    88→
+    89→const projectCategoryOptions = Object.entries(projectExpenseCategoryLabels).map(([key, val]) => ({
+    90→  value: key, ...val,
+    91→}))
+    92→
+    93→const adminCategoryOptions = Object.entries(adminExpenseCategoryLabels).map(([key, val]) => ({
+    94→  value: key, ...val,
+    95→}))
+    96→
+    97→const categoryColors: Record<string, string> = {
+    98→  RENT: 'bg-blue-100 text-blue-700',
+    99→  MAINTENANCE: 'bg-orange-100 text-orange-700',
+   100→  TRANSPORT: 'bg-teal-100 text-teal-700',
+   101→  DELIVERY: 'bg-cyan-100 text-cyan-700',
+   102→  CONSUMABLES: 'bg-amber-100 text-amber-700',
+   103→  SERVICES: 'bg-purple-100 text-purple-700',
+   104→  INSURANCE: 'bg-green-100 text-green-700',
+   105→  FUEL: 'bg-rose-100 text-rose-700',
+   106→  PERMITS: 'bg-emerald-100 text-emerald-700',
+   107→  OFFICE: 'bg-gray-100 text-gray-700',
+   108→  HOSPITALITY: 'bg-pink-100 text-pink-700',
+   109→  OTHER: 'bg-gray-100 text-gray-600',
+   110→  DRIVERS: 'bg-sky-100 text-sky-700',
+   111→  SALARIES: 'bg-emerald-100 text-emerald-700',
+   112→  INTERNET: 'bg-sky-100 text-sky-700',
+   113→  ELECTRICITY: 'bg-yellow-100 text-yellow-700',
+   114→  WATER: 'bg-blue-100 text-blue-700',
+   115→  MANAGEMENT_CARS: 'bg-violet-100 text-violet-700',
+   116→}
+   117→
+   118→const payFromLabels: Record<string, { ar: string; en: string; icon: React.ElementType; accountCode?: string; accountNameAr?: string; accountNameEn?: string }> = {
+   119→  TREASURY: { ar: 'الخزينة', en: 'Treasury', icon: Landmark, accountCode: '1110', accountNameAr: 'الصندوق', accountNameEn: 'Cash - Treasury' },
+   120→  BANK: { ar: 'البنك', en: 'Bank', icon: Banknote, accountCode: '1120', accountNameAr: 'البنوك', accountNameEn: 'Bank Accounts' },
+   121→  PETTY_CASH: { ar: 'الصندوق النقدي', en: 'Petty Cash', icon: Wallet, accountCode: '1130', accountNameAr: 'الصندوق النقدي', accountNameEn: 'Petty Cash' },
+   122→  PAY_LATER: { ar: 'سداد آجل', en: 'Pay Later', icon: Clock, accountCode: '3210', accountNameAr: 'الموردون', accountNameEn: 'Suppliers Payable' },
+   123→}
+   124→
+   125→const payFromOptions = Object.entries(payFromLabels).map(([key, val]) => ({
+   126→  value: key, labelAr: val.ar, labelEn: val.en,
+   127→  accountCode: val.accountCode, accountNameAr: val.accountNameAr, accountNameEn: val.accountNameEn,
+   128→}))
+   129→
+   130→const adminCategoryKeys = new Set(Object.keys(adminExpenseCategoryLabels))
+   131→
+   132→function isProjectExpense(expense: Expense): boolean {
+   133→  return expense.projectId !== null
+   134→}
+   135→
+   136→function isAdminExpense(expense: Expense): boolean {
+   137→  return expense.projectId === null && adminCategoryKeys.has(expense.category)
+   138→}
+   139→
+   140→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   141→  return (
+   142→    <div className="space-y-2 p-4">
+   143→      {Array.from({ length: rows }).map((_, i) => (
+   144→        <div key={i} className="flex gap-4 p-3">
+   145→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   146→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   147→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   148→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   149→        </div>
+   150→      ))}
+   151→    </div>
+   152→  )
+   153→}
+   154→
+   155→// ============ Expense Form Dialog ============
+   156→interface ExpenseFormDialogProps {
+   157→  open: boolean; onOpenChange: (open: boolean) => void
+   158→  projects: ProjectOption[]; activeTab: 'project' | 'admin'
+   159→  suppliers: { id: string; code: string; name: string; nameAr?: string | null }[]
+   160→}
+   161→
+   162→function ExpenseFormDialog({
+   163→  open, onOpenChange, projects, activeTab: initialTab, suppliers,
+   164→}: ExpenseFormDialogProps) {
+   165→  const { lang } = useAppStore()
+   166→  const queryClient = useQueryClient()
+   167→  const { toast } = useToast()
+   168→
+   169→  const [tab, setTab] = useState<'project' | 'admin'>(initialTab)
+   170→  const [projectId, setProjectId] = useState('')
+   171→  const [supplierId, setSupplierId] = useState('')
+   172→  const [category, setCategory] = useState('')
+   173→  const [description, setDescription] = useState('')
+   174→  const [amount, setAmount] = useState('')
+   175→  const [vatAmount, setVatAmount] = useState('')
+   176→  const [date, setDate] = useState('')
+   177→  const [reference, setReference] = useState('')
+   178→  const [payFrom, setPayFrom] = useState('TREASURY')
+   179→  const [attachmentPath, setAttachmentPath] = useState('')
+   180→  const [vatRate, setVatRate] = useState('0.15')
+   181→
+   182→  React.useEffect(() => {
+   183→    if (open) {
+   184→      setTab(initialTab)
+   185→      setProjectId('')
+   186→      setSupplierId('')
+   187→      setCategory(''); setDescription('')
+   188→      setAmount(''); setVatAmount(''); setDate('')
+   189→      setReference(''); setPayFrom('TREASURY')
+   190→      setAttachmentPath(''); setVatRate('0.15')
+   191→    }
+   192→  }, [open, initialTab])
+   193→
+   194→  const categoryOptions = tab === 'project' ? projectCategoryOptions : adminCategoryOptions
+   195→
+   196→  // Auto-calc VAT if applicable
+   197→  const parsedAmount = parseFloat(amount) || 0
+   198→  const parsedVatRate = parseFloat(vatRate) || 0.15
+   199→  const autoVat = useMemo(() => {
+   200→    const manualVat = parseFloat(vatAmount)
+   201→    if (!isNaN(manualVat)) return manualVat
+   202→    return parsedAmount * parsedVatRate
+   203→  }, [amount, vatAmount, parsedAmount, parsedVatRate])
+   204→
+   205→  const totalAmount = parsedAmount + autoVat
+   206→
+   207→  // ── Accounting Account Mapping ──
+   208→  const categoryAccount = category ? EXPENSE_CATEGORY_ACCOUNT_MAP[category] : null
+   209→  const paymentAccount = payFrom === 'PAY_LATER'
+   210→    ? SUPPLIER_ACCOUNT
+   211→    : PAYMENT_METHOD_ACCOUNT_MAP[payFrom]
+   212→
+   213→  // ── Accounting Impact Preview Lines ──
+   214→  const journalPreview = useMemo(() => {
+   215→    if (!category || parsedAmount <= 0) return null
+   216→
+   217→    const debitAccount = categoryAccount || { code: '8630', nameAr: 'مصروفات أخرى', nameEn: 'Other Expenses' }
+   218→    const creditAccount = paymentAccount || { code: '1110', nameAr: 'الصندوق', nameEn: 'Cash - Treasury' }
+   219→
+   220→    const debitLines: Array<{ code: string; name: string; amount: number }> = []
+   221→    const creditLines: Array<{ code: string; name: string; amount: number }> = []
+   222→
+   223→    // Debit: Expense account
+   224→    debitLines.push({
+   225→      code: debitAccount.code,
+   226→      name: lang === 'ar' ? debitAccount.nameAr : debitAccount.nameEn,
+   227→      amount: parsedAmount,
+   228→    })
+   229→
+   230→    // Debit: Input VAT (if any)
+   231→    if (autoVat > 0) {
+   232→      debitLines.push({
+   233→        code: '3120',
+   234→        name: lang === 'ar' ? 'ضريبة المدخلات' : 'Input VAT',
+   235→        amount: autoVat,
+   236→      })
+   237→    }
+   238→
+   239→    // Credit: Payment account
+   240→    creditLines.push({
+   241→      code: creditAccount.code,
+   242→      name: lang === 'ar' ? creditAccount.nameAr : creditAccount.nameEn,
+   243→      amount: totalAmount,
+   244→    })
+   245→
+   246→    const totalDebit = debitLines.reduce((s, l) => s + l.amount, 0)
+   247→    const totalCredit = creditLines.reduce((s, l) => s + l.amount, 0)
+   248→    const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01
+   249→
+   250→    return { debitLines, creditLines, totalDebit, totalCredit, isBalanced }
+   251→  }, [category, parsedAmount, autoVat, totalAmount, categoryAccount, paymentAccount, lang])
+   252→
+   253→  const createMutation = useMutation({
+   254→    mutationFn: (data: Record<string, unknown>) =>
+   255→      fetch('/api/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   256→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   257→    onSuccess: (result: { journalEntryId?: string | null; id?: string }) => {
+   258→      queryClient.invalidateQueries({ queryKey: ['expenses'] })
+   259→      onOpenChange(false)
+   260→      // Show toast about journal entry creation
+   261→      if (result?.journalEntryId) {
+   262→        toast({
+   263→          title: t(lang, 'تم إنشاء القيد المحاسبي', 'Accounting Entry Created'),
+   264→          description: t(lang, 'تم إنشاء القيد المحاسبي بنجاح', 'The accounting journal entry has been created successfully'),
+   265→        })
+   266→      } else {
+   267→        toast({
+   268→          title: t(lang, 'تم إضافة المصروف', 'Expense Added'),
+   269→          description: t(lang, 'تم إضافة المصروف بنجاح', 'The expense has been added successfully'),
+   270→        })
+   271→      }
+   272→    },
+   273→    onError: () => {
+   274→      toast({
+   275→        title: t(lang, 'خطأ', 'Error'),
+   276→        description: t(lang, 'فشل في إضافة المصروف', 'Failed to add expense'),
+   277→        variant: 'destructive',
+   278→      })
+   279→    },
+   280→  })
+   281→
+   282→  const handleSubmit = (e: React.FormEvent) => {
+   283→    e.preventDefault()
+   284→    const isProjectTab = tab === 'project'
+   285→    createMutation.mutate({
+   286→      projectId: isProjectTab ? projectId : null,
+   287→      expenseType: isProjectTab ? 'PROJECT' : 'INTERNAL',
+   288→      supplierId: (isProjectTab || payFrom === 'PAY_LATER') ? (supplierId || null) : null,
+   289→      category, description, amount,
+   290→      vatRate: parsedVatRate,
+   291→      vatAmount: autoVat || null,
+   292→      totalAmount,
+   293→      date, reference: reference || null,
+   294→      payFrom,
+   295→      attachmentPath: attachmentPath || null,
+   296→    })
+   297→  }
+   298→
+   299→  // PAY_LATER requires a supplier
+   300→  const isPayLater = payFrom === 'PAY_LATER'
+   301→  const needsSupplier = isPayLater || (tab === 'project' && ['SERVICES', 'RENT', 'MAINTENANCE', 'INSURANCE', 'CONSUMABLES'].includes(category))
+   302→
+   303→  return (
+   304→    <Dialog open={open} onOpenChange={onOpenChange}>
+   305→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   306→        <DialogHeader>
+   307→          <DialogTitle>{t(lang, 'مصروف جديد', 'New Expense')}</DialogTitle>
+   308→          <DialogDescription>{t(lang, 'إضافة مصروف جديد', 'Add a new expense')}</DialogDescription>
+   309→        </DialogHeader>
+   310→        <form onSubmit={handleSubmit} className="space-y-4">
+   311→          {/* Type toggle */}
+   312→          <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+   313→            <button
+   314→              type="button"
+   315→              onClick={() => { setTab('project'); setCategory(''); setProjectId('') }}
+   316→              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+   317→                tab === 'project' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
+   318→              }`}
+   319→            >
+   320→              <Building2 className="size-4" />
+   321→              {t(lang, 'مصروف مشروع', 'Project Expense')}
+   322→            </button>
+   323→            <button
+   324→              type="button"
+   325→              onClick={() => { setTab('admin'); setCategory(''); setProjectId('') }}
+   326→              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+   327→                tab === 'admin' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
+   328→              }`}
+   329→            >
+   330→              <Briefcase className="size-4" />
+   331→              {t(lang, 'مصروف إداري', 'Admin Expense')}
+   332→            </button>
+   333→          </div>
+   334→
+   335→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   336→            {/* Project selector - only for project tab */}
+   337→            {tab === 'project' && (
+   338→              <div className="space-y-2">
+   339→                <Label>{t(lang, 'المشروع *', 'Project *')}</Label>
+   340→                <Select value={projectId} onValueChange={setProjectId}>
+   341→                  <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المشروع', 'Select project')} /></SelectTrigger>
+   342→                  <SelectContent>
+   343→                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   344→                  </SelectContent>
+   345→                </Select>
+   346→              </div>
+   347→            )}
+   348→
+   349→            {/* Supplier - for project tab or PAY_LATER */}
+   350→            {(tab === 'project' || isPayLater) && (
+   351→              <div className="space-y-2">
+   352→                <Label>
+   353→                  {t(lang, 'المورد', 'Supplier')}
+   354→                  {needsSupplier ? ' *' : ''}
+   355→                </Label>
+   356→                <Select value={supplierId} onValueChange={setSupplierId}>
+   357→                  <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المورد', 'Select supplier')} /></SelectTrigger>
+   358→                  <SelectContent>
+   359→                    {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.nameAr || s.name}</SelectItem>)}
+   360→                  </SelectContent>
+   361→                </Select>
+   362→                {isPayLater && !supplierId && (
+   363→                  <p className="text-xs text-amber-600">{t(lang, 'المورد إلزامي للسداد الآجل', 'Supplier is required for pay later')}</p>
+   364→                )}
+   365→                {tab === 'project' && ['SERVICES', 'RENT', 'MAINTENANCE', 'INSURANCE', 'CONSUMABLES'].includes(category) && !supplierId && !isPayLater && (
+   366→                  <p className="text-xs text-amber-600">{t(lang, 'المورد إلزامي لهذه الفئة', 'Supplier is required for this category')}</p>
+   367→                )}
+   368→              </div>
+   369→            )}
+   370→
+   371→            {/* Admin info */}
+   372→            {tab === 'admin' && !isPayLater && (
+   373→              <div className="space-y-2 sm:col-span-2">
+   374→                <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+   375→                  <Briefcase className="size-4 text-amber-600 shrink-0" />
+   376→                  <span className="text-sm text-amber-700">
+   377→                    {t(lang, 'المصروفات الإدارية لا ترتبط بمشروع معين', 'Administrative expenses are not linked to a specific project')}
+   378→                  </span>
+   379→                </div>
+   380→              </div>
+   381→            )}
+   382→
+   383→            {/* Category + Account Badge */}
+   384→            <div className="space-y-2">
+   385→              <Label>{t(lang, 'الفئة *', 'Category *')}</Label>
+   386→              <Select value={category} onValueChange={setCategory}>
+   387→                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر الفئة', 'Select category')} /></SelectTrigger>
+   388→                <SelectContent>
+   389→                  {categoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c[lang]}</SelectItem>)}
+   390→                </SelectContent>
+   391→              </Select>
+   392→            </div>
+   393→            {/* Account mapping badge */}
+   394→            {category && categoryAccount && (
+   395→              <div className="space-y-2">
+   396→                <Label>{t(lang, 'الحساب', 'Account')}</Label>
+   397→                <div className="flex items-center gap-2 h-10">
+   398→                  <ArrowLeftRight className="size-4 text-gray-400 shrink-0" />
+   399→                  <Badge className="bg-teal-50 text-teal-800 border-teal-200 border font-mono gap-1.5 px-3 py-1.5 text-sm">
+   400→                    <span className="font-bold">{categoryAccount.code}</span>
+   401→                    <span>{lang === 'ar' ? categoryAccount.nameAr : categoryAccount.nameEn}</span>
+   402→                  </Badge>
+   403→                </div>
+   404→              </div>
+   405→            )}
+   406→
+   407→            <div className="space-y-2 sm:col-span-2">
+   408→              <Label>{t(lang, 'الوصف *', 'Description *')}</Label>
+   409→              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف المصروف', 'Expense description')} required />
+   410→            </div>
+   411→            <div className="space-y-2">
+   412→              <Label>{t(lang, 'المبلغ *', 'Amount *')}</Label>
+   413→              <Input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required />
+   414→            </div>
+   415→            <div className="space-y-2">
+   416→              <Label>{t(lang, 'ضريبة القيمة المضافة (15%)', 'VAT Amount (15%)')}</Label>
+   417→              <Input type="number" min="0" step="0.01" value={vatAmount} onChange={e => setVatAmount(e.target.value)} dir="ltr" placeholder={t(lang, 'تلقائي', 'Auto')} />
+   418→            </div>
+   419→            <div className="space-y-2">
+   420→              <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
+   421→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   422→            </div>
+   423→            <div className="space-y-2">
+   424→              <Label>{t(lang, 'طريقة الدفع', 'Payment Method')}</Label>
+   425→              <Select value={payFrom} onValueChange={setPayFrom}>
+   426→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   427→                <SelectContent>
+   428→                  {payFromOptions.map(p => (
+   429→                    <SelectItem key={p.value} value={p.value}>
+   430→                      <div className="flex items-center gap-2">
+   431→                        <span>{lang === 'ar' ? p.labelAr : p.labelEn}</span>
+   432→                        <span className="text-xs text-gray-400 font-mono">({p.accountCode})</span>
+   433→                      </div>
+   434→                    </SelectItem>
+   435→                  ))}
+   436→                </SelectContent>
+   437→              </Select>
+   438→              {/* Show payment account badge */}
+   439→              {paymentAccount && (
+   440→                <Badge variant="outline" className="mt-1 font-mono text-xs gap-1">
+   441→                  <span className="font-bold">{paymentAccount.code}</span>
+   442→                  <span>{lang === 'ar' ? paymentAccount.nameAr : paymentAccount.nameEn}</span>
+   443→                </Badge>
+   444→              )}
+   445→            </div>
+   446→            <div className="space-y-2 sm:col-span-2">
+   447→              <Label>{t(lang, 'المرجع', 'Reference')}</Label>
+   448→              <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={t(lang, 'رقم المرجع', 'Reference number')} />
+   449→            </div>
+   450→            <div className="space-y-2">
+   451→              <Label>{t(lang, 'نسبة الضريبة', 'VAT Rate')}</Label>
+   452→              <Input type="number" min="0" max="1" step="0.01" value={vatRate} onChange={e => setVatRate(e.target.value)} dir="ltr" placeholder="0.15" />
+   453→            </div>
+   454→            <div className="space-y-2">
+   455→              <Label>{t(lang, 'مسار المرفق', 'Attachment Path')}</Label>
+   456→              <Input value={attachmentPath} onChange={e => setAttachmentPath(e.target.value)} placeholder={t(lang, 'مسار الملف', 'File path')} />
+   457→            </div>
+   458→          </div>
+   459→
+   460→          {/* Total Preview */}
+   461→          {parsedAmount > 0 && (
+   462→            <Card className="bg-gray-50 border-dashed">
+   463→              <CardContent className="p-4 space-y-2">
+   464→                <div className="flex justify-between text-sm">
+   465→                  <span>{t(lang, 'المبلغ', 'Amount')}</span>
+   466→                  <span className="font-medium"><MoneyDisplay value={parsedAmount} lang={lang} size="sm" /></span>
+   467→                </div>
+   468→                <div className="flex justify-between text-sm">
+   469→                  <span>{t(lang, `الضريبة (${((parsedVatRate ?? 0) * 100).toFixed(0)}%)`, `VAT (${((parsedVatRate ?? 0) * 100).toFixed(0)}%)`)}</span>
+   470→                  <span className="font-medium"><MoneyDisplay value={autoVat} lang={lang} size="sm" /></span>
+   471→                </div>
+   472→                <Separator />
+   473→                <div className="flex justify-between text-lg font-bold">
+   474→                  <span>{t(lang, 'الإجمالي', 'Total')}</span>
+   475→                  <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} bold size="md" /></span>
+   476→                </div>
+   477→              </CardContent>
+   478→            </Card>
+   479→          )}
+   480→
+   481→          {/* ── Accounting Impact Preview ── */}
+   482→          {journalPreview && (
+   483→            <Card className="border-teal-200 bg-gradient-to-b from-teal-50/50 to-white">
+   484→              <CardContent className="p-4 space-y-3">
+   485→                <div className="flex items-center gap-2 text-teal-800 font-bold text-sm">
+   486→                  <Zap className="size-4" />
+   487→                  <span>{t(lang, 'الأثر المحاسبي المتوقع', 'Expected Accounting Impact')}</span>
+   488→                </div>
+   489→                <Separator className="bg-teal-200" />
+   490→
+   491→                {/* Debit Lines */}
+   492→                <div className="space-y-1.5">
+   493→                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">
+   494→                    {t(lang, 'مدين (Debit)', 'Debit')}
+   495→                  </p>
+   496→                  {journalPreview.debitLines.map((line, i) => (
+   497→                    <div key={`d-${i}`} className="flex justify-between items-center text-sm mr-4">
+   498→                      <span className="font-mono text-xs bg-white border rounded px-1.5 py-0.5 text-gray-700">
+   499→                        {line.code}
+   500→                      </span>
+   501→                      <span className="flex-1 mx-2 truncate">{line.name}</span>
+   502→                      <span className="font-medium tabular-nums" dir="ltr">
+   503→                        {formatSAR(line.amount, lang)}
+   504→                      </span>
+   505→                    </div>
+   506→                  ))}
+   507→                </div>
+   508→
+   509→                {/* Credit Lines */}
+   510→                <div className="space-y-1.5">
+   511→                  <p className="text-xs font-semibold text-rose-700 uppercase tracking-wider">
+   512→                    {t(lang, 'دائن (Credit)', 'Credit')}
+   513→                  </p>
+   514→                  {journalPreview.creditLines.map((line, i) => (
+   515→                    <div key={`c-${i}`} className="flex justify-between items-center text-sm mr-4">
+   516→                      <span className="font-mono text-xs bg-white border rounded px-1.5 py-0.5 text-gray-700">
+   517→                        {line.code}
+   518→                      </span>
+   519→                      <span className="flex-1 mx-2 truncate">{line.name}</span>
+   520→                      <span className="font-medium tabular-nums" dir="ltr">
+   521→                        {formatSAR(line.amount, lang)}
+   522→                      </span>
+   523→                    </div>
+   524→                  ))}
+   525→                </div>
+   526→
+   527→                <Separator className="bg-teal-200" />
+   528→
+   529→                {/* Balance Status */}
+   530→                <div className="flex justify-between items-center">
+   531→                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+   532→                    <span>{t(lang, `إجمالي مدين: ${formatSAR(journalPreview.totalDebit, lang)}`, `Total Debit: ${formatSAR(journalPreview.totalDebit, lang)}`)}</span>
+   533→                    <span>{t(lang, `إجمالي دائن: ${formatSAR(journalPreview.totalCredit, lang)}`, `Total Credit: ${formatSAR(journalPreview.totalCredit, lang)}`)}</span>
+   534→                  </div>
+   535→                  <Badge className={`border-0 text-xs gap-1 ${
+   536→                    journalPreview.isBalanced
+   537→                      ? 'bg-emerald-100 text-emerald-700'
+   538→                      : 'bg-rose-100 text-rose-700'
+   539→                  }`}>
+   540→                    <span className="text-base">{journalPreview.isBalanced ? '🟢' : '🔴'}</span>
+   541→                    {journalPreview.isBalanced
+   542→                      ? t(lang, 'القيد متوازن', 'Entry Balanced')
+   543→                      : t(lang, 'القيد غير متوازن', 'Entry Unbalanced')
+   544→                    }
+   545→                  </Badge>
+   546→                </div>
+   547→              </CardContent>
+   548→            </Card>
+   549→          )}
+   550→
+   551→          <DialogFooter>
+   552→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
+   553→            <Button type="submit" disabled={createMutation.isPending || !category || !description || !amount || !date || (tab === 'project' && !projectId) || needsSupplier && !supplierId} className="bg-emerald-600 hover:bg-emerald-700">
+   554→              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إضافة المصروف', 'Add Expense')}
+   555→            </Button>
+   556→          </DialogFooter>
+   557→        </form>
+   558→      </DialogContent>
+   559→    </Dialog>
+   560→  )
+   561→}
+   562→
+   563→// ============ Main Expenses Module ============
+   564→export function ExpensesModule() {
+   565→  const { lang } = useAppStore()
+   566→
+   567→  const [activeTab, setActiveTab] = useState<'project' | 'admin'>('project')
+   568→  const [search, setSearch] = useState('')
+   569→  const [projectFilter, setProjectFilter] = useState<string>('all')
+   570→  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+   571→  const [dialogOpen, setDialogOpen] = useState(false)
+   572→
+   573→  const { data: expenses = [], isLoading, isError, refetch } = useQuery<Expense[]>({
+   574→    queryKey: ['expenses'],
+   575→    queryFn: async () => {
+   576→      const res = await fetch('/api/expenses')
+   577→      if (!res.ok) throw new Error('Failed to fetch')
+   578→      return res.json()
+   579→    },
+   580→  })
+   581→
+   582→  const { data: projects = [] } = useQuery<ProjectOption[]>({
+   583→    queryKey: ['projects-list'],
+   584→    queryFn: async () => {
+   585→      const res = await fetch('/api/projects/list')
+   586→      if (!res.ok) return []
+   587→      return res.json()
+   588→    },
+   589→  })
+   590→
+   591→  const { data: suppliers = [] } = useQuery<{ id: string; code: string; name: string; nameAr?: string | null }[]>({
+   592→    queryKey: ['suppliers-for-expenses'],
+   593→    queryFn: async () => {
+   594→      const res = await fetch('/api/suppliers')
+   595→      if (!res.ok) return []
+   596→      return res.json()
+   597→    },
+   598→  })
+   599→
+   600→  // Split expenses by type
+   601→  const projectExpenses = useMemo(() => expenses.filter(isProjectExpense), [expenses])
+   602→  const adminExpenses = useMemo(() => expenses.filter(isAdminExpense), [expenses])
+   603→
+   604→  // Filter based on active tab
+   605→  const tabExpenses = activeTab === 'project' ? projectExpenses : adminExpenses
+   606→
+   607→  const filtered = tabExpenses.filter(exp => {
+   608→    const matchProject = projectFilter === 'all' || exp.projectId === projectFilter
+   609→    const matchCategory = categoryFilter === 'all' || exp.category === categoryFilter
+   610→    const matchSearch = !search ||
+   611→      exp.description.toLowerCase().includes(search.toLowerCase()) ||
+   612→      (exp.project?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+   613→      (allCategoryLabels[exp.category]?.[lang] || '').toLowerCase().includes(search.toLowerCase())
+   614→    return matchProject && matchCategory && matchSearch
+   615→  })
+   616→
+   617→  // Summary
+   618→  const totalProjectExpenses = projectExpenses.reduce((s, e) => s + Number(e.amount || 0), 0)
+   619→  const totalAdminExpenses = adminExpenses.reduce((s, e) => s + Number(e.amount || 0), 0)
+   620→  const totalExpenses = expenses.reduce((s, e) => s + Number(e.totalAmount || 0), 0)
+   621→
+   622→  const now = new Date()
+   623→  const thisMonthTotal = expenses.filter(e => {
+   624→    const d = new Date(e.date)
+   625→    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+   626→  }).reduce((s, e) => s + Number(e.totalAmount || 0), 0)
+   627→
+   628→  const currentCategoryOptions = activeTab === 'project' ? projectCategoryOptions : adminCategoryOptions
+   629→
+   630→  // Export handler
+   631→  const handleExport = () => {
+   632→    const columns: CSVColumn[] = [
+   633→      { key: 'projectName', label: t(lang, 'المشروع', 'Project') },
+   634→      { key: 'category', label: t(lang, 'الفئة', 'Category'), format: (v) => allCategoryLabels[v as string]?.[lang] || String(v) },
+   635→      { key: 'description', label: t(lang, 'الوصف', 'Description') },
+   636→      { key: 'amount', label: t(lang, 'المبلغ', 'Amount'), format: (v) => (Number(v) || 0).toFixed(2) },
+   637→      { key: 'vatAmount', label: t(lang, 'الضريبة', 'VAT'), format: (v) => v ? (Number(v) || 0).toFixed(2) : '' },
+   638→      { key: 'totalAmount', label: t(lang, 'الإجمالي', 'Total'), format: (v) => (Number(v) || 0).toFixed(2) },
+   639→      { key: 'payFrom', label: t(lang, 'السداد من', 'Pay From'), format: (v) => payFromLabels[v as string]?.[lang] || String(v) },
+   640→      { key: 'date', label: t(lang, 'التاريخ', 'Date') },
+   641→      { key: 'reference', label: t(lang, 'المرجع', 'Reference') },
+   642→    ]
+   643→    const rows = filtered.map(exp => ({
+   644→      projectName: exp.project?.name || '',
+   645→      category: exp.category,
+   646→      description: exp.description,
+   647→      amount: exp.amount,
+   648→      vatAmount: exp.vatAmount,
+   649→      totalAmount: exp.totalAmount,
+   650→      payFrom: exp.payFrom,
+   651→      date: formatDate(exp.date, lang),
+   652→      reference: exp.reference || '',
+   653→    }))
+   654→    exportToCSV(rows, `expenses-${new Date().toISOString().slice(0, 10)}`, columns)
+   655→  }
+   656→
+   657→  const printData = useMemo(() => ({
+   658→    columns: [
+   659→      { key: 'projectName', label: lang === 'ar' ? 'المشروع' : 'Project' },
+   660→      { key: 'category', label: lang === 'ar' ? 'الفئة' : 'Category' },
+   661→      { key: 'description', label: lang === 'ar' ? 'الوصف' : 'Description' },
+   662→      { key: 'amount', label: lang === 'ar' ? 'المبلغ' : 'Amount' },
+   663→      { key: 'totalAmount', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
+   664→      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+   665→    ],
+   666→    rows: filtered.map(exp => ({
+   667→      projectName: exp.project?.name || (lang === 'ar' ? 'عام' : 'General'),
+   668→      category: allCategoryLabels[exp.category]?.[lang] || exp.category,
+   669→      description: exp.description,
+   670→      amount: exp.amount,
+   671→      totalAmount: exp.totalAmount,
+   672→      date: formatDate(exp.date, lang),
+   673→    })),
+   674→    infoItems: [
+   675→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   676→      { label: lang === 'ar' ? 'إجمالي المصروفات' : 'Total Expenses', value: String(totalExpenses) },
+   677→    ],
+   678→  }), [filtered, lang, totalExpenses])
+   679→
+   680→  const PayFromBadge = ({ value }: { value: string }) => {
+   681→    const config = payFromLabels[value]
+   682→    if (!config) return <span>{value}</span>
+   683→    const Icon = config.icon
+   684→    return (
+   685→      <Badge variant="outline" className="gap-1 text-xs">
+   686→        <Icon className="size-3" />
+   687→        {config[lang]}
+   688→        {config.accountCode && (
+   689→          <span className="font-mono text-[10px] text-gray-400 mr-1">({config.accountCode})</span>
+   690→        )}
+   691→      </Badge>
+   692→    )
+   693→  }
+   694→
+   695→  return (
+   696→    <ModuleLayout
+   697→      title={{ ar: 'المصروفات', en: 'Expenses' }}
+   698→      subtitle={{ ar: 'إدارة المصروفات العامة ومشاريع', en: 'Manage general and project expenses' }}
+   699→      actions={
+   700→        <div className="flex items-center gap-2">
+   701→          <PrintButton type="expense-report" data={printData} size="icon" />
+   702→          <Button variant="outline" size="icon" onClick={handleExport} title={t(lang, 'تصدير CSV', 'Export CSV')}>
+   703→            <Download className="size-4" />
+   704→          </Button>
+   705→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
+   706→            <RefreshCw className="size-4" />
+   707→          </Button>
+   708→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+   709→            <Plus className="size-4" /> {t(lang, 'مصروف جديد', 'New Expense')}
+   710→          </Button>
+   711→        </div>
+   712→      }
+   713→    >
+   714→      {/* Summary Cards */}
+   715→      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+   716→        <Card className="bg-emerald-50 border-emerald-200">
+   717→          <CardContent className="p-4 flex items-center gap-3">
+   718→            <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center">
+   719→              <Receipt className="size-5 text-emerald-600" />
+   720→            </div>
+   721→            <div>
+   722→              <p className="text-sm text-emerald-600">{t(lang, 'إجمالي المصروفات', 'Total Expenses')}</p>
+   723→              <MoneyDisplay value={totalExpenses} lang={lang} bold size="lg" className="text-emerald-700" />
+   724→            </div>
+   725→          </CardContent>
+   726→        </Card>
+   727→        <Card className="bg-teal-50 border-teal-200">
+   728→          <CardContent className="p-4 flex items-center gap-3">
+   729→            <div className="size-10 rounded-full bg-teal-100 flex items-center justify-center">
+   730→              <Building2 className="size-5 text-teal-600" />
+   731→            </div>
+   732→            <div>
+   733→              <p className="text-sm text-teal-600">{t(lang, 'مصروفات المشاريع', 'Project Expenses')}</p>
+   734→              <MoneyDisplay value={totalProjectExpenses} lang={lang} bold size="lg" className="text-teal-700" />
+   735→            </div>
+   736→          </CardContent>
+   737→        </Card>
+   738→        <Card className="bg-amber-50 border-amber-200">
+   739→          <CardContent className="p-4 flex items-center gap-3">
+   740→            <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center">
+   741→              <Briefcase className="size-5 text-amber-600" />
+   742→            </div>
+   743→            <div>
+   744→              <p className="text-sm text-amber-600">{t(lang, 'مصروفات إدارية', 'Admin Expenses')}</p>
+   745→              <MoneyDisplay value={totalAdminExpenses} lang={lang} bold size="lg" className="text-amber-700" />
+   746→            </div>
+   747→          </CardContent>
+   748→        </Card>
+   749→        <Card className="bg-gray-50 border-gray-200">
+   750→          <CardContent className="p-4 flex items-center gap-3">
+   751→            <div className="size-10 rounded-full bg-gray-100 flex items-center justify-center">
+   752→              <TrendingUp className="size-5 text-gray-600" />
+   753→            </div>
+   754→            <div>
+   755→              <p className="text-sm text-gray-600">{t(lang, 'هذا الشهر', 'This Month')}</p>
+   756→              <MoneyDisplay value={thisMonthTotal} lang={lang} bold size="lg" className="text-gray-700" />
+   757→            </div>
+   758→          </CardContent>
+   759→        </Card>
+   760→      </div>
+   761→
+   762→      {/* Tabs: Project vs Admin */}
+   763→      <Tabs value={activeTab} onValueChange={v => { setActiveTab(v as 'project' | 'admin'); setCategoryFilter('all'); setProjectFilter('all') }}>
+   764→        <TabsList className="w-full sm:w-auto">
+   765→          <TabsTrigger value="project" className="gap-2 flex-1 sm:flex-none">
+   766→            <Building2 className="size-4" />
+   767→            {t(lang, 'مصروفات المشاريع', 'Project Expenses')}
+   768→          </TabsTrigger>
+   769→          <TabsTrigger value="admin" className="gap-2 flex-1 sm:flex-none">
+   770→            <Briefcase className="size-4" />
+   771→            {t(lang, 'مصروفات إدارية', 'Admin Expenses')}
+   772→          </TabsTrigger>
+   773→        </TabsList>
+   774→
+   775→        <TabsContent value="project">
+   776→          {/* Filters */}
+   777→          <Card className="mt-4">
+   778→            <CardContent className="p-4">
+   779→              <div className="flex flex-col sm:flex-row gap-3">
+   780→                <div className="relative flex-1">
+   781→                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   782→                  <Input placeholder={t(lang, 'بحث بالوصف أو المشروع أو الفئة...', 'Search by description, project, or category...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   783→                </div>
+   784→                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   785→                  <SelectTrigger className="w-full sm:w-48">
+   786→                    <SelectValue placeholder={t(lang, 'كل الفئات', 'All Categories')} />
+   787→                  </SelectTrigger>
+   788→                  <SelectContent>
+   789→                    <SelectItem value="all">{t(lang, 'كل الفئات', 'All Categories')}</SelectItem>
+   790→                    {projectCategoryOptions.map(c => (
+   791→                      <SelectItem key={c.value} value={c.value}>{c[lang]}</SelectItem>
+   792→                    ))}
+   793→                  </SelectContent>
+   794→                </Select>
+   795→                <Select value={projectFilter} onValueChange={setProjectFilter}>
+   796→                  <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={t(lang, 'كل المشاريع', 'All Projects')} /></SelectTrigger>
+   797→                  <SelectContent>
+   798→                    <SelectItem value="all">{t(lang, 'كل المشاريع', 'All Projects')}</SelectItem>
+   799→                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   800→                  </SelectContent>
+   801→                </Select>
+   802→              </div>
+   803→            </CardContent>
+   804→          </Card>
+   805→
+   806→          {/* Table */}
+   807→          <Card className="mt-4">
+   808→            <CardContent className="p-0">
+   809→              {isLoading ? (
+   810→                <TableSkeleton />
+   811→              ) : isError ? (
+   812→                <div className="flex flex-col items-center gap-3 py-10">
+   813→                  <p className="text-rose-600">{t(lang, 'حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+   814→                  <Button variant="outline" onClick={() => refetch()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
+   815→                </div>
+   816→              ) : filtered.length === 0 ? (
+   817→                <div className="flex flex-col items-center gap-3 py-10">
+   818→                  <Building2 className="size-12 text-gray-300" />
+   819→                  <p className="text-muted-foreground">{t(lang, 'لا توجد مصروفات مشاريع', 'No project expenses found')}</p>
+   820→                  <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+   821→                    <Plus className="size-4 mr-1" /> {t(lang, 'إضافة مصروف', 'Add Expense')}
+   822→                  </Button>
+   823→                </div>
+   824→              ) : (
+   825→                <div className="overflow-x-auto">
+   826→                  <Table>
+   827→                    <TableHeader>
+   828→                      <TableRow>
+   829→                        <TableHead className="text-right">{t(lang, 'المشروع', 'Project')}</TableHead>
+   830→                        <TableHead className="text-right">{t(lang, 'الفئة', 'Category')}</TableHead>
+   831→                        <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
+   832→                        <TableHead className="text-right">{t(lang, 'المبلغ', 'Amount')}</TableHead>
+   833→                        <TableHead className="text-right">{t(lang, 'ضريبة', 'VAT')}</TableHead>
+   834→                        <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+   835→                        <TableHead className="text-right">{t(lang, 'السداد من', 'Pay From')}</TableHead>
+   836→                        <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+   837→                        <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
+   838→                        <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
+   839→                      </TableRow>
+   840→                    </TableHeader>
+   841→                    <TableBody>
+   842→                      {filtered.map(exp => (
+   843→                        <TableRow key={exp.id}>
+   844→                          <TableCell className="font-medium">
+   845→                            <div className="flex items-center gap-1">
+   846→                              {exp.project ? exp.project.name : (
+   847→                                <Badge variant="outline" className="bg-gray-50 text-gray-600">{t(lang, 'عام', 'General')}</Badge>
+   848→                              )}
+   849→                              {exp.project?.projectType && <ProjectTypeBadge projectType={exp.project.projectType} lang={lang} />}
+   850→                            </div>
+   851→                          </TableCell>
+   852→                          <TableCell>
+   853→                            <div className="flex items-center gap-1.5 flex-wrap">
+   854→                              <Badge className={`${categoryColors[exp.category] || 'bg-gray-100 text-gray-700'} border-0`}>
+   855→                                {allCategoryLabels[exp.category]?.[lang] || exp.category}
+   856→                              </Badge>
+   857→                              {EXPENSE_CATEGORY_ACCOUNT_MAP[exp.category] && (
+   858→                                <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 text-teal-700 border-teal-200">
+   859→                                  {EXPENSE_CATEGORY_ACCOUNT_MAP[exp.category].code}
+   860→                                </Badge>
+   861→                              )}
+   862→                            </div>
+   863→                          </TableCell>
+   864→                          <TableCell>{exp.description}</TableCell>
+   865→                          <TableCell>
+   866→                            <MoneyDisplay value={exp.amount} lang={lang} size="sm" />
+   867→                          </TableCell>
+   868→                          <TableCell>
+   869→                            {exp.vatAmount ? (
+   870→                              <span className="text-gray-600"><MoneyDisplay value={exp.vatAmount} lang={lang} size="sm" /></span>
+   871→                            ) : '—'}
+   872→                          </TableCell>
+   873→                          <TableCell className="font-semibold">
+   874→                            <span className="text-emerald-700"><MoneyDisplay value={exp.totalAmount} lang={lang} bold size="sm" /></span>
+   875→                          </TableCell>
+   876→                          <TableCell><PayFromBadge value={exp.payFrom} /></TableCell>
+   877→                          <TableCell>{formatDate(exp.date, lang)}</TableCell>
+   878→                          <TableCell className="text-muted-foreground">{exp.reference || '—'}</TableCell>
+   879→                          <TableCell>
+   880→                            <AccountingEntryDisplay journalEntryId={exp.journalEntryId} lang={lang} />
+   881→                          </TableCell>
+   882→                        </TableRow>
+   883→                      ))}
+   884→                    </TableBody>
+   885→                  </Table>
+   886→                </div>
+   887→              )}
+   888→            </CardContent>
+   889→          </Card>
+   890→        </TabsContent>
+   891→
+   892→        <TabsContent value="admin">
+   893→          {/* Filters */}
+   894→          <Card className="mt-4">
+   895→            <CardContent className="p-4">
+   896→              <div className="flex flex-col sm:flex-row gap-3">
+   897→                <div className="relative flex-1">
+   898→                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   899→                  <Input placeholder={t(lang, 'بحث بالوصف أو الفئة...', 'Search by description or category...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   900→                </div>
+   901→                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   902→                  <SelectTrigger className="w-full sm:w-48">
+   903→                    <SelectValue placeholder={t(lang, 'كل الفئات', 'All Categories')} />
+   904→                  </SelectTrigger>
+   905→                  <SelectContent>
+   906→                    <SelectItem value="all">{t(lang, 'كل الفئات', 'All Categories')}</SelectItem>
+   907→                    {adminCategoryOptions.map(c => (
+   908→                      <SelectItem key={c.value} value={c.value}>{c[lang]}</SelectItem>
+   909→                    ))}
+   910→                  </SelectContent>
+   911→                </Select>
+   912→              </div>
+   913→            </CardContent>
+   914→          </Card>
+   915→
+   916→          {/* Admin info banner */}
+   917→          <div className="mt-4 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+   918→            <Briefcase className="size-5 text-amber-600 shrink-0" />
+   919→            <span className="text-sm text-amber-700">
+   920→              {t(lang, 'المصروفات الإدارية هي المصروفات التشغيلية غير المرتبطة بمشروع معين مثل الرواتب والإنترنت والكهرباء', 'Administrative expenses are operational expenses not linked to a specific project, such as salaries, internet, and electricity')}
+   921→            </span>
+   922→          </div>
+   923→
+   924→          {/* Table */}
+   925→          <Card className="mt-4">
+   926→            <CardContent className="p-0">
+   927→              {isLoading ? (
+   928→                <TableSkeleton />
+   929→              ) : isError ? (
+   930→                <div className="flex flex-col items-center gap-3 py-10">
+   931→                  <p className="text-rose-600">{t(lang, 'حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+   932→                  <Button variant="outline" onClick={() => refetch()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
+   933→                </div>
+   934→              ) : filtered.length === 0 ? (
+   935→                <div className="flex flex-col items-center gap-3 py-10">
+   936→                  <Briefcase className="size-12 text-gray-300" />
+   937→                  <p className="text-muted-foreground">{t(lang, 'لا توجد مصروفات إدارية', 'No admin expenses found')}</p>
+   938→                  <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+   939→                    <Plus className="size-4 mr-1" /> {t(lang, 'إضافة مصروف', 'Add Expense')}
+   940→                  </Button>
+   941→                </div>
+   942→              ) : (
+   943→                <div className="overflow-x-auto">
+   944→                  <Table>
+   945→                    <TableHeader>
+   946→                      <TableRow>
+   947→                        <TableHead className="text-right">{t(lang, 'الفئة', 'Category')}</TableHead>
+   948→                        <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
+   949→                        <TableHead className="text-right">{t(lang, 'المبلغ', 'Amount')}</TableHead>
+   950→                        <TableHead className="text-right">{t(lang, 'ضريبة', 'VAT')}</TableHead>
+   951→                        <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+   952→                        <TableHead className="text-right">{t(lang, 'السداد من', 'Pay From')}</TableHead>
+   953→                        <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+   954→                        <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
+   955→                        <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
+   956→                      </TableRow>
+   957→                    </TableHeader>
+   958→                    <TableBody>
+   959→                      {filtered.map(exp => (
+   960→                        <TableRow key={exp.id}>
+   961→                          <TableCell>
+   962→                            <div className="flex items-center gap-1.5 flex-wrap">
+   963→                              <Badge className={`${categoryColors[exp.category] || 'bg-gray-100 text-gray-700'} border-0`}>
+   964→                                {allCategoryLabels[exp.category]?.[lang] || exp.category}
+   965→                              </Badge>
+   966→                              {EXPENSE_CATEGORY_ACCOUNT_MAP[exp.category] && (
+   967→                                <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 text-teal-700 border-teal-200">
+   968→                                  {EXPENSE_CATEGORY_ACCOUNT_MAP[exp.category].code}
+   969→                                </Badge>
+   970→                              )}
+   971→                            </div>
+   972→                          </TableCell>
+   973→                          <TableCell>{exp.description}</TableCell>
+   974→                          <TableCell>
+   975→                            <MoneyDisplay value={exp.amount} lang={lang} size="sm" />
+   976→                          </TableCell>
+   977→                          <TableCell>
+   978→                            {exp.vatAmount ? (
+   979→                              <span className="text-gray-600"><MoneyDisplay value={exp.vatAmount} lang={lang} size="sm" /></span>
+   980→                            ) : '—'}
+   981→                          </TableCell>
+   982→                          <TableCell className="font-semibold">
+   983→                            <span className="text-emerald-700"><MoneyDisplay value={exp.totalAmount} lang={lang} bold size="sm" /></span>
+   984→                          </TableCell>
+   985→                          <TableCell><PayFromBadge value={exp.payFrom} /></TableCell>
+   986→                          <TableCell>{formatDate(exp.date, lang)}</TableCell>
+   987→                          <TableCell className="text-muted-foreground">{exp.reference || '—'}</TableCell>
+   988→                          <TableCell>
+   989→                            <AccountingEntryDisplay journalEntryId={exp.journalEntryId} lang={lang} />
+   990→                          </TableCell>
+   991→                        </TableRow>
+   992→                      ))}
+   993→                    </TableBody>
+   994→                  </Table>
+   995→                </div>
+   996→              )}
+   997→            </CardContent>
+   998→          </Card>
+   999→        </TabsContent>
+  1000→      </Tabs>
+  1001→
+  1002→      {/* Form Dialog */}
+  1003→      <ExpenseFormDialog open={dialogOpen} onOpenChange={setDialogOpen} projects={projects} suppliers={suppliers} activeTab={activeTab} />
+  1004→    </ModuleLayout>
+  1005→  )
+  1006→}
+  1007→

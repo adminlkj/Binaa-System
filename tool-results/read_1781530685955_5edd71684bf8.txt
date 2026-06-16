@@ -1,0 +1,890 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  FileText, Plus, Search, Trash2, RefreshCw, Download,
+     7→     7→  Eye, ArrowRight, Wallet, Clock, Shield, Users,
+     8→     8→  ChevronRight, ChevronLeft, Send, CheckCircle2,
+     9→     9→} from 'lucide-react'
+    10→    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→    11→import { Button } from '@/components/ui/button'
+    12→    12→import { Input } from '@/components/ui/input'
+    13→    13→import { Badge } from '@/components/ui/badge'
+    14→    14→import {
+    15→    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→    16→} from '@/components/ui/table'
+    17→    17→import {
+    18→    18→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    19→    19→} from '@/components/ui/dialog'
+    20→    20→import {
+    21→    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→    22→} from '@/components/ui/select'
+    23→    23→import { Label } from '@/components/ui/label'
+    24→    24→import { Textarea } from '@/components/ui/textarea'
+    25→    25→import { MoneyDisplay } from '@/components/ui/money-display'
+    26→    26→import { ModuleLayout } from '@/components/shared/module-layout'
+    27→    27→import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
+    28→    28→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    29→    29→import { PrintButton } from '@/components/shared/print-button'
+    30→    30→
+    31→    31→// ============ Types ============
+    32→    32→type PayrollRunStatus = 'DRAFT' | 'REVIEW' | 'APPROVED' | 'PARTIALLY_PAID' | 'PAID'
+    33→    33→type SalaryType = 'MONTHLY' | 'HOURLY'
+    34→    34→type SelectionType = 'ALL' | 'TEAM' | 'PROJECT' | 'EMPLOYEES' | 'DEPARTMENT'
+    35→    35→
+    36→    36→interface PayrollRunLine {
+    37→    37→  id: string
+    38→    38→  employeeId: string
+    39→    39→  salaryType: SalaryType
+    40→    40→  basicSalary: number
+    41→    41→  housingAllowance: number
+    42→    42→  transportAllowance: number
+    43→    43→  otherAllowances: number
+    44→    44→  workHours: number
+    45→    45→  hourlyRate: number
+    46→    46→  hourlySalary: number
+    47→    47→  overtimeAmount: number
+    48→    48→  deductions: number
+    49→    49→  advanceDeduction: number
+    50→    50→  absenceDeduction: number
+    51→    51→  gosiDeduction: number
+    52→    52→  totalEntitlement: number
+    53→    53→  netSalary: number
+    54→    54→  projectId: string | null
+    55→    55→  employee: { id: string; code: string; name: string; nameAr: string | null; salaryType: SalaryType }
+    56→    56→  project: { id: string; code: string; name: string; nameAr: string | null } | null
+    57→    57→}
+    58→    58→
+    59→    59→interface PayrollRun {
+    60→    60→  id: string
+    61→    61→  code: string
+    62→    62→  month: number
+    63→    63→  year: number
+    64→    64→  status: PayrollRunStatus
+    65→    65→  totalAmount: number
+    66→    66→  totalDeductions: number
+    67→    67→  totalNet: number
+    68→    68→  notes: string | null
+    69→    69→  journalEntryId: string | null
+    70→    70→  createdAt: string
+    71→    71→  updatedAt: string
+    72→    72→  _count?: { lines: number }
+    73→    73→  lines?: PayrollRunLine[]
+    74→    74→  salaryPayments?: Array<{ id: string }>
+    75→    75→}
+    76→    76→
+    77→    77→interface WorkTeam {
+    78→    78→  id: string; code: string; name: string; nameAr: string | null; projectId: string | null
+    79→    79→  project: { id: string; code: string; name: string } | null
+    80→    80→}
+    81→    81→
+    82→    82→interface Project {
+    83→    83→  id: string; code: string; name: string
+    84→    84→}
+    85→    85→
+    86→    86→interface EmployeeOption {
+    87→    87→  id: string; code: string; name: string; nameAr: string | null; department: string | null
+    88→    88→}
+    89→    89→
+    90→    90→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    91→    91→
+    92→    92→const statusConfig: Record<PayrollRunStatus, { label: { ar: string; en: string }; color: string; bg: string }> = {
+    93→    93→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-gray-700', bg: 'bg-gray-100' },
+    94→    94→  REVIEW: { label: { ar: 'قيد المراجعة', en: 'Under Review' }, color: 'text-yellow-700', bg: 'bg-yellow-100' },
+    95→    95→  APPROVED: { label: { ar: 'معتمد', en: 'Approved' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+    96→    96→  PARTIALLY_PAID: { label: { ar: 'مدفوع جزئياً', en: 'Partially Paid' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+    97→    97→  PAID: { label: { ar: 'مدفوع', en: 'Paid' }, color: 'text-green-700', bg: 'bg-green-100' },
+    98→    98→}
+    99→    99→
+   100→   100→function StatusBadge({ status, lang }: { status: PayrollRunStatus; lang: 'ar' | 'en' }) {
+   101→   101→  const cfg = statusConfig[status]
+   102→   102→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   103→   103→}
+   104→   104→
+   105→   105→const arabicMonths = [
+   106→   106→  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+   107→   107→  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+   108→   108→]
+   109→   109→const englishMonths = [
+   110→   110→  'January', 'February', 'March', 'April', 'May', 'June',
+   111→   111→  'July', 'August', 'September', 'October', 'November', 'December',
+   112→   112→]
+   113→   113→
+   114→   114→function formatMonth(month: number, year: number, lang: 'ar' | 'en') {
+   115→   115→  const months = lang === 'ar' ? arabicMonths : englishMonths
+   116→   116→  return `${months[month - 1]} ${year}`
+   117→   117→}
+   118→   118→
+   119→   119→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   120→   120→  return (<div className="space-y-2">{Array.from({ length: rows }).map((_, i) => (
+   121→   121→    <div key={i} className="flex gap-4 p-3"><div className="h-5 w-24 animate-pulse rounded bg-gray-200" /><div className="h-5 w-32 animate-pulse rounded bg-gray-200" /><div className="h-5 w-20 animate-pulse rounded bg-gray-200" /><div className="h-5 w-28 animate-pulse rounded bg-gray-200" /></div>
+   122→   122→  ))}</div>)
+   123→   123→}
+   124→   124→
+   125→   125→// ============ Create Payroll Run Dialog ============
+   126→   126→function CreatePayrollRunDialog({ open, onOpenChange }: {
+   127→   127→  open: boolean; onOpenChange: (open: boolean) => void
+   128→   128→}) {
+   129→   129→  const queryClient = useQueryClient()
+   130→   130→  const { lang } = useAppStore()
+   131→   131→  const [form, setForm] = useState({
+   132→   132→    month: String(new Date().getMonth() + 1),
+   133→   133→    year: String(new Date().getFullYear()),
+   134→   134→    selectionType: 'ALL' as SelectionType,
+   135→   135→    selectionIds: [] as string[],
+   136→   136→    notes: '',
+   137→   137→  })
+   138→   138→  const [employeeSearch, setEmployeeSearch] = useState('')
+   139→   139→  const [selectedDepartment, setSelectedDepartment] = useState('')
+   140→   140→
+   141→   141→  const { data: teams = [] } = useQuery<WorkTeam[]>({
+   142→   142→    queryKey: ['work-teams'],
+   143→   143→    queryFn: async () => { const res = await fetch('/api/work-teams'); if (!res.ok) return []; return res.json() },
+   144→   144→    enabled: open,
+   145→   145→  })
+   146→   146→
+   147→   147→  const { data: projects = [] } = useQuery<Project[]>({
+   148→   148→    queryKey: ['projects-list'],
+   149→   149→    queryFn: async () => { const res = await fetch('/api/projects/list'); if (!res.ok) return []; return res.json() },
+   150→   150→    enabled: open,
+   151→   151→  })
+   152→   152→
+   153→   153→  const { data: employeesList = [] } = useQuery<EmployeeOption[]>({
+   154→   154→    queryKey: ['employees-list'],
+   155→   155→    queryFn: async () => { const res = await fetch('/api/employees?active=true'); if (!res.ok) return []; return res.json() },
+   156→   156→    enabled: open && form.selectionType === 'EMPLOYEES',
+   157→   157→  })
+   158→   158→
+   159→   159→  // Get unique departments from employees for DEPARTMENT selection
+   160→   160→  const { data: allEmployeesForDepts = [] } = useQuery<EmployeeOption[]>({
+   161→   161→    queryKey: ['employees-departments'],
+   162→   162→    queryFn: async () => { const res = await fetch('/api/employees?active=true'); if (!res.ok) return []; return res.json() },
+   163→   163→    enabled: open && form.selectionType === 'DEPARTMENT',
+   164→   164→  })
+   165→   165→
+   166→   166→  const departments = useMemo(() => {
+   167→   167→    const deptSet = new Set<string>()
+   168→   168→    allEmployeesForDepts.forEach(e => {
+   169→   169→      if (e.department) deptSet.add(e.department)
+   170→   170→    })
+   171→   171→    return Array.from(deptSet).sort()
+   172→   172→  }, [allEmployeesForDepts])
+   173→   173→
+   174→   174→  // Filtered employees for searchable list
+   175→   175→  const filteredEmployees = useMemo(() => {
+   176→   176→    if (!employeeSearch) return employeesList
+   177→   177→    const s = employeeSearch.toLowerCase()
+   178→   178→    return employeesList.filter(e =>
+   179→   179→      e.name.toLowerCase().includes(s) || e.code.toLowerCase().includes(s) || (e.department?.toLowerCase().includes(s))
+   180→   180→    )
+   181→   181→  }, [employeesList, employeeSearch])
+   182→   182→
+   183→   183→  const createMutation = useMutation({
+   184→   184→    mutationFn: (data: Record<string, unknown>) => fetch('/api/payroll-runs', {
+   185→   185→      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+   186→   186→    }).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Error') }); return r.json() }),
+   187→   187→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['payroll-runs'] }); onOpenChange(false) },
+   188→   188→  })
+   189→   189→
+   190→   190→  const handleSubmit = (e: React.FormEvent) => {
+   191→   191→    e.preventDefault()
+   192→   192→    createMutation.mutate({
+   193→   193→      month: parseInt(form.month),
+   194→   194→      year: parseInt(form.year),
+   195→   195→      selectionType: form.selectionType,
+   196→   196→      selectionIds: form.selectionIds,
+   197→   197→      notes: form.notes || null,
+   198→   198→    })
+   199→   199→  }
+   200→   200→
+   201→   201→  const toggleSelection = (id: string) => {
+   202→   202→    setForm(f => ({
+   203→   203→      ...f,
+   204→   204→      selectionIds: f.selectionIds.includes(id)
+   205→   205→        ? f.selectionIds.filter(x => x !== id)
+   206→   206→        : [...f.selectionIds, id],
+   207→   207→    }))
+   208→   208→  }
+   209→   209→
+   210→   210→  // When DEPARTMENT is selected, set selectionIds to all employee IDs in that department
+   211→   211→  React.useEffect(() => {
+   212→   212→    if (form.selectionType === 'DEPARTMENT' && selectedDepartment) {
+   213→   213→      const deptEmployeeIds = allEmployeesForDepts
+   214→   214→        .filter(e => e.department === selectedDepartment)
+   215→   215→        .map(e => e.id)
+   216→   216→      setForm(f => ({ ...f, selectionIds: deptEmployeeIds }))
+   217→   217→    }
+   218→   218→  }, [form.selectionType, selectedDepartment, allEmployeesForDepts])
+   219→   219→
+   220→   220→  return (
+   221→   221→    <Dialog open={open} onOpenChange={onOpenChange}>
+   222→   222→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   223→   223→        <DialogHeader>
+   224→   224→          <DialogTitle>{t('إنشاء مسير رواتب', 'Create Payroll Run', lang)}</DialogTitle>
+   225→   225→          <DialogDescription>{t('إنشاء مسير رواتب جديد للموظفين', 'Create a new payroll run for employees', lang)}</DialogDescription>
+   226→   226→        </DialogHeader>
+   227→   227→        <form onSubmit={handleSubmit} className="space-y-4">
+   228→   228→          {/* Month & Year */}
+   229→   229→          <div className="space-y-2">
+   230→   230→            <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">
+   231→   231→              {t('الفترة', 'Period', lang)}
+   232→   232→            </h4>
+   233→   233→            <div className="grid grid-cols-2 gap-4">
+   234→   234→              <div className="space-y-2">
+   235→   235→                <Label>{t('الشهر *', 'Month *', lang)}</Label>
+   236→   236→                <Select value={form.month} onValueChange={v => setForm(f => ({ ...f, month: v }))}>
+   237→   237→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   238→   238→                  <SelectContent>
+   239→   239→                    {(lang === 'ar' ? arabicMonths : englishMonths).map((m, i) => (
+   240→   240→                      <SelectItem key={i} value={String(i + 1)}>{m}</SelectItem>
+   241→   241→                    ))}
+   242→   242→                  </SelectContent>
+   243→   243→                </Select>
+   244→   244→              </div>
+   245→   245→              <div className="space-y-2">
+   246→   246→                <Label>{t('السنة *', 'Year *', lang)}</Label>
+   247→   247→                <Input type="number" min="2020" max="2099" value={form.year} onChange={e => setForm(f => ({ ...f, year: e.target.value }))} dir="ltr" />
+   248→   248→              </div>
+   249→   249→            </div>
+   250→   250→          </div>
+   251→   251→
+   252→   252→          {/* Selection Type */}
+   253→   253→          <div className="space-y-2">
+   254→   254→            <h4 className="font-semibold text-sm text-violet-700 border-b border-violet-200 pb-1 flex items-center gap-2">
+   255→   255→              <Users className="size-4" />
+   256→   256→              {t('اختيار الموظفين', 'Employee Selection', lang)}
+   257→   257→            </h4>
+   258→   258→            <div className="space-y-2">
+   259→   259→              <Label>{t('نوع الاختيار *', 'Selection Type *', lang)}</Label>
+   260→   260→              <Select value={form.selectionType} onValueChange={(v: SelectionType) => setForm(f => ({ ...f, selectionType: v, selectionIds: [] }))}>
+   261→   261→                <SelectTrigger><SelectValue /></SelectTrigger>
+   262→   262→                <SelectContent>
+   263→   263→                  <SelectItem value="ALL">{t('جميع الموظفين', 'All Employees', lang)}</SelectItem>
+   264→   264→                  <SelectItem value="TEAM">{t('حسب فريق العمل', 'By Work Team', lang)}</SelectItem>
+   265→   265→                  <SelectItem value="PROJECT">{t('حسب المشروع', 'By Project', lang)}</SelectItem>
+   266→   266→                  <SelectItem value="EMPLOYEES">{t('موظفون محددون', 'Specific Employees', lang)}</SelectItem>
+   267→   267→                  <SelectItem value="DEPARTMENT">{t('قسم', 'Department', lang)}</SelectItem>
+   268→   268→                </SelectContent>
+   269→   269→              </Select>
+   270→   270→            </div>
+   271→   271→
+   272→   272→            {/* Team Selection */}
+   273→   273→            {form.selectionType === 'TEAM' && (
+   274→   274→              <div className="space-y-2">
+   275→   275→                <Label>{t('اختر فرق العمل', 'Select Work Teams', lang)}</Label>
+   276→   276→                <div className="border rounded-lg max-h-48 overflow-y-auto p-2 space-y-1">
+   277→   277→                  {teams.length === 0 ? (
+   278→   278→                    <p className="text-sm text-muted-foreground text-center py-4">{t('لا توجد فرق عمل', 'No work teams found', lang)}</p>
+   279→   279→                  ) : teams.map(team => (
+   280→   280→                    <label key={team.id} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
+   281→   281→                      <input
+   282→   282→                        type="checkbox"
+   283→   283→                        checked={form.selectionIds.includes(team.id)}
+   284→   284→                        onChange={() => toggleSelection(team.id)}
+   285→   285→                        className="rounded border-gray-300"
+   286→   286→                      />
+   287→   287→                      <span className="text-sm">{team.code} - {team.name}{team.project ? ` (${team.project.name})` : ''}</span>
+   288→   288→                    </label>
+   289→   289→                  ))}
+   290→   290→                </div>
+   291→   291→                {form.selectionIds.length > 0 && (
+   292→   292→                  <p className="text-xs text-muted-foreground">{t(`${form.selectionIds.length} فرق محددة`, `${form.selectionIds.length} teams selected`, lang)}</p>
+   293→   293→                )}
+   294→   294→              </div>
+   295→   295→            )}
+   296→   296→
+   297→   297→            {/* Project Selection */}
+   298→   298→            {form.selectionType === 'PROJECT' && (
+   299→   299→              <div className="space-y-2">
+   300→   300→                <Label>{t('اختر المشاريع', 'Select Projects', lang)}</Label>
+   301→   301→                <div className="border rounded-lg max-h-48 overflow-y-auto p-2 space-y-1">
+   302→   302→                  {projects.length === 0 ? (
+   303→   303→                    <p className="text-sm text-muted-foreground text-center py-4">{t('لا توجد مشاريع', 'No projects found', lang)}</p>
+   304→   304→                  ) : projects.map(project => (
+   305→   305→                    <label key={project.id} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
+   306→   306→                      <input
+   307→   307→                        type="checkbox"
+   308→   308→                        checked={form.selectionIds.includes(project.id)}
+   309→   309→                        onChange={() => toggleSelection(project.id)}
+   310→   310→                        className="rounded border-gray-300"
+   311→   311→                      />
+   312→   312→                      <span className="text-sm">{project.code} - {project.name}</span>
+   313→   313→                    </label>
+   314→   314→                  ))}
+   315→   315→                </div>
+   316→   316→                {form.selectionIds.length > 0 && (
+   317→   317→                  <p className="text-xs text-muted-foreground">{t(`${form.selectionIds.length} مشاريع محددة`, `${form.selectionIds.length} projects selected`, lang)}</p>
+   318→   318→                )}
+   319→   319→              </div>
+   320→   320→            )}
+   321→   321→
+   322→   322→            {/* Employees Selection */}
+   323→   323→            {form.selectionType === 'EMPLOYEES' && (
+   324→   324→              <div className="space-y-2">
+   325→   325→                <div className="flex items-center justify-between">
+   326→   326→                  <Label>{t('اختر الموظفين', 'Select Employees', lang)}</Label>
+   327→   327→                  <div className="flex gap-2">
+   328→   328→                    <Button type="button" variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, selectionIds: employeesList.map(e => e.id) }))}>{t('تحديد الكل', 'Select All', lang)}</Button>
+   329→   329→                    <Button type="button" variant="ghost" size="sm" onClick={() => setForm(f => ({ ...f, selectionIds: [] }))}>{t('إلغاء التحديد', 'Deselect All', lang)}</Button>
+   330→   330→                  </div>
+   331→   331→                </div>
+   332→   332→                <div className="relative">
+   333→   333→                  <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   334→   334→                  <Input
+   335→   335→                    placeholder={t('بحث بالاسم أو الكود أو القسم...', 'Search by name, code or department...', lang)}
+   336→   336→                    value={employeeSearch}
+   337→   337→                    onChange={e => setEmployeeSearch(e.target.value)}
+   338→   338→                    className="pr-9"
+   339→   339→                  />
+   340→   340→                </div>
+   341→   341→                <div className="border rounded-lg max-h-48 overflow-y-auto p-2 space-y-1">
+   342→   342→                  {filteredEmployees.length === 0 ? (
+   343→   343→                    <p className="text-sm text-muted-foreground text-center py-4">{t('لا يوجد موظفون', 'No employees found', lang)}</p>
+   344→   344→                  ) : filteredEmployees.map(emp => (
+   345→   345→                    <label key={emp.id} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
+   346→   346→                      <input
+   347→   347→                        type="checkbox"
+   348→   348→                        checked={form.selectionIds.includes(emp.id)}
+   349→   349→                        onChange={() => toggleSelection(emp.id)}
+   350→   350→                        className="rounded border-gray-300"
+   351→   351→                      />
+   352→   352→                      <span className="text-sm">{emp.name} <span className="text-muted-foreground">({emp.code})</span>{emp.department ? <span className="text-xs text-muted-foreground mx-1">- {emp.department}</span> : ''}</span>
+   353→   353→                    </label>
+   354→   354→                  ))}
+   355→   355→                </div>
+   356→   356→                {form.selectionIds.length > 0 && (
+   357→   357→                  <p className="text-xs text-muted-foreground">{t(`${form.selectionIds.length} موظف محدد`, `${form.selectionIds.length} employees selected`, lang)}</p>
+   358→   358→                )}
+   359→   359→              </div>
+   360→   360→            )}
+   361→   361→
+   362→   362→            {/* Department Selection */}
+   363→   363→            {form.selectionType === 'DEPARTMENT' && (
+   364→   364→              <div className="space-y-2">
+   365→   365→                <Label>{t('اختر القسم', 'Select Department', lang)}</Label>
+   366→   366→                {departments.length === 0 ? (
+   367→   367→                  <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg">{t('لا توجد أقسام', 'No departments found', lang)}</p>
+   368→   368→                ) : (
+   369→   369→                  <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
+   370→   370→                    <SelectTrigger><SelectValue placeholder={t('اختر القسم', 'Select Department', lang)} /></SelectTrigger>
+   371→   371→                    <SelectContent>
+   372→   372→                      {departments.map(dept => (
+   373→   373→                        <SelectItem key={dept} value={dept}>{dept}</SelectItem>
+   374→   374→                      ))}
+   375→   375→                    </SelectContent>
+   376→   376→                  </Select>
+   377→   377→                )}
+   378→   378→                {selectedDepartment && form.selectionIds.length > 0 && (
+   379→   379→                  <p className="text-xs text-muted-foreground">{t(`${form.selectionIds.length} موظف في قسم "${selectedDepartment}"`, `${form.selectionIds.length} employees in "${selectedDepartment}"`, lang)}</p>
+   380→   380→                )}
+   381→   381→              </div>
+   382→   382→            )}
+   383→   383→          </div>
+   384→   384→
+   385→   385→          {/* Notes */}
+   386→   386→          <div className="space-y-2">
+   387→   387→            <Label>{t('ملاحظات', 'Notes', lang)}</Label>
+   388→   388→            <Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} rows={2} />
+   389→   389→          </div>
+   390→   390→
+   391→   391→          {createMutation.isError && (
+   392→   392→            <p className="text-sm text-rose-600">{(createMutation.error as Error)?.message || t('حدث خطأ', 'An error occurred', lang)}</p>
+   393→   393→          )}
+   394→   394→
+   395→   395→          <DialogFooter>
+   396→   396→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+   397→   397→            <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">
+   398→   398→              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إنشاء المسير', 'Create Run', lang)}
+   399→   399→            </Button>
+   400→   400→          </DialogFooter>
+   401→   401→        </form>
+   402→   402→      </DialogContent>
+   403→   403→    </Dialog>
+   404→   404→  )
+   405→   405→}
+   406→   406→
+   407→   407→// ============ Payroll Run Detail View ============
+   408→   408→function PayrollRunDetail({ payrollRun, onBack }: {
+   409→   409→  payrollRun: PayrollRun; onBack: () => void
+   410→   410→}) {
+   411→   411→  const queryClient = useQueryClient()
+   412→   412→  const { lang } = useAppStore()
+   413→   413→  const lines = payrollRun.lines || []
+   414→   414→
+   415→   415→  // Calculate totals from lines
+   416→   416→  const totalGosi = lines.reduce((sum, l) => sum + (l.gosiDeduction || 0), 0)
+   417→   417→  const totalOvertime = lines.reduce((sum, l) => sum + (l.overtimeAmount || 0), 0)
+   418→   418→  const totalAdvanceDeduction = lines.reduce((sum, l) => sum + (l.advanceDeduction || 0), 0)
+   419→   419→  const totalAbsenceDeduction = lines.reduce((sum, l) => sum + (l.absenceDeduction || 0), 0)
+   420→   420→
+   421→   421→  const statusMutation = useMutation({
+   422→   422→    mutationFn: (status: PayrollRunStatus) => fetch(`/api/payroll-runs/${payrollRun.id}`, {
+   423→   423→      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+   424→   424→    }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   425→   425→    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payroll-runs'] }),
+   426→   426→  })
+   427→   427→
+   428→   428→  const printData = useMemo(() => ({
+   429→   429→    columns: [
+   430→   430→      { key: 'code', label: lang === 'ar' ? 'كود الموظف' : 'Emp. Code' },
+   431→   431→      { key: 'name', label: lang === 'ar' ? 'الموظف' : 'Employee' },
+   432→   432→      { key: 'salaryType', label: lang === 'ar' ? 'النوع' : 'Type' },
+   433→   433→      { key: 'hours', label: lang === 'ar' ? 'الساعات' : 'Hours' },
+   434→   434→      { key: 'totalEntitlement', label: lang === 'ar' ? 'الاستحقاق' : 'Entitlement' },
+   435→   435→      { key: 'advanceDeduction', label: lang === 'ar' ? 'خصم السلف' : 'Advance Ded.' },
+   436→   436→      { key: 'absenceDeduction', label: lang === 'ar' ? 'خصم الغياب' : 'Absence Ded.' },
+   437→   437→      { key: 'deductions', label: lang === 'ar' ? 'خصومات أخرى' : 'Other Ded.' },
+   438→   438→      { key: 'gosi', label: lang === 'ar' ? 'التأمينات' : 'GOSI' },
+   439→   439→      { key: 'netSalary', label: lang === 'ar' ? 'الصافي' : 'Net' },
+   440→   440→      { key: 'project', label: lang === 'ar' ? 'المشروع' : 'Project' },
+   441→   441→    ],
+   442→   442→    rows: lines.map(l => ({
+   443→   443→      code: l.employee.code,
+   444→   444→      name: l.employee.name,
+   445→   445→      salaryType: l.salaryType === 'MONTHLY' ? (lang === 'ar' ? 'شهري' : 'Monthly') : (lang === 'ar' ? 'بالساعة' : 'Hourly'),
+   446→   446→      hours: l.salaryType === 'HOURLY' ? l.workHours.toFixed(1) : '—',
+   447→   447→      totalEntitlement: l.totalEntitlement.toFixed(2),
+   448→   448→      advanceDeduction: (l.advanceDeduction || 0).toFixed(2),
+   449→   449→      absenceDeduction: (l.absenceDeduction || 0).toFixed(2),
+   450→   450→      deductions: l.deductions.toFixed(2),
+   451→   451→      gosi: l.gosiDeduction.toFixed(2),
+   452→   452→      netSalary: l.netSalary.toFixed(2),
+   453→   453→      project: l.project?.name || '—',
+   454→   454→    })),
+   455→   455→    infoItems: [
+   456→   456→      { label: lang === 'ar' ? 'كود المسير' : 'Run Code', value: payrollRun.code },
+   457→   457→      { label: lang === 'ar' ? 'الفترة' : 'Period', value: formatMonth(payrollRun.month, payrollRun.year, lang) },
+   458→   458→      { label: lang === 'ar' ? 'الحالة' : 'Status', value: statusConfig[payrollRun.status].label[lang] },
+   459→   459→      { label: lang === 'ar' ? 'عدد الموظفين' : 'Employees', value: String(lines.length) },
+   460→   460→    ],
+   461→   461→  }), [lines, payrollRun, lang])
+   462→   462→
+   463→   463→  const handleExport = () => {
+   464→   464→    const columns: CSVColumn[] = [
+   465→   465→      { key: 'code', label: t('كود الموظف', 'Emp. Code', lang) },
+   466→   466→      { key: 'name', label: t('الموظف', 'Employee', lang) },
+   467→   467→      { key: 'salaryType', label: t('النوع', 'Type', lang) },
+   468→   468→      { key: 'hours', label: t('الساعات', 'Hours', lang) },
+   469→   469→      { key: 'totalEntitlement', label: t('الاستحقاق', 'Entitlement', lang) },
+   470→   470→      { key: 'advanceDeduction', label: t('خصم السلف', 'Advance Ded.', lang) },
+   471→   471→      { key: 'absenceDeduction', label: t('خصم الغياب', 'Absence Ded.', lang) },
+   472→   472→      { key: 'deductions', label: t('خصومات أخرى', 'Other Ded.', lang) },
+   473→   473→      { key: 'gosi', label: t('التأمينات', 'GOSI', lang) },
+   474→   474→      { key: 'netSalary', label: t('الصافي', 'Net', lang) },
+   475→   475→      { key: 'project', label: t('المشروع', 'Project', lang) },
+   476→   476→    ]
+   477→   477→    exportToCSV(lines.map(l => ({
+   478→   478→      code: l.employee.code,
+   479→   479→      name: l.employee.name,
+   480→   480→      salaryType: l.salaryType === 'MONTHLY' ? 'Monthly' : 'Hourly',
+   481→   481→      hours: l.salaryType === 'HOURLY' ? l.workHours.toFixed(1) : '—',
+   482→   482→      totalEntitlement: l.totalEntitlement.toFixed(2),
+   483→   483→      advanceDeduction: (l.advanceDeduction || 0).toFixed(2),
+   484→   484→      absenceDeduction: (l.absenceDeduction || 0).toFixed(2),
+   485→   485→      deductions: l.deductions.toFixed(2),
+   486→   486→      gosi: l.gosiDeduction.toFixed(2),
+   487→   487→      netSalary: l.netSalary.toFixed(2),
+   488→   488→      project: l.project?.name || '—',
+   489→   489→    })), `payroll-run-${payrollRun.code}`, columns)
+   490→   490→  }
+   491→   491→
+   492→   492→  const getNextStatus = (): PayrollRunStatus | null => {
+   493→   493→    switch (payrollRun.status) {
+   494→   494→      case 'DRAFT': return 'REVIEW'
+   495→   495→      case 'REVIEW': return 'APPROVED'
+   496→   496→      default: return null
+   497→   497→    }
+   498→   498→  }
+   499→   499→
+   500→   500→  const getNextStatusLabel = () => {
+   501→   501→    switch (payrollRun.status) {
+   502→   502→      case 'DRAFT': return t('إرسال للمراجعة', 'Send for Review', lang)
+   503→   503→      case 'REVIEW': return t('اعتماد', 'Approve', lang)
+   504→   504→      default: return null
+   505→   505→    }
+   506→   506→  }
+   507→   507→
+   508→   508→  const getNextStatusIcon = () => {
+   509→   509→    switch (payrollRun.status) {
+   510→   510→      case 'DRAFT': return <Send className="size-4" />
+   511→   511→      case 'REVIEW': return <CheckCircle2 className="size-4" />
+   512→   512→      default: return null
+   513→   513→    }
+   514→   514→  }
+   515→   515→
+   516→   516→  return (
+   517→   517→    <div className="space-y-6">
+   518→   518→      {/* Back button + Header */}
+   519→   519→      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+   520→   520→        <div className="flex items-center gap-3">
+   521→   521→          <Button variant="outline" size="icon" onClick={onBack}>
+   522→   522→            {lang === 'ar' ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+   523→   523→          </Button>
+   524→   524→          <div>
+   525→   525→            <h2 className="text-xl font-bold">{payrollRun.code}</h2>
+   526→   526→            <p className="text-sm text-muted-foreground">
+   527→   527→              {formatMonth(payrollRun.month, payrollRun.year, lang)}
+   528→   528→            </p>
+   529→   529→          </div>
+   530→   530→          <StatusBadge status={payrollRun.status} lang={lang} />
+   531→   531→        </div>
+   532→   532→        <div className="flex items-center gap-2 flex-wrap">
+   533→   533→          <PrintButton type="generic-table" data={printData} size="sm" />
+   534→   534→          <Button variant="outline" size="sm" onClick={handleExport} className="gap-1"><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
+   535→   535→          {getNextStatus() && (
+   536→   536→            <Button
+   537→   537→              className="gap-1 bg-emerald-600 hover:bg-emerald-700"
+   538→   538→              onClick={() => {
+   539→   539→                const next = getNextStatus()
+   540→   540→                if (next && confirm(t(
+   541→   541→                  payrollRun.status === 'DRAFT' ? 'هل تريد إرسال المسير للمراجعة؟' : 'هل تريد اعتماد المسير؟ سيتم إنشاء قيود محاسبية.',
+   542→   542→                  payrollRun.status === 'DRAFT' ? 'Send this payroll run for review?' : 'Approve this payroll run? Journal entries will be created.',
+   543→   543→                  lang
+   544→   544→                ))) {
+   545→   545→                  statusMutation.mutate(next)
+   546→   546→                }
+   547→   547→              }}
+   548→   548→              disabled={statusMutation.isPending}
+   549→   549→            >
+   550→   550→              {getNextStatusIcon()}
+   551→   551→              {getNextStatusLabel()}
+   552→   552→            </Button>
+   553→   553→          )}
+   554→   554→        </div>
+   555→   555→      </div>
+   556→   556→
+   557→   557→      {/* Notes */}
+   558→   558→      {payrollRun.notes && (
+   559→   559→        <Card><CardContent className="p-4">
+   560→   560→          <p className="text-sm text-muted-foreground">{payrollRun.notes}</p>
+   561→   561→        </CardContent></Card>
+   562→   562→      )}
+   563→   563→
+   564→   564→      {/* Summary Cards */}
+   565→   565→      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
+   566→   566→        <Card><CardContent className="p-4 text-center">
+   567→   567→          <p className="text-xs text-muted-foreground mb-1">{t('عدد الموظفين', 'Employees', lang)}</p>
+   568→   568→          <p className="text-2xl font-bold">{lines.length}</p>
+   569→   569→        </CardContent></Card>
+   570→   570→        <Card><CardContent className="p-4 text-center">
+   571→   571→          <p className="text-xs text-muted-foreground mb-1">{t('إجمالي الاستحقاق', 'Total Entitlement', lang)}</p>
+   572→   572→          <MoneyDisplay value={payrollRun.totalAmount} lang={lang} size="lg" bold />
+   573→   573→        </CardContent></Card>
+   574→   574→        <Card><CardContent className="p-4 text-center">
+   575→   575→          <p className="text-xs text-muted-foreground mb-1">{t('الخصومات', 'Deductions', lang)}</p>
+   576→   576→          <MoneyDisplay value={payrollRun.totalDeductions} lang={lang} size="lg" bold />
+   577→   577→        </CardContent></Card>
+   578→   578→        <Card><CardContent className="p-4 text-center">
+   579→   579→          <p className="text-xs text-orange-600 mb-1">{t('خصم السلف', 'Advance Ded.', lang)}</p>
+   580→   580→          <MoneyDisplay value={totalAdvanceDeduction} lang={lang} size="lg" bold />
+   581→   581→        </CardContent></Card>
+   582→   582→        <Card><CardContent className="p-4 text-center">
+   583→   583→          <p className="text-xs text-red-600 mb-1">{t('خصم الغياب', 'Absence Ded.', lang)}</p>
+   584→   584→          <MoneyDisplay value={totalAbsenceDeduction} lang={lang} size="lg" bold />
+   585→   585→        </CardContent></Card>
+   586→   586→        <Card><CardContent className="p-4 text-center">
+   587→   587→          <p className="text-xs text-muted-foreground mb-1">{t('التأمينات', 'GOSI', lang)}</p>
+   588→   588→          <MoneyDisplay value={totalGosi} lang={lang} size="lg" bold />
+   589→   589→        </CardContent></Card>
+   590→   590→        <Card className="border-emerald-200 bg-emerald-50"><CardContent className="p-4 text-center">
+   591→   591→          <p className="text-xs text-emerald-600 mb-1">{t('صافي الرواتب', 'Net Salaries', lang)}</p>
+   592→   592→          <MoneyDisplay value={payrollRun.totalNet} lang={lang} size="lg" bold />
+   593→   593→        </CardContent></Card>
+   594→   594→      </div>
+   595→   595→
+   596→   596→      {/* Lines Table */}
+   597→   597→      <Card>
+   598→   598→        <CardHeader className="pb-2">
+   599→   599→          <CardTitle className="text-base">{t('تفاصيل المسير', 'Run Details', lang)}</CardTitle>
+   600→   600→        </CardHeader>
+   601→   601→        <CardContent className="p-0">
+   602→   602→          <div className="overflow-x-auto">
+   603→   603→            <Table>
+   604→   604→              <TableHeader><TableRow>
+   605→   605→                <TableHead className="text-right">{t('الموظف', 'Employee', lang)}</TableHead>
+   606→   606→                <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+   607→   607→                <TableHead className="text-right">{t('الساعات', 'Hours', lang)}</TableHead>
+   608→   608→                <TableHead className="text-right">{t('الاستحقاق', 'Entitlement', lang)}</TableHead>
+   609→   609→                <TableHead className="text-right">{t('خصم السلف', 'Advance Ded.', lang)}</TableHead>
+   610→   610→                <TableHead className="text-right">{t('خصم الغياب', 'Absence Ded.', lang)}</TableHead>
+   611→   611→                <TableHead className="text-right">{t('خصومات أخرى', 'Other Ded.', lang)}</TableHead>
+   612→   612→                <TableHead className="text-right">{t('التأمينات', 'GOSI', lang)}</TableHead>
+   613→   613→                <TableHead className="text-right">{t('الصافي', 'Net', lang)}</TableHead>
+   614→   614→                <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+   615→   615→              </TableRow></TableHeader>
+   616→   616→              <TableBody>
+   617→   617→                {lines.map(line => (
+   618→   618→                  <TableRow key={line.id}>
+   619→   619→                    <TableCell>
+   620→   620→                      <div>
+   621→   621→                        <span className="font-medium">{line.employee.name}</span>
+   622→   622→                        <span className="text-xs text-muted-foreground mr-1">{line.employee.code}</span>
+   623→   623→                      </div>
+   624→   624→                    </TableCell>
+   625→   625→                    <TableCell>
+   626→   626→                      <Badge variant="outline" className="gap-1">
+   627→   627→                        {line.salaryType === 'MONTHLY'
+   628→   628→                          ? <><Wallet className="size-3" />{t('شهري', 'Monthly', lang)}</>
+   629→   629→                          : <><Clock className="size-3" />{t('بالساعة', 'Hourly', lang)}</>
+   630→   630→                        }
+   631→   631→                      </Badge>
+   632→   632→                    </TableCell>
+   633→   633→                    <TableCell className="font-mono text-sm">
+   634→   634→                      {line.salaryType === 'HOURLY' ? line.workHours.toFixed(1) : '—'}
+   635→   635→                    </TableCell>
+   636→   636→                    <TableCell><MoneyDisplay value={line.totalEntitlement} lang={lang} size="sm" /></TableCell>
+   637→   637→                    <TableCell>
+   638→   638→                      {(line.advanceDeduction || 0) > 0
+   639→   639→                        ? <span className="text-orange-600"><MoneyDisplay value={line.advanceDeduction} lang={lang} size="sm" /></span>
+   640→   640→                        : <span className="text-muted-foreground">—</span>
+   641→   641→                      }
+   642→   642→                    </TableCell>
+   643→   643→                    <TableCell>
+   644→   644→                      {(line.absenceDeduction || 0) > 0
+   645→   645→                        ? <span className="text-red-600"><MoneyDisplay value={line.absenceDeduction} lang={lang} size="sm" /></span>
+   646→   646→                        : <span className="text-muted-foreground">—</span>
+   647→   647→                      }
+   648→   648→                    </TableCell>
+   649→   649→                    <TableCell>
+   650→   650→                      {line.deductions > 0
+   651→   651→                        ? <MoneyDisplay value={line.deductions} lang={lang} size="sm" />
+   652→   652→                        : <span className="text-muted-foreground">—</span>
+   653→   653→                      }
+   654→   654→                    </TableCell>
+   655→   655→                    <TableCell>
+   656→   656→                      {line.gosiDeduction > 0
+   657→   657→                        ? <MoneyDisplay value={line.gosiDeduction} lang={lang} size="sm" />
+   658→   658→                        : <span className="text-muted-foreground">—</span>
+   659→   659→                      }
+   660→   660→                    </TableCell>
+   661→   661→                    <TableCell><MoneyDisplay value={line.netSalary} lang={lang} size="sm" bold /></TableCell>
+   662→   662→                    <TableCell className="text-sm">{line.project?.name || '—'}</TableCell>
+   663→   663→                  </TableRow>
+   664→   664→                ))}
+   665→   665→              </TableBody>
+   666→   666→            </Table>
+   667→   667→          </div>
+   668→   668→        </CardContent>
+   669→   669→      </Card>
+   670→   670→    </div>
+   671→   671→  )
+   672→   672→}
+   673→   673→
+   674→   674→// ============ Main Payroll Runs Module ============
+   675→   675→export function PayrollRunsModule() {
+   676→   676→  const queryClient = useQueryClient()
+   677→   677→  const { lang } = useAppStore()
+   678→   678→  const [search, setSearch] = useState('')
+   679→   679→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   680→   680→  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+   681→   681→  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+   682→   682→
+   683→   683→  const { data: payrollRuns = [], isLoading, isError, refetch } = useQuery<PayrollRun[]>({
+   684→   684→    queryKey: ['payroll-runs'],
+   685→   685→    queryFn: async () => { const res = await fetch('/api/payroll-runs'); if (!res.ok) throw new Error(); return res.json() },
+   686→   686→  })
+   687→   687→
+   688→   688→  const { data: selectedRun, isLoading: isLoadingDetail } = useQuery<PayrollRun>({
+   689→   689→    queryKey: ['payroll-runs', selectedRunId],
+   690→   690→    queryFn: async () => { const res = await fetch(`/api/payroll-runs/${selectedRunId}`); if (!res.ok) throw new Error(); return res.json() },
+   691→   691→    enabled: !!selectedRunId,
+   692→   692→  })
+   693→   693→
+   694→   694→  const deleteMutation = useMutation({
+   695→   695→    mutationFn: (id: string) => fetch(`/api/payroll-runs/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error) }); return r.json() }),
+   696→   696→    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payroll-runs'] }),
+   697→   697→  })
+   698→   698→
+   699→   699→  const filtered = payrollRuns.filter(run => {
+   700→   700→    if (search && !run.code.toLowerCase().includes(search.toLowerCase())) return false
+   701→   701→    if (statusFilter !== 'all' && run.status !== statusFilter) return false
+   702→   702→    return true
+   703→   703→  })
+   704→   704→
+   705→   705→  const printData = useMemo(() => ({
+   706→   706→    columns: [
+   707→   707→      { key: 'code', label: lang === 'ar' ? 'كود المسير' : 'Run Code' },
+   708→   708→      { key: 'period', label: lang === 'ar' ? 'الفترة' : 'Period' },
+   709→   709→      { key: 'employees', label: lang === 'ar' ? 'عدد الموظفين' : 'Employees' },
+   710→   710→      { key: 'totalAmount', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
+   711→   711→      { key: 'totalNet', label: lang === 'ar' ? 'الصافي' : 'Net' },
+   712→   712→      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+   713→   713→    ],
+   714→   714→    rows: filtered.map(run => ({
+   715→   715→      code: run.code,
+   716→   716→      period: formatMonth(run.month, run.year, lang),
+   717→   717→      employees: String(run._count?.lines || 0),
+   718→   718→      totalAmount: run.totalAmount.toFixed(2),
+   719→   719→      totalNet: run.totalNet.toFixed(2),
+   720→   720→      status: statusConfig[run.status].label[lang],
+   721→   721→    })),
+   722→   722→    infoItems: [
+   723→   723→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   724→   724→    ],
+   725→   725→  }), [filtered, lang])
+   726→   726→
+   727→   727→  const handleExport = () => {
+   728→   728→    const columns: CSVColumn[] = [
+   729→   729→      { key: 'code', label: t('كود المسير', 'Run Code', lang) },
+   730→   730→      { key: 'period', label: t('الفترة', 'Period', lang) },
+   731→   731→      { key: 'employees', label: t('عدد الموظفين', 'Employees', lang) },
+   732→   732→      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang) },
+   733→   733→      { key: 'totalNet', label: t('الصافي', 'Net', lang) },
+   734→   734→      { key: 'status', label: t('الحالة', 'Status', lang) },
+   735→   735→    ]
+   736→   736→    exportToCSV(filtered.map(run => ({
+   737→   737→      code: run.code,
+   738→   738→      period: formatMonth(run.month, run.year, 'en'),
+   739→   739→      employees: String(run._count?.lines || 0),
+   740→   740→      totalAmount: run.totalAmount.toFixed(2),
+   741→   741→      totalNet: run.totalNet.toFixed(2),
+   742→   742→      status: run.status,
+   743→   743→    })), `payroll-runs-${new Date().toISOString().slice(0, 10)}`, columns)
+   744→   744→  }
+   745→   745→
+   746→   746→  // Detail view (conditional returns after all hooks)
+   747→   747→  if (selectedRunId && selectedRun) {
+   748→   748→    return (
+   749→   749→      <ModuleLayout
+   750→   750→        title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
+   751→   751→        subtitle={{ ar: 'إدارة مسيرات رواتب الموظفين', en: 'Manage employee payroll runs' }}
+   752→   752→      >
+   753→   753→        <PayrollRunDetail payrollRun={selectedRun} onBack={() => setSelectedRunId(null)} />
+   754→   754→      </ModuleLayout>
+   755→   755→    )
+   756→   756→  }
+   757→   757→
+   758→   758→  if (selectedRunId && isLoadingDetail) {
+   759→   759→    return (
+   760→   760→      <ModuleLayout
+   761→   761→        title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
+   762→   762→        subtitle={{ ar: 'إدارة مسيرات رواتب الموظفين', en: 'Manage employee payroll runs' }}
+   763→   763→      >
+   764→   764→        <div className="flex items-center justify-center py-20">
+   765→   765→          <RefreshCw className="size-8 animate-spin text-muted-foreground" />
+   766→   766→        </div>
+   767→   767→      </ModuleLayout>
+   768→   768→    )
+   769→   769→  }
+   770→   770→
+   771→   771→  return (
+   772→   772→    <ModuleLayout
+   773→   773→      title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
+   774→   774→      subtitle={{ ar: 'إدارة مسيرات رواتب الموظفين', en: 'Manage employee payroll runs' }}
+   775→   775→      actions={
+   776→   776→        <div className="flex items-center gap-2">
+   777→   777→          <PrintButton type="generic-table" data={printData} size="icon" />
+   778→   778→          <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
+   779→   779→          <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+   780→   780→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setCreateDialogOpen(true)}>
+   781→   781→            <Plus className="size-4" />{t('مسير جديد', 'New Run', lang)}
+   782→   782→          </Button>
+   783→   783→        </div>
+   784→   784→      }
+   785→   785→    >
+   786→   786→      {/* Search & Filter */}
+   787→   787→      <Card><CardContent className="p-4">
+   788→   788→        <div className="flex flex-col sm:flex-row gap-3">
+   789→   789→          <div className="relative flex-1">
+   790→   790→            <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   791→   791→            <Input
+   792→   792→              placeholder={t('بحث بكود المسير...', 'Search by run code...', lang)}
+   793→   793→              value={search}
+   794→   794→              onChange={e => setSearch(e.target.value)}
+   795→   795→              className="pr-9"
+   796→   796→            />
+   797→   797→          </div>
+   798→   798→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   799→   799→            <SelectTrigger className="w-full sm:w-48">
+   800→   800→              <SelectValue placeholder={t('الحالة', 'Status', lang)} />
+   801→   801→            </SelectTrigger>
+   802→   802→            <SelectContent>
+   803→   803→              <SelectItem value="all">{t('جميع الحالات', 'All Statuses', lang)}</SelectItem>
+   804→   804→              <SelectItem value="DRAFT">{t('مسودة', 'Draft', lang)}</SelectItem>
+   805→   805→              <SelectItem value="REVIEW">{t('قيد المراجعة', 'Under Review', lang)}</SelectItem>
+   806→   806→              <SelectItem value="APPROVED">{t('معتمد', 'Approved', lang)}</SelectItem>
+   807→   807→              <SelectItem value="PARTIALLY_PAID">{t('مدفوع جزئياً', 'Partially Paid', lang)}</SelectItem>
+   808→   808→              <SelectItem value="PAID">{t('مدفوع', 'Paid', lang)}</SelectItem>
+   809→   809→            </SelectContent>
+   810→   810→          </Select>
+   811→   811→        </div>
+   812→   812→      </CardContent></Card>
+   813→   813→
+   814→   814→      {/* Table */}
+   815→   815→      <Card><CardContent className="p-0">
+   816→   816→        {isLoading ? (<div className="p-6"><TableSkeleton /></div>) : isError ? (
+   817→   817→          <div className="flex flex-col items-center gap-3 py-10">
+   818→   818→            <p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p>
+   819→   819→            <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+   820→   820→          </div>
+   821→   821→        ) : filtered.length === 0 ? (
+   822→   822→          <div className="flex flex-col items-center gap-3 py-10">
+   823→   823→            <FileText className="size-12 text-gray-300" />
+   824→   824→            <p className="text-muted-foreground">{t('لا توجد مسيرات رواتب', 'No payroll runs', lang)}</p>
+   825→   825→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setCreateDialogOpen(true)}>
+   826→   826→              <Plus className="size-4 mr-1" />{t('إنشاء مسير', 'Create Run', lang)}
+   827→   827→            </Button>
+   828→   828→          </div>
+   829→   829→        ) : (
+   830→   830→          <div className="overflow-x-auto">
+   831→   831→            <Table>
+   832→   832→              <TableHeader><TableRow>
+   833→   833→                <TableHead className="text-right">{t('كود المسير', 'Run Code', lang)}</TableHead>
+   834→   834→                <TableHead className="text-right">{t('الشهر', 'Month', lang)}</TableHead>
+   835→   835→                <TableHead className="text-right">{t('السنة', 'Year', lang)}</TableHead>
+   836→   836→                <TableHead className="text-right">{t('عدد الموظفين', 'Employees', lang)}</TableHead>
+   837→   837→                <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   838→   838→                <TableHead className="text-right">{t('الصافي', 'Net', lang)}</TableHead>
+   839→   839→                <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   840→   840→                <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   841→   841→              </TableRow></TableHeader>
+   842→   842→              <TableBody>
+   843→   843→                {filtered.map(run => (
+   844→   844→                  <TableRow key={run.id} className="cursor-pointer hover:bg-gray-50" onClick={() => setSelectedRunId(run.id)}>
+   845→   845→                    <TableCell className="font-medium font-mono">{run.code}</TableCell>
+   846→   846→                    <TableCell>{formatMonth(run.month, run.year, lang)}</TableCell>
+   847→   847→                    <TableCell className="font-mono">{run.year}</TableCell>
+   848→   848→                    <TableCell className="text-center">
+   849→   849→                      <Badge variant="outline" className="gap-1">
+   850→   850→                        <Users className="size-3" />
+   851→   851→                        {run._count?.lines || 0}
+   852→   852→                      </Badge>
+   853→   853→                    </TableCell>
+   854→   854→                    <TableCell><MoneyDisplay value={run.totalAmount} lang={lang} size="sm" /></TableCell>
+   855→   855→                    <TableCell><MoneyDisplay value={run.totalNet} lang={lang} size="sm" bold /></TableCell>
+   856→   856→                    <TableCell><StatusBadge status={run.status} lang={lang} /></TableCell>
+   857→   857→                    <TableCell>
+   858→   858→                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   859→   859→                        <Button variant="ghost" size="icon" className="size-8" onClick={() => setSelectedRunId(run.id)}>
+   860→   860→                          <Eye className="size-4" />
+   861→   861→                        </Button>
+   862→   862→                        {run.status === 'DRAFT' && (
+   863→   863→                          <Button
+   864→   864→                            variant="ghost"
+   865→   865→                            size="icon"
+   866→   866→                            className="size-8 text-rose-600 hover:text-rose-700"
+   867→   867→                            onClick={() => {
+   868→   868→                              if (confirm(t('هل أنت متأكد من حذف المسير؟', 'Are you sure you want to delete this run?', lang))) {
+   869→   869→                                deleteMutation.mutate(run.id)
+   870→   870→                              }
+   871→   871→                            }}
+   872→   872→                          >
+   873→   873→                            <Trash2 className="size-4" />
+   874→   874→                          </Button>
+   875→   875→                        )}
+   876→   876→                      </div>
+   877→   877→                    </TableCell>
+   878→   878→                  </TableRow>
+   879→   879→                ))}
+   880→   880→              </TableBody>
+   881→   881→            </Table>
+   882→   882→          </div>
+   883→   883→        )}
+   884→   884→      </CardContent></Card>
+   885→   885→
+   886→   886→      <CreatePayrollRunDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+   887→   887→    </ModuleLayout>
+   888→   888→  )
+   889→   889→}
+   890→   890→

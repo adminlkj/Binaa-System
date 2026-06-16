@@ -1,0 +1,1362 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
+     7→  Send, CheckCircle, Trash2, ArrowLeft, Building2, HardHat,
+     8→  ChevronLeft, ChevronRight, Clock,
+     9→} from 'lucide-react'
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→} from '@/components/ui/table'
+    17→import {
+    18→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    19→} from '@/components/ui/select'
+    20→import {
+    21→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    22→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    23→} from '@/components/ui/alert-dialog'
+    24→import { Label } from '@/components/ui/label'
+    25→import { Textarea } from '@/components/ui/textarea'
+    26→import { Separator } from '@/components/ui/separator'
+    27→import { MoneyDisplay } from '@/components/ui/money-display'
+    28→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    29→import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+    30→import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+    31→import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+    32→import { PrintButton } from '@/components/shared/print-button'
+    33→
+    34→// ============ Types ============
+    35→interface ProgressClaimSource {
+    36→  id: string; claimNo: string; date: string; amount: number; vatAmount: number; totalAmount: number
+    37→  project: { id: string; name: string; code: string; client: { id: string; name: string } }
+    38→  contract: { id: string; contractNo: string }
+    39→  invoiced: boolean; status: string
+    40→}
+    41→
+    42→interface TimesheetSource {
+    43→  id: string; operatingHours: number; month: number; year: number; status: string
+    44→  project: { id: string; name: string; code: string; client: { id: string; name: string } }
+    45→  equipment: { id: string; name: string; code: string; nameAr: string | null }
+    46→  rental: { id: string; hourlyRate: number; deliveryFees: number; deliveryFeesTaxable: boolean }
+    47→  contract: { id: string; contractNo: string; hourlyRate: number; paymentTerms: string }
+    48→  clientName?: string; clientNameAr?: string
+    49→}
+    50→
+    51→interface SalesInvoiceItem {
+    52→  id: string; description: string; quantity: number; unit?: string | null; unitPrice: number; totalPrice: number
+    53→}
+    54→
+    55→interface SalesInvoice {
+    56→  id: string; invoiceNo: string; sourceType: string; invoiceType: string
+    57→  clientId: string; projectId: string | null; contractId: string | null
+    58→  date: string; dueDate: string; subtotal: number; vatRate: number; vatAmount: number; totalAmount: number
+    59→  paidAmount: number; status: string; notes: string | null
+    60→  progressClaimId: string | null; timesheetId: string | null
+    61→  journalEntryId: string | null
+    62→  client: { id: string; name: string; code: string }
+    63→  project: { id: string; name: string; code: string; projectType?: string } | null
+    64→  contract: { id: string; contractNo: string } | null
+    65→  items: SalesInvoiceItem[]
+    66→  timesheet?: TimesheetSource | null
+    67→  progressClaim?: ProgressClaimSource | null
+    68→  operatingHours?: number | null
+    69→  hourlyRate?: number | null
+    70→  equipmentName?: string | null
+    71→  includeDelivery?: boolean
+    72→  deliveryAmount?: number
+    73→  deliveryFeesTaxable?: boolean
+    74→  deliveryMonth?: string | null
+    75→  contractPeriodStart?: string | null
+    76→  contractPeriodEnd?: string | null
+    77→}
+    78→
+    79→// ============ Arabic/English Month Names ============
+    80→const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+    81→const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+    82→
+    83→function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string {
+    84→  if (lang === 'ar') return `${arabicMonths[month - 1]} ${year}`
+    85→  return `${englishMonths[month - 1]} ${year}`
+    86→}
+    87→
+    88→// ============ Labels ============
+    89→const labels = {
+    90→  title: { ar: 'فواتير المبيعات', en: 'Sales Invoices' },
+    91→  subtitle: { ar: 'إدارة فواتير المبيعات من المستخلصات وسجلات الساعات', en: 'Manage sales invoices from extracts and timesheets' },
+    92→  invoiceNo: { ar: 'رقم الفاتورة', en: 'Invoice No.' },
+    93→  sourceType: { ar: 'نوع المصدر', en: 'Source Type' },
+    94→  client: { ar: 'العميل', en: 'Client' },
+    95→  project: { ar: 'المشروع', en: 'Project' },
+    96→  date: { ar: 'التاريخ', en: 'Date' },
+    97→  dueDate: { ar: 'تاريخ الاستحقاق', en: 'Due Date' },
+    98→  subtotal: { ar: 'المجموع الفرعي', en: 'Subtotal' },
+    99→  vat: { ar: 'الضريبة (15%)', en: 'VAT (15%)' },
+   100→  total: { ar: 'الإجمالي', en: 'Total' },
+   101→  paid: { ar: 'المدفوع', en: 'Paid' },
+   102→  outstanding: { ar: 'المستحق', en: 'Outstanding' },
+   103→  status: { ar: 'الحالة', en: 'Status' },
+   104→  actions: { ar: 'الإجراءات', en: 'Actions' },
+   105→  createInvoice: { ar: 'إنشاء فاتورة', en: 'Create Invoice' },
+   106→  search: { ar: 'بحث برقم الفاتورة أو العميل...', en: 'Search by invoice no. or client...' },
+   107→  allStatus: { ar: 'كل الحالات', en: 'All Status' },
+   108→  allSources: { ar: 'كل المصادر', en: 'All Sources' },
+   109→  totalSales: { ar: 'إجمالي المبيعات', en: 'Total Sales' },
+   110→  notes: { ar: 'ملاحظات', en: 'Notes' },
+   111→  invoiceItems: { ar: 'بنود الفاتورة', en: 'Invoice Items' },
+   112→  invoiceSummary: { ar: 'ملخص الفاتورة', en: 'Invoice Summary' },
+   113→  deleteTitle: { ar: 'حذف الفاتورة', en: 'Delete Invoice' },
+   114→  deleteConfirm: { ar: 'هل أنت متأكد من حذف هذه الفاتورة؟', en: 'Are you sure you want to delete this invoice?' },
+   115→  noInvoices: { ar: 'لا توجد فواتير مبيعات', en: 'No sales invoices' },
+   116→  sendInvoice: { ar: 'إرسال', en: 'Send' },
+   117→  markPaid: { ar: 'تأكيد الدفع', en: 'Mark Paid' },
+   118→  print: { ar: 'طباعة', en: 'Print' },
+   119→  // Source type labels
+   120→  extractSource: { ar: 'مستخلص مشروع', en: 'Project Extract' },
+   121→  extractSourceDesc: { ar: 'فاتورة من مستخلص مشروع إنشائي', en: 'Invoice from a construction project extract' },
+   122→  timesheetSource: { ar: 'تايم شيت تأجير معدات', en: 'Equipment Rental Timesheet' },
+   123→  timesheetSourceDesc: { ar: 'فاتورة من سجل ساعات تأجير معدات', en: 'Invoice from equipment rental timesheet' },
+   124→  // Create flow steps
+   125→  step1Title: { ar: 'اختيار نوع المصدر', en: 'Select Source Type' },
+   126→  step2Title: { ar: 'اختيار المستند المصدر', en: 'Select Source Document' },
+   127→  step3Title: { ar: 'معاينة الفاتورة', en: 'Invoice Preview' },
+   128→  step: { ar: 'خطوة', en: 'Step' },
+   129→  of: { ar: 'من', en: 'of' },
+   130→  next: { ar: 'التالي', en: 'Next' },
+   131→  back: { ar: 'رجوع', en: 'Back' },
+   132→  // Extract-specific
+   133→  claimNo: { ar: 'رقم المستخلص', en: 'Claim No.' },
+   134→  claimAmount: { ar: 'مبلغ المستخلص', en: 'Claim Amount' },
+   135→  // Timesheet-specific
+   136→  tsNo: { ar: 'رقم السجل', en: 'TS No.' },
+   137→  equipment: { ar: 'المعدة', en: 'Equipment' },
+   138→  operatingHours: { ar: 'ساعات التشغيل', en: 'Operating Hours' },
+   139→  hourlyRate: { ar: 'سعر الساعة', en: 'Hourly Rate' },
+   140→  deliveryFees: { ar: 'رسوم النقل', en: 'Delivery Fees' },
+   141→  contractNo: { ar: 'رقم العقد', en: 'Contract No.' },
+   142→  // Read-only notices
+   143→  autoFromClaim: { ar: 'تعبئة تلقائية من المستخلص - للقراءة فقط', en: 'Auto-filled from claim - read only' },
+   144→  autoFromTimesheet: { ar: 'تعبئة تلقائية من سجل الساعات والعقد - للقراءة فقط', en: 'Auto-filled from timesheet & contract - read only' },
+   145→  // No sources available
+   146→  noApprovedClaims: { ar: 'لا توجد مستخلصات معتمدة غير مفوترة', en: 'No approved uninvoiced extracts' },
+   147→  noApprovedTimesheets: { ar: 'لا توجد سجلات ساعات معتمدة غير مفوترة', en: 'No approved uninvoiced timesheets' },
+   148→  // Source reference in detail
+   149→  sourceRef: { ar: 'المستند المصدر', en: 'Source Document' },
+   150→  financialDetails: { ar: 'التفاصيل المالية', en: 'Financial Details' },
+   151→  rentalInfo: { ar: 'بيانات الإيجار', en: 'Rental Information' },
+   152→}
+   153→
+   154→// ============ View State ============
+   155→type ViewState =
+   156→  | { type: 'list' }
+   157→  | { type: 'create'; step: number; sourceType: 'EXTRACT' | 'TIMESHEET' | null; selectedSourceId: string | null }
+   158→  | { type: 'detail'; invoiceId: string }
+   159→
+   160→// ============ Skeleton ============
+   161→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   162→  return (
+   163→    <div className="space-y-2 p-4">
+   164→      {Array.from({ length: rows }).map((_, i) => (
+   165→        <div key={i} className="flex gap-4 p-3">
+   166→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   167→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   168→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   169→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   170→        </div>
+   171→      ))}
+   172→    </div>
+   173→  )
+   174→}
+   175→
+   176→// ============ Source Type Badge ============
+   177→function SourceTypeBadge({ sourceType, lang }: { sourceType: string; lang: 'ar' | 'en' }) {
+   178→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   179→  if (sourceType === 'EXTRACT') {
+   180→    return (
+   181→      <Badge className="bg-teal-100 text-teal-700 border-teal-200 gap-1 text-xs">
+   182→        <Building2 className="size-3" />
+   183→        {t('مستخلص', 'Extract')}
+   184→      </Badge>
+   185→    )
+   186→  }
+   187→  if (sourceType === 'TIMESHEET') {
+   188→    return (
+   189→      <Badge className="bg-purple-100 text-purple-700 border-purple-200 gap-1 text-xs">
+   190→        <Clock className="size-3" />
+   191→        {t('تايم شيت', 'Timesheet')}
+   192→      </Badge>
+   193→    )
+   194→  }
+   195→  return <Badge variant="outline" className="text-xs">{sourceType}</Badge>
+   196→}
+   197→
+   198→// ============ Create Invoice Flow ============
+   199→function CreateInvoiceFlow({
+   200→  initialState,
+   201→  onBack,
+   202→  onComplete,
+   203→}: {
+   204→  initialState: ViewState & { type: 'create' }
+   205→  onBack: () => void
+   206→  onComplete: () => void
+   207→}) {
+   208→  const queryClient = useQueryClient()
+   209→  const { lang } = useAppStore()
+   210→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   211→
+   212→  const [step, setStep] = useState(initialState.step || 1)
+   213→  const [sourceType, setSourceType] = useState<'EXTRACT' | 'TIMESHEET' | null>(initialState.sourceType || null)
+   214→  const [selectedClaimId, setSelectedClaimId] = useState<string>(initialState.selectedSourceId || '')
+   215→  const [selectedTimesheetId, setSelectedTimesheetId] = useState<string>(initialState.selectedSourceId || '')
+   216→  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+   217→  const [dueDate, setDueDate] = useState('')
+   218→  const [notes, setNotes] = useState('')
+   219→
+   220→  // Fetch uninvoiced approved claims
+   221→  const { data: approvedClaims = [], isLoading: claimsLoading } = useQuery<ProgressClaimSource[]>({
+   222→    queryKey: ['uninvoiced-claims'],
+   223→    queryFn: async () => {
+   224→      const res = await fetch('/api/progress-claims?status=APPROVED&invoiced=false')
+   225→      if (!res.ok) return []
+   226→      return res.json()
+   227→    },
+   228→    enabled: sourceType === 'EXTRACT' || step === 2,
+   229→  })
+   230→
+   231→  // Fetch uninvoiced approved timesheets
+   232→  const { data: approvedTimesheets = [], isLoading: timesheetsLoading } = useQuery<TimesheetSource[]>({
+   233→    queryKey: ['uninvoiced-timesheets'],
+   234→    queryFn: async () => {
+   235→      const res = await fetch('/api/equipment/timesheets?status=APPROVED')
+   236→      if (!res.ok) return []
+   237→      const data = await res.json()
+   238→      // Filter: only timesheets not yet invoiced (no invoice linked)
+   239→      return (Array.isArray(data) ? data : []).filter(
+   240→        (ts: { status: string; invoice: null }) => ts.status === 'APPROVED' && !ts.invoice
+   241→      )
+   242→    },
+   243→    enabled: sourceType === 'TIMESHEET' || step === 2,
+   244→  })
+   245→
+   246→  // Selected source
+   247→  const selectedClaim = approvedClaims.find(c => c.id === selectedClaimId)
+   248→  const selectedTimesheet = approvedTimesheets.find(ts => ts.id === selectedTimesheetId)
+   249→
+   250→  // Auto-calculations for EXTRACT source
+   251→  const extractSubtotal = selectedClaim?.amount || 0
+   252→  const extractVat = selectedClaim?.vatAmount || 0
+   253→  const extractTotal = selectedClaim?.totalAmount || 0
+   254→
+   255→  // Auto-calculations for TIMESHEET source
+   256→  const tsHourlyRate = selectedTimesheet?.rental?.hourlyRate || selectedTimesheet?.contract?.hourlyRate || 0
+   257→  const tsOperatingHours = selectedTimesheet?.operatingHours || 0
+   258→  const tsDeliveryFees = selectedTimesheet?.rental?.deliveryFees || 0
+   259→  const tsDeliveryFeesTaxable = selectedTimesheet?.rental?.deliveryFeesTaxable ?? true
+   260→  const tsSubtotal = tsOperatingHours * tsHourlyRate
+   261→  const tsVatRate = 0.15
+   262→  const tsRentalVat = Math.round(tsSubtotal * tsVatRate * 100) / 100
+   263→  const tsDeliveryVat = tsDeliveryFeesTaxable && tsDeliveryFees > 0 ? Math.round(tsDeliveryFees * tsVatRate * 100) / 100 : 0
+   264→  const tsTotalVat = tsRentalVat + tsDeliveryVat
+   265→  const tsTotalAmount = tsSubtotal + tsDeliveryFees + tsTotalVat
+   266→
+   267→  const currentSubtotal = sourceType === 'EXTRACT' ? extractSubtotal : tsSubtotal
+   268→  const currentVat = sourceType === 'EXTRACT' ? extractVat : tsTotalVat
+   269→  const currentTotal = sourceType === 'EXTRACT' ? extractTotal : tsTotalAmount
+   270→
+   271→  // Create mutation
+   272→  const createMutation = useMutation({
+   273→    mutationFn: (data: Record<string, unknown>) =>
+   274→      fetch('/api/sales-invoices', {
+   275→        method: 'POST',
+   276→        headers: { 'Content-Type': 'application/json' },
+   277→        body: JSON.stringify(data),
+   278→      }).then(async r => {
+   279→        if (!r.ok) {
+   280→          const err = await r.json().catch(() => ({}))
+   281→          throw new Error((err as { error?: string }).error || 'Failed')
+   282→        }
+   283→        return r.json()
+   284→      }),
+   285→    onSuccess: () => {
+   286→      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] })
+   287→      queryClient.invalidateQueries({ queryKey: ['uninvoiced-claims'] })
+   288→      queryClient.invalidateQueries({ queryKey: ['uninvoiced-timesheets'] })
+   289→      onComplete()
+   290→    },
+   291→  })
+   292→
+   293→  const handleNext = () => {
+   294→    if (step === 1 && sourceType) {
+   295→      setStep(2)
+   296→    } else if (step === 2 && (selectedClaimId || selectedTimesheetId)) {
+   297→      setStep(3)
+   298→    }
+   299→  }
+   300→
+   301→  const handleBack = () => {
+   302→    if (step === 1) {
+   303→      onBack()
+   304→    } else {
+   305→      setStep(step - 1)
+   306→    }
+   307→  }
+   308→
+   309→  const handleSubmit = () => {
+   310→    if (sourceType === 'EXTRACT' && selectedClaimId) {
+   311→      createMutation.mutate({
+   312→        sourceType: 'EXTRACT',
+   313→        progressClaimId: selectedClaimId,
+   314→        date,
+   315→        dueDate,
+   316→        notes,
+   317→      })
+   318→    } else if (sourceType === 'TIMESHEET' && selectedTimesheetId) {
+   319→      createMutation.mutate({
+   320→        sourceType: 'TIMESHEET',
+   321→        timesheetId: selectedTimesheetId,
+   322→        date,
+   323→        dueDate,
+   324→        notes,
+   325→      })
+   326→    }
+   327→  }
+   328→
+   329→  const canProceed = () => {
+   330→    if (step === 1) return !!sourceType
+   331→    if (step === 2) {
+   332→      if (sourceType === 'EXTRACT') return !!selectedClaimId
+   333→      if (sourceType === 'TIMESHEET') return !!selectedTimesheetId
+   334→    }
+   335→    if (step === 3) return !!date && !!dueDate
+   336→    return false
+   337→  }
+   338→
+   339→  // ============ STEP 1: Select Source Type ============
+   340→  const renderStep1 = () => (
+   341→    <div className="space-y-6">
+   342→      <div className="text-center mb-6">
+   343→        <h3 className="text-lg font-semibold mb-1">{t(labels.step1Title.ar, labels.step1Title.en)}</h3>
+   344→        <p className="text-sm text-muted-foreground">
+   345→          {t('اختر نوع المستند المصدر لإنشاء الفاتورة', 'Select the source document type to create an invoice')}
+   346→        </p>
+   347→      </div>
+   348→
+   349→      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
+   350→        {/* Extract Source Card */}
+   351→        <button
+   352→          type="button"
+   353→          onClick={() => setSourceType('EXTRACT')}
+   354→          className={`relative p-6 rounded-xl border-2 transition-all text-start ${
+   355→            sourceType === 'EXTRACT'
+   356→              ? 'border-teal-500 bg-teal-50 shadow-md'
+   357→              : 'border-gray-200 bg-white hover:border-teal-300 hover:bg-teal-50/30'
+   358→          }`}
+   359→        >
+   360→          {sourceType === 'EXTRACT' && (
+   361→            <div className="absolute top-3 end-3">
+   362→              <CheckCircle className="size-5 text-teal-600" />
+   363→            </div>
+   364→          )}
+   365→          <div className="flex items-center gap-3 mb-3">
+   366→            <div className={`flex size-12 items-center justify-center rounded-xl ${sourceType === 'EXTRACT' ? 'bg-teal-100' : 'bg-gray-100'}`}>
+   367→              <Building2 className={`size-6 ${sourceType === 'EXTRACT' ? 'text-teal-600' : 'text-gray-500'}`} />
+   368→            </div>
+   369→            <div>
+   370→              <h4 className="font-semibold">{t(labels.extractSource.ar, labels.extractSource.en)}</h4>
+   371→              <p className="text-xs text-muted-foreground">{t('للمشاريع الإنشائية', 'For construction projects')}</p>
+   372→            </div>
+   373→          </div>
+   374→          <p className="text-sm text-muted-foreground">{t(labels.extractSourceDesc.ar, labels.extractSourceDesc.en)}</p>
+   375→        </button>
+   376→
+   377→        {/* Timesheet Source Card */}
+   378→        <button
+   379→          type="button"
+   380→          onClick={() => setSourceType('TIMESHEET')}
+   381→          className={`relative p-6 rounded-xl border-2 transition-all text-start ${
+   382→            sourceType === 'TIMESHEET'
+   383→              ? 'border-purple-500 bg-purple-50 shadow-md'
+   384→              : 'border-gray-200 bg-white hover:border-purple-300 hover:bg-purple-50/30'
+   385→          }`}
+   386→        >
+   387→          {sourceType === 'TIMESHEET' && (
+   388→            <div className="absolute top-3 end-3">
+   389→              <CheckCircle className="size-5 text-purple-600" />
+   390→            </div>
+   391→          )}
+   392→          <div className="flex items-center gap-3 mb-3">
+   393→            <div className={`flex size-12 items-center justify-center rounded-xl ${sourceType === 'TIMESHEET' ? 'bg-purple-100' : 'bg-gray-100'}`}>
+   394→              <HardHat className={`size-6 ${sourceType === 'TIMESHEET' ? 'text-purple-600' : 'text-gray-500'}`} />
+   395→            </div>
+   396→            <div>
+   397→              <h4 className="font-semibold">{t(labels.timesheetSource.ar, labels.timesheetSource.en)}</h4>
+   398→              <p className="text-xs text-muted-foreground">{t('لتأجير المعدات', 'For equipment rental')}</p>
+   399→            </div>
+   400→          </div>
+   401→          <p className="text-sm text-muted-foreground">{t(labels.timesheetSourceDesc.ar, labels.timesheetSourceDesc.en)}</p>
+   402→        </button>
+   403→      </div>
+   404→    </div>
+   405→  )
+   406→
+   407→  // ============ STEP 2: Select Source Document ============
+   408→  const renderStep2 = () => {
+   409→    if (sourceType === 'EXTRACT') {
+   410→      if (claimsLoading) {
+   411→        return (
+   412→          <div className="flex flex-col items-center py-10">
+   413→            <div className="size-8 animate-spin rounded-full border-4 border-teal-200 border-t-teal-600" />
+   414→            <p className="mt-3 text-sm text-muted-foreground">{commonText.loading[lang]}</p>
+   415→          </div>
+   416→        )
+   417→      }
+   418→
+   419→      if (approvedClaims.length === 0) {
+   420→        return (
+   421→          <Card className="bg-amber-50 border-amber-200">
+   422→            <CardContent className="p-6 text-center">
+   423→              <Building2 className="size-10 text-amber-400 mx-auto mb-3" />
+   424→              <p className="text-amber-700 font-medium">{t(labels.noApprovedClaims.ar, labels.noApprovedClaims.en)}</p>
+   425→              <p className="text-sm text-amber-600 mt-1">
+   426→                {t('يجب اعتماد مستخلص أولاً من وحدة المستخلصات', 'An extract must be approved first from the Extracts module')}
+   427→              </p>
+   428→            </CardContent>
+   429→          </Card>
+   430→        )
+   431→      }
+   432→
+   433→      return (
+   434→        <div className="space-y-4">
+   435→          <h3 className="text-lg font-semibold">{t(labels.step2Title.ar, labels.step2Title.en)}</h3>
+   436→          <p className="text-sm text-muted-foreground">
+   437→            {t('اختر مستخلص معتمد غير مفوتر', 'Select an approved uninvoiced extract')}
+   438→          </p>
+   439→          <div className="overflow-x-auto">
+   440→            <Table>
+   441→              <TableHeader>
+   442→                <TableRow>
+   443→                  <TableHead />
+   444→                  <TableHead className="text-right">{t(labels.claimNo.ar, labels.claimNo.en)}</TableHead>
+   445→                  <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+   446→                  <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+   447→                  <TableHead className="text-right">{t(labels.claimAmount.ar, labels.claimAmount.en)}</TableHead>
+   448→                  <TableHead className="text-right">{t(labels.vat.ar, labels.vat.en)}</TableHead>
+   449→                  <TableHead className="text-right">{t(labels.total.ar, labels.total.en)}</TableHead>
+   450→                </TableRow>
+   451→              </TableHeader>
+   452→              <TableBody>
+   453→                {approvedClaims.map(claim => (
+   454→                  <TableRow
+   455→                    key={claim.id}
+   456→                    className={`cursor-pointer transition-colors ${selectedClaimId === claim.id ? 'bg-teal-50 ring-1 ring-teal-300' : 'hover:bg-gray-50'}`}
+   457→                    onClick={() => setSelectedClaimId(claim.id)}
+   458→                  >
+   459→                    <TableCell className="w-10">
+   460→                      <div className={`size-5 rounded-full border-2 flex items-center justify-center ${selectedClaimId === claim.id ? 'border-teal-500 bg-teal-500' : 'border-gray-300'}`}>
+   461→                        {selectedClaimId === claim.id && <CheckCircle className="size-3 text-white" />}
+   462→                      </div>
+   463→                    </TableCell>
+   464→                    <TableCell className="font-mono font-medium">{claim.claimNo}</TableCell>
+   465→                    <TableCell>{claim.project?.client?.name || '—'}</TableCell>
+   466→                    <TableCell>{claim.project?.name || '—'}</TableCell>
+   467→                    <TableCell><MoneyDisplay value={claim.amount} lang={lang} size="sm" inline /></TableCell>
+   468→                    <TableCell><MoneyDisplay value={claim.vatAmount} lang={lang} size="sm" inline /></TableCell>
+   469→                    <TableCell className="font-semibold"><MoneyDisplay value={claim.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
+   470→                  </TableRow>
+   471→                ))}
+   472→              </TableBody>
+   473→            </Table>
+   474→          </div>
+   475→        </div>
+   476→      )
+   477→    }
+   478→
+   479→    // TIMESHEET
+   480→    if (timesheetsLoading) {
+   481→      return (
+   482→        <div className="flex flex-col items-center py-10">
+   483→          <div className="size-8 animate-spin rounded-full border-4 border-purple-200 border-t-purple-600" />
+   484→          <p className="mt-3 text-sm text-muted-foreground">{commonText.loading[lang]}</p>
+   485→        </div>
+   486→      )
+   487→    }
+   488→
+   489→    if (approvedTimesheets.length === 0) {
+   490→      return (
+   491→        <Card className="bg-amber-50 border-amber-200">
+   492→          <CardContent className="p-6 text-center">
+   493→            <HardHat className="size-10 text-amber-400 mx-auto mb-3" />
+   494→            <p className="text-amber-700 font-medium">{t(labels.noApprovedTimesheets.ar, labels.noApprovedTimesheets.en)}</p>
+   495→            <p className="text-sm text-amber-600 mt-1">
+   496→              {t('يجب اعتماد سجل ساعات أولاً من وحدة ساعات العمل', 'An approved timesheet must be created first from the Timesheets module')}
+   497→            </p>
+   498→          </CardContent>
+   499→        </Card>
+   500→      )
+   501→    }
+   502→
+   503→    return (
+   504→      <div className="space-y-4">
+   505→        <h3 className="text-lg font-semibold">{t(labels.step2Title.ar, labels.step2Title.en)}</h3>
+   506→        <p className="text-sm text-muted-foreground">
+   507→          {t('اختر سجل ساعات معتمد غير مفوتر', 'Select an approved uninvoiced timesheet')}
+   508→        </p>
+   509→        <div className="overflow-x-auto">
+   510→          <Table>
+   511→            <TableHeader>
+   512→              <TableRow>
+   513→                <TableHead />
+   514→                <TableHead className="text-right">{t(labels.equipment.ar, labels.equipment.en)}</TableHead>
+   515→                <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+   516→                <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+   517→                <TableHead className="text-right">{t(labels.operatingHours.ar, labels.operatingHours.en)}</TableHead>
+   518→                <TableHead className="text-right">{t(labels.contractNo.ar, labels.contractNo.en)}</TableHead>
+   519→              </TableRow>
+   520→            </TableHeader>
+   521→            <TableBody>
+   522→              {approvedTimesheets.map(ts => (
+   523→                <TableRow
+   524→                  key={ts.id}
+   525→                  className={`cursor-pointer transition-colors ${selectedTimesheetId === ts.id ? 'bg-purple-50 ring-1 ring-purple-300' : 'hover:bg-gray-50'}`}
+   526→                  onClick={() => setSelectedTimesheetId(ts.id)}
+   527→                >
+   528→                  <TableCell className="w-10">
+   529→                    <div className={`size-5 rounded-full border-2 flex items-center justify-center ${selectedTimesheetId === ts.id ? 'border-purple-500 bg-purple-500' : 'border-gray-300'}`}>
+   530→                      {selectedTimesheetId === ts.id && <CheckCircle className="size-3 text-white" />}
+   531→                    </div>
+   532→                  </TableCell>
+   533→                  <TableCell className="font-medium">{ts.equipment?.name || '—'}</TableCell>
+   534→                  <TableCell>{ts.clientName || ts.project?.client?.name || '—'}</TableCell>
+   535→                  <TableCell>{ts.project?.name || '—'}</TableCell>
+   536→                  <TableCell>{formatNumber(ts.operatingHours)} {t('ساعة', 'hrs')}</TableCell>
+   537→                  <TableCell className="font-mono">{ts.contract?.contractNo || '—'}</TableCell>
+   538→                </TableRow>
+   539→              ))}
+   540→            </TableBody>
+   541→          </Table>
+   542→        </div>
+   543→      </div>
+   544→    )
+   545→  }
+   546→
+   547→  // ============ STEP 3: Invoice Preview ============
+   548→  const renderStep3 = () => (
+   549→    <div className="space-y-6">
+   550→      <h3 className="text-lg font-semibold">{t(labels.step3Title.ar, labels.step3Title.en)}</h3>
+   551→
+   552→      {/* Read-only notice */}
+   553→      <Card className={sourceType === 'EXTRACT' ? 'bg-teal-50 border-teal-200' : 'bg-purple-50 border-purple-200'}>
+   554→        <CardContent className="p-3 flex items-center gap-2">
+   555→          {sourceType === 'EXTRACT' ? (
+   556→            <>
+   557→              <Building2 className="size-4 text-teal-600" />
+   558→              <p className="text-sm text-teal-700 font-medium">
+   559→                {t(labels.autoFromClaim.ar, labels.autoFromClaim.en)}
+   560→              </p>
+   561→            </>
+   562→          ) : (
+   563→            <>
+   564→              <HardHat className="size-4 text-purple-600" />
+   565→              <p className="text-sm text-purple-700 font-medium">
+   566→                {t(labels.autoFromTimesheet.ar, labels.autoFromTimesheet.en)}
+   567→              </p>
+   568→            </>
+   569→          )}
+   570→        </CardContent>
+   571→      </Card>
+   572→
+   573→      {/* Source Reference Info */}
+   574→      {sourceType === 'EXTRACT' && selectedClaim && (
+   575→        <Card>
+   576→          <CardHeader className="pb-3">
+   577→            <CardTitle className="text-lg">{t(labels.sourceRef.ar, labels.sourceRef.en)}</CardTitle>
+   578→          </CardHeader>
+   579→          <CardContent>
+   580→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   581→              <div>
+   582→                <span className="text-muted-foreground">{t(labels.claimNo.ar, labels.claimNo.en)}:</span>
+   583→                <p className="font-medium font-mono">{selectedClaim.claimNo}</p>
+   584→              </div>
+   585→              <div>
+   586→                <span className="text-muted-foreground">{t(labels.client.ar, labels.client.en)}:</span>
+   587→                <p className="font-medium">{selectedClaim.project?.client?.name || '—'}</p>
+   588→              </div>
+   589→              <div>
+   590→                <span className="text-muted-foreground">{t(labels.project.ar, labels.project.en)}:</span>
+   591→                <p className="font-medium">{selectedClaim.project?.name || '—'}</p>
+   592→              </div>
+   593→              <div>
+   594→                <span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span>
+   595→                <p className="font-medium font-mono">{selectedClaim.contract?.contractNo || '—'}</p>
+   596→              </div>
+   597→            </div>
+   598→          </CardContent>
+   599→        </Card>
+   600→      )}
+   601→
+   602→      {sourceType === 'TIMESHEET' && selectedTimesheet && (
+   603→        <Card>
+   604→          <CardHeader className="pb-3">
+   605→            <CardTitle className="text-lg">{t(labels.sourceRef.ar, labels.sourceRef.en)}</CardTitle>
+   606→          </CardHeader>
+   607→          <CardContent>
+   608→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   609→              <div>
+   610→                <span className="text-muted-foreground">{t(labels.equipment.ar, labels.equipment.en)}:</span>
+   611→                <p className="font-medium">{selectedTimesheet.equipment?.name || '—'}</p>
+   612→              </div>
+   613→              <div>
+   614→                <span className="text-muted-foreground">{t(labels.client.ar, labels.client.en)}:</span>
+   615→                <p className="font-medium">{selectedTimesheet.clientName || selectedTimesheet.project?.client?.name || '—'}</p>
+   616→              </div>
+   617→              <div>
+   618→                <span className="text-muted-foreground">{t(labels.project.ar, labels.project.en)}:</span>
+   619→                <p className="font-medium">{selectedTimesheet.project?.name || '—'}</p>
+   620→              </div>
+   621→              <div>
+   622→                <span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span>
+   623→                <p className="font-medium font-mono">{selectedTimesheet.contract?.contractNo || '—'}</p>
+   624→              </div>
+   625→            </div>
+   626→          </CardContent>
+   627→        </Card>
+   628→      )}
+   629→
+   630→      {/* Financial Details - READ ONLY */}
+   631→      <Card>
+   632→        <CardHeader className="pb-3">
+   633→          <CardTitle className="text-lg">{t(labels.financialDetails.ar, labels.financialDetails.en)}</CardTitle>
+   634→        </CardHeader>
+   635→        <CardContent>
+   636→          {sourceType === 'TIMESHEET' && selectedTimesheet && (
+   637→            <>
+   638→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+   639→                <div className="space-y-2">
+   640→                  <Label>{t(labels.operatingHours.ar, labels.operatingHours.en)}</Label>
+   641→                  <Input type="number" value={tsOperatingHours || ''} readOnly className="bg-gray-100" dir="ltr" />
+   642→                  <p className="text-xs text-muted-foreground">{t('من سجل الساعات', 'From timesheet')}</p>
+   643→                </div>
+   644→                <div className="space-y-2">
+   645→                  <Label>{t(labels.hourlyRate.ar, labels.hourlyRate.en)}</Label>
+   646→                  <Input type="number" value={tsHourlyRate || ''} readOnly className="bg-gray-100" dir="ltr" />
+   647→                  <p className="text-xs text-muted-foreground">{t('من العقد', 'From contract')}</p>
+   648→                </div>
+   649→                <div className="space-y-2">
+   650→                  <Label>{t(labels.subtotal.ar, labels.subtotal.en)} ({t('ساعات × سعر', 'hrs × rate')})</Label>
+   651→                  <div className="h-9 flex items-center">
+   652→                    <MoneyDisplay value={tsSubtotal} lang={lang} size="md" bold />
+   653→                  </div>
+   654→                </div>
+   655→              </div>
+   656→              {tsDeliveryFees > 0 && (
+   657→                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+   658→                  <div className="space-y-2">
+   659→                    <Label>{t(labels.deliveryFees.ar, labels.deliveryFees.en)}</Label>
+   660→                    <Input type="number" value={tsDeliveryFees} readOnly className="bg-gray-100" dir="ltr" />
+   661→                  </div>
+   662→                  <div className="space-y-2 flex items-center gap-2 pt-6">
+   663→                    <Badge variant="outline" className={tsDeliveryFeesTaxable ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}>
+   664→                      {tsDeliveryFeesTaxable ? t('خاضعة للضريبة', 'Taxable') : t('غير خاضعة للضريبة', 'Not Taxable')}
+   665→                    </Badge>
+   666→                  </div>
+   667→                </div>
+   668→              )}
+   669→            </>
+   670→          )}
+   671→
+   672→          {sourceType === 'EXTRACT' && selectedClaim && (
+   673→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+   674→              <div className="space-y-2">
+   675→                <Label>{t(labels.claimAmount.ar, labels.claimAmount.en)}</Label>
+   676→                <Input type="number" value={extractSubtotal || ''} readOnly className="bg-gray-100" dir="ltr" />
+   677→                <p className="text-xs text-muted-foreground">{t('من المستخلص', 'From claim')}</p>
+   678→              </div>
+   679→            </div>
+   680→          )}
+   681→        </CardContent>
+   682→      </Card>
+   683→
+   684→      {/* Invoice Summary - Computed */}
+   685→      <Card className="bg-gray-50 border-dashed">
+   686→        <CardContent className="p-6 space-y-3">
+   687→          <h3 className="text-lg font-semibold mb-2">{t(labels.invoiceSummary.ar, labels.invoiceSummary.en)}</h3>
+   688→          {sourceType === 'TIMESHEET' && (
+   689→            <div className="flex justify-between text-sm">
+   690→              <span>{t(labels.subtotal.ar, labels.subtotal.en)} ({formatNumber(tsOperatingHours)} {t('ساعة', 'hrs')} × <MoneyDisplay value={tsHourlyRate} lang={lang} size="xs" inline showSymbol={false} />)</span>
+   691→              <span className="font-medium"><MoneyDisplay value={tsSubtotal} lang={lang} size="sm" inline /></span>
+   692→            </div>
+   693→          )}
+   694→          {sourceType === 'EXTRACT' && (
+   695→            <div className="flex justify-between text-sm">
+   696→              <span>{t(labels.subtotal.ar, labels.subtotal.en)}</span>
+   697→              <span className="font-medium"><MoneyDisplay value={extractSubtotal} lang={lang} size="sm" inline /></span>
+   698→            </div>
+   699→          )}
+   700→          {sourceType === 'TIMESHEET' && tsDeliveryFees > 0 && (
+   701→            <div className="flex justify-between text-sm text-amber-700">
+   702→              <span>{t(labels.deliveryFees.ar, labels.deliveryFees.en)}</span>
+   703→              <span className="font-medium"><MoneyDisplay value={tsDeliveryFees} lang={lang} size="sm" inline /></span>
+   704→            </div>
+   705→          )}
+   706→          <div className="flex justify-between text-sm">
+   707→            <span>{t(labels.vat.ar, labels.vat.en)}</span>
+   708→            <span className="font-medium"><MoneyDisplay value={currentVat} lang={lang} size="sm" inline /></span>
+   709→          </div>
+   710→          <Separator />
+   711→          <div className="flex justify-between text-lg font-bold">
+   712→            <span>{t(labels.total.ar, labels.total.en)}</span>
+   713→            <span className="text-emerald-700"><MoneyDisplay value={currentTotal} lang={lang} size="lg" inline bold /></span>
+   714→          </div>
+   715→        </CardContent>
+   716→      </Card>
+   717→
+   718→      {/* User-entered fields: Date, Due Date, Notes */}
+   719→      <Card>
+   720→        <CardHeader className="pb-3">
+   721→          <CardTitle className="text-lg">{t('بيانات الفاتورة', 'Invoice Details')}</CardTitle>
+   722→        </CardHeader>
+   723→        <CardContent>
+   724→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   725→            <div className="space-y-2">
+   726→              <Label>{t(labels.date.ar, labels.date.en)} *</Label>
+   727→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   728→            </div>
+   729→            <div className="space-y-2">
+   730→              <Label>{t(labels.dueDate.ar, labels.dueDate.en)} *</Label>
+   731→              <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+   732→            </div>
+   733→            <div className="space-y-2">
+   734→              <Label>{t(labels.notes.ar, labels.notes.en)}</Label>
+   735→              <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات اختيارية', 'Optional notes')} />
+   736→            </div>
+   737→          </div>
+   738→        </CardContent>
+   739→      </Card>
+   740→    </div>
+   741→  )
+   742→
+   743→  // ============ Step indicator ============
+   744→  const steps = [
+   745→    { num: 1, label: t(labels.step1Title.ar, labels.step1Title.en) },
+   746→    { num: 2, label: t(labels.step2Title.ar, labels.step2Title.en) },
+   747→    { num: 3, label: t(labels.step3Title.ar, labels.step3Title.en) },
+   748→  ]
+   749→
+   750→  return (
+   751→    <div className="space-y-6">
+   752→      {/* Header */}
+   753→      <div className="flex items-center gap-3">
+   754→        <Button variant="outline" size="icon" onClick={onBack}>
+   755→          <ArrowRight className="size-4" />
+   756→        </Button>
+   757→        <div className="flex-1">
+   758→          <h1 className="text-2xl font-bold text-gray-900">{t(labels.createInvoice.ar, labels.createInvoice.en)}</h1>
+   759→          <p className="text-sm text-muted-foreground">
+   760→            {t('إنشاء فاتورة من مستند مصدر', 'Create invoice from a source document')}
+   761→          </p>
+   762→        </div>
+   763→      </div>
+   764→
+   765→      {/* Step Indicator */}
+   766→      <div className="flex items-center gap-2">
+   767→        {steps.map((s, i) => (
+   768→          <React.Fragment key={s.num}>
+   769→            <div className="flex items-center gap-2">
+   770→              <div className={`flex size-8 items-center justify-center rounded-full text-sm font-bold ${
+   771→                step >= s.num
+   772→                  ? (sourceType === 'EXTRACT' ? 'bg-teal-600 text-white' : 'bg-purple-600 text-white')
+   773→                  : 'bg-gray-200 text-gray-500'
+   774→              }`}>
+   775→                {s.num}
+   776→              </div>
+   777→              <span className={`text-sm font-medium hidden sm:inline ${step >= s.num ? 'text-gray-900' : 'text-gray-400'}`}>
+   778→                {s.label}
+   779→              </span>
+   780→            </div>
+   781→            {i < steps.length - 1 && (
+   782→              <div className={`flex-1 h-0.5 ${step > s.num ? 'bg-emerald-400' : 'bg-gray-200'}`} />
+   783→            )}
+   784→          </React.Fragment>
+   785→        ))}
+   786→      </div>
+   787→
+   788→      {/* Step Content */}
+   789→      {step === 1 && renderStep1()}
+   790→      {step === 2 && renderStep2()}
+   791→      {step === 3 && renderStep3()}
+   792→
+   793→      {/* Error display */}
+   794→      {createMutation.isError && (
+   795→        <Card className="bg-rose-50 border-rose-200">
+   796→          <CardContent className="p-3">
+   797→            <p className="text-sm text-rose-700">
+   798→              {t('خطأ في إنشاء الفاتورة', 'Error creating invoice')}: {(createMutation.error as Error)?.message || t('حدث خطأ', 'An error occurred')}
+   799→            </p>
+   800→          </CardContent>
+   801→        </Card>
+   802→      )}
+   803→
+   804→      {/* Navigation Buttons */}
+   805→      <div className="flex items-center justify-between pt-2">
+   806→        <Button variant="outline" onClick={handleBack} className="gap-2">
+   807→          <ArrowRight className="size-4" />
+   808→          {step === 1 ? commonText.cancel[lang] : t(labels.back.ar, labels.back.en)}
+   809→        </Button>
+   810→
+   811→        <div className="flex items-center gap-3">
+   812→          {step < 3 ? (
+   813→            <Button
+   814→              onClick={handleNext}
+   815→              disabled={!canProceed()}
+   816→              className={sourceType === 'EXTRACT' ? 'bg-teal-600 hover:bg-teal-700' : 'bg-purple-600 hover:bg-purple-700'}
+   817→            >
+   818→              {t(labels.next.ar, labels.next.en)}
+   819→              <ArrowLeft className="size-4 ms-1" />
+   820→            </Button>
+   821→          ) : (
+   822→            <Button
+   823→              onClick={handleSubmit}
+   824→              disabled={createMutation.isPending || !canProceed()}
+   825→              className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]"
+   826→            >
+   827→              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء الفاتورة', 'Create Invoice')}
+   828→            </Button>
+   829→          )}
+   830→        </div>
+   831→      </div>
+   832→    </div>
+   833→  )
+   834→}
+   835→
+   836→// ============ Invoice Detail View ============
+   837→function InvoiceDetailView({
+   838→  invoice,
+   839→  onBack,
+   840→}: {
+   841→  invoice: SalesInvoice
+   842→  onBack: () => void
+   843→}) {
+   844→  const queryClient = useQueryClient()
+   845→  const { lang } = useAppStore()
+   846→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   847→
+   848→  const statusMutation = useMutation({
+   849→    mutationFn: ({ id, status }: { id: string; status: string }) =>
+   850→      fetch(`/api/sales-invoices/${id}`, {
+   851→        method: 'PATCH',
+   852→        headers: { 'Content-Type': 'application/json' },
+   853→        body: JSON.stringify({ status }),
+   854→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   855→    onSuccess: () => {
+   856→      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] })
+   857→    },
+   858→  })
+   859→
+   860→  const isExtract = invoice.sourceType === 'EXTRACT'
+   861→  const isTimesheet = invoice.sourceType === 'TIMESHEET'
+   862→
+   863→  return (
+   864→    <div className="space-y-6">
+   865→      {/* Header */}
+   866→      <div className="flex items-center gap-3">
+   867→        <Button variant="outline" size="icon" onClick={onBack}>
+   868→          <ArrowRight className="size-4" />
+   869→        </Button>
+   870→        <div className="flex-1">
+   871→          <div className="flex items-center gap-3">
+   872→            <h2 className="text-xl font-bold">{t('فاتورة', 'Invoice')} {invoice.invoiceNo}</h2>
+   873→            <SourceTypeBadge sourceType={invoice.sourceType} lang={lang} />
+   874→            <StatusBadge status={invoice.status} lang={lang} />
+   875→          </div>
+   876→          <p className="text-sm text-muted-foreground">{invoice.client.name}</p>
+   877→        </div>
+   878→        <PrintButton type="service-invoice" documentId={invoice.id} />
+   879→      </div>
+   880→
+   881→      {/* Info Cards */}
+   882→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   883→        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.client.ar, labels.client.en)}</p><p className="text-sm font-medium truncate">{invoice.client.name}</p></CardContent></Card>
+   884→        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.project.ar, labels.project.en)}</p><p className="text-sm font-medium truncate">{invoice.project?.name || '—'}</p></CardContent></Card>
+   885→        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.date.ar, labels.date.en)}</p><p className="text-sm font-medium">{formatDate(invoice.date, lang)}</p></CardContent></Card>
+   886→        <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.dueDate.ar, labels.dueDate.en)}</p><p className="text-sm font-medium">{formatDate(invoice.dueDate, lang)}</p></CardContent></Card>
+   887→      </div>
+   888→
+   889→      {/* Source Document Reference */}
+   890→      <Card>
+   891→        <CardHeader className="pb-3">
+   892→          <CardTitle className="text-lg">{t(labels.sourceRef.ar, labels.sourceRef.en)}</CardTitle>
+   893→        </CardHeader>
+   894→        <CardContent>
+   895→          {isExtract && invoice.progressClaim && (
+   896→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   897→              <div>
+   898→                <span className="text-muted-foreground">{t(labels.claimNo.ar, labels.claimNo.en)}:</span>
+   899→                <p className="font-medium font-mono">{invoice.progressClaim.claimNo}</p>
+   900→              </div>
+   901→              <div>
+   902→                <span className="text-muted-foreground">{t(labels.project.ar, labels.project.en)}:</span>
+   903→                <p className="font-medium">{invoice.progressClaim.project?.name || '—'}</p>
+   904→              </div>
+   905→              <div>
+   906→                <span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span>
+   907→                <p className="font-medium font-mono">{invoice.progressClaim.contract?.contractNo || '—'}</p>
+   908→              </div>
+   909→              <div>
+   910→                <span className="text-muted-foreground">{t('حالة المستخلص', 'Claim Status')}:</span>
+   911→                <StatusBadge status={invoice.progressClaim.status} lang={lang} />
+   912→              </div>
+   913→            </div>
+   914→          )}
+   915→          {isTimesheet && invoice.timesheet && (
+   916→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   917→              <div>
+   918→                <span className="text-muted-foreground">{t(labels.equipment.ar, labels.equipment.en)}:</span>
+   919→                <p className="font-medium">{invoice.equipmentName || invoice.timesheet.equipment?.name || '—'}</p>
+   920→              </div>
+   921→              <div>
+   922→                <span className="text-muted-foreground">{t(labels.operatingHours.ar, labels.operatingHours.en)}:</span>
+   923→                <p className="font-medium">{formatNumber(invoice.operatingHours ?? invoice.timesheet.operatingHours)} {t('ساعة', 'hrs')}</p>
+   924→              </div>
+   925→              <div>
+   926→                <span className="text-muted-foreground">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}:</span>
+   927→                <MoneyDisplay value={invoice.hourlyRate ?? invoice.timesheet?.rental?.hourlyRate ?? 0} lang={lang} size="sm" inline />
+   928→              </div>
+   929→              <div>
+   930→                <span className="text-muted-foreground">{t(labels.contractNo.ar, labels.contractNo.en)}:</span>
+   931→                <p className="font-medium font-mono">{invoice.timesheet.contract?.contractNo || invoice.contract?.contractNo || '—'}</p>
+   932→              </div>
+   933→            </div>
+   934→          )}
+   935→        </CardContent>
+   936→      </Card>
+   937→
+   938→      {/* Rental-specific info */}
+   939→      {isTimesheet && (
+   940→        <Card>
+   941→          <CardHeader className="pb-3"><CardTitle className="text-lg">{t(labels.rentalInfo.ar, labels.rentalInfo.en)}</CardTitle></CardHeader>
+   942→          <CardContent>
+   943→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+   944→              {(invoice.operatingHours ?? 0) > 0 && (
+   945→                <div>
+   946→                  <span className="text-muted-foreground">{t(labels.operatingHours.ar, labels.operatingHours.en)}:</span>
+   947→                  <p className="font-medium">{formatNumber(invoice.operatingHours ?? 0)} {t('ساعة', 'hrs')}</p>
+   948→                </div>
+   949→              )}
+   950→              {(invoice.hourlyRate ?? 0) > 0 && (
+   951→                <div>
+   952→                  <span className="text-muted-foreground">{t(labels.hourlyRate.ar, labels.hourlyRate.en)}:</span>
+   953→                  <p className="font-medium"><MoneyDisplay value={invoice.hourlyRate ?? 0} lang={lang} size="sm" inline /></p>
+   954→                </div>
+   955→              )}
+   956→              {invoice.deliveryMonth && (
+   957→                <div>
+   958→                  <span className="text-muted-foreground">{t('شهر التسليم', 'Delivery Month')}:</span>
+   959→                  <p className="font-medium">{invoice.deliveryMonth}</p>
+   960→                </div>
+   961→              )}
+   962→              {invoice.includeDelivery && (invoice.deliveryAmount ?? 0) > 0 && (
+   963→                <div>
+   964→                  <span className="text-muted-foreground">{t(labels.deliveryFees.ar, labels.deliveryFees.en)}:</span>
+   965→                  <p className="font-medium">
+   966→                    <MoneyDisplay value={invoice.deliveryAmount ?? 0} lang={lang} size="sm" inline />
+   967→                    {invoice.deliveryFeesTaxable && (
+   968→                      <Badge variant="outline" className="ms-1 text-xs bg-emerald-100 text-emerald-700">{t('خاضعة للضريبة', 'Taxable')}</Badge>
+   969→                    )}
+   970→                  </p>
+   971→                </div>
+   972→              )}
+   973→              {invoice.contractPeriodStart && invoice.contractPeriodEnd && (
+   974→                <div>
+   975→                  <span className="text-muted-foreground">{t('فترة العقد', 'Contract Period')}:</span>
+   976→                  <p className="font-medium">{formatDate(invoice.contractPeriodStart, lang)} - {formatDate(invoice.contractPeriodEnd, lang)}</p>
+   977→                </div>
+   978→              )}
+   979→            </div>
+   980→          </CardContent>
+   981→        </Card>
+   982→      )}
+   983→
+   984→      {/* Construction-specific info - revenue account 6110 */}
+   985→      {isExtract && invoice.progressClaim && (
+   986→        <Card className="border-teal-200 bg-teal-50/30">
+   987→          <CardContent className="p-4">
+   988→            <div className="flex items-center gap-2 mb-2">
+   989→              <Building2 className="size-4 text-teal-600" />
+   990→              <span className="text-sm font-semibold text-teal-800">{t('مشروع إنشائي', 'Construction Project')}</span>
+   991→              <Badge variant="outline" className="text-xs border-teal-300 text-teal-700 bg-white">6110</Badge>
+   992→              <span className="text-xs text-teal-600">{t('إيرادات مستخلصات', 'Progress Claims Revenue')}</span>
+   993→            </div>
+   994→          </CardContent>
+   995→        </Card>
+   996→      )}
+   997→
+   998→      {/* Rental revenue info - account 6210 */}
+   999→      {isTimesheet && (
+  1000→        <Card className="border-purple-200 bg-purple-50/30">
+  1001→          <CardContent className="p-4">
+  1002→            <div className="flex items-center gap-2 mb-2">
+  1003→              <Clock className="size-4 text-purple-600" />
+  1004→              <span className="text-sm font-semibold text-purple-800">{t('تأجير معدات', 'Equipment Rental')}</span>
+  1005→              <Badge variant="outline" className="text-xs border-purple-300 text-purple-700 bg-white">6210</Badge>
+  1006→              <span className="text-xs text-purple-600">{t('إيرادات تأجير معدات', 'Equipment Rental Revenue')}</span>
+  1007→            </div>
+  1008→          </CardContent>
+  1009→        </Card>
+  1010→      )}
+  1011→
+  1012→      {/* Items Table */}
+  1013→      <Card>
+  1014→        <CardHeader><CardTitle className="text-lg">{t(labels.invoiceItems.ar, labels.invoiceItems.en)}</CardTitle></CardHeader>
+  1015→        <CardContent className="px-0 pb-2">
+  1016→          <div className="overflow-x-auto">
+  1017→            <Table>
+  1018→              <TableHeader>
+  1019→                <TableRow>
+  1020→                  <TableHead className="text-right">{t('الوصف', 'Description')}</TableHead>
+  1021→                  <TableHead className="text-right">{t('الكمية', 'Qty')}</TableHead>
+  1022→                  <TableHead className="text-right">{t('سعر الوحدة', 'Unit Price')}</TableHead>
+  1023→                  <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+  1024→                </TableRow>
+  1025→              </TableHeader>
+  1026→              <TableBody>
+  1027→                {invoice.items.map(item => (
+  1028→                  <TableRow key={item.id}>
+  1029→                    <TableCell>{item.description}</TableCell>
+  1030→                    <TableCell>{formatNumber(item.quantity)}</TableCell>
+  1031→                    <TableCell><MoneyDisplay value={item.unitPrice} lang={lang} size="sm" inline /></TableCell>
+  1032→                    <TableCell className="font-semibold"><MoneyDisplay value={item.totalPrice} lang={lang} size="sm" inline bold /></TableCell>
+  1033→                  </TableRow>
+  1034→                ))}
+  1035→                <TableRow className="bg-gray-50">
+  1036→                  <TableCell colSpan={3} className="text-left font-medium">{t(labels.subtotal.ar, labels.subtotal.en)}</TableCell>
+  1037→                  <TableCell className="font-semibold"><MoneyDisplay value={invoice.subtotal} lang={lang} size="sm" inline /></TableCell>
+  1038→                </TableRow>
+  1039→                {isTimesheet && invoice.includeDelivery && (invoice.deliveryAmount ?? 0) > 0 && (
+  1040→                  <TableRow className="bg-amber-50">
+  1041→                    <TableCell colSpan={3} className="text-left font-medium text-amber-700">
+  1042→                      {t(labels.deliveryFees.ar, labels.deliveryFees.en)} {invoice.deliveryFeesTaxable ? `(${t('خاضعة للضريبة', 'Taxable')})` : `(${t('غير خاضعة', 'Not Taxable')})`}
+  1043→                    </TableCell>
+  1044→                    <TableCell className="font-semibold text-amber-700"><MoneyDisplay value={invoice.deliveryAmount ?? 0} lang={lang} size="sm" inline /></TableCell>
+  1045→                  </TableRow>
+  1046→                )}
+  1047→                <TableRow className="bg-gray-50">
+  1048→                  <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT')} ({((invoice.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
+  1049→                  <TableCell className="font-semibold"><MoneyDisplay value={invoice.vatAmount} lang={lang} size="sm" inline /></TableCell>
+  1050→                </TableRow>
+  1051→                <TableRow className="bg-emerald-50">
+  1052→                  <TableCell colSpan={3} className="text-left font-bold text-emerald-700">{t(labels.total.ar, labels.total.en)}</TableCell>
+  1053→                  <TableCell className="font-bold text-emerald-700"><MoneyDisplay value={invoice.totalAmount} lang={lang} size="md" inline bold /></TableCell>
+  1054→                </TableRow>
+  1055→                <TableRow className="bg-amber-50">
+  1056→                  <TableCell colSpan={3} className="text-left font-medium text-amber-700">{t(labels.paid.ar, labels.paid.en)}</TableCell>
+  1057→                  <TableCell className="font-medium text-amber-700"><MoneyDisplay value={invoice.paidAmount} lang={lang} size="sm" inline /></TableCell>
+  1058→                </TableRow>
+  1059→                <TableRow className="bg-rose-50">
+  1060→                  <TableCell colSpan={3} className="text-left font-bold text-rose-700">{t(labels.outstanding.ar, labels.outstanding.en)}</TableCell>
+  1061→                  <TableCell className="font-bold text-rose-700"><MoneyDisplay value={invoice.totalAmount - invoice.paidAmount} lang={lang} size="md" inline bold /></TableCell>
+  1062→                </TableRow>
+  1063→              </TableBody>
+  1064→            </Table>
+  1065→          </div>
+  1066→        </CardContent>
+  1067→      </Card>
+  1068→
+  1069→      {/* Notes */}
+  1070→      {invoice.notes && (
+  1071→        <Card>
+  1072→          <CardContent className="p-4">
+  1073→            <p className="text-sm text-muted-foreground mb-1">{t(labels.notes.ar, labels.notes.en)}</p>
+  1074→            <p className="text-sm">{invoice.notes}</p>
+  1075→          </CardContent>
+  1076→        </Card>
+  1077→      )}
+  1078→
+  1079→      {/* Accounting Entry */}
+  1080→      <AccountingEntryDisplay journalEntryId={invoice.journalEntryId} lang={lang} />
+  1081→
+  1082→      {/* Status Workflow Actions */}
+  1083→      <Card className="border-emerald-200 bg-emerald-50/50">
+  1084→        <CardContent className="p-4">
+  1085→          <div className="flex flex-wrap items-center gap-3">
+  1086→            <span className="text-sm font-semibold">{t('إجراءات:', 'Actions:')}</span>
+  1087→            {invoice.status === 'DRAFT' && (
+  1088→              <Button
+  1089→                className="gap-2 bg-blue-600 hover:bg-blue-700"
+  1090→                onClick={() => statusMutation.mutate({ id: invoice.id, status: 'SENT' })}
+  1091→                disabled={statusMutation.isPending}
+  1092→              >
+  1093→                <Send className="size-4" /> {t(labels.sendInvoice.ar, labels.sendInvoice.en)}
+  1094→              </Button>
+  1095→            )}
+  1096→            {invoice.status === 'SENT' && (
+  1097→              <Button
+  1098→                className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+  1099→                onClick={() => statusMutation.mutate({ id: invoice.id, status: 'PAID' })}
+  1100→                disabled={statusMutation.isPending}
+  1101→              >
+  1102→                <CheckCircle className="size-4" /> {t(labels.markPaid.ar, labels.markPaid.en)}
+  1103→              </Button>
+  1104→            )}
+  1105→            {invoice.status === 'PAID' && (
+  1106→              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-sm px-3 py-1">
+  1107→                <CheckCircle className="size-4 ml-1" /> {t('مدفوعة', 'Paid')}
+  1108→              </Badge>
+  1109→            )}
+  1110→          </div>
+  1111→        </CardContent>
+  1112→      </Card>
+  1113→    </div>
+  1114→  )
+  1115→}
+  1116→
+  1117→// ============ Main Sales Module ============
+  1118→export function SalesModule() {
+  1119→  const { lang } = useAppStore()
+  1120→  const queryClient = useQueryClient()
+  1121→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  1122→
+  1123→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+  1124→  const [search, setSearch] = useState('')
+  1125→  const [statusFilter, setStatusFilter] = useState<string>('all')
+  1126→  const [sourceTypeFilter, setSourceTypeFilter] = useState<string>('all')
+  1127→  const [projectTypeFilter, setProjectTypeFilter] = useState<string>('all')
+  1128→  const [deleteId, setDeleteId] = useState<string | null>(null)
+  1129→
+  1130→  // Fetch all sales invoices
+  1131→  const { data: invoices = [], isLoading, isError, refetch } = useQuery<SalesInvoice[]>({
+  1132→    queryKey: ['sales-invoices'],
+  1133→    queryFn: async () => {
+  1134→      const res = await fetch('/api/sales-invoices')
+  1135→      if (!res.ok) throw new Error('Failed to fetch')
+  1136→      return res.json()
+  1137→    },
+  1138→  })
+  1139→
+  1140→  // Delete mutation
+  1141→  const deleteMutation = useMutation({
+  1142→    mutationFn: (id: string) =>
+  1143→      fetch(`/api/sales-invoices/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+  1144→    onSuccess: () => {
+  1145→      queryClient.invalidateQueries({ queryKey: ['sales-invoices'] })
+  1146→      setDeleteId(null)
+  1147→    },
+  1148→  })
+  1149→
+  1150→  // Filters
+  1151→  const filtered = invoices.filter(inv => {
+  1152→    const matchSearch = !search || inv.invoiceNo.toLowerCase().includes(search.toLowerCase()) ||
+  1153→      inv.client.name.toLowerCase().includes(search.toLowerCase()) ||
+  1154→      (inv.project?.name?.toLowerCase().includes(search.toLowerCase()))
+  1155→    const matchStatus = statusFilter === 'all' || inv.status === statusFilter
+  1156→    const matchSource = sourceTypeFilter === 'all' || inv.sourceType === sourceTypeFilter
+  1157→    const invProjectType = inv.sourceType === 'EXTRACT' ? 'CONSTRUCTION' : inv.sourceType === 'TIMESHEET' ? 'EQUIPMENT_RENTAL' : 'ALL'
+  1158→    const matchProjectType = projectTypeFilter === 'all' || invProjectType === projectTypeFilter
+  1159→    return matchSearch && matchStatus && matchSource && matchProjectType
+  1160→  })
+  1161→
+  1162→  const totalSales = invoices.reduce((s, i) => s + i.totalAmount, 0)
+  1163→  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+  1164→  const totalOutstanding = totalSales - totalPaid
+  1165→
+  1166→  // ============ CREATE VIEW ============
+  1167→  if (viewState.type === 'create') {
+  1168→    return (
+  1169→      <CreateInvoiceFlow
+  1170→        initialState={viewState}
+  1171→        onBack={() => setViewState({ type: 'list' })}
+  1172→        onComplete={() => setViewState({ type: 'list' })}
+  1173→      />
+  1174→    )
+  1175→  }
+  1176→
+  1177→  // ============ DETAIL VIEW ============
+  1178→  if (viewState.type === 'detail') {
+  1179→    const invoice = invoices.find(i => i.id === viewState.invoiceId)
+  1180→    if (!invoice) {
+  1181→      return (
+  1182→        <div className="flex flex-col items-center gap-3 py-10">
+  1183→          <p className="text-rose-600">{t('لم يتم العثور على الفاتورة', 'Invoice not found')}</p>
+  1184→          <Button variant="outline" onClick={() => setViewState({ type: 'list' })}>{t('العودة', 'Back')}</Button>
+  1185→        </div>
+  1186→      )
+  1187→    }
+  1188→    return (
+  1189→      <InvoiceDetailView
+  1190→        invoice={invoice}
+  1191→        onBack={() => setViewState({ type: 'list' })}
+  1192→      />
+  1193→    )
+  1194→  }
+  1195→
+  1196→  // ============ LIST VIEW ============
+  1197→  return (
+  1198→    <ModuleLayout
+  1199→      title={labels.title}
+  1200→      subtitle={labels.subtitle}
+  1201→      actions={
+  1202→        <>
+  1203→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
+  1204→            <RefreshCw className="size-4" />
+  1205→          </Button>
+  1206→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create', step: 1, sourceType: null, selectedSourceId: null })}>
+  1207→            <Plus className="size-4" /> {t(labels.createInvoice.ar, labels.createInvoice.en)}
+  1208→          </Button>
+  1209→        </>
+  1210→      }
+  1211→    >
+  1212→      {/* Summary Cards */}
+  1213→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+  1214→        <Card className="bg-emerald-50 border-emerald-200">
+  1215→          <CardContent className="p-4">
+  1216→            <p className="text-sm text-emerald-600">{t(labels.totalSales.ar, labels.totalSales.en)}</p>
+  1217→            <MoneyDisplay value={totalSales} lang={lang} size="xl" bold className="text-emerald-700" />
+  1218→          </CardContent>
+  1219→        </Card>
+  1220→        <Card className="bg-amber-50 border-amber-200">
+  1221→          <CardContent className="p-4">
+  1222→            <p className="text-sm text-amber-600">{t(labels.paid.ar, labels.paid.en)}</p>
+  1223→            <MoneyDisplay value={totalPaid} lang={lang} size="xl" bold className="text-amber-700" />
+  1224→          </CardContent>
+  1225→        </Card>
+  1226→        <Card className="bg-rose-50 border-rose-200">
+  1227→          <CardContent className="p-4">
+  1228→            <p className="text-sm text-rose-600">{t(labels.outstanding.ar, labels.outstanding.en)}</p>
+  1229→            <MoneyDisplay value={totalOutstanding} lang={lang} size="xl" bold className="text-rose-700" />
+  1230→          </CardContent>
+  1231→        </Card>
+  1232→      </div>
+  1233→
+  1234→      {/* Filters */}
+  1235→      <Card>
+  1236→        <CardContent className="p-4">
+  1237→          <div className="flex flex-col sm:flex-row gap-3">
+  1238→            <div className="relative flex-1">
+  1239→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+  1240→              <Input placeholder={t(labels.search.ar, labels.search.en)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+  1241→            </div>
+  1242→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1243→              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t(labels.allStatus.ar, labels.allStatus.en)} /></SelectTrigger>
+  1244→              <SelectContent>
+  1245→                <SelectItem value="all">{t(labels.allStatus.ar, labels.allStatus.en)}</SelectItem>
+  1246→                <SelectItem value="DRAFT">{t('مسودة', 'Draft')}</SelectItem>
+  1247→                <SelectItem value="SENT">{t('مرسلة', 'Sent')}</SelectItem>
+  1248→                <SelectItem value="PARTIALLY_PAID">{t('مدفوعة جزئياً', 'Partially Paid')}</SelectItem>
+  1249→                <SelectItem value="PAID">{t('مدفوعة', 'Paid')}</SelectItem>
+  1250→                <SelectItem value="OVERDUE">{t('متأخرة', 'Overdue')}</SelectItem>
+  1251→              </SelectContent>
+  1252→            </Select>
+  1253→            <Select value={sourceTypeFilter} onValueChange={setSourceTypeFilter}>
+  1254→              <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder={t(labels.allSources.ar, labels.allSources.en)} /></SelectTrigger>
+  1255→              <SelectContent>
+  1256→                <SelectItem value="all">{t(labels.allSources.ar, labels.allSources.en)}</SelectItem>
+  1257→                <SelectItem value="EXTRACT">{t('مستخلصات', 'Extracts')}</SelectItem>
+  1258→                <SelectItem value="TIMESHEET">{t('تايم شيت', 'Timesheets')}</SelectItem>
+  1259→              </SelectContent>
+  1260→            </Select>
+  1261→            <Select value={projectTypeFilter} onValueChange={setProjectTypeFilter}>
+  1262→              <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder={t('كل الأنشطة', 'All Activities')} /></SelectTrigger>
+  1263→              <SelectContent>
+  1264→                <SelectItem value="all">{t('كل الأنشطة', 'All Activities')}</SelectItem>
+  1265→                <SelectItem value="CONSTRUCTION">{t('مشاريع إنشائية', 'Construction')}</SelectItem>
+  1266→                <SelectItem value="EQUIPMENT_RENTAL">{t('تأجير معدات', 'Equipment Rental')}</SelectItem>
+  1267→              </SelectContent>
+  1268→            </Select>
+  1269→          </div>
+  1270→        </CardContent>
+  1271→      </Card>
+  1272→
+  1273→      {/* Table */}
+  1274→      <Card>
+  1275→        <CardContent className="p-0">
+  1276→          {isLoading ? (
+  1277→            <TableSkeleton />
+  1278→          ) : isError ? (
+  1279→            <div className="flex flex-col items-center gap-3 py-10">
+  1280→              <p className="text-rose-600">{commonText.error[lang]}</p>
+  1281→              <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+  1282→            </div>
+  1283→          ) : filtered.length === 0 ? (
+  1284→            <div className="flex flex-col items-center gap-3 py-10">
+  1285→              <FileText className="size-12 text-gray-300" />
+  1286→              <p className="text-muted-foreground">{t(labels.noInvoices.ar, labels.noInvoices.en)}</p>
+  1287→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create', step: 1, sourceType: null, selectedSourceId: null })}>
+  1288→                <Plus className="size-4 mr-1" /> {t(labels.createInvoice.ar, labels.createInvoice.en)}
+  1289→              </Button>
+  1290→            </div>
+  1291→          ) : (
+  1292→            <div className="overflow-x-auto">
+  1293→              <Table>
+  1294→                <TableHeader>
+  1295→                  <TableRow>
+  1296→                    <TableHead className="text-right">{t(labels.invoiceNo.ar, labels.invoiceNo.en)}</TableHead>
+  1297→                    <TableHead className="text-right">{t(labels.sourceType.ar, labels.sourceType.en)}</TableHead>
+  1298→                    <TableHead className="text-right">{t(labels.client.ar, labels.client.en)}</TableHead>
+  1299→                    <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+  1300→                    <TableHead className="text-right">{t(labels.date.ar, labels.date.en)}</TableHead>
+  1301→                    <TableHead className="text-right">{t(labels.subtotal.ar, labels.subtotal.en)}</TableHead>
+  1302→                    <TableHead className="text-right">{t(labels.vat.ar, labels.vat.en)}</TableHead>
+  1303→                    <TableHead className="text-right">{t(labels.total.ar, labels.total.en)}</TableHead>
+  1304→                    <TableHead className="text-right">{t(labels.status.ar, labels.status.en)}</TableHead>
+  1305→                    <TableHead className="text-right">{t(labels.actions.ar, labels.actions.en)}</TableHead>
+  1306→                  </TableRow>
+  1307→                </TableHeader>
+  1308→                <TableBody>
+  1309→                  {filtered.map(inv => (
+  1310→                    <TableRow key={inv.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })}>
+  1311→                      <TableCell className="font-medium font-mono">{inv.invoiceNo}</TableCell>
+  1312→                      <TableCell>
+  1313→                        <div className="flex items-center gap-1 flex-wrap">
+  1314→                          <SourceTypeBadge sourceType={inv.sourceType} lang={lang} />
+  1315→                          <ProjectTypeBadge projectType={inv.sourceType === 'EXTRACT' ? 'CONSTRUCTION' : inv.sourceType === 'TIMESHEET' ? 'EQUIPMENT_RENTAL' : ''} lang={lang} />
+  1316→                        </div>
+  1317→                      </TableCell>
+  1318→                      <TableCell>{inv.client.name}</TableCell>
+  1319→                      <TableCell>{inv.project?.name || '—'}</TableCell>
+  1320→                      <TableCell>{formatDate(inv.date, lang)}</TableCell>
+  1321→                      <TableCell><MoneyDisplay value={inv.subtotal} lang={lang} size="sm" inline /></TableCell>
+  1322→                      <TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="sm" inline /></TableCell>
+  1323→                      <TableCell className="font-semibold"><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
+  1324→                      <TableCell><StatusBadge status={inv.status} lang={lang} /></TableCell>
+  1325→                      <TableCell>
+  1326→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+  1327→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', invoiceId: inv.id })} title={t('عرض', 'View')}>
+  1328→                            <Eye className="size-4" />
+  1329→                          </Button>
+  1330→                          <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => setDeleteId(inv.id)} title={t('حذف', 'Delete')} disabled={inv.status !== 'DRAFT'}>
+  1331→                            <Trash2 className="size-4" />
+  1332→                          </Button>
+  1333→                        </div>
+  1334→                      </TableCell>
+  1335→                    </TableRow>
+  1336→                  ))}
+  1337→                </TableBody>
+  1338→              </Table>
+  1339→            </div>
+  1340→          )}
+  1341→        </CardContent>
+  1342→      </Card>
+  1343→
+  1344→      {/* Delete Confirmation */}
+  1345→      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+  1346→        <AlertDialogContent>
+  1347→          <AlertDialogHeader>
+  1348→            <AlertDialogTitle>{t(labels.deleteTitle.ar, labels.deleteTitle.en)}</AlertDialogTitle>
+  1349→            <AlertDialogDescription>{t(labels.deleteConfirm.ar, labels.deleteConfirm.en)}</AlertDialogDescription>
+  1350→          </AlertDialogHeader>
+  1351→          <AlertDialogFooter>
+  1352→            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+  1353→            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+  1354→              {commonText.delete[lang]}
+  1355→            </AlertDialogAction>
+  1356→          </AlertDialogFooter>
+  1357→        </AlertDialogContent>
+  1358→      </AlertDialog>
+  1359→    </ModuleLayout>
+  1360→  )
+  1361→}
+  1362→

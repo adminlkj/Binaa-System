@@ -1,0 +1,502 @@
+     1→// ============================================================================
+     2→// المحرك المحاسبي - Accounting Engine
+     3→// نظام بِنَاء ERP - Binaa Construction ERP
+     4→//
+     5→// Core accounting engine with automatic journal entries for all business transactions.
+     6→// Follows double-entry bookkeeping principles and Saudi SOCPA standards.
+     7→// Supports both Construction Projects and Equipment Rental activities.
+     8→// ============================================================================
+     9→
+    10→import { db } from '@/lib/db'
+    11→
+    12→// ============ ACCOUNT TYPE DEFINITIONS ============
+    13→
+    14→export const AccountType = {
+    15→  ASSET: 'ASSET',           // أصول
+    16→  LIABILITY: 'LIABILITY',   // خصوم
+    17→  EQUITY: 'EQUITY',         // حقوق ملكية
+    18→  REVENUE: 'REVENUE',       // إيرادات
+    19→  EXPENSE: 'EXPENSE',       // مصروفات
+    20→} as const
+    21→
+    22→export type AccountTypeValue = (typeof AccountType)[keyof typeof AccountType]
+    23→
+    24→// Normal balance side for each account type
+    25→export const NORMAL_BALANCE: Record<AccountTypeValue, 'DEBIT' | 'CREDIT'> = {
+    26→  ASSET: 'DEBIT',
+    27→  LIABILITY: 'CREDIT',
+    28→  EQUITY: 'CREDIT',
+    29→  REVENUE: 'CREDIT',
+    30→  EXPENSE: 'DEBIT',
+    31→}
+    32→
+    33→// ============ STANDARD CHART OF ACCOUNTS TEMPLATE ============
+    34→// Based on Saudi SOCPA standards for construction & equipment rental companies
+    35→
+    36→export interface AccountTemplate {
+    37→  code: string
+    38→  name: string
+    39→  nameAr: string
+    40→  type: AccountTypeValue
+    41→  parentId?: string
+    42→  activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL' | 'BOTH'
+    43→  isSystem?: boolean
+    44→  allowPosting?: boolean
+    45→  level?: number
+    46→}
+    47→
+    48→export const CHART_OF_ACCOUNTS_TEMPLATE: AccountTemplate[] = [
+    49→  // ============================================================================
+    50→  // الأصول المتداولة - Current Assets (1xxx)
+    51→  // ============================================================================
+    52→  { code: '1000', name: 'Current Assets', nameAr: 'الأصول المتداولة', type: 'ASSET', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+    53→    { code: '1100', name: 'Cash & Cash Equivalents', nameAr: 'النقد وما في حكمه', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    54→      { code: '1110', name: 'Cash - Treasury', nameAr: 'الصندوق (الخزينة)', type: 'ASSET', parentId: '1100', allowPosting: true, level: 2, activityType: 'BOTH' },
+    55→      { code: '1120', name: 'Bank Accounts', nameAr: 'البنوك', type: 'ASSET', parentId: '1100', allowPosting: false, level: 2, activityType: 'BOTH' },
+    56→        { code: '1121', name: 'Al Rajhi Bank', nameAr: 'بنك الراجحي', type: 'ASSET', parentId: '1120', allowPosting: true, level: 3, activityType: 'BOTH' },
+    57→        { code: '1122', name: 'Al Ahli Bank', nameAr: 'البنك الأهلي', type: 'ASSET', parentId: '1120', allowPosting: true, level: 3, activityType: 'BOTH' },
+    58→        { code: '1123', name: 'Riyad Bank', nameAr: 'بنك الرياض', type: 'ASSET', parentId: '1120', allowPosting: true, level: 3, activityType: 'BOTH' },
+    59→        { code: '1124', name: 'Alinma Bank', nameAr: 'بنك الإنماء', type: 'ASSET', parentId: '1120', allowPosting: true, level: 3, activityType: 'BOTH' },
+    60→      { code: '1130', name: 'Petty Cash', nameAr: 'الصندوق النقدي', type: 'ASSET', parentId: '1100', allowPosting: true, level: 2, activityType: 'BOTH' },
+    61→    { code: '1200', name: 'Receivables', nameAr: 'الذمم المدينة', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    62→      { code: '1210', name: 'Project Client Receivables', nameAr: 'ذمم عملاء المشاريع', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    63→      { code: '1220', name: 'Rental Client Receivables', nameAr: 'ذمم عملاء التأجير', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    64→      { code: '1230', name: 'Retention Receivable', nameAr: 'مبالغ محتجزة لدى العملاء', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    65→      { code: '1240', name: 'Claims Under Approval', nameAr: 'مطالبات تحت الاعتماد', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    66→      { code: '1250', name: 'Unbilled Claims', nameAr: 'مستخلصات غير مفوترة', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    67→      { code: '1260', name: 'Advances to Employees', nameAr: 'سلف الموظفين', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    68→      { code: '1270', name: 'Advances to Suppliers', nameAr: 'مقدمات للموردين', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    69→      { code: '1280', name: 'Other Receivables', nameAr: 'ذمم مدينة أخرى', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    70→      { code: '1290', name: 'Tax Refund Receivable', nameAr: 'ضرائب مستحقة الاسترداد', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    71→    { code: '1300', name: 'Inventory', nameAr: 'المخزون', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    72→      { code: '1310', name: 'Project Materials', nameAr: 'مواد مشاريع', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    73→      { code: '1320', name: 'Main Warehouse Inventory', nameAr: 'مخزون مستودع رئيسي', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'BOTH' },
+    74→      { code: '1330', name: 'Spare Parts', nameAr: 'قطع غيار', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    75→      { code: '1340', name: 'Tools & Supplies', nameAr: 'أدوات ومهمات', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'BOTH' },
+    76→      { code: '1350', name: 'Safety Supplies', nameAr: 'مهمات سلامة', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'BOTH' },
+    77→      { code: '1360', name: 'Work in Progress', nameAr: 'أعمال تحت التنفيذ', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    78→      { code: '1370', name: 'Equipment Available for Rent', nameAr: 'معدات جاهزة للتأجير', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    79→    { code: '1400', name: 'Input VAT (Asset)', nameAr: 'ضريبة مدخلات (أصل)', type: 'ASSET', parentId: '1000', allowPosting: false, isSystem: true, level: 1, activityType: 'BOTH' },
+    80→      { code: '1410', name: 'VAT Refund Receivable', nameAr: 'ضريبة مستحقة الاسترداد', type: 'ASSET', parentId: '1400', allowPosting: true, level: 2, activityType: 'BOTH' },
+    81→    { code: '1500', name: 'Prepaid Expenses', nameAr: 'مصروفات مقدمة', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    82→      { code: '1510', name: 'Prepaid Rent', nameAr: 'إيجار مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
+    83→      { code: '1520', name: 'Prepaid Insurance', nameAr: 'تأمين مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
+    84→      { code: '1530', name: 'Other Prepaid Expenses', nameAr: 'مصروفات أخرى مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
+    85→    { code: '1600', name: 'Contract Assets', nameAr: 'أصول العقود', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    86→      { code: '1610', name: 'Construction Contract Assets', nameAr: 'أصول عقود المشاريع', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    87→      { code: '1620', name: 'Rental Contract Assets', nameAr: 'أصول عقود التأجير', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    88→      { code: '1630', name: 'Claims Under Certification', nameAr: 'مستخلصات قيد الاعتماد', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    89→      { code: '1640', name: 'Certified Unbilled Claims', nameAr: 'مستخلصات معتمدة غير مفوترة', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    90→      { code: '1650', name: 'Open Sale Orders', nameAr: 'أوامر بيع مفتوحة', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'BOTH' },
+    91→      { code: '1651', name: 'Sale Orders in Progress', nameAr: 'أوامر بيع تحت التنفيذ', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'BOTH' },
+    92→    { code: '1700', name: 'Statutory Deposits', nameAr: 'وديعة نظامية', type: 'ASSET', parentId: '1000', allowPosting: true, level: 1, activityType: 'BOTH' },
+    93→
+    94→  // ============================================================================
+    95→  // الأصول غير المتداولة - Non-Current Assets (2xxx)
+    96→  // ============================================================================
+    97→  { code: '2000', name: 'Non-Current Assets', nameAr: 'الأصول غير المتداولة', type: 'ASSET', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+    98→    { code: '2100', name: 'Property & Equipment', nameAr: 'الممتلكات والمعدات', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    99→      { code: '2110', name: 'Construction Equipment', nameAr: 'معدات الإنشاء', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   100→      { code: '2120', name: 'Rental Equipment', nameAr: 'معدات التأجير', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   101→      { code: '2130', name: 'Vehicles', nameAr: 'المركبات', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   102→      { code: '2140', name: 'Office Equipment', nameAr: 'أثاث ومعدات مكتبية', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   103→      { code: '2150', name: 'Construction in Progress (Assets)', nameAr: 'أصول تحت الإنشاء', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   104→    { code: '2200', name: 'Accumulated Depreciation', nameAr: 'مجمع الإهلاك', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   105→      { code: '2210', name: 'Accum. Depreciation - Construction Equip', nameAr: 'إهلاك متراكم - معدات إنشاء', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   106→      { code: '2220', name: 'Accum. Depreciation - Rental Equip', nameAr: 'إهلاك متراكم - معدات تأجير', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   107→      { code: '2230', name: 'Accum. Depreciation - Vehicles', nameAr: 'إهلاك متراكم - مركبات', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   108→      { code: '2240', name: 'Accum. Depreciation - Office', nameAr: 'إهلاك متراكم - أثاث', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   109→    { code: '2300', name: 'Right-of-Use Assets (IFRS 16)', nameAr: 'أصول حق الاستخدام', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   110→      { code: '2310', name: 'Leased Equipment ROU', nameAr: 'معدات مستأجرة حق الاستخدام', type: 'ASSET', parentId: '2300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   111→      { code: '2320', name: 'Leased Vehicles ROU', nameAr: 'مركبات مستأجرة حق الاستخدام', type: 'ASSET', parentId: '2300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   112→    { code: '2400', name: 'Intangible Assets', nameAr: 'أصول غير ملموسة', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   113→      { code: '2410', name: 'Software', nameAr: 'برمجيات', type: 'ASSET', parentId: '2400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   114→      { code: '2420', name: 'Licenses', nameAr: 'تراخيص', type: 'ASSET', parentId: '2400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   115→
+   116→  // ============================================================================
+   117→  // الخصوم المتداولة - Current Liabilities (3xxx)
+   118→  // ============================================================================
+   119→  { code: '3000', name: 'Current Liabilities', nameAr: 'الخصوم المتداولة', type: 'LIABILITY', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   120→    { code: '3100', name: 'Taxes', nameAr: 'الضرائب', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   121→      { code: '3110', name: 'Output VAT', nameAr: 'ضريبة مخرجات', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+   122→      { code: '3120', name: 'Input VAT', nameAr: 'ضريبة مدخلات', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+   123→      { code: '3130', name: 'VAT Due', nameAr: 'ضريبة مستحقة', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+   124→      { code: '3140', name: 'Tax Adjustments', nameAr: 'تسويات ضريبية', type: 'LIABILITY', parentId: '3100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   125→      { code: '3150', name: 'Tax Penalties', nameAr: 'غرامات ضريبية', type: 'LIABILITY', parentId: '3100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   126→    { code: '3200', name: 'Accounts Payable', nameAr: 'الذمم الدائنة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   127→      { code: '3210', name: 'Suppliers Payable', nameAr: 'موردون', type: 'LIABILITY', parentId: '3200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   128→      { code: '3220', name: 'Subcontractors Payable', nameAr: 'مقاولو الباطن', type: 'LIABILITY', parentId: '3200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   129→    { code: '3300', name: 'Accrued Expenses', nameAr: 'مصروفات مستحقة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   130→      { code: '3310', name: 'Salaries Payable', nameAr: 'رواتب مستحقة', type: 'LIABILITY', parentId: '3300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   131→      { code: '3320', name: 'Other Accrued Expenses', nameAr: 'مصروفات مستحقة أخرى', type: 'LIABILITY', parentId: '3300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   132→    { code: '3400', name: 'Customer Advances', nameAr: 'مقدمات العملاء', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   133→      { code: '3410', name: 'Construction Customer Advances', nameAr: 'مقدمات عملاء المشاريع', type: 'LIABILITY', parentId: '3400', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   134→      { code: '3420', name: 'Rental Customer Advances', nameAr: 'مقدمات عملاء التأجير', type: 'LIABILITY', parentId: '3400', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   135→    { code: '3500', name: 'Retention Payable', nameAr: 'مبالغ محتجزة لدى الشركة', type: 'LIABILITY', parentId: '3000', allowPosting: true, level: 1, activityType: 'CONSTRUCTION' },
+   136→    { code: '3600', name: 'Contract Liabilities', nameAr: 'التزامات العقود', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   137→      { code: '3610', name: 'Construction Contract Liabilities', nameAr: 'التزامات عقود المشاريع', type: 'LIABILITY', parentId: '3600', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   138→      { code: '3620', name: 'Rental Contract Liabilities', nameAr: 'التزامات عقود التأجير', type: 'LIABILITY', parentId: '3600', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   139→    { code: '3700', name: 'Provisions', nameAr: 'مخصصات', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   140→      { code: '3710', name: 'End of Service Benefits Provision', nameAr: 'مخصص مكافأة نهاية الخدمة', type: 'LIABILITY', parentId: '3700', allowPosting: true, level: 2, activityType: 'BOTH' },
+   141→      { code: '3720', name: 'Warranty Provision', nameAr: 'مخصص الضمان', type: 'LIABILITY', parentId: '3700', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   142→      { code: '3730', name: 'Equipment Maintenance Provision', nameAr: 'مخصص صيانة معدات', type: 'LIABILITY', parentId: '3700', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   143→    { code: '3800', name: 'Taxes & Zakat Payable', nameAr: 'ضرائب وزكاة مستحقة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   144→      { code: '3810', name: 'Zakat Payable', nameAr: 'زكاة مستحقة', type: 'LIABILITY', parentId: '3800', allowPosting: true, level: 2, activityType: 'BOTH' },
+   145→      { code: '3820', name: 'Income Tax Payable', nameAr: 'ضريبة دخل مستحقة', type: 'LIABILITY', parentId: '3800', allowPosting: true, level: 2, activityType: 'BOTH' },
+   146→      { code: '3830', name: 'GOSI Payable', nameAr: 'تأمينات اجتماعية مستحقة', type: 'LIABILITY', parentId: '3800', allowPosting: true, level: 2, activityType: 'BOTH' },
+   147→    { code: '3900', name: 'Short-term Loans', nameAr: 'قروض قصيرة الأجل', type: 'LIABILITY', parentId: '3000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   148→
+   149→  // ============================================================================
+   150→  // الخصوم غير المتداولة - Non-Current Liabilities (4xxx)
+   151→  // ============================================================================
+   152→  { code: '4000', name: 'Non-Current Liabilities', nameAr: 'الخصوم غير المتداولة', type: 'LIABILITY', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   153→    { code: '4100', name: 'Long-term Loans', nameAr: 'قروض طويلة الأجل', type: 'LIABILITY', parentId: '4000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   154→    { code: '4200', name: 'Finance Lease Obligations', nameAr: 'التزامات عقود الإيجار التمويلي', type: 'LIABILITY', parentId: '4000', allowPosting: true, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   155→    { code: '4300', name: 'Deferred Revenue', nameAr: 'إيرادات مؤجلة', type: 'LIABILITY', parentId: '4000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   156→      { code: '4310', name: 'Deferred Construction Revenue', nameAr: 'إيرادات مشاريع مؤجلة', type: 'LIABILITY', parentId: '4300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   157→      { code: '4320', name: 'Deferred Rental Revenue', nameAr: 'إيرادات تأجير مؤجلة', type: 'LIABILITY', parentId: '4300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   158→
+   159→  // ============================================================================
+   160→  // حقوق الملكية - Equity (5xxx)
+   161→  // ============================================================================
+   162→  { code: '5000', name: 'Equity', nameAr: 'حقوق الملكية', type: 'EQUITY', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   163→    { code: '5100', name: 'Capital', nameAr: 'رأس المال', type: 'EQUITY', parentId: '5000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+   164→    { code: '5200', name: 'Retained Earnings', nameAr: 'الأرباح المحتجزة', type: 'EQUITY', parentId: '5000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+   165→    { code: '5300', name: 'Current Year Earnings', nameAr: 'أرباح (خسائر) السنة الحالية', type: 'EQUITY', parentId: '5000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+   166→    { code: '5400', name: 'Statutory Reserve', nameAr: 'احتياطي نظامي', type: 'EQUITY', parentId: '5000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   167→    { code: '5500', name: 'Voluntary Reserve', nameAr: 'احتياطي اختياري', type: 'EQUITY', parentId: '5000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   168→    { code: '5600', name: "Owner's Current Account", nameAr: 'حساب المالك الجاري', type: 'EQUITY', parentId: '5000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   169→
+   170→  // ============================================================================
+   171→  // الإيرادات - Revenue (6xxx)
+   172→  // ============================================================================
+   173→  { code: '6000', name: 'Revenue', nameAr: 'الإيرادات', type: 'REVENUE', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   174→    { code: '6100', name: 'Project Revenue', nameAr: 'إيرادات المشاريع', type: 'REVENUE', parentId: '6000', allowPosting: false, level: 1, activityType: 'CONSTRUCTION' },
+   175→      { code: '6110', name: 'Progress Claims Revenue', nameAr: 'إيرادات المستخلصات', type: 'REVENUE', parentId: '6100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   176→      { code: '6120', name: 'Contract Modifications Revenue', nameAr: 'إيرادات تعديلات العقود', type: 'REVENUE', parentId: '6100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   177→      { code: '6130', name: 'Claims Revenue', nameAr: 'إيرادات المطالبات', type: 'REVENUE', parentId: '6100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   178→    { code: '6200', name: 'Rental Revenue', nameAr: 'إيرادات التأجير', type: 'REVENUE', parentId: '6000', allowPosting: false, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   179→      { code: '6210', name: 'Equipment Rental Revenue', nameAr: 'إيرادات تأجير المعدات', type: 'REVENUE', parentId: '6200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   180→      { code: '6220', name: 'Delivery Fees Revenue', nameAr: 'إيرادات نقل وتوصيل', type: 'REVENUE', parentId: '6200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   181→      { code: '6230', name: 'Equipment Operation Revenue', nameAr: 'إيرادات تشغيل المعدات للغير', type: 'REVENUE', parentId: '6200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   182→    { code: '6300', name: 'Other Revenue', nameAr: 'إيرادات أخرى', type: 'REVENUE', parentId: '6000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   183→      { code: '6310', name: 'Sale of Used Equipment', nameAr: 'إيرادات بيع معدات مستعملة', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   184→      { code: '6320', name: 'Penalties Revenue', nameAr: 'إيرادات غرامات', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   185→      { code: '6330', name: 'Discounts Received', nameAr: 'خصومات مكتسبة', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   186→      { code: '6340', name: 'Service Revenue', nameAr: 'إيرادات خدمات', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   187→      { code: '6350', name: 'Other Miscellaneous Revenue', nameAr: 'إيرادات أخرى متنوعة', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   188→
+   189→  // ============================================================================
+   190→  // التكاليف المباشرة - Direct Costs (7xxx)
+   191→  // ============================================================================
+   192→  { code: '7000', name: 'Direct Costs', nameAr: 'التكاليف المباشرة', type: 'EXPENSE', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   193→    { code: '7100', name: 'Cost of Contracts', nameAr: 'تكلفة العقود', type: 'EXPENSE', parentId: '7000', allowPosting: false, level: 1, activityType: 'CONSTRUCTION' },
+   194→      { code: '7110', name: 'Materials', nameAr: 'مواد', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   195→      { code: '7120', name: 'Direct Labor', nameAr: 'عمالة مباشرة', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   196→      { code: '7130', name: 'Subcontractors', nameAr: 'مقاولو باطن', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   197→      { code: '7140', name: 'Project Equipment', nameAr: 'معدات مشروع', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   198→      { code: '7150', name: 'Transport & Shipping', nameAr: 'نقل وشحن', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   199→      { code: '7160', name: 'Worker Housing', nameAr: 'سكن عمال', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   200→      { code: '7170', name: 'Living Allowance', nameAr: 'إعاشة', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   201→      { code: '7180', name: 'Safety & Security', nameAr: 'أمن وسلامة', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   202→      { code: '7190', name: 'Lab & Testing', nameAr: 'مختبرات وفحوصات', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   203→      { code: '7195', name: 'Project Fuel', nameAr: 'وقود مشاريع', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   204→    { code: '7200', name: 'Equipment Costs', nameAr: 'تكاليف المعدات', type: 'EXPENSE', parentId: '7000', allowPosting: false, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   205→      { code: '7210', name: 'Rental Equipment Fuel', nameAr: 'وقود معدات التأجير', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   206→      { code: '7220', name: 'Equipment Maintenance', nameAr: 'صيانة المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   207→      { code: '7230', name: 'Driver Costs', nameAr: 'تكاليف السائقين', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   208→      { code: '7240', name: 'Equipment Transport Costs', nameAr: 'تكاليف نقل المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   209→      { code: '7250', name: 'Rental Equipment Depreciation', nameAr: 'إهلاك معدات التأجير', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   210→      { code: '7260', name: 'Equipment Insurance', nameAr: 'تأمين معدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   211→      { code: '7270', name: 'Consumable Spare Parts', nameAr: 'قطع غيار مستهلكة', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   212→      { code: '7280', name: 'Operation Fees', nameAr: 'رسوم تشغيل', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   213→      { code: '7290', name: 'Equipment Rented from Others', nameAr: 'إيجار معدات من الغير', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   214→    { code: '7300', name: 'Rental Project Costs', nameAr: 'تكاليف مشاريع التأجير', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   215→    { code: '7400', name: 'Project Insurance', nameAr: 'تأمين مشاريع', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'CONSTRUCTION' },
+   216→    { code: '7500', name: 'Project Expenses', nameAr: 'مصروفات المشاريع', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   217→
+   218→  // ============================================================================
+   219→  // التكاليف غير المباشرة - Indirect Costs (8xxx)
+   220→  // ============================================================================
+   221→  { code: '8000', name: 'Indirect Costs', nameAr: 'التكاليف غير المباشرة', type: 'EXPENSE', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   222→    { code: '8100', name: 'Administrative Expenses', nameAr: 'مصروفات إدارية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   223→      { code: '8110', name: 'Project Salaries', nameAr: 'رواتب مشاريع', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   224→      { code: '8120', name: 'Rental Salaries', nameAr: 'رواتب تأجير', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   225→      { code: '8130', name: 'Administrative Salaries', nameAr: 'رواتب إدارية', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   226→      { code: '8140', name: 'Office Rent', nameAr: 'إيجار مكتب', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   227→      { code: '8150', name: 'Utilities (Electricity/Water/Internet)', nameAr: 'خدمات', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   228→      { code: '8160', name: 'Office Supplies', nameAr: 'لوازم مكتبية', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   229→      { code: '8170', name: 'Communication Expenses', nameAr: 'اتصالات', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   230→      { code: '8180', name: 'Professional Fees', nameAr: 'أتعاب مهنية', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   231→      { code: '8190', name: 'Legal Fees', nameAr: 'أتعاب قانونية', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   232→    { code: '8200', name: 'HR Expenses', nameAr: 'مصروفات الموارد البشرية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   233→      { code: '8210', name: 'GOSI Expense', nameAr: 'تأمينات اجتماعية', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   234→      { code: '8220', name: 'Staff Housing', nameAr: 'سكن عمال', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   235→      { code: '8230', name: 'Worker Permits', nameAr: 'تصاريح عمالة', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   236→      { code: '8240', name: 'Travel & Accommodation', nameAr: 'سفر وإقامة', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   237→      { code: '8250', name: 'Safety Equipment', nameAr: 'معدات سلامة', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   238→    { code: '8300', name: 'Depreciation Expense', nameAr: 'مصروف الإهلاك', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   239→      { code: '8310', name: 'Depreciation - Construction Equipment', nameAr: 'إهلاك معدات إنشاء', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   240→      { code: '8320', name: 'Depreciation - Vehicles', nameAr: 'إهلاك مركبات', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   241→      { code: '8330', name: 'Depreciation - Office', nameAr: 'إهلاك أثاث', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   242→      { code: '8340', name: 'Depreciation - Software', nameAr: 'إهلاك برمجيات', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   243→    { code: '8400', name: 'Financial Expenses', nameAr: 'مصروفات مالية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   244→      { code: '8410', name: 'Bank Charges', nameAr: 'مصاريف بنكية', type: 'EXPENSE', parentId: '8400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   245→      { code: '8420', name: 'Loan Interest', nameAr: 'فوائد قروض', type: 'EXPENSE', parentId: '8400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   246→      { code: '8430', name: 'Bad Debts', nameAr: 'ديون معدومة', type: 'EXPENSE', parentId: '8400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   247→    { code: '8500', name: 'Tax Expenses', nameAr: 'مصروفات ضريبية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   248→      { code: '8510', name: 'Zakat Expense', nameAr: 'زكاة', type: 'EXPENSE', parentId: '8500', allowPosting: true, level: 2, activityType: 'BOTH' },
+   249→      { code: '8520', name: 'Income Tax Expense', nameAr: 'ضريبة دخل', type: 'EXPENSE', parentId: '8500', allowPosting: true, level: 2, activityType: 'BOTH' },
+   250→    { code: '8600', name: 'Other Losses', nameAr: 'خسائر متنوعة', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   251→      { code: '8610', name: 'Loss on Asset Disposal', nameAr: 'خسارة التخلص من أصول', type: 'EXPENSE', parentId: '8600', allowPosting: true, level: 2, activityType: 'BOTH' },
+   252→      { code: '8620', name: 'Penalties Expense', nameAr: 'غرامات', type: 'EXPENSE', parentId: '8600', allowPosting: true, level: 2, activityType: 'BOTH' },
+   253→      { code: '8630', name: 'Other Expenses', nameAr: 'مصروفات أخرى', type: 'EXPENSE', parentId: '8600', allowPosting: true, level: 2, activityType: 'BOTH' },
+   254→]
+   255→
+   256→// ============ ACCOUNTING MAPPING MATRIX ============
+   257→// Comprehensive mapping of every operation → account mapping
+   258→// Used for documentation and validation of auto-entry functions
+   259→
+   260→export const ACCOUNTING_MAPPING = {
+   261→  // فاتورة عميل مشروع
+   262→  SALES_INVOICE_PROJECT: {
+   263→    debit: '1210',  // ذمم عملاء المشاريع
+   264→    credit: ['6110', '3110'],  // إيرادات المستخلصات + ضريبة مخرجات
+   265→    description: 'فاتورة عميل مشروع',
+   266→  },
+   267→  // فاتورة تأجير
+   268→  SALES_INVOICE_RENTAL: {
+   269→    debit: '1220',  // ذمم عملاء التأجير
+   270→    credit: ['6210', '3110'],  // إيرادات التأجير + ضريبة مخرجات
+   271→    description: 'فاتورة تأجير',
+   272→  },
+   273→  // فاتورة مورد مشروع
+   274→  PURCHASE_INVOICE_PROJECT: {
+   275→    debit: '7110',  // مواد (default, varies by category)
+   276→    credit: ['3210'],  // موردون
+   277→    description: 'فاتورة مورد مشروع',
+   278→  },
+   279→  // فاتورة مورد تأجير
+   280→  PURCHASE_INVOICE_RENTAL: {
+   281→    debit: '7210',  // وقود معدات (default, varies by category)
+   282→    credit: ['3210'],  // موردون
+   283→    description: 'فاتورة مورد تأجير',
+   284→  },
+   285→  // مصروف مشروع
+   286→  EXPENSE_PROJECT: {
+   287→    debit: '7xxx',  // varies by category
+   288→    credit: ['1110/1120'],  // الصندوق/البنك
+   289→    description: 'مصروف مشروع',
+   290→  },
+   291→  // مصروف إداري
+   292→  EXPENSE_ADMIN: {
+   293→    debit: '8xxx',  // varies by category
+   294→    credit: ['1110/1120'],  // الصندوق/البنك
+   295→    description: 'مصروف إداري',
+   296→  },
+   297→  // رواتب مشاريع
+   298→  SALARY_PROJECT: {
+   299→    debit: '8110',  // رواتب مشاريع
+   300→    credit: ['1120', '3830'],  // البنك + التأمينات
+   301→    description: 'رواتب مشاريع',
+   302→  },
+   303→  // رواتب تأجير
+   304→  SALARY_RENTAL: {
+   305→    debit: '8120',  // رواتب تأجير
+   306→    credit: ['1120', '3830'],  // البنك + التأمينات
+   307→    description: 'رواتب تأجير',
+   308→  },
+   309→  // رواتب إدارية
+   310→  SALARY_ADMIN: {
+   311→    debit: '8130',  // رواتب إدارية
+   312→    credit: ['1120', '3830'],  // البنك + التأمينات
+   313→    description: 'رواتب إدارية',
+   314→  },
+   315→  // وقود معدات تأجير
+   316→  FUEL_RENTAL: {
+   317→    debit: '7210',  // وقود معدات التأجير
+   318→    credit: ['3210'],  // موردون
+   319→    description: 'وقود معدات تأجير',
+   320→  },
+   321→  // وقود مشاريع
+   322→  FUEL_PROJECT: {
+   323→    debit: '7195',  // وقود مشاريع
+   324→    credit: ['3210'],  // موردون
+   325→    description: 'وقود مشاريع',
+   326→  },
+   327→  // تحصيل عميل مشاريع
+   328→  CLIENT_PAYMENT_PROJECT: {
+   329→    debit: '1120',  // البنوك
+   330→    credit: ['1210'],  // ذمم عملاء المشاريع
+   331→    description: 'تحصيل عميل مشاريع',
+   332→  },
+   333→  // تحصيل عميل تأجير
+   334→  CLIENT_PAYMENT_RENTAL: {
+   335→    debit: '1120',  // البنوك
+   336→    credit: ['1220'],  // ذمم عملاء التأجير
+   337→    description: 'تحصيل عميل تأجير',
+   338→  },
+   339→  // مستخلص (اعتماد)
+   340→  PROGRESS_CLAIM: {
+   341→    debit: '1210',  // ذمم عملاء المشاريع
+   342→    credit: ['6110', '3110'],  // إيرادات المستخلصات + ضريبة مخرجات
+   343→    description: 'مستخلص',
+   344→  },
+   345→  // مقاول باطن
+   346→  SUBCONTRACTOR: {
+   347→    debit: '7130',  // مقاولو باطن
+   348→    credit: ['3220'],  // مقاولو الباطن
+   349→    description: 'فاتورة مقاول باطن',
+   350→  },
+   351→  // إهلاك معدات تأجير
+   352→  RENTAL_DEPRECIATION: {
+   353→    debit: '7250',  // إهلاك معدات التأجير
+   354→    credit: ['2220'],  // إهلاك متراكم - معدات تأجير
+   355→    description: 'إهلاك معدات تأجير',
+   356→  },
+   357→  // تأمينات اجتماعية
+   358→  GOSI: {
+   359→    debit: '8210',  // تأمينات اجتماعية
+   360→    credit: ['3830'],  // تأمينات مستحقة
+   361→    description: 'تأمينات اجتماعية',
+   362→  },
+   363→  // تحميل تكلفة على مشروع
+   364→  PROJECT_COST_ALLOCATION: {
+   365→    debit: '7120',  // عمالة مباشرة
+   366→    credit: ['8110/8120/8130'],  // حساب الرواتب حسب النشاط
+   367→    description: 'تحميل تكلفة على مشروع',
+   368→  },
+   369→} as const
+   370→
+   371→export type AccountingMappingKey = keyof typeof ACCOUNTING_MAPPING
+   372→
+   373→// Helper function to get the correct salary account based on activity type
+   374→export function getSalaryAccountCode(activityType: 'PROJECT' | 'RENTAL' | 'ADMIN' | 'EXECUTION' | 'GENERAL'): string {
+   375→  switch (activityType) {
+   376→    case 'PROJECT':
+   377→    case 'EXECUTION':
+   378→      return '8110' // رواتب مشاريع
+   379→    case 'RENTAL':
+   380→      return '8120' // رواتب تأجير
+   381→    case 'ADMIN':
+   382→    case 'GENERAL':
+   383→    default:
+   384→      return '8130' // رواتب إدارية
+   385→  }
+   386→}
+   387→
+   388→// Helper function to get the correct client receivable account based on activity
+   389→export function getClientReceivableAccountCode(activityType: 'EXECUTION' | 'RENTAL' | 'GENERAL'): string {
+   390→  switch (activityType) {
+   391→    case 'RENTAL':
+   392→      return '1220' // ذمم عملاء التأجير
+   393→    case 'EXECUTION':
+   394→    default:
+   395→      return '1210' // ذمم عملاء المشاريع
+   396→  }
+   397→}
+   398→
+   399→// Helper function to get the correct fuel account based on activity
+   400→export function getFuelAccountCode(activityType: 'EXECUTION' | 'RENTAL' | 'GENERAL'): string {
+   401→  switch (activityType) {
+   402→    case 'RENTAL':
+   403→      return '7210' // وقود معدات التأجير
+   404→    case 'EXECUTION':
+   405→      return '7195' // وقود مشاريع
+   406→    default:
+   407→      return '7210'
+   408→  }
+   409→}
+   410→
+   411→// Helper function to resolve expense account from category and activity type
+   412→export function resolveExpenseAccount(category: string, activityType?: 'EXECUTION' | 'RENTAL' | 'GENERAL'): string {
+   413→  const categoryMap: Record<string, string> = {
+   414→    'CONSUMABLES': '7110',
+   415→    'SERVICES': activityType === 'RENTAL' ? '7130' : '7130',
+   416→    'MAINTENANCE': activityType === 'RENTAL' ? '7220' : '7220',
+   417→    'FUEL': getFuelAccountCode(activityType || 'GENERAL'),
+   418→    'DRIVERS': '7230',
+   419→    'TRANSPORT': '7150',
+   420→    'DELIVERY': '7150',
+   421→    'RENT': '8140',
+   422→    'OFFICE': '8160',
+   423→    'INTERNET': '8150',
+   424→    'ELECTRICITY': '8150',
+   425→    'WATER': '8150',
+   426→    'SALARIES': getSalaryAccountCode(activityType === 'EXECUTION' ? 'PROJECT' : activityType === 'RENTAL' ? 'RENTAL' : 'ADMIN'),
+   427→    'INSURANCE': activityType === 'RENTAL' ? '7260' : '7400',
+   428→    'PERMITS': '7160',
+   429→    'HOSPITALITY': '8190',
+   430→    'MANAGEMENT_CARS': '8190',
+   431→    'OTHER': '8630',
+   432→  }
+   433→  return categoryMap[category] || '8630'
+   434→}
+   435→
+   436→// ============ JOURNAL ENTRY TEMPLATE ============
+   437→
+   438→export interface JournalEntryLine {
+   439→  accountCode: string
+   440→  debit: number
+   441→  credit: number
+   442→  costCenterId?: string
+   443→  description?: string
+   444→}
+   445→
+   446→export interface JournalEntryTemplate {
+   447→  entryNo: string
+   448→  date: Date
+   449→  description: string
+   450→  descriptionAr?: string
+   451→  lines: JournalEntryLine[]
+   452→  sourceType?: string
+   453→  sourceId?: string
+   454→}
+   455→
+   456→// ============ ACCOUNT HELPERS ============
+   457→
+   458→export async function getAccountByCode(code: string) {
+   459→  return db.account.findUnique({ where: { code } })
+   460→}
+   461→
+   462→export async function ensureAccountExists(template: AccountTemplate) {
+   463→  const existing = await db.account.findUnique({ where: { code: template.code } })
+   464→  if (existing) return existing
+   465→
+   466→  let parentId: string | undefined
+   467→  if (template.parentId) {
+   468→    const parent = await db.account.findUnique({ where: { code: template.parentId } })
+   469→    if (parent) parentId = parent.id
+   470→  }
+   471→
+   472→  return db.account.create({
+   473→    data: {
+   474→      code: template.code,
+   475→      name: template.name,
+   476→      nameAr: template.nameAr,
+   477→      type: template.type,
+   478→      parentId,
+   479→      activityType: template.activityType || null,
+   480→      isSystem: template.isSystem || false,
+   481→      allowPosting: template.allowPosting || false,
+   482→      level: template.level || 0,
+   483→    },
+   484→  })
+   485→}
+   486→
+   487→// ============ INITIALIZE CHART OF ACCOUNTS ============
+   488→
+   489→export async function initializeChartOfAccounts() {
+   490→  let created = 0
+   491→  let updated = 0
+   492→
+   493→  // Create parent accounts first, then children (sorted by code length then code)
+   494→  const sorted = [...CHART_OF_ACCOUNTS_TEMPLATE].sort((a, b) => {
+   495→    if (a.code.length !== b.code.length) return a.code.length - b.code.length
+   496→    return a.code.localeCompare(b.code)
+   497→  })
+   498→
+   499→  for (const tmpl of sorted) {
+   500→    const existing = await db.account.findUnique({ where: { code: tmpl.code } })
+
+[showing lines 1-500 of 1730; use offset=501 with limit to continue reading]

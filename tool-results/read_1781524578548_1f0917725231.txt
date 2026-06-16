@@ -1,0 +1,820 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React from 'react'
+     4→     4→import { useQuery } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  Building2, Truck, RefreshCw, AlertTriangle, ArrowLeft,
+     7→     7→  Users, Package, Wrench, Calculator,
+     8→     8→  FileText, Clock, TrendingUp, TrendingDown, Wallet,
+     9→     9→  ArrowRight, ArrowUpDown, CreditCard, Shield,
+    10→    10→  Calendar, DollarSign, Link2,
+    11→    11→} from 'lucide-react'
+    12→    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    13→    13→import { Badge } from '@/components/ui/badge'
+    14→    14→import { Button } from '@/components/ui/button'
+    15→    15→import { Skeleton } from '@/components/ui/skeleton'
+    16→    16→import {
+    17→    17→  useAppStore,
+    18→    18→  CONSTRUCTION_WORKFLOW, RENTAL_WORKFLOW,
+    19→    19→} from '@/stores/app-store'
+    20→    20→import type { NavItem } from '@/stores/app-store'
+    21→    21→import { MoneyDisplay } from '@/components/ui/money-display'
+    22→    22→
+    23→    23→// ============ Types ============
+    24→    24→interface RecentProject {
+    25→    25→  id: string
+    26→    26→  code: string
+    27→    27→  name: string
+    28→    28→  status: string
+    29→    29→  contractValue: number
+    30→    30→  client: { name: string }
+    31→    31→  startDate: string
+    32→    32→  endDate: string | null
+    33→    33→}
+    34→    34→
+    35→    35→interface RecentRentalContract {
+    36→    36→  id: string
+    37→    37→  contractNo: string
+    38→    38→  status: string
+    39→    39→  startDate: string
+    40→    40→  endDate: string | null
+    41→    41→  rate: number
+    42→    42→  rateType: string
+    43→    43→  deliveryFees: number
+    44→    44→  totalAmount: number
+    45→    45→  equipment: { id: string; code: string; name: string }
+    46→    46→  client: { id: string; name: string }
+    47→    47→}
+    48→    48→
+    49→    49→interface DashboardData {
+    50→    50→  activeProjects: number
+    51→    51→  totalProjects: number
+    52→    52→  totalContractValue: number
+    53→    53→  activeEmployees: number
+    54→    54→  totalEquipment: number
+    55→    55→  equipmentStatusMap: Record<string, number>
+    56→    56→  equipmentUtilizationRate: number
+    57→    57→  totalRevenue: number
+    58→    58→  totalExpenses: number
+    59→    59→  netProfit: number
+    60→    60→  cashPosition: number
+    61→    61→  outstandingReceivables: number
+    62→    62→  outstandingPayables: number
+    63→    63→  overdueReceivables: number
+    64→    64→  overduePayables: number
+    65→    65→  netVAT: number
+    66→    66→  vatPayable: number
+    67→    67→  vatReceivable: number
+    68→    68→  lowInventoryItems: number
+    69→    69→  constructionProjects: number
+    70→    70→  rentalProjects: number
+    71→    71→  activeConstructionProjects: number
+    72→    72→  activeRentalProjects: number
+    73→    73→  constructionRevenue: number
+    74→    74→  rentalRevenue: number
+    75→    75→  constructionCosts: number
+    76→    76→  rentalCosts: number
+    77→    77→  constructionProfit: number
+    78→    78→  rentalProfit: number
+    79→    79→  rentedEquipment: number
+    80→    80→  inUseEquipment: number
+    81→    81→  availableEquipment: number
+    82→    82→  recentConstructionProjects: RecentProject[]
+    83→    83→  recentRentalContracts: RecentRentalContract[]
+    84→    84→  totalExtracts: number
+    85→    85→  totalExtractsAmount: number
+    86→    86→  totalClientInvoices: number
+    87→    87→  outstandingConstructionCollections: number
+    88→    88→  outstandingRentalCollections: number
+    89→    89→  constructionContractValue: number
+    90→    90→  monthlyData: { month: string; labelAr: string; labelEn: string; revenue: number; expenses: number; profit: number }[]
+    91→    91→  projectProfitability: { id: string; code: string; name: string; status: string; projectType: string; clientName: string; contractValue: number; totalCosts: number; totalRevenue: number; profit: number; margin: number }[]
+    92→    92→  recentTransactions: { id: string; entryNo: string; date: string; description: string; totalDebit: number; totalCredit: number; sourceType: string | null }[]
+    93→    93→  projectStatusDistribution: { status: string; count: number }[]
+    94→    94→  alerts: { type: string; title: string; detail: string; date: string; severity: string }[]
+    95→    95→}
+    96→    96→
+    97→    97→// ============ Helpers ============
+    98→    98→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    99→    99→
+   100→   100→const projectStatusLabels: Record<string, { ar: string; en: string; color: string }> = {
+   101→   101→  PLANNING: { ar: 'تخطيط', en: 'Planning', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+   102→   102→  ACTIVE: { ar: 'نشط', en: 'Active', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+   103→   103→  ON_HOLD: { ar: 'معلق', en: 'On Hold', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+   104→   104→  COMPLETED: { ar: 'مكتمل', en: 'Completed', color: 'bg-teal-100 text-teal-700 border-teal-200' },
+   105→   105→  CANCELLED: { ar: 'ملغي', en: 'Cancelled', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+   106→   106→}
+   107→   107→
+   108→   108→const rentalStatusLabels: Record<string, { ar: string; en: string; color: string }> = {
+   109→   109→  DRAFT: { ar: 'مسودة', en: 'Draft', color: 'bg-gray-100 text-gray-700 border-gray-200' },
+   110→   110→  ACTIVE: { ar: 'نشط', en: 'Active', color: 'bg-cyan-100 text-cyan-700 border-cyan-200' },
+   111→   111→  COMPLETED: { ar: 'مكتمل', en: 'Completed', color: 'bg-teal-100 text-teal-700 border-teal-200' },
+   112→   112→  CANCELLED: { ar: 'ملغي', en: 'Cancelled', color: 'bg-rose-100 text-rose-700 border-rose-200' },
+   113→   113→  PENDING: { ar: 'قيد الانتظار', en: 'Pending', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+   114→   114→}
+   115→   115→
+   116→   116→const equipStatusConfig: Record<string, { ar: string; en: string; dotColor: string; bgColor: string }> = {
+   117→   117→  AVAILABLE: { ar: 'متاحة', en: 'Available', dotColor: 'bg-emerald-500', bgColor: 'bg-emerald-50' },
+   118→   118→  IN_USE: { ar: 'قيد الاستخدام', en: 'In Use', dotColor: 'bg-amber-500', bgColor: 'bg-amber-50' },
+   119→   119→  MAINTENANCE: { ar: 'صيانة', en: 'Maintenance', dotColor: 'bg-rose-500', bgColor: 'bg-rose-50' },
+   120→   120→  OUT_OF_SERVICE: { ar: 'خارج الخدمة', en: 'Out of Service', dotColor: 'bg-gray-400', bgColor: 'bg-gray-50' },
+   121→   121→  RENTED: { ar: 'مؤجرة', en: 'Rented', dotColor: 'bg-purple-500', bgColor: 'bg-purple-50' },
+   122→   122→}
+   123→   123→
+   124→   124→// ============ Sub-Components ============
+   125→   125→
+   126→   126→function HubMetricCard({ title, value, icon: Icon, theme }: {
+   127→   127→  title: string; value: React.ReactNode; icon: React.ElementType; theme: 'emerald' | 'cyan'
+   128→   128→}) {
+   129→   129→  const themeClasses = theme === 'emerald'
+   130→   130→    ? 'bg-emerald-50 border-emerald-100'
+   131→   131→    : 'bg-cyan-50 border-cyan-100'
+   132→   132→  const iconClasses = theme === 'emerald'
+   133→   133→    ? 'bg-emerald-100 text-emerald-600'
+   134→   134→    : 'bg-cyan-100 text-cyan-600'
+   135→   135→
+   136→   136→  return (
+   137→   137→    <Card className={`border ${themeClasses}`}>
+   138→   138→      <CardContent className="p-3">
+   139→   139→        <div className="flex items-center gap-2">
+   140→   140→          <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ${iconClasses}`}>
+   141→   141→            <Icon className="size-4" />
+   142→   142→          </div>
+   143→   143→          <div className="min-w-0 flex-1">
+   144→   144→            <p className="text-[11px] font-medium text-muted-foreground leading-tight">{title}</p>
+   145→   145→            <div className="mt-0.5">{value}</div>
+   146→   146→          </div>
+   147→   147→        </div>
+   148→   148→      </CardContent>
+   149→   149→    </Card>
+   150→   150→  )
+   151→   151→}
+   152→   152→
+   153→   153→function WorkflowChain({ steps, theme, lang }: {
+   154→   154→  steps: typeof CONSTRUCTION_WORKFLOW
+   155→   155→  theme: 'emerald' | 'cyan'
+   156→   156→  lang: 'ar' | 'en'
+   157→   157→}) {
+   158→   158→  const activeColor = theme === 'emerald'
+   159→   159→    ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+   160→   160→    : 'bg-cyan-100 text-cyan-700 border-cyan-300'
+   161→   161→  const pendingColor = 'bg-gray-50 text-gray-400 border-gray-200'
+   162→   162→  const arrowColor = theme === 'emerald' ? 'text-emerald-400' : 'text-cyan-400'
+   163→   163→
+   164→   164→  return (
+   165→   165→    <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-thin" dir="ltr">
+   166→   166→      {steps.map((step, i) => (
+   167→   167→        <React.Fragment key={step.step}>
+   168→   168→          <div
+   169→   169→            className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium whitespace-nowrap transition-colors ${activeColor}`}
+   170→   170→          >
+   171→   171→            {lang === 'ar' ? step.label.ar : step.label.en}
+   172→   172→          </div>
+   173→   173→          {i < steps.length - 1 && (
+   174→   174→            <ArrowRight className={`size-3 shrink-0 ${arrowColor}`} />
+   175→   175→          )}
+   176→   176→        </React.Fragment>
+   177→   177→      ))}
+   178→   178→    </div>
+   179→   179→  )
+   180→   180→}
+   181→   181→
+   182→   182→function StatusBadge({ status, type = 'project', lang }: {
+   183→   183→  status: string; type?: 'project' | 'rental'; lang: 'ar' | 'en'
+   184→   184→}) {
+   185→   185→  const labels = type === 'project' ? projectStatusLabels : rentalStatusLabels
+   186→   186→  const cfg = labels[status] || { ar: status, en: status, color: 'bg-gray-100 text-gray-700 border-gray-200' }
+   187→   187→  return (
+   188→   188→    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${cfg.color}`}>
+   189→   189→      {lang === 'ar' ? cfg.ar : cfg.en}
+   190→   190→    </Badge>
+   191→   191→  )
+   192→   192→}
+   193→   193→
+   194→   194→// ============ Construction Hub Panel ============
+   195→   195→function ConstructionHubPanel({ data, lang, onNavigate }: {
+   196→   196→  data: DashboardData; lang: 'ar' | 'en'; onNavigate: (item: NavItem) => void
+   197→   197→}) {
+   198→   198→  return (
+   199→   199→    <Card className="border-emerald-200 overflow-hidden">
+   200→   200→      {/* Hub Header */}
+   201→   201→      <div className="bg-gradient-to-l from-emerald-600 to-emerald-700 px-5 py-4">
+   202→   202→        <div className="flex items-center gap-3">
+   203→   203→          <div className="flex size-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+   204→   204→            <Building2 className="size-6 text-white" />
+   205→   205→          </div>
+   206→   206→          <div className="flex-1">
+   207→   207→            <h2 className="text-lg font-bold text-white">{t('المشاريع التنفيذية', 'Construction Projects', lang)}</h2>
+   208→   208→            <p className="text-xs text-emerald-100">
+   209→   209→              {data.activeConstructionProjects} {t('مشروع نشط', 'active projects', lang)}
+   210→   210→              {data.constructionProjects > 0 && (
+   211→   211→                <span className="opacity-80"> ({t('إجمالي', 'total', lang)}: {data.constructionProjects})</span>
+   212→   212→              )}
+   213→   213→            </p>
+   214→   214→          </div>
+   215→   215→          <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30 text-xs">
+   216→   216→            {t('محور التنفيذ', 'Construction Hub', lang)}
+   217→   217→          </Badge>
+   218→   218→        </div>
+   219→   219→      </div>
+   220→   220→
+   221→   221→      <CardContent className="p-5 space-y-5">
+   222→   222→        {/* Key Metrics */}
+   223→   223→        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+   224→   224→          <HubMetricCard
+   225→   225→            title={t('المشاريع النشطة', 'Active Projects', lang)}
+   226→   226→            value={<span className="text-lg font-bold">{data.activeConstructionProjects}</span>}
+   227→   227→            icon={Building2}
+   228→   228→            theme="emerald"
+   229→   229→          />
+   230→   230→          <HubMetricCard
+   231→   231→            title={t('قيمة العقود', 'Contract Value', lang)}
+   232→   232→            value={<MoneyDisplay value={data.constructionContractValue || 0} lang={lang} size="sm" bold />}
+   233→   233→            icon={DollarSign}
+   234→   234→            theme="emerald"
+   235→   235→          />
+   236→   236→          <HubMetricCard
+   237→   237→            title={t('المستخلصات', 'Extracts', lang)}
+   238→   238→            value={<span className="text-lg font-bold">{data.totalExtracts}</span>}
+   239→   239→            icon={FileText}
+   240→   240→            theme="emerald"
+   241→   241→          />
+   242→   242→          <HubMetricCard
+   243→   243→            title={t('فواتير العملاء', 'Client Invoices', lang)}
+   244→   244→            value={<span className="text-lg font-bold">{data.totalClientInvoices}</span>}
+   245→   245→            icon={CreditCard}
+   246→   246→            theme="emerald"
+   247→   247→          />
+   248→   248→          <HubMetricCard
+   249→   249→            title={t('تحصيلات معلقة', 'Outstanding', lang)}
+   250→   250→            value={<MoneyDisplay value={data.outstandingConstructionCollections || 0} lang={lang} size="sm" bold />}
+   251→   251→            icon={Clock}
+   252→   252→            theme="emerald"
+   253→   253→          />
+   254→   254→          <HubMetricCard
+   255→   255→            title={t('إجمالي الإيرادات', 'Total Revenue', lang)}
+   256→   256→            value={<MoneyDisplay value={data.constructionRevenue || 0} lang={lang} size="sm" bold />}
+   257→   257→            icon={TrendingUp}
+   258→   258→            theme="emerald"
+   259→   259→          />
+   260→   260→        </div>
+   261→   261→
+   262→   262→        {/* Revenue / Costs / Profit Summary */}
+   263→   263→        <div className="grid grid-cols-3 gap-2.5">
+   264→   264→          <div className="rounded-lg bg-emerald-50/60 p-2.5 text-center">
+   265→   265→            <p className="text-[10px] text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
+   266→   266→            <MoneyDisplay value={data.constructionRevenue || 0} lang={lang} size="sm" bold className="text-emerald-700 justify-center" />
+   267→   267→          </div>
+   268→   268→          <div className="rounded-lg bg-rose-50/60 p-2.5 text-center">
+   269→   269→            <p className="text-[10px] text-muted-foreground">{t('التكاليف', 'Costs', lang)}</p>
+   270→   270→            <MoneyDisplay value={data.constructionCosts || 0} lang={lang} size="sm" bold className="text-rose-600 justify-center" />
+   271→   271→          </div>
+   272→   272→          <div className="rounded-lg bg-emerald-50/60 p-2.5 text-center">
+   273→   273→            <p className="text-[10px] text-muted-foreground">{t('الربح', 'Profit', lang)}</p>
+   274→   274→            <MoneyDisplay value={data.constructionProfit || 0} lang={lang} size="sm" bold className={(data.constructionProfit || 0) >= 0 ? 'text-emerald-700 justify-center' : 'text-rose-600 justify-center'} />
+   275→   275→          </div>
+   276→   276→        </div>
+   277→   277→
+   278→   278→        {/* Workflow Chain */}
+   279→   279→        <div>
+   280→   280→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('سير العمل', 'Workflow Chain', lang)}</p>
+   281→   281→          <WorkflowChain steps={CONSTRUCTION_WORKFLOW} theme="emerald" lang={lang} />
+   282→   282→        </div>
+   283→   283→
+   284→   284→        {/* Recent Projects */}
+   285→   285→        <div>
+   286→   286→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('أحدث المشاريع', 'Recent Projects', lang)}</p>
+   287→   287→          {data.recentConstructionProjects && data.recentConstructionProjects.length > 0 ? (
+   288→   288→            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+   289→   289→              {data.recentConstructionProjects.map(p => (
+   290→   290→                <div key={p.id} className="flex items-center gap-2.5 rounded-lg bg-gray-50/80 px-3 py-2 hover:bg-gray-100/80 transition-colors">
+   291→   291→                  <div className="flex size-7 items-center justify-center rounded-md bg-emerald-100">
+   292→   292→                    <Building2 className="size-3.5 text-emerald-600" />
+   293→   293→                  </div>
+   294→   294→                  <div className="min-w-0 flex-1">
+   295→   295→                    <p className="text-xs font-medium truncate">{p.name}</p>
+   296→   296→                    <p className="text-[10px] text-muted-foreground">{p.client?.name || '—'}</p>
+   297→   297→                  </div>
+   298→   298→                  <StatusBadge status={p.status} type="project" lang={lang} />
+   299→   299→                </div>
+   300→   300→              ))}
+   301→   301→            </div>
+   302→   302→          ) : (
+   303→   303→            <div className="rounded-lg border border-dashed border-gray-200 py-6 text-center">
+   304→   304→              <Building2 className="mx-auto size-6 text-gray-300" />
+   305→   305→              <p className="mt-1 text-xs text-muted-foreground">{t('لا توجد مشاريع تنفيذية', 'No construction projects', lang)}</p>
+   306→   306→            </div>
+   307→   307→          )}
+   308→   308→        </div>
+   309→   309→
+   310→   310→        {/* View All Button */}
+   311→   311→        <Button
+   312→   312→          onClick={() => onNavigate('projects')}
+   313→   313→          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+   314→   314→        >
+   315→   315→          {t('عرض جميع المشاريع', 'View All Projects', lang)}
+   316→   316→          <ArrowLeft className="size-4" />
+   317→   317→        </Button>
+   318→   318→      </CardContent>
+   319→   319→    </Card>
+   320→   320→  )
+   321→   321→}
+   322→   322→
+   323→   323→// ============ Rental Hub Panel ============
+   324→   324→function RentalHubPanel({ data, lang, onNavigate }: {
+   325→   325→  data: DashboardData; lang: 'ar' | 'en'; onNavigate: (item: NavItem) => void
+   326→   326→}) {
+   327→   327→  const equipStatusEntries = Object.entries(data.equipmentStatusMap || {})
+   328→   328→
+   329→   329→  return (
+   330→   330→    <Card className="border-cyan-200 overflow-hidden">
+   331→   331→      {/* Hub Header */}
+   332→   332→      <div className="bg-gradient-to-l from-cyan-600 to-cyan-700 px-5 py-4">
+   333→   333→        <div className="flex items-center gap-3">
+   334→   334→          <div className="flex size-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+   335→   335→            <Truck className="size-6 text-white" />
+   336→   336→          </div>
+   337→   337→          <div className="flex-1">
+   338→   338→            <h2 className="text-lg font-bold text-white">{t('تأجير المعدات', 'Equipment Rental', lang)}</h2>
+   339→   339→            <p className="text-xs text-cyan-100">
+   340→   340→              {data.activeRentalProjects} {t('مشروع نشط', 'active projects', lang)}
+   341→   341→              {data.rentalProjects > 0 && (
+   342→   342→                <span className="opacity-80"> ({t('إجمالي', 'total', lang)}: {data.rentalProjects})</span>
+   343→   343→              )}
+   344→   344→            </p>
+   345→   345→          </div>
+   346→   346→          <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30 text-xs">
+   347→   347→            {t('محور التأجير', 'Rental Hub', lang)}
+   348→   348→          </Badge>
+   349→   349→        </div>
+   350→   350→      </div>
+   351→   351→
+   352→   352→      <CardContent className="p-5 space-y-5">
+   353→   353→        {/* Key Metrics */}
+   354→   354→        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+   355→   355→          <HubMetricCard
+   356→   356→            title={t('معدات متاحة', 'Available', lang)}
+   357→   357→            value={<span className="text-lg font-bold">{data.availableEquipment || 0}</span>}
+   358→   358→            icon={Truck}
+   359→   359→            theme="cyan"
+   360→   360→          />
+   361→   361→          <HubMetricCard
+   362→   362→            title={t('معدات مؤجرة', 'Rented', lang)}
+   363→   363→            value={<span className="text-lg font-bold">{(data.rentedEquipment || 0) + (data.inUseEquipment || 0)}</span>}
+   364→   364→            icon={Link2}
+   365→   365→            theme="cyan"
+   366→   366→          />
+   367→   367→          <HubMetricCard
+   368→   368→            title={t('إيرادات التأجير', 'Rental Revenue', lang)}
+   369→   369→            value={<MoneyDisplay value={data.rentalRevenue || 0} lang={lang} size="sm" bold />}
+   370→   370→            icon={TrendingUp}
+   371→   371→            theme="cyan"
+   372→   372→          />
+   373→   373→          <HubMetricCard
+   374→   374→            title={t('تحصيلات معلقة', 'Outstanding', lang)}
+   375→   375→            value={<MoneyDisplay value={data.outstandingRentalCollections || 0} lang={lang} size="sm" bold />}
+   376→   376→            icon={Clock}
+   377→   377→            theme="cyan"
+   378→   378→          />
+   379→   379→        </div>
+   380→   380→
+   381→   381→        {/* Revenue / Costs / Profit Summary */}
+   382→   382→        <div className="grid grid-cols-3 gap-2.5">
+   383→   383→          <div className="rounded-lg bg-cyan-50/60 p-2.5 text-center">
+   384→   384→            <p className="text-[10px] text-muted-foreground">{t('الإيرادات', 'Revenue', lang)}</p>
+   385→   385→            <MoneyDisplay value={data.rentalRevenue || 0} lang={lang} size="sm" bold className="text-cyan-700 justify-center" />
+   386→   386→          </div>
+   387→   387→          <div className="rounded-lg bg-rose-50/60 p-2.5 text-center">
+   388→   388→            <p className="text-[10px] text-muted-foreground">{t('التكاليف', 'Costs', lang)}</p>
+   389→   389→            <MoneyDisplay value={data.rentalCosts || 0} lang={lang} size="sm" bold className="text-rose-600 justify-center" />
+   390→   390→          </div>
+   391→   391→          <div className="rounded-lg bg-cyan-50/60 p-2.5 text-center">
+   392→   392→            <p className="text-[10px] text-muted-foreground">{t('الربح', 'Profit', lang)}</p>
+   393→   393→            <MoneyDisplay value={data.rentalProfit || 0} lang={lang} size="sm" bold className={(data.rentalProfit || 0) >= 0 ? 'text-cyan-700 justify-center' : 'text-rose-600 justify-center'} />
+   394→   394→          </div>
+   395→   395→        </div>
+   396→   396→
+   397→   397→        {/* Workflow Chain */}
+   398→   398→        <div>
+   399→   399→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('سير العمل', 'Workflow Chain', lang)}</p>
+   400→   400→          <WorkflowChain steps={RENTAL_WORKFLOW} theme="cyan" lang={lang} />
+   401→   401→        </div>
+   402→   402→
+   403→   403→        {/* Equipment Status Summary */}
+   404→   404→        <div>
+   405→   405→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('حالة المعدات', 'Equipment Status', lang)}</p>
+   406→   406→          {equipStatusEntries.length > 0 ? (
+   407→   407→            <div className="grid grid-cols-2 gap-1.5">
+   408→   408→              {equipStatusEntries.map(([status, count]) => {
+   409→   409→                const cfg = equipStatusConfig[status] || { ar: status, en: status, dotColor: 'bg-gray-400', bgColor: 'bg-gray-50' }
+   410→   410→                return (
+   411→   411→                  <div key={status} className={`flex items-center gap-2 rounded-lg ${cfg.bgColor} px-2.5 py-1.5`}>
+   412→   412→                    <div className={`size-2 rounded-full ${cfg.dotColor}`} />
+   413→   413→                    <span className="text-[11px] flex-1">{lang === 'ar' ? cfg.ar : cfg.en}</span>
+   414→   414→                    <span className="text-xs font-bold">{count}</span>
+   415→   415→                  </div>
+   416→   416→                )
+   417→   417→              })}
+   418→   418→            </div>
+   419→   419→          ) : (
+   420→   420→            <div className="rounded-lg border border-dashed border-gray-200 py-4 text-center">
+   421→   421→              <p className="text-xs text-muted-foreground">{t('لا توجد معدات', 'No equipment', lang)}</p>
+   422→   422→            </div>
+   423→   423→          )}
+   424→   424→        </div>
+   425→   425→
+   426→   426→        {/* Recent Rental Contracts */}
+   427→   427→        <div>
+   428→   428→          <p className="text-xs font-semibold text-gray-600 mb-2">{t('أحدث عقود التأجير', 'Recent Rental Contracts', lang)}</p>
+   429→   429→          {data.recentRentalContracts && data.recentRentalContracts.length > 0 ? (
+   430→   430→            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+   431→   431→              {data.recentRentalContracts.map(c => (
+   432→   432→                <div key={c.id} className="flex items-center gap-2.5 rounded-lg bg-gray-50/80 px-3 py-2 hover:bg-gray-100/80 transition-colors">
+   433→   433→                  <div className="flex size-7 items-center justify-center rounded-md bg-cyan-100">
+   434→   434→                    <Truck className="size-3.5 text-cyan-600" />
+   435→   435→                  </div>
+   436→   436→                  <div className="min-w-0 flex-1">
+   437→   437→                    <p className="text-xs font-medium truncate">{c.equipment?.name || c.contractNo}</p>
+   438→   438→                    <p className="text-[10px] text-muted-foreground">{c.client?.name || '—'} &bull; {c.contractNo}</p>
+   439→   439→                  </div>
+   440→   440→                  <StatusBadge status={c.status} type="rental" lang={lang} />
+   441→   441→                </div>
+   442→   442→              ))}
+   443→   443→            </div>
+   444→   444→          ) : (
+   445→   445→            <div className="rounded-lg border border-dashed border-gray-200 py-6 text-center">
+   446→   446→              <Truck className="mx-auto size-6 text-gray-300" />
+   447→   447→              <p className="mt-1 text-xs text-muted-foreground">{t('لا توجد عقود تأجير', 'No rental contracts', lang)}</p>
+   448→   448→            </div>
+   449→   449→          )}
+   450→   450→        </div>
+   451→   451→
+   452→   452→        {/* View All Button */}
+   453→   453→        <Button
+   454→   454→          onClick={() => onNavigate('equipment')}
+   455→   455→          className="w-full bg-cyan-600 hover:bg-cyan-700 text-white gap-2"
+   456→   456→        >
+   457→   457→          {t('عرض جميع المعدات', 'View All Equipment', lang)}
+   458→   458→          <ArrowLeft className="size-4" />
+   459→   459→        </Button>
+   460→   460→      </CardContent>
+   461→   461→    </Card>
+   462→   462→  )
+   463→   463→}
+   464→   464→
+   465→   465→// ============ Quick Link Card ============
+   466→   466→function QuickLinkCard({ icon: Icon, title, description, color, onClick }: {
+   467→   467→  icon: React.ElementType; title: string; description: string; color: string; onClick: () => void
+   468→   468→}) {
+   469→   469→  return (
+   470→   470→    <Card
+   471→   471→      className="cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 border-gray-200/60"
+   472→   472→      onClick={onClick}
+   473→   473→    >
+   474→   474→      <CardContent className="p-3.5 flex items-center gap-3">
+   475→   475→        <div className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${color}`}>
+   476→   476→          <Icon className="size-4 text-white" />
+   477→   477→        </div>
+   478→   478→        <div className="min-w-0 flex-1">
+   479→   479→          <p className="text-xs font-semibold">{title}</p>
+   480→   480→          <p className="text-[10px] text-muted-foreground">{description}</p>
+   481→   481→        </div>
+   482→   482→      </CardContent>
+   483→   483→    </Card>
+   484→   484→  )
+   485→   485→}
+   486→   486→
+   487→   487→// ============ Loading Skeleton ============
+   488→   488→function DashboardSkeleton() {
+   489→   489→  return (
+   490→   490→    <div className="space-y-6">
+   491→   491→      {/* Header Skeleton */}
+   492→   492→      <div className="flex items-center justify-between">
+   493→   493→        <div className="space-y-2">
+   494→   494→          <Skeleton className="h-7 w-48" />
+   495→   495→          <Skeleton className="h-4 w-64" />
+   496→   496→        </div>
+   497→   497→        <Skeleton className="h-9 w-28" />
+   498→   498→      </div>
+   499→   499→      {/* Financial Summary Skeleton */}
+   500→   500→      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   501→   501→        {Array.from({ length: 4 }).map((_, i) => (
+   502→   502→          <Card key={i}><CardContent className="p-3"><Skeleton className="h-12 w-full" /></CardContent></Card>
+   503→   503→        ))}
+   504→   504→      </div>
+   505→   505→      {/* Hub Panels Skeleton */}
+   506→   506→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   507→   507→        {[0, 1].map(i => (
+   508→   508→          <Card key={i} className="overflow-hidden">
+   509→   509→            <Skeleton className="h-20 w-full" />
+   510→   510→            <CardContent className="p-5 space-y-4">
+   511→   511→              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+   512→   512→                {Array.from({ length: i === 0 ? 6 : 4 }).map((_, j) => (
+   513→   513→                  <Skeleton key={j} className="h-16 w-full rounded-lg" />
+   514→   514→                ))}
+   515→   515→              </div>
+   516→   516→              <div className="grid grid-cols-3 gap-2.5">
+   517→   517→                {Array.from({ length: 3 }).map((_, j) => (
+   518→   518→                  <Skeleton key={j} className="h-14 w-full rounded-lg" />
+   519→   519→                ))}
+   520→   520→              </div>
+   521→   521→              <Skeleton className="h-8 w-full" />
+   522→   522→              <div className="space-y-2">
+   523→   523→                {Array.from({ length: 3 }).map((_, j) => (
+   524→   524→                  <Skeleton key={j} className="h-10 w-full rounded-lg" />
+   525→   525→                ))}
+   526→   526→              </div>
+   527→   527→              <Skeleton className="h-9 w-full" />
+   528→   528→            </CardContent>
+   529→   529→          </Card>
+   530→   530→        ))}
+   531→   531→      </div>
+   532→   532→      {/* Bottom Section Skeleton */}
+   533→   533→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+   534→   534→        <Skeleton className="h-48 w-full rounded-lg" />
+   535→   535→        <Skeleton className="h-48 w-full rounded-lg" />
+   536→   536→        <Skeleton className="h-48 w-full rounded-lg" />
+   537→   537→      </div>
+   538→   538→    </div>
+   539→   539→  )
+   540→   540→}
+   541→   541→
+   542→   542→function ErrorState({ onRetry, lang }: { onRetry: () => void; lang: 'ar' | 'en' }) {
+   543→   543→  return (
+   544→   544→    <Card className="border-rose-200 bg-rose-50">
+   545→   545→      <CardContent className="flex flex-col items-center gap-4 py-10">
+   546→   546→        <AlertTriangle className="size-10 text-rose-500" />
+   547→   547→        <p className="text-lg font-medium text-rose-700">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data', lang)}</p>
+   548→   548→        <Button variant="outline" onClick={onRetry} className="gap-2">
+   549→   549→          <RefreshCw className="size-4" />
+   550→   550→          {t('إعادة المحاولة', 'Retry', lang)}
+   551→   551→        </Button>
+   552→   552→      </CardContent>
+   553→   553→    </Card>
+   554→   554→  )
+   555→   555→}
+   556→   556→
+   557→   557→// ============ Seed Button ============
+   558→   558→function SeedButton({ onSeedSuccess, lang }: { onSeedSuccess: () => void; lang: 'ar' | 'en' }) {
+   559→   559→  const [isSeeding, setIsSeeding] = React.useState(false)
+   560→   560→  const handleSeed = async () => {
+   561→   561→    setIsSeeding(true)
+   562→   562→    try { await fetch('/api/seed', { method: 'POST' }); onSeedSuccess() } catch { /* ignore */ } finally { setIsSeeding(false) }
+   563→   563→  }
+   564→   564→  return (
+   565→   565→    <Button onClick={handleSeed} disabled={isSeeding} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+   566→   566→      {isSeeding ? <RefreshCw className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+   567→   567→      {isSeeding ? t('جاري التهيئة...', 'Seeding...', lang) : t('تهيئة البيانات التجريبية', 'Seed Demo Data', lang)}
+   568→   568→    </Button>
+   569→   569→  )
+   570→   570→}
+   571→   571→
+   572→   572→// ============ Alerts Section ============
+   573→   573→function AlertsSection({ alerts, lang }: { alerts: DashboardData['alerts']; lang: 'ar' | 'en' }) {
+   574→   574→  if (!alerts || alerts.length === 0) return null
+   575→   575→
+   576→   576→  const iconMap: Record<string, React.ElementType> = {
+   577→   577→    RESIDENCE_EXPIRY: Shield,
+   578→   578→    MAINTENANCE_DUE: Wrench,
+   579→   579→    CONTRACT_EXPIRY: Calendar,
+   580→   580→  }
+   581→   581→
+   582→   582→  return (
+   583→   583→    <Card>
+   584→   584→      <CardHeader className="pb-3">
+   585→   585→        <CardTitle className="flex items-center gap-2 text-sm">
+   586→   586→          <AlertTriangle className="size-4 text-amber-600" />
+   587→   587→          {t('التنبيهات', 'Alerts', lang)}
+   588→   588→        </CardTitle>
+   589→   589→      </CardHeader>
+   590→   590→      <CardContent>
+   591→   591→        <div className="space-y-1.5 max-h-40 overflow-y-auto">
+   592→   592→          {alerts.slice(0, 5).map((alert, i) => {
+   593→   593→            const Icon = iconMap[alert.type] || AlertTriangle
+   594→   594→            const isWarning = alert.severity === 'warning'
+   595→   595→            return (
+   596→   596→              <div key={i} className={`flex items-start gap-2 rounded-lg p-2 text-xs ${isWarning ? 'bg-amber-50' : 'bg-cyan-50'}`}>
+   597→   597→                <Icon className={`size-3.5 mt-0.5 shrink-0 ${isWarning ? 'text-amber-600' : 'text-cyan-600'}`} />
+   598→   598→                <div className="min-w-0 flex-1">
+   599→   599→                  <p className="font-medium truncate">{alert.title}</p>
+   600→   600→                  {alert.detail && <p className="text-muted-foreground truncate">{alert.detail}</p>}
+   601→   601→                </div>
+   602→   602→              </div>
+   603→   603→            )
+   604→   604→          })}
+   605→   605→        </div>
+   606→   606→      </CardContent>
+   607→   607→    </Card>
+   608→   608→  )
+   609→   609→}
+   610→   610→
+   611→   611→// ============ Financial Summary Row ============
+   612→   612→function FinancialSummaryRow({ data, lang }: { data: DashboardData; lang: 'ar' | 'en' }) {
+   613→   613→  return (
+   614→   614→    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+   615→   615→      <Card>
+   616→   616→        <CardContent className="p-3">
+   617→   617→          <div className="flex items-center gap-2.5">
+   618→   618→            <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-100">
+   619→   619→              <TrendingUp className="size-4 text-emerald-600" />
+   620→   620→            </div>
+   621→   621→            <div className="min-w-0 flex-1">
+   622→   622→              <p className="text-[11px] text-muted-foreground">{t('إجمالي الإيرادات', 'Total Revenue', lang)}</p>
+   623→   623→              <MoneyDisplay value={data.totalRevenue || 0} lang={lang} size="sm" bold />
+   624→   624→            </div>
+   625→   625→          </div>
+   626→   626→        </CardContent>
+   627→   627→      </Card>
+   628→   628→      <Card>
+   629→   629→        <CardContent className="p-3">
+   630→   630→          <div className="flex items-center gap-2.5">
+   631→   631→            <div className="flex size-8 items-center justify-center rounded-lg bg-rose-100">
+   632→   632→              <TrendingDown className="size-4 text-rose-600" />
+   633→   633→            </div>
+   634→   634→            <div className="min-w-0 flex-1">
+   635→   635→              <p className="text-[11px] text-muted-foreground">{t('إجمالي المصروفات', 'Total Expenses', lang)}</p>
+   636→   636→              <MoneyDisplay value={data.totalExpenses || 0} lang={lang} size="sm" bold />
+   637→   637→            </div>
+   638→   638→          </div>
+   639→   639→        </CardContent>
+   640→   640→      </Card>
+   641→   641→      <Card>
+   642→   642→        <CardContent className="p-3">
+   643→   643→          <div className="flex items-center gap-2.5">
+   644→   644→            <div className={`flex size-8 items-center justify-center rounded-lg ${(data.netProfit || 0) >= 0 ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+   645→   645→              {(data.netProfit || 0) >= 0 ? <TrendingUp className="size-4 text-emerald-600" /> : <TrendingDown className="size-4 text-rose-600" />}
+   646→   646→            </div>
+   647→   647→            <div className="min-w-0 flex-1">
+   648→   648→              <p className="text-[11px] text-muted-foreground">{t('صافي الربح', 'Net Profit', lang)}</p>
+   649→   649→              <MoneyDisplay value={data.netProfit || 0} lang={lang} size="sm" bold />
+   650→   650→            </div>
+   651→   651→          </div>
+   652→   652→        </CardContent>
+   653→   653→      </Card>
+   654→   654→      <Card>
+   655→   655→        <CardContent className="p-3">
+   656→   656→          <div className="flex items-center gap-2.5">
+   657→   657→            <div className="flex size-8 items-center justify-center rounded-lg bg-teal-100">
+   658→   658→              <Wallet className="size-4 text-teal-600" />
+   659→   659→            </div>
+   660→   660→            <div className="min-w-0 flex-1">
+   661→   661→              <p className="text-[11px] text-muted-foreground">{t('الرصيد النقدي', 'Cash Balance', lang)}</p>
+   662→   662→              <MoneyDisplay value={data.cashPosition || 0} lang={lang} size="sm" bold />
+   663→   663→            </div>
+   664→   664→          </div>
+   665→   665→        </CardContent>
+   666→   666→      </Card>
+   667→   667→    </div>
+   668→   668→  )
+   669→   669→}
+   670→   670→
+   671→   671→// ============ Main Dashboard Module ============
+   672→   672→export function DashboardModule() {
+   673→   673→  const { lang, setActiveItem } = useAppStore()
+   674→   674→  const { data: dashboard, isLoading, isError, refetch } = useQuery<DashboardData>({
+   675→   675→    queryKey: ['dashboard'],
+   676→   676→    queryFn: async () => { const res = await fetch('/api/dashboard'); if (!res.ok) throw new Error(); return res.json() },
+   677→   677→    staleTime: 30000,
+   678→   678→  })
+   679→   679→
+   680→   680→  const hasNoData = dashboard && dashboard.totalProjects === 0 && dashboard.totalRevenue === 0
+   681→   681→
+   682→   682→  if (isLoading) return <DashboardSkeleton />
+   683→   683→  if (isError) return <ErrorState onRetry={() => refetch()} lang={lang} />
+   684→   684→
+   685→   685→  // Empty state - no data seeded yet
+   686→   686→  if (hasNoData) {
+   687→   687→    return (
+   688→   688→      <div className="flex min-h-[60vh] items-center justify-center">
+   689→   689→        <Card className="max-w-lg border-emerald-200 bg-emerald-50">
+   690→   690→          <CardHeader className="items-center text-center">
+   691→   691→            <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-100">
+   692→   692→              <Building2 className="size-8 text-emerald-600" />
+   693→   693→            </div>
+   694→   694→            <CardTitle className="mt-4 text-2xl">{t('لا توجد بيانات', 'No Data', lang)}</CardTitle>
+   695→   695→          </CardHeader>
+   696→   696→          <CardContent className="text-center">
+   697→   697→            <p className="text-muted-foreground leading-relaxed">{t('يرجى تهيئة البيانات التجريبية لعرض لوحة التحكم', 'Please seed demo data to view dashboard', lang)}</p>
+   698→   698→            <div className="mt-6"><SeedButton onSeedSuccess={() => refetch()} lang={lang} /></div>
+   699→   699→          </CardContent>
+   700→   700→        </Card>
+   701→   701→      </div>
+   702→   702→    )
+   703→   703→  }
+   704→   704→
+   705→   705→  return (
+   706→   706→    <div className="space-y-6">
+   707→   707→      {/* Header */}
+   708→   708→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   709→   709→        <div>
+   710→   710→          <h1 className="text-2xl font-bold text-gray-900">{t('لوحة التحكم', 'Dashboard', lang)}</h1>
+   711→   711→          <p className="text-sm text-muted-foreground">
+   712→   712→            {t('نظرة شاملة على أنشطة المشاريع التنفيذية وتأجير المعدات', 'Overview of Construction Projects and Equipment Rental activities', lang)}
+   713→   713→          </p>
+   714→   714→        </div>
+   715→   715→        <div className="flex items-center gap-2">
+   716→   716→          <SeedButton onSeedSuccess={() => refetch()} lang={lang} />
+   717→   717→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh', lang)}>
+   718→   718→            <RefreshCw className="size-4" />
+   719→   719→          </Button>
+   720→   720→        </div>
+   721→   721→      </div>
+   722→   722→
+   723→   723→      {/* Financial Summary Row */}
+   724→   724→      <FinancialSummaryRow data={dashboard!} lang={lang} />
+   725→   725→
+   726→   726→      {/* ===== TWO HUB PANELS ===== */}
+   727→   727→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   728→   728→        <ConstructionHubPanel data={dashboard!} lang={lang} onNavigate={setActiveItem} />
+   729→   729→        <RentalHubPanel data={dashboard!} lang={lang} onNavigate={setActiveItem} />
+   730→   730→      </div>
+   731→   731→
+   732→   732→      {/* ===== SHARED BOTTOM SECTION ===== */}
+   733→   733→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+   734→   734→        {/* Quick Links */}
+   735→   735→        <Card className="lg:col-span-1">
+   736→   736→          <CardHeader className="pb-3">
+   737→   737→            <CardTitle className="flex items-center gap-2 text-sm">
+   738→   738→              <Link2 className="size-4 text-gray-500" />
+   739→   739→              {t('روابط سريعة', 'Quick Links', lang)}
+   740→   740→            </CardTitle>
+   741→   741→          </CardHeader>
+   742→   742→          <CardContent className="grid grid-cols-2 gap-2">
+   743→   743→            <QuickLinkCard
+   744→   744→              icon={Users}
+   745→   745→              title={t('الموارد البشرية', 'HR', lang)}
+   746→   746→              description={t('الموظفون والرواتب', 'Employees & Salaries', lang)}
+   747→   747→              color="bg-violet-500"
+   748→   748→              onClick={() => setActiveItem('employees')}
+   749→   749→            />
+   750→   750→            <QuickLinkCard
+   751→   751→              icon={Package}
+   752→   752→              title={t('سلسلة التوريد', 'Supply Chain', lang)}
+   753→   753→              description={t('المشتريات والموردين', 'Purchases & Suppliers', lang)}
+   754→   754→              color="bg-amber-500"
+   755→   755→              onClick={() => setActiveItem('purchase-requests')}
+   756→   756→            />
+   757→   757→            <QuickLinkCard
+   758→   758→              icon={Wrench}
+   759→   759→              title={t('التشغيل', 'Operations', lang)}
+   760→   760→              description={t('تشغيل وصيانة المعدات', 'Equipment Ops & Maintenance', lang)}
+   761→   761→              color="bg-orange-500"
+   762→   762→              onClick={() => setActiveItem('equipment-operations')}
+   763→   763→            />
+   764→   764→            <QuickLinkCard
+   765→   765→              icon={Calculator}
+   766→   766→              title={t('المحاسبة', 'Accounting', lang)}
+   767→   767→              description={t('القيود والتقارير', 'Journal Entries & Reports', lang)}
+   768→   768→              color="bg-teal-500"
+   769→   769→              onClick={() => setActiveItem('accounting')}
+   770→   770→            />
+   771→   771→          </CardContent>
+   772→   772→        </Card>
+   773→   773→
+   774→   774→        {/* Receivables & Payables */}
+   775→   775→        <Card className="lg:col-span-1">
+   776→   776→          <CardHeader className="pb-3">
+   777→   777→            <CardTitle className="flex items-center gap-2 text-sm">
+   778→   778→              <ArrowUpDown className="size-4 text-cyan-600" />
+   779→   779→              {t('الذمم المالية', 'Financial Position', lang)}
+   780→   780→            </CardTitle>
+   781→   781→          </CardHeader>
+   782→   782→          <CardContent className="space-y-3">
+   783→   783→            <div className="rounded-lg bg-cyan-50/60 p-3 space-y-2">
+   784→   784→              <div className="flex items-center gap-2">
+   785→   785→                <ArrowUpDown className="size-4 text-cyan-600" />
+   786→   786→                <span className="text-xs font-semibold text-cyan-800">{t('الذمم المدينة', 'Receivables', lang)}</span>
+   787→   787→              </div>
+   788→   788→              <div className="flex items-center justify-between text-xs">
+   789→   789→                <span className="text-muted-foreground">{t('إجمالي مستحق', 'Total Outstanding', lang)}</span>
+   790→   790→                <MoneyDisplay value={dashboard?.outstandingReceivables || 0} lang={lang} size="sm" bold className="text-cyan-700" />
+   791→   791→              </div>
+   792→   792→              <div className="flex items-center justify-between text-xs">
+   793→   793→                <span className="text-rose-600 font-medium">{t('متأخرة', 'Overdue', lang)}</span>
+   794→   794→                <MoneyDisplay value={dashboard?.overdueReceivables || 0} lang={lang} size="sm" bold className="text-rose-600" />
+   795→   795→              </div>
+   796→   796→            </div>
+   797→   797→            <div className="rounded-lg bg-orange-50/60 p-3 space-y-2">
+   798→   798→              <div className="flex items-center gap-2">
+   799→   799→                <CreditCard className="size-4 text-orange-600" />
+   800→   800→                <span className="text-xs font-semibold text-orange-800">{t('الذمم الدائنة', 'Payables', lang)}</span>
+   801→   801→              </div>
+   802→   802→              <div className="flex items-center justify-between text-xs">
+   803→   803→                <span className="text-muted-foreground">{t('إجمالي مستحق', 'Total Outstanding', lang)}</span>
+   804→   804→                <MoneyDisplay value={dashboard?.outstandingPayables || 0} lang={lang} size="sm" bold className="text-orange-700" />
+   805→   805→              </div>
+   806→   806→              <div className="flex items-center justify-between text-xs">
+   807→   807→                <span className="text-rose-600 font-medium">{t('متأخرة', 'Overdue', lang)}</span>
+   808→   808→                <MoneyDisplay value={dashboard?.overduePayables || 0} lang={lang} size="sm" bold className="text-rose-600" />
+   809→   809→              </div>
+   810→   810→            </div>
+   811→   811→          </CardContent>
+   812→   812→        </Card>
+   813→   813→
+   814→   814→        {/* Alerts */}
+   815→   815→        <AlertsSection alerts={dashboard?.alerts || []} lang={lang} />
+   816→   816→      </div>
+   817→   817→    </div>
+   818→   818→  )
+   819→   819→}
+   820→   820→

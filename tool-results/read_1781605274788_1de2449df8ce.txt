@@ -1,0 +1,502 @@
+  1500→              </Card>
+  1501→              <Card className="bg-purple-50 border-purple-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-purple-800">{t('إجمالي الخصوم + حقوق الملكية', 'Total Liabilities + Equity', lang)}: <MoneyDisplay value={totalLiabilities + totalEquity} lang={lang} bold /></p></CardContent></Card>
+  1502→            </div>
+  1503→          </div>
+  1504→        </>
+  1505→      ) : (
+  1506→        <div className="flex flex-col items-center gap-3 py-10"><Scale className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد التاريخ ثم اضغط عرض', 'Select date and click Generate', lang)}</p></div>
+  1507→      )}
+  1508→    </div>
+  1509→  )
+  1510→}
+  1511→
+  1512→// ============ Tab 7: Cash Flow ============
+  1513→function CashFlowTab() {
+  1514→  const { lang } = useAppStore()
+  1515→  const [dateFrom, setDateFrom] = useState('')
+  1516→  const [dateTo, setDateTo] = useState('')
+  1517→
+  1518→  const { data, isLoading, refetch } = useQuery({
+  1519→    queryKey: ['financial-reports', 'cash-flow', dateFrom, dateTo],
+  1520→    queryFn: async () => {
+  1521→      const params = new URLSearchParams({ type: 'cash-flow' })
+  1522→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1523→      if (dateTo) params.set('dateTo', dateTo)
+  1524→      const res = await fetch(`/api/financial-reports?${params}`)
+  1525→      if (!res.ok) throw new Error()
+  1526→      return res.json()
+  1527→    },
+  1528→  })
+  1529→
+  1530→  const report = data as Record<string, unknown> | undefined
+  1531→  const operatingCF = (report?.operatingCashFlow as number) || 0
+  1532→  const investingCF = (report?.investingCashFlow as number) || 0
+  1533→  const financingCF = (report?.financingCashFlow as number) || 0
+  1534→  const netChange = (report?.netChangeInCash as number) || 0
+  1535→  const openingCash = (report?.openingCashBalance as number) || 0
+  1536→  const closingCash = (report?.closingCashBalance as number) || 0
+  1537→
+  1538→  return (
+  1539→    <div className="space-y-4">
+  1540→      <Card className="bg-gray-50/50">
+  1541→        <CardContent className="p-4">
+  1542→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1543→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1544→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1545→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'Generate', lang)}</Button>
+  1546→          </div>
+  1547→        </CardContent>
+  1548→      </Card>
+  1549→
+  1550→      {isLoading ? <TableSkeleton /> : data ? (
+  1551→        <>
+  1552→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1553→            <SummaryCard title={t('تدفقات التشغيل', 'Operating CF', lang)} value={operatingCF} icon={Settings} color={operatingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1554→            <SummaryCard title={t('تدفقات الاستثمار', 'Investing CF', lang)} value={investingCF} icon={Building2} color={investingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1555→            <SummaryCard title={t('تدفقات التمويل', 'Financing CF', lang)} value={financingCF} icon={Banknote} color={financingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1556→          </div>
+  1557→
+  1558→          <Card>
+  1559→            <CardContent className="p-4">
+  1560→              <Table>
+  1561→                <TableBody>
+  1562→                  <TableRow><TableCell className="font-semibold">{t('صافي الربح', 'Net Profit', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.netProfit as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
+  1563→                  <TableRow><TableCell>{t('+ تعديلات غير نقدية', '+ Non-cash adjustments', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.nonCashAdjustments as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
+  1564→                  <TableRow><TableCell>{t('+ تغيرات رأس المال العامل', '+ Working capital changes', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.workingCapitalChanges as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
+  1565→                  <TableRow className="bg-emerald-50 font-bold"><TableCell>{t('= تدفقات التشغيل', '= Operating Cash Flow', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={operatingCF} lang={lang} bold className={operatingCF >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell></TableRow>
+  1566→                  <TableRow><TableCell>{t('تدفقات الاستثمار', 'Investing Activities', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={investingCF} lang={lang} size="sm" /></TableCell></TableRow>
+  1567→                  <TableRow><TableCell>{t('تدفقات التمويل', 'Financing Activities', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={financingCF} lang={lang} size="sm" /></TableCell></TableRow>
+  1568→                  <TableRow className="bg-sky-50 font-bold"><TableCell>{t('صافي التغير في النقد', 'Net Change in Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={netChange} lang={lang} bold className="text-sky-700" /></TableCell></TableRow>
+  1569→                  <TableRow><TableCell>{t('رصيد النقد أول الفترة', 'Opening Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={openingCash} lang={lang} size="sm" /></TableCell></TableRow>
+  1570→                  <TableRow className="bg-purple-50 font-bold border-t-2"><TableCell>{t('رصيد النقد آخر الفترة', 'Closing Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={closingCash} lang={lang} bold className="text-purple-700" /></TableCell></TableRow>
+  1571→                </TableBody>
+  1572→              </Table>
+  1573→            </CardContent>
+  1574→          </Card>
+  1575→        </>
+  1576→      ) : (
+  1577→        <div className="flex flex-col items-center gap-3 py-10"><Landmark className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد الفترة ثم اضغط عرض', 'Select period and click Generate', lang)}</p></div>
+  1578→      )}
+  1579→    </div>
+  1580→  )
+  1581→}
+  1582→
+  1583→// ============ Tab 8: Cost Centers ============
+  1584→function CostCentersTab() {
+  1585→  const { lang } = useAppStore()
+  1586→  const { data, isLoading, refetch } = useQuery({
+  1587→    queryKey: ['cost-centers'],
+  1588→    queryFn: async () => { const res = await fetch('/api/cost-centers'); if (!res.ok) throw new Error(); return res.json() },
+  1589→  })
+  1590→
+  1591→  const costCenters = (Array.isArray(data) ? data : (data?.costCenters || [])) as Record<string, unknown>[]
+  1592→
+  1593→  return (
+  1594→    <div className="space-y-4">
+  1595→      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1596→        <SummaryCard title={t('عدد المراكز', 'Total Centers', lang)} value={costCenters.length} icon={FolderClosed} color="teal" lang={lang} isMoney={false} />
+  1597→      </div>
+  1598→
+  1599→      {isLoading ? <TableSkeleton /> : costCenters.length === 0 ? (
+  1600→        <div className="flex flex-col items-center gap-3 py-10"><FolderClosed className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد مراكز تكلفة', 'No cost centers found', lang)}</p></div>
+  1601→      ) : (
+  1602→        <Card>
+  1603→          <CardContent className="p-0">
+  1604→            <div className="overflow-x-auto">
+  1605→              <Table>
+  1606→                <TableHeader>
+  1607→                  <TableRow>
+  1608→                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+  1609→                    <TableHead className="text-right">{t('الاسم', 'Name', lang)}</TableHead>
+  1610→                    <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+  1611→                  </TableRow>
+  1612→                </TableHeader>
+  1613→                <TableBody>
+  1614→                  {costCenters.map((cc, idx) => (
+  1615→                    <TableRow key={idx}>
+  1616→                      <TableCell className="font-mono">{String(cc.code || '')}</TableCell>
+  1617→                      <TableCell className="font-medium">{String(cc.name || '')}</TableCell>
+  1618→                      <TableCell>{cc.project ? String((cc.project as Record<string, unknown>).name || '') : '—'}</TableCell>
+  1619→                    </TableRow>
+  1620→                  ))}
+  1621→                </TableBody>
+  1622→              </Table>
+  1623→            </div>
+  1624→          </CardContent>
+  1625→        </Card>
+  1626→      )}
+  1627→    </div>
+  1628→  )
+  1629→}
+  1630→
+  1631→// ============ Tab 9: Customer Statement ============
+  1632→function CustomerStatementTab() {
+  1633→  const { lang } = useAppStore()
+  1634→  const [selectedClient, setSelectedClient] = useState('')
+  1635→  const [dateFrom, setDateFrom] = useState('')
+  1636→  const [dateTo, setDateTo] = useState('')
+  1637→
+  1638→  const { data: clients } = useQuery({
+  1639→    queryKey: ['clients-simple'],
+  1640→    queryFn: async () => { const res = await fetch('/api/clients?simple=true&active=true'); if (!res.ok) throw new Error(); return res.json() },
+  1641→  })
+  1642→
+  1643→  const clientList = (Array.isArray(clients) ? clients : []) as { id: string; name: string; code: string }[]
+  1644→
+  1645→  const { data: statementData, isLoading, refetch } = useQuery({
+  1646→    queryKey: ['account-statement', 'customer', selectedClient, dateFrom, dateTo],
+  1647→    queryFn: async () => {
+  1648→      if (!selectedClient) return null
+  1649→      const params = new URLSearchParams({ entityType: 'customer', entityId: selectedClient })
+  1650→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1651→      if (dateTo) params.set('dateTo', dateTo)
+  1652→      const res = await fetch(`/api/account-statement?${params}`)
+  1653→      if (!res.ok) throw new Error()
+  1654→      return res.json()
+  1655→    },
+  1656→    enabled: !!selectedClient,
+  1657→  })
+  1658→
+  1659→  const statement = statementData as Record<string, unknown> | null
+  1660→
+  1661→  return (
+  1662→    <div className="space-y-4">
+  1663→      <Card className="bg-gray-50/50">
+  1664→        <CardContent className="p-4">
+  1665→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1666→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1667→              <Label className="text-xs">{t('العميل', 'Client', lang)}</Label>
+  1668→              <Select value={selectedClient} onValueChange={setSelectedClient}>
+  1669→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر العميل...', 'Select client...', lang)} /></SelectTrigger>
+  1670→                <SelectContent>
+  1671→                  {clientList.map(c => <SelectItem key={c.id} value={c.id}>{c.code} - {c.name}</SelectItem>)}
+  1672→                </SelectContent>
+  1673→              </Select>
+  1674→            </div>
+  1675→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1676→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1677→            {selectedClient && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1678→          </div>
+  1679→        </CardContent>
+  1680→      </Card>
+  1681→
+  1682→      {!selectedClient ? (
+  1683→        <div className="flex flex-col items-center gap-3 py-10"><Users className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر عميلاً لعرض كشف حسابه', 'Select a client to view statement', lang)}</p></div>
+  1684→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1685→        <>
+  1686→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1687→            <SummaryCard title={t('الرصيد الافتتاحي', 'Opening Balance', lang)} value={(statement.openingBalance as number) || 0} icon={Wallet} color="sky" lang={lang} />
+  1688→            <SummaryCard title={t('الرصيد الختامي', 'Closing Balance', lang)} value={(statement.closingBalance as number) || 0} icon={CircleDollarSign} color={((statement.closingBalance as number) || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1689→            <SummaryCard title={t('إجمالي الفواتير', 'Total Invoices', lang)} value={((statement.summary as Record<string, number>)?.totalRevenues) || 0} icon={FileText} color="emerald" lang={lang} />
+  1690→          </div>
+  1691→          <Card>
+  1692→            <CardContent className="p-0">
+  1693→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1694→                <Table>
+  1695→                  <TableHeader>
+  1696→                    <TableRow>
+  1697→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1698→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1699→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1700→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1701→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1702→                    </TableRow>
+  1703→                  </TableHeader>
+  1704→                  <TableBody>
+  1705→                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
+  1706→                      <TableRow key={idx}>
+  1707→                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
+  1708→                        <TableCell>{String(line.description || '')}</TableCell>
+  1709→                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1710→                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1711→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance as number} lang={lang} size="sm" bold /></TableCell>
+  1712→                      </TableRow>
+  1713→                    ))}
+  1714→                  </TableBody>
+  1715→                </Table>
+  1716→              </div>
+  1717→            </CardContent>
+  1718→          </Card>
+  1719→        </>
+  1720→      ) : null}
+  1721→    </div>
+  1722→  )
+  1723→}
+  1724→
+  1725→// ============ Tab 10: Vendor Statement ============
+  1726→function VendorStatementTab() {
+  1727→  const { lang } = useAppStore()
+  1728→  const [selectedSupplier, setSelectedSupplier] = useState('')
+  1729→  const [dateFrom, setDateFrom] = useState('')
+  1730→  const [dateTo, setDateTo] = useState('')
+  1731→
+  1732→  const { data: suppliers } = useQuery({
+  1733→    queryKey: ['suppliers-simple'],
+  1734→    queryFn: async () => { const res = await fetch('/api/suppliers'); if (!res.ok) throw new Error(); return res.json() },
+  1735→  })
+  1736→
+  1737→  const supplierList = (Array.isArray(suppliers) ? suppliers : (suppliers?.suppliers || [])) as { id: string; name: string; code: string }[]
+  1738→
+  1739→  const { data: statementData, isLoading, refetch } = useQuery({
+  1740→    queryKey: ['account-statement', 'vendor', selectedSupplier, dateFrom, dateTo],
+  1741→    queryFn: async () => {
+  1742→      if (!selectedSupplier) return null
+  1743→      const params = new URLSearchParams({ entityType: 'vendor', entityId: selectedSupplier })
+  1744→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1745→      if (dateTo) params.set('dateTo', dateTo)
+  1746→      const res = await fetch(`/api/account-statement?${params}`)
+  1747→      if (!res.ok) throw new Error()
+  1748→      return res.json()
+  1749→    },
+  1750→    enabled: !!selectedSupplier,
+  1751→  })
+  1752→
+  1753→  const statement = statementData as Record<string, unknown> | null
+  1754→
+  1755→  return (
+  1756→    <div className="space-y-4">
+  1757→      <Card className="bg-gray-50/50">
+  1758→        <CardContent className="p-4">
+  1759→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1760→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1761→              <Label className="text-xs">{t('المورد', 'Supplier', lang)}</Label>
+  1762→              <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
+  1763→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المورد...', 'Select supplier...', lang)} /></SelectTrigger>
+  1764→                <SelectContent>
+  1765→                  {supplierList.map(s => <SelectItem key={s.id} value={s.id}>{s.code} - {s.name}</SelectItem>)}
+  1766→                </SelectContent>
+  1767→              </Select>
+  1768→            </div>
+  1769→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1770→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1771→            {selectedSupplier && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1772→          </div>
+  1773→        </CardContent>
+  1774→      </Card>
+  1775→
+  1776→      {!selectedSupplier ? (
+  1777→        <div className="flex flex-col items-center gap-3 py-10"><Package className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر مورداً لعرض كشف حسابه', 'Select a supplier to view statement', lang)}</p></div>
+  1778→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1779→        <>
+  1780→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1781→            <SummaryCard title={t('الرصيد الافتتاحي', 'Opening Balance', lang)} value={(statement.openingBalance as number) || 0} icon={Wallet} color="sky" lang={lang} />
+  1782→            <SummaryCard title={t('الرصيد الختامي', 'Closing Balance', lang)} value={(statement.closingBalance as number) || 0} icon={CircleDollarSign} color={((statement.closingBalance as number) || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1783→            <SummaryCard title={t('إجمالي الفواتير', 'Total Invoices', lang)} value={((statement.summary as Record<string, number>)?.totalRevenues) || 0} icon={FileText} color="rose" lang={lang} />
+  1784→          </div>
+  1785→          <Card>
+  1786→            <CardContent className="p-0">
+  1787→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1788→                <Table>
+  1789→                  <TableHeader>
+  1790→                    <TableRow>
+  1791→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1792→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1793→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1794→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1795→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1796→                    </TableRow>
+  1797→                  </TableHeader>
+  1798→                  <TableBody>
+  1799→                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
+  1800→                      <TableRow key={idx}>
+  1801→                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
+  1802→                        <TableCell>{String(line.description || '')}</TableCell>
+  1803→                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1804→                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1805→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance as number} lang={lang} size="sm" bold /></TableCell>
+  1806→                      </TableRow>
+  1807→                    ))}
+  1808→                  </TableBody>
+  1809→                </Table>
+  1810→              </div>
+  1811→            </CardContent>
+  1812→          </Card>
+  1813→        </>
+  1814→      ) : null}
+  1815→    </div>
+  1816→  )
+  1817→}
+  1818→
+  1819→// ============ Tab 11: Project Profitability ============
+  1820→function ProjectProfitabilityTab() {
+  1821→  const { lang } = useAppStore()
+  1822→  const [selectedProject, setSelectedProject] = useState('')
+  1823→  const [dateFrom, setDateFrom] = useState('')
+  1824→  const [dateTo, setDateTo] = useState('')
+  1825→
+  1826→  const { data: projects } = useQuery({
+  1827→    queryKey: ['projects-list'],
+  1828→    queryFn: async () => { const res = await fetch('/api/projects/list'); if (!res.ok) throw new Error(); return res.json() },
+  1829→  })
+  1830→
+  1831→  const projectList = (Array.isArray(projects) ? projects : []) as { id: string; name: string; code: string }[]
+  1832→
+  1833→  const { data: statementData, isLoading, refetch } = useQuery({
+  1834→    queryKey: ['account-statement', 'project', selectedProject, dateFrom, dateTo],
+  1835→    queryFn: async () => {
+  1836→      if (!selectedProject) return null
+  1837→      const params = new URLSearchParams({ entityType: 'project', entityId: selectedProject })
+  1838→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1839→      if (dateTo) params.set('dateTo', dateTo)
+  1840→      const res = await fetch(`/api/account-statement?${params}`)
+  1841→      if (!res.ok) throw new Error()
+  1842→      return res.json()
+  1843→    },
+  1844→    enabled: !!selectedProject,
+  1845→  })
+  1846→
+  1847→  const statement = statementData as Record<string, unknown> | null
+  1848→  const summary = (statement?.summary as Record<string, number>) || {}
+  1849→
+  1850→  return (
+  1851→    <div className="space-y-4">
+  1852→      <Card className="bg-gray-50/50">
+  1853→        <CardContent className="p-4">
+  1854→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1855→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1856→              <Label className="text-xs">{t('المشروع', 'Project', lang)}</Label>
+  1857→              <Select value={selectedProject} onValueChange={setSelectedProject}>
+  1858→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المشروع...', 'Select project...', lang)} /></SelectTrigger>
+  1859→                <SelectContent>
+  1860→                  {projectList.map(p => <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>)}
+  1861→                </SelectContent>
+  1862→              </Select>
+  1863→            </div>
+  1864→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1865→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1866→            {selectedProject && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1867→          </div>
+  1868→        </CardContent>
+  1869→      </Card>
+  1870→
+  1871→      {!selectedProject ? (
+  1872→        <div className="flex flex-col items-center gap-3 py-10"><Building2 className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر مشروعاً لعرض ربحيته', 'Select a project to view profitability', lang)}</p></div>
+  1873→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1874→        <>
+  1875→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1876→            <SummaryCard title={t('الإيرادات', 'Revenue', lang)} value={summary.totalRevenues || 0} icon={TrendingUp} color="emerald" lang={lang} />
+  1877→            <SummaryCard title={t('التكاليف', 'Costs', lang)} value={summary.totalCosts || 0} icon={Building2} color="rose" lang={lang} />
+  1878→            <SummaryCard title={t('الربح', 'Profit', lang)} value={summary.profit || 0} icon={CircleDollarSign} color={(summary.profit || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1879→            <Card className="bg-teal-50 border-teal-200 border">
+  1880→              <CardContent className="p-4 text-center">
+  1881→                <div className="flex items-center justify-center gap-2 mb-1"><BarChart3 className="size-4 text-teal-600" /><p className="text-xs font-medium text-teal-600">{t('هامش الربح', 'Profit Margin', lang)}</p></div>
+  1882→                <p className="text-lg font-bold text-teal-700">{(summary.profitMargin || 0).toFixed(1)}%</p>
+  1883→              </CardContent>
+  1884→            </Card>
+  1885→          </div>
+  1886→          <Card>
+  1887→            <CardContent className="p-0">
+  1888→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1889→                <Table>
+  1890→                  <TableHeader>
+  1891→                    <TableRow>
+  1892→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1893→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1894→                      <TableHead className="text-right">{t('الفئة', 'Category', lang)}</TableHead>
+  1895→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1896→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1897→                    </TableRow>
+  1898→                  </TableHeader>
+  1899→                  <TableBody>
+  1900→                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
+  1901→                      <TableRow key={idx}>
+  1902→                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
+  1903→                        <TableCell>{String(line.description || '')}</TableCell>
+  1904→                        <TableCell><Badge variant="outline" className="text-xs">{String(line.category || '')}</Badge></TableCell>
+  1905→                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1906→                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1907→                      </TableRow>
+  1908→                    ))}
+  1909→                  </TableBody>
+  1910→                </Table>
+  1911→              </div>
+  1912→            </CardContent>
+  1913→          </Card>
+  1914→        </>
+  1915→      ) : null}
+  1916→    </div>
+  1917→  )
+  1918→}
+  1919→
+  1920→// ============ Tab 12: Equipment Profitability ============
+  1921→function EquipmentProfitabilityTab() {
+  1922→  const { lang } = useAppStore()
+  1923→  const [selectedEquipment, setSelectedEquipment] = useState('')
+  1924→  const [dateFrom, setDateFrom] = useState('')
+  1925→  const [dateTo, setDateTo] = useState('')
+  1926→
+  1927→  const { data: equipmentList } = useQuery({
+  1928→    queryKey: ['equipment-list'],
+  1929→    queryFn: async () => { const res = await fetch('/api/equipment'); if (!res.ok) throw new Error(); return res.json() },
+  1930→  })
+  1931→
+  1932→  const equipList = (Array.isArray(equipmentList) ? equipmentList : (equipmentList?.equipment || [])) as { id: string; name: string; code: string }[]
+  1933→
+  1934→  const { data: statementData, isLoading, refetch } = useQuery({
+  1935→    queryKey: ['account-statement', 'equipment', selectedEquipment, dateFrom, dateTo],
+  1936→    queryFn: async () => {
+  1937→      if (!selectedEquipment) return null
+  1938→      const params = new URLSearchParams({ entityType: 'equipment', entityId: selectedEquipment })
+  1939→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1940→      if (dateTo) params.set('dateTo', dateTo)
+  1941→      const res = await fetch(`/api/account-statement?${params}`)
+  1942→      if (!res.ok) throw new Error()
+  1943→      return res.json()
+  1944→    },
+  1945→    enabled: !!selectedEquipment,
+  1946→  })
+  1947→
+  1948→  const statement = statementData as Record<string, unknown> | null
+  1949→  const summary = (statement?.summary as Record<string, number>) || {}
+  1950→
+  1951→  return (
+  1952→    <div className="space-y-4">
+  1953→      <Card className="bg-gray-50/50">
+  1954→        <CardContent className="p-4">
+  1955→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1956→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1957→              <Label className="text-xs">{t('المعدة', 'Equipment', lang)}</Label>
+  1958→              <Select value={selectedEquipment} onValueChange={setSelectedEquipment}>
+  1959→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المعدة...', 'Select equipment...', lang)} /></SelectTrigger>
+  1960→                <SelectContent>
+  1961→                  {equipList.map(e => <SelectItem key={e.id} value={e.id}>{e.code} - {e.name}</SelectItem>)}
+  1962→                </SelectContent>
+  1963→              </Select>
+  1964→            </div>
+  1965→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1966→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1967→            {selectedEquipment && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1968→          </div>
+  1969→        </CardContent>
+  1970→      </Card>
+  1971→
+  1972→      {!selectedEquipment ? (
+  1973→        <div className="flex flex-col items-center gap-3 py-10"><Truck className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر معدة لعرض ربحيتها', 'Select equipment to view profitability', lang)}</p></div>
+  1974→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1975→        <>
+  1976→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1977→            <SummaryCard title={t('إيرادات التأجير', 'Rental Revenue', lang)} value={summary.totalRevenues || 0} icon={TrendingUp} color="emerald" lang={lang} />
+  1978→            <SummaryCard title={t('تكاليف التشغيل', 'Operating Costs', lang)} value={summary.totalCosts || 0} icon={Wrench} color="rose" lang={lang} />
+  1979→            <SummaryCard title={t('صافي الربح', 'Net Profit', lang)} value={summary.profit || 0} icon={CircleDollarSign} color={(summary.profit || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1980→            <Card className="bg-cyan-50 border-cyan-200 border">
+  1981→              <CardContent className="p-4 text-center">
+  1982→                <div className="flex items-center justify-center gap-2 mb-1"><BarChart3 className="size-4 text-cyan-600" /><p className="text-xs font-medium text-cyan-600">{t('هامش الربح', 'Profit Margin', lang)}</p></div>
+  1983→                <p className="text-lg font-bold text-cyan-700">{(summary.profitMargin || 0).toFixed(1)}%</p>
+  1984→              </CardContent>
+  1985→            </Card>
+  1986→          </div>
+  1987→          <Card>
+  1988→            <CardContent className="p-0">
+  1989→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1990→                <Table>
+  1991→                  <TableHeader>
+  1992→                    <TableRow>
+  1993→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1994→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1995→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1996→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1997→                    </TableRow>
+  1998→                  </TableHeader>
+  1999→                  <TableBody>
+
+[showing lines 1500-1999 of 2691; use offset=2000 with limit to continue reading]

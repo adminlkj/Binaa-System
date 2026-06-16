@@ -1896,6 +1896,45 @@ model BankReconciliation {
   @@index([year, month])
 }
 
+// ============ FINANCIAL MAPPING ENGINE ============
+// محرك الربط المحاسبي - يحدد الأدوار المدينة والدائنة لكل نوع عملية
+// عندما يغير المحاسب الحساب المرتبط بدور ما، تتغير جميع القيود تلقائياً
+
+model FinancialMapping {
+  id              String   @id @default(cuid())
+  operationType   String   @unique // RENTAL_INVOICE, PAYROLL, SUPPLIER_PAYMENT, CLIENT_PAYMENT, etc.
+  labelAr         String   // التسمية العربية لنوع العملية
+  labelEn         String   // التسمية الإنجليزية
+  description     String?  // وصف العملية
+  debitRoles      String   // JSON array of AccountRole keys for debit side
+  creditRoles     String   // JSON array of AccountRole keys for credit side
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([operationType])
+  @@index([isActive])
+}
+
+// ============ ACCOUNTING HEALTH CHECK ============
+// فحص السلامة المحاسبي - يفحص صحة الربط المحاسبي يومياً
+
+model AccountingHealthCheck {
+  id            String   @id @default(cuid())
+  checkDate     DateTime @default(now())
+  overallScore  Int      @default(0) // 0-100 percentage
+  totalChecks   Int      @default(0)
+  passedChecks  Int      @default(0)
+  warnings      Int      @default(0)
+  errors        Int      @default(0)
+  details       String   // JSON array of check results
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([checkDate])
+  @@index([overallScore])
+}
+
 // ============ PERIOD CLOSING ============
 
 model PeriodClosing {

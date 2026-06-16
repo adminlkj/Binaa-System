@@ -1,0 +1,1311 @@
+     1→// ============================================================================
+     2→// أنماط CSS المشتركة - Shared CSS Styles (Professional ERP-Level)
+     3→// نظام بِنَاء ERP - Binaa Construction ERP
+     4→// ============================================================================
+     5→
+     6→// ============ Color System ============
+     7→const colors = {
+     8→  primary: { 50: '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0', 300: '#6ee7b7', 400: '#34d399', 500: '#10b981', 600: '#059669', 700: '#047857', 800: '#065f46', 900: '#064e3b' },
+     9→  accent: { 400: '#fbbf24', 500: '#f59e0b', 600: '#d97706', 700: '#b45309' },
+    10→  neutral: { 50: '#f9fafb', 100: '#f3f4f6', 200: '#e5e7eb', 300: '#d1d5db', 400: '#9ca3af', 500: '#6b7280', 600: '#4b5563', 700: '#374151', 800: '#1f2937', 900: '#111827' },
+    11→}
+    12→
+    13→// ============ Default Document CSS (Professional ERP) ============
+    14→
+    15→export function getDefaultCSS(lang: 'ar' | 'en'): string {
+    16→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+    17→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+    18→  const textAlign = lang === 'ar' ? 'right' : 'left'
+    19→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+    20→  const borderStart = lang === 'ar' ? 'border-right' : 'border-left'
+    21→  const paddingStart = lang === 'ar' ? 'padding-right' : 'padding-left'
+    22→  const marginStart = lang === 'ar' ? 'margin-right' : 'margin-left'
+    23→
+    24→  return `
+    25→    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    26→    body {
+    27→      font-family: ${fontFamily};
+    28→      font-size: 10.5px;
+    29→      color: #1e293b;
+    30→      direction: ${dir};
+    31→      background: #e2e8f0;
+    32→      line-height: 1.55;
+    33→      -webkit-print-color-adjust: exact;
+    34→      print-color-adjust: exact;
+    35→    }
+    36→    @page {
+    37→      size: A4 portrait;
+    38→      margin: 12mm 10mm;
+    39→    }
+    40→    @media print {
+    41→      body { background: white; font-size: 10px; }
+    42→      .page { margin: 0; box-shadow: none; width: 100%; min-height: auto; }
+    43→      .no-print { display: none !important; }
+    44→      .page-break { page-break-before: always; }
+    45→      .doc-table thead { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    46→      .doc-header, .doc-footer, .ri-header, .ri-footer, .acct-header { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    47→    }
+    48→    .page {
+    49→      width: 210mm;
+    50→      min-height: 297mm;
+    51→      padding: 0;
+    52→      margin: 0 auto 16px;
+    53→      background: white;
+    54→      box-shadow: 0 1px 12px rgba(0,0,0,0.08);
+    55→      position: relative;
+    56→      overflow: hidden;
+    57→    }
+    58→
+    59→    /* ════════════════════════════════════════════
+    60→       HEADER
+    61→    ════════════════════════════════════════════ */
+    62→    .doc-header {
+    63→      background: linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%);
+    64→      color: white;
+    65→      padding: 16px 24px 14px;
+    66→      display: flex;
+    67→      align-items: center;
+    68→      gap: 14px;
+    69→      position: relative;
+    70→    }
+    71→    .doc-header::after {
+    72→      content: '';
+    73→      position: absolute;
+    74→      bottom: 0; left: 0; right: 0;
+    75→      height: 3px;
+    76→      background: linear-gradient(90deg, #d97706, #f59e0b, #d97706);
+    77→    }
+    78→    .header-logo {
+    79→      width: 54px; height: 54px;
+    80→      border-radius: 8px;
+    81→      background: white;
+    82→      padding: 3px;
+    83→      flex-shrink: 0;
+    84→      object-fit: contain;
+    85→    }
+    86→    .header-company { flex: 1; min-width: 0; }
+    87→    .header-company-name {
+    88→      font-size: 16px; font-weight: 800;
+    89→      letter-spacing: 0.3px; line-height: 1.3;
+    90→    }
+    91→    .header-company-details {
+    92→      font-size: 8px; opacity: 0.88;
+    93→      margin-top: 2px;
+    94→      display: flex; flex-wrap: wrap; gap: 6px 12px;
+    95→    }
+    96→    .header-company-details span {
+    97→      display: inline-flex; align-items: center; gap: 2px;
+    98→      white-space: nowrap;
+    99→    }
+   100→    .header-doc-title-section {
+   101→      flex-shrink: 0; text-align: center;
+   102→      background: rgba(255,255,255,0.12);
+   103→      border-radius: 6px;
+   104→      padding: 7px 14px;
+   105→      border: 1px solid rgba(255,255,255,0.18);
+   106→    }
+   107→    .header-doc-title { font-size: 13px; font-weight: 700; white-space: nowrap; }
+   108→    .header-doc-subtitle { font-size: 8px; opacity: 0.8; margin-top: 1px; }
+   109→
+   110→    /* ════════════════════════════════════════════
+   111→       CUSTOM HEADER IMAGE
+   112→    ════════════════════════════════════════════ */
+   113→    .custom-header img { width: 100%; max-height: 90px; object-fit: contain; }
+   114→
+   115→    /* ════════════════════════════════════════════
+   116→       BODY
+   117→    ════════════════════════════════════════════ */
+   118→    .doc-body { padding: 16px 24px 8px; }
+   119→
+   120→    /* ════════════════════════════════════════════
+   121→       SECTION TITLE
+   122→    ════════════════════════════════════════════ */
+   123→    .section-title {
+   124→      font-size: 10px; font-weight: 700; color: #047857;
+   125→      text-transform: uppercase; letter-spacing: 0.5px;
+   126→      margin: 14px 0 6px;
+   127→      ${paddingStart}: 8px;
+   128→      ${borderStart}: 3px solid #059669;
+   129→    }
+   130→
+   131→    /* ════════════════════════════════════════════
+   132→       INFO GRID
+   133→    ════════════════════════════════════════════ */
+   134→    .info-grid {
+   135→      display: grid;
+   136→      grid-template-columns: 1fr 1fr;
+   137→      gap: 6px 16px;
+   138→      margin: 8px 0;
+   139→    }
+   140→    .info-grid-3 {
+   141→      display: grid;
+   142→      grid-template-columns: 1fr 1fr 1fr;
+   143→      gap: 6px 16px;
+   144→      margin: 8px 0;
+   145→    }
+   146→    .info-item {
+   147→      padding: 5px 10px;
+   148→      background: #f8fafc;
+   149→      border-radius: 4px;
+   150→      ${borderStart}: 3px solid #059669;
+   151→    }
+   152→    .info-label {
+   153→      font-size: 7.5px; color: #94a3b8;
+   154→      text-transform: uppercase; letter-spacing: 0.4px;
+   155→      margin-bottom: 1px;
+   156→    }
+   157→    .info-value {
+   158→      font-size: 10.5px; font-weight: 600; color: #1e293b;
+   159→    }
+   160→
+   161→    /* ════════════════════════════════════════════
+   162→       PARTIES SECTION
+   163→    ════════════════════════════════════════════ */
+   164→    .parties-section {
+   165→      display: grid;
+   166→      grid-template-columns: 1fr 1fr;
+   167→      gap: 12px;
+   168→      margin: 10px 0;
+   169→    }
+   170→    .party-card {
+   171→      border: 1px solid #e2e8f0;
+   172→      border-radius: 6px;
+   173→      padding: 10px 12px;
+   174→      background: #fafbfc;
+   175→    }
+   176→    .party-card-title {
+   177→      font-size: 8px; font-weight: 700;
+   178→      color: #047857;
+   179→      text-transform: uppercase; letter-spacing: 0.4px;
+   180→      margin-bottom: 6px;
+   181→      padding-bottom: 4px;
+   182→      border-bottom: 1px solid #e2e8f0;
+   183→    }
+   184→    .party-card-row {
+   185→      display: flex; justify-content: space-between;
+   186→      margin: 2px 0; font-size: 9.5px;
+   187→    }
+   188→    .party-card-row .label { color: #64748b; }
+   189→    .party-card-row .value { font-weight: 600; color: #1e293b; }
+   190→
+   191→    /* ════════════════════════════════════════════
+   192→       TABLE (Professional)
+   193→    ════════════════════════════════════════════ */
+   194→    .doc-table {
+   195→      width: 100%;
+   196→      border-collapse: collapse;
+   197→      margin: 10px 0;
+   198→      border: 1px solid #cbd5e1;
+   199→      font-size: 9.5px;
+   200→    }
+   201→    .doc-table thead {
+   202→      background: #047857;
+   203→    }
+   204→    .doc-table thead th {
+   205→      padding: 8px 10px;
+   206→      color: white;
+   207→      font-size: 8px;
+   208→      font-weight: 600;
+   209→      text-transform: uppercase;
+   210→      letter-spacing: 0.3px;
+   211→      text-align: ${textAlign};
+   212→      border-bottom: 2px solid #065f46;
+   213→    }
+   214→    .doc-table thead th.amount-header {
+   215→      text-align: ${amountAlign};
+   216→    }
+   217→    .doc-table tbody tr {
+   218→      border-bottom: 1px solid #f1f5f9;
+   219→    }
+   220→    .doc-table tbody tr:nth-child(even) {
+   221→      background: #f8fafc;
+   222→    }
+   223→    .doc-table tbody tr:hover {
+   224→      background: #ecfdf5;
+   225→    }
+   226→    .doc-table tbody td {
+   227→      padding: 6px 10px;
+   228→      font-size: 9.5px;
+   229→      text-align: ${textAlign};
+   230→      vertical-align: middle;
+   231→    }
+   232→    .doc-table tbody td.amount-cell {
+   233→      text-align: ${amountAlign};
+   234→      font-variant-numeric: tabular-nums;
+   235→      direction: ltr;
+   236→      font-weight: 500;
+   237→      font-family: 'Inter', 'Cairo', sans-serif;
+   238→    }
+   239→    .doc-table tbody td.row-num {
+   240→      text-align: center;
+   241→      color: #94a3b8;
+   242→      font-weight: 600;
+   243→      width: 30px;
+   244→      font-size: 8px;
+   245→    }
+   246→    .doc-table tfoot {
+   247→      background: #f1f5f9;
+   248→    }
+   249→    .doc-table tfoot td {
+   250→      padding: 7px 10px;
+   251→      font-size: 9.5px;
+   252→      font-weight: 600;
+   253→      border-top: 2px solid #94a3b8;
+   254→    }
+   255→
+   256→    /* ════════════════════════════════════════════
+   257→       CURRENCY SYMBOL IMAGE
+   258→    ════════════════════════════════════════════ */
+   259→    .ri-currency-img {
+   260→      height: 0.85em; width: auto;
+   261→      vertical-align: middle; display: inline-block;
+   262→      margin: 0 2px;
+   263→    }
+   264→
+   265→    /* ════════════════════════════════════════════
+   266→       TOTALS SECTION
+   267→    ════════════════════════════════════════════ */
+   268→    .totals-section {
+   269→      margin-top: 10px;
+   270→      display: flex;
+   271→      justify-content: flex-end;
+   272→    }
+   273→    .totals-box {
+   274→      width: 260px;
+   275→      border: 1px solid #cbd5e1;
+   276→      border-radius: 4px;
+   277→      overflow: hidden;
+   278→    }
+   279→    .total-row {
+   280→      display: flex;
+   281→      justify-content: space-between;
+   282→      padding: 5px 10px;
+   283→      font-size: 9.5px;
+   284→      border-bottom: 1px solid #f1f5f9;
+   285→    }
+   286→    .total-row .label { color: #64748b; }
+   287→    .total-row .value { font-weight: 600; direction: ltr; font-variant-numeric: tabular-nums; }
+   288→    .total-row.grand {
+   289→      background: #047857;
+   290→      color: white;
+   291→      font-size: 11px;
+   292→      font-weight: 700;
+   293→      padding: 8px 10px;
+   294→      border-bottom: none;
+   295→    }
+   296→    .total-row.grand .label { color: rgba(255,255,255,0.88); }
+   297→    .total-row.grand .value { color: white; font-size: 12px; }
+   298→
+   299→    /* ════════════════════════════════════════════
+   300→       AMOUNT IN WORDS
+   301→    ════════════════════════════════════════════ */
+   302→    .amount-words {
+   303→      margin-top: 10px;
+   304→      padding: 8px 12px;
+   305→      background: #fffef5;
+   306→      border: 1px solid #fde68a;
+   307→      border-radius: 4px;
+   308→      font-size: 9px;
+   309→    }
+   310→    .amount-words-label {
+   311→      font-size: 7px; font-weight: 700;
+   312→      color: #92400e; text-transform: uppercase;
+   313→      letter-spacing: 0.3px; margin-bottom: 2px;
+   314→    }
+   315→    .amount-words-text {
+   316→      color: #78350f; font-weight: 600; line-height: 1.5;
+   317→    }
+   318→
+   319→    /* ════════════════════════════════════════════
+   320→       BANK INFO
+   321→    ════════════════════════════════════════════ */
+   322→    .bank-info {
+   323→      margin-top: 10px;
+   324→      padding: 8px 12px;
+   325→      background: #f0f9ff;
+   326→      border: 1px solid #bae6fd;
+   327→      border-radius: 4px;
+   328→      font-size: 8.5px;
+   329→    }
+   330→    .bank-info-title {
+   331→      font-weight: 700; color: #0369a1;
+   332→      margin-bottom: 4px;
+   333→      font-size: 8px;
+   334→      text-transform: uppercase;
+   335→      letter-spacing: 0.3px;
+   336→    }
+   337→    .bank-info-row {
+   338→      display: flex; gap: 12px;
+   339→      color: #0c4a6e;
+   340→    }
+   341→    .bank-info-row span { font-weight: 600; }
+   342→
+   343→    /* ════════════════════════════════════════════
+   344→       TERMS
+   345→    ════════════════════════════════════════════ */
+   346→    .terms-section {
+   347→      margin-top: 10px;
+   348→      padding: 8px 12px;
+   349→      background: #f8fafc;
+   350→      border: 1px solid #e2e8f0;
+   351→      border-radius: 4px;
+   352→      font-size: 8.5px;
+   353→      color: #64748b;
+   354→    }
+   355→    .terms-title {
+   356→      font-weight: 700; color: #334155;
+   357→      margin-bottom: 3px;
+   358→      font-size: 8px;
+   359→      text-transform: uppercase;
+   360→      letter-spacing: 0.3px;
+   361→    }
+   362→
+   363→    /* ════════════════════════════════════════════
+   364→       STAMP & SIGNATURE
+   365→    ════════════════════════════════════════════ */
+   366→    .signatures-section {
+   367→      margin-top: 20px;
+   368→      display: flex;
+   369→      justify-content: space-between;
+   370→      align-items: flex-end;
+   371→      gap: 20px;
+   372→    }
+   373→    .stamp-area { text-align: center; }
+   374→    .stamp-area img {
+   375→      max-width: 100px; max-height: 100px;
+   376→      object-fit: contain;
+   377→    }
+   378→    .signature-box {
+   379→      text-align: center; min-width: 140px;
+   380→    }
+   381→    .signature-line {
+   382→      border-top: 1px solid #94a3b8;
+   383→      margin-top: 35px;
+   384→      padding-top: 4px;
+   385→      font-size: 8px; color: #64748b;
+   386→    }
+   387→
+   388→    /* ════════════════════════════════════════════
+   389→       FOOTER
+   390→    ════════════════════════════════════════════ */
+   391→    .doc-footer {
+   392→      position: absolute;
+   393→      bottom: 0; left: 0; right: 0;
+   394→      background: #f8fafc;
+   395→      border-top: 2px solid #047857;
+   396→      padding: 6px 24px;
+   397→      display: flex;
+   398→      justify-content: space-between;
+   399→      align-items: center;
+   400→      font-size: 7px;
+   401→      color: #94a3b8;
+   402→    }
+   403→    .doc-footer .company-info {
+   404→      display: flex; gap: 8px; flex-wrap: wrap;
+   405→    }
+   406→    .doc-footer .page-info { font-weight: 600; }
+   407→    .custom-footer img { width: 100%; max-height: 50px; object-fit: contain; }
+   408→
+   409→    /* ════════════════════════════════════════════
+   410→       STATUS BADGE
+   411→    ════════════════════════════════════════════ */
+   412→    .status-badge {
+   413→      display: inline-block;
+   414→      padding: 2px 8px;
+   415→      border-radius: 10px;
+   416→      font-size: 8px;
+   417→      font-weight: 700;
+   418→      letter-spacing: 0.2px;
+   419→    }
+   420→    .status-draft { background: #fef3c7; color: #92400e; }
+   421→    .status-active { background: #d1fae5; color: #065f46; }
+   422→    .status-paid { background: #d1fae5; color: #065f46; }
+   423→    .status-partial { background: #dbeafe; color: #1e40af; }
+   424→    .status-overdue { background: #fee2e2; color: #991b1b; }
+   425→    .status-cancelled { background: #f1f5f9; color: #64748b; }
+   426→
+   427→    /* ════════════════════════════════════════════
+   428→       RENTAL EQUIPMENT SECTION
+   429→    ════════════════════════════════════════════ */
+   430→    .rental-equipment-section {
+   431→      border: 1px solid #fde68a;
+   432→      border-radius: 6px;
+   433→      padding: 10px;
+   434→      margin: 8px 0;
+   435→      background: #fffef5;
+   436→    }
+   437→    .rental-equipment-section .section-title {
+   438→      font-size: 9px; font-weight: 700;
+   439→      color: #92400e; margin-bottom: 6px;
+   440→      padding-bottom: 4px;
+   441→      border-bottom: 1px solid #fde68a;
+   442→      ${borderStart}: 3px solid #d97706;
+   443→    }
+   444→    .rental-equipment-section .info-grid { grid-template-columns: 1fr 1fr 1fr; }
+   445→    .rental-equipment-section .info-item {
+   446→      ${borderStart}-color: #d97706;
+   447→      background: #fffef5;
+   448→    }
+   449→
+   450→    /* ════════════════════════════════════════════
+   451→       DIVIDER
+   452→    ════════════════════════════════════════════ */
+   453→    .section-divider {
+   454→      border: none;
+   455→      border-top: 1px solid #e2e8f0;
+   456→      margin: 10px 0;
+   457→    }
+   458→
+   459→    /* ════════════════════════════════════════════
+   460→       PRINT ACTIONS BAR
+   461→    ════════════════════════════════════════════ */
+   462→    .print-actions {
+   463→      position: fixed;
+   464→      top: 10px; left: 50%;
+   465→      transform: translateX(-50%);
+   466→      z-index: 999;
+   467→      display: flex; gap: 6px;
+   468→      background: white;
+   469→      padding: 6px 12px;
+   470→      border-radius: 8px;
+   471→      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+   472→      border: 1px solid #e2e8f0;
+   473→    }
+   474→    .print-actions button {
+   475→      padding: 7px 18px;
+   476→      background: #047857;
+   477→      color: white; border: none;
+   478→      border-radius: 6px;
+   479→      font-size: 12px; font-weight: 600;
+   480→      cursor: pointer;
+   481→      font-family: ${fontFamily};
+   482→      transition: all 0.15s;
+   483→    }
+   484→    .print-actions button:hover { background: #065f46; }
+   485→    .print-actions .close-btn {
+   486→      background: #64748b;
+   487→    }
+   488→    .print-actions .close-btn:hover { background: #475569; }
+   489→
+   490→    /* ════════════════════════════════════════════
+   491→       WATERMARK
+   492→    ════════════════════════════════════════════ */
+   493→    .watermark {
+   494→      position: absolute;
+   495→      top: 50%; left: 50%;
+   496→      transform: translate(-50%, -50%) rotate(-45deg);
+   497→      font-size: 72px;
+   498→      color: rgba(0,0,0,0.025);
+   499→      font-weight: 800;
+   500→      pointer-events: none;
+   501→      white-space: nowrap;
+   502→    }
+   503→  `
+   504→}
+   505→
+   506→// ============ Rental Invoice CSS (Professional ZATCA-Compliant) ============
+   507→
+   508→export function getRentalInvoiceCSS(lang: 'ar' | 'en'): string {
+   509→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+   510→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+   511→  const textAlign = lang === 'ar' ? 'right' : 'left'
+   512→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+   513→  const borderStart = lang === 'ar' ? 'border-right' : 'border-left'
+   514→  const paddingStart = lang === 'ar' ? 'padding-right' : 'padding-left'
+   515→
+   516→  return `
+   517→    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+   518→    body {
+   519→      font-family: ${fontFamily};
+   520→      font-size: 9.5px;
+   521→      color: #1e293b;
+   522→      direction: ${dir};
+   523→      background: #e2e8f0;
+   524→      line-height: 1.5;
+   525→      -webkit-print-color-adjust: exact;
+   526→      print-color-adjust: exact;
+   527→    }
+   528→    @page {
+   529→      size: A4 portrait;
+   530→      margin: 10mm;
+   531→    }
+   532→    @media print {
+   533→      body { background: white; font-size: 9px; }
+   534→      .page { margin: 0; box-shadow: none; width: 100%; min-height: auto; }
+   535→      .no-print { display: none !important; }
+   536→    }
+   537→    .page {
+   538→      width: 210mm;
+   539→      min-height: 297mm;
+   540→      padding: 0;
+   541→      margin: 0 auto 16px;
+   542→      background: white;
+   543→      box-shadow: 0 2px 16px rgba(0,0,0,0.1);
+   544→      position: relative;
+   545→      overflow: hidden;
+   546→    }
+   547→
+   548→    /* ──── RENTAL INVOICE HEADER ──── */
+   549→    .ri-header {
+   550→      background: linear-gradient(135deg, #064e3b 0%, #065f46 40%, #047857 100%);
+   551→      color: white;
+   552→      padding: 18px 24px 14px;
+   553→      position: relative;
+   554→      display: flex;
+   555→      align-items: flex-start;
+   556→      gap: 14px;
+   557→    }
+   558→    .ri-header::after {
+   559→      content: '';
+   560→      position: absolute;
+   561→      bottom: 0; left: 0; right: 0;
+   562→      height: 3px;
+   563→      background: linear-gradient(90deg, #b45309, #f59e0b, #b45309);
+   564→    }
+   565→    .ri-header-logo {
+   566→      width: 64px; height: 64px;
+   567→      border-radius: 10px;
+   568→      background: white;
+   569→      padding: 4px;
+   570→      flex-shrink: 0;
+   571→      object-fit: contain;
+   572→    }
+   573→    .ri-header-logo-placeholder {
+   574→      width: 64px; height: 64px;
+   575→      border-radius: 10px;
+   576→      background: rgba(255,255,255,0.12);
+   577→      display: flex; align-items: center; justify-content: center;
+   578→      font-size: 26px; font-weight: 800; color: #f59e0b;
+   579→      flex-shrink: 0;
+   580→    }
+   581→    .ri-header-company { flex: 1; min-width: 0; }
+   582→    .ri-header-company-name {
+   583→      font-size: 18px; font-weight: 800;
+   584→      letter-spacing: 0.3px; line-height: 1.25;
+   585→    }
+   586→    .ri-header-company-name-en {
+   587→      font-size: 10px; opacity: 0.75;
+   588→      font-weight: 400; margin-top: 1px;
+   589→    }
+   590→    .ri-header-details {
+   591→      display: flex; flex-wrap: wrap;
+   592→      gap: 4px 12px;
+   593→      margin-top: 5px;
+   594→      font-size: 7.5px; opacity: 0.88;
+   595→    }
+   596→    .ri-header-details span {
+   597→      display: inline-flex; align-items: center; gap: 2px;
+   598→      white-space: nowrap;
+   599→    }
+   600→    .ri-header-title-box {
+   601→      flex-shrink: 0; text-align: center;
+   602→      background: rgba(255,255,255,0.1);
+   603→      border-radius: 8px;
+   604→      padding: 8px 16px;
+   605→      border: 1px solid rgba(255,255,255,0.15);
+   606→      align-self: center;
+   607→    }
+   608→    .ri-header-title {
+   609→      font-size: 13px; font-weight: 700;
+   610→      white-space: nowrap;
+   611→    }
+   612→    .ri-header-title-en {
+   613→      font-size: 8px; opacity: 0.75;
+   614→      margin-top: 1px;
+   615→    }
+   616→
+   617→    /* ──── RENTAL INVOICE BODY ──── */
+   618→    .ri-body { padding: 14px 24px 6px; }
+   619→
+   620→    /* ──── INFO SECTION ──── */
+   621→    .ri-info-section {
+   622→      display: grid;
+   623→      grid-template-columns: 1fr 1fr 1fr 1fr;
+   624→      gap: 6px 12px;
+   625→      margin: 0 0 10px;
+   626→    }
+   627→    .ri-info-item {
+   628→      padding: 5px 8px;
+   629→      background: #f8fafc;
+   630→      border-radius: 3px;
+   631→      ${borderStart}: 2px solid #047857;
+   632→    }
+   633→    .ri-info-label {
+   634→      font-size: 6.5px; color: #94a3b8;
+   635→      text-transform: uppercase; letter-spacing: 0.3px;
+   636→      margin-bottom: 1px;
+   637→    }
+   638→    .ri-info-value {
+   639→      font-size: 9.5px; font-weight: 600; color: #1e293b;
+   640→    }
+   641→
+   642→    /* ──── RENTAL DATA ──── */
+   643→    .ri-rental-data {
+   644→      margin: 10px 0;
+   645→      padding: 8px 10px;
+   646→      background: #fffef5;
+   647→      border: 1px solid #fde68a;
+   648→      border-radius: 4px;
+   649→    }
+   650→    .ri-rental-data-title {
+   651→      font-size: 8px; font-weight: 700;
+   652→      color: #92400e; text-transform: uppercase;
+   653→      letter-spacing: 0.3px; margin-bottom: 6px;
+   654→      padding-bottom: 3px;
+   655→      border-bottom: 1px solid #fde68a;
+   656→    }
+   657→    .ri-rental-data-grid {
+   658→      display: grid;
+   659→      grid-template-columns: 1fr 1fr 1fr;
+   660→      gap: 4px 12px;
+   661→    }
+   662→    .ri-rental-data-item {
+   663→      padding: 3px 6px;
+   664→      background: #fffefb;
+   665→      border-radius: 2px;
+   666→    }
+   667→    .ri-rental-data-label {
+   668→      font-size: 6.5px; color: #94a3b8;
+   669→      text-transform: uppercase; letter-spacing: 0.3px;
+   670→    }
+   671→    .ri-rental-data-value {
+   672→      font-size: 9px; font-weight: 600; color: #1e293b;
+   673→    }
+   674→
+   675→    /* ──── PARTIES ──── */
+   676→    .ri-parties {
+   677→      display: grid;
+   678→      grid-template-columns: 1fr 1fr;
+   679→      gap: 12px;
+   680→      margin: 10px 0;
+   681→    }
+   682→    .ri-party-card {
+   683→      border: 1px solid #e2e8f0;
+   684→      border-radius: 5px;
+   685→      padding: 8px 10px;
+   686→      background: #fafbfc;
+   687→    }
+   688→    .ri-party-title {
+   689→      font-size: 7.5px; font-weight: 700;
+   690→      color: #047857; text-transform: uppercase;
+   691→      letter-spacing: 0.3px;
+   692→      margin-bottom: 5px;
+   693→      padding-bottom: 3px;
+   694→      border-bottom: 1px solid #e2e8f0;
+   695→    }
+   696→    .ri-party-row {
+   697→      display: flex; justify-content: space-between;
+   698→      margin: 2px 0; font-size: 9px;
+   699→    }
+   700→    .ri-party-row .label { color: #64748b; }
+   701→    .ri-party-row .value { font-weight: 600; color: #1e293b; }
+   702→
+   703→    /* ──── TABLE ──── */
+   704→    .ri-table {
+   705→      width: 100%;
+   706→      border-collapse: collapse;
+   707→      margin: 10px 0;
+   708→      border: 1px solid #cbd5e1;
+   709→      font-size: 9px;
+   710→    }
+   711→    .ri-table thead {
+   712→      background: #047857;
+   713→    }
+   714→    .ri-table thead th {
+   715→      padding: 7px 8px;
+   716→      color: white;
+   717→      font-size: 7.5px;
+   718→      font-weight: 600;
+   719→      text-transform: uppercase;
+   720→      letter-spacing: 0.2px;
+   721→      text-align: ${textAlign};
+   722→      border-bottom: 2px solid #065f46;
+   723→    }
+   724→    .ri-table thead th.amount-header {
+   725→      text-align: ${amountAlign};
+   726→    }
+   727→    .ri-table tbody tr {
+   728→      border-bottom: 1px solid #f1f5f9;
+   729→    }
+   730→    .ri-table tbody tr:nth-child(even) { background: #f8fafc; }
+   731→    .ri-table tbody tr:hover { background: #ecfdf5; }
+   732→    .ri-table tbody td {
+   733→      padding: 5px 8px;
+   734→      font-size: 9px;
+   735→      text-align: ${textAlign};
+   736→      vertical-align: middle;
+   737→    }
+   738→    .ri-table tbody td.amount-cell {
+   739→      text-align: ${amountAlign};
+   740→      font-variant-numeric: tabular-nums;
+   741→      direction: ltr;
+   742→      font-weight: 500;
+   743→      font-family: 'Inter', 'Cairo', sans-serif;
+   744→    }
+   745→    .ri-table tbody td.row-num {
+   746→      text-align: center; color: #94a3b8;
+   747→      font-weight: 600; width: 28px; font-size: 8px;
+   748→    }
+   749→
+   750→    /* ──── TOTALS + QR WRAPPER ──── */
+   751→    .ri-totals-qr-wrapper {
+   752→      display: flex;
+   753→      gap: 12px;
+   754→      margin-top: 10px;
+   755→      align-items: flex-start;
+   756→    }
+   757→    .ri-totals-box {
+   758→      flex: 1;
+   759→      border: 1px solid #cbd5e1;
+   760→      border-radius: 4px;
+   761→      overflow: hidden;
+   762→    }
+   763→    .ri-total-row {
+   764→      display: flex;
+   765→      justify-content: space-between;
+   766→      padding: 4px 10px;
+   767→      font-size: 9px;
+   768→      border-bottom: 1px solid #f1f5f9;
+   769→    }
+   770→    .ri-total-row .label { color: #64748b; }
+   771→    .ri-total-row .value { font-weight: 600; direction: ltr; font-variant-numeric: tabular-nums; }
+   772→    .ri-total-row.grand {
+   773→      background: #047857;
+   774→      color: white;
+   775→      font-size: 11px; font-weight: 700;
+   776→      padding: 7px 10px;
+   777→      border-bottom: none;
+   778→    }
+   779→    .ri-total-row.grand .label { color: rgba(255,255,255,0.88); }
+   780→    .ri-total-row.grand .value { color: white; font-size: 12px; }
+   781→
+   782→    /* ──── QR BOX ──── */
+   783→    .ri-qr-box {
+   784→      width: 110px; flex-shrink: 0;
+   785→      border: 1px solid #e2e8f0;
+   786→      border-radius: 4px;
+   787→      padding: 6px;
+   788→      text-align: center;
+   789→      background: #fafbfc;
+   790→    }
+   791→    .ri-qr-image {
+   792→      width: 90px; height: 90px;
+   793→      display: block; margin: 0 auto 4px;
+   794→      object-fit: contain;
+   795→    }
+   796→    .ri-qr-label {
+   797→      font-size: 5.5px; color: #94a3b8;
+   798→      line-height: 1.3;
+   799→    }
+   800→
+   801→    /* ──── AMOUNT IN WORDS ──── */
+   802→    .ri-amount-words {
+   803→      margin-top: 8px;
+   804→      padding: 6px 10px;
+   805→      background: #fffef5;
+   806→      border: 1px solid #fde68a;
+   807→      border-radius: 4px;
+   808→    }
+   809→    .ri-amount-words-label {
+   810→      font-size: 7px; font-weight: 700;
+   811→      color: #92400e; text-transform: uppercase;
+   812→      letter-spacing: 0.3px; margin-bottom: 2px;
+   813→    }
+   814→    .ri-amount-words-text {
+   815→      font-size: 9px; color: #78350f;
+   816→      font-weight: 600; line-height: 1.4;
+   817→    }
+   818→    .ri-amount-words-en {
+   819→      font-size: 7.5px; color: #a16207;
+   820→      font-weight: 400; margin-top: 1px;
+   821→    }
+   822→
+   823→    /* ──── BANK INFO ──── */
+   824→    .ri-bank {
+   825→      margin-top: 8px;
+   826→      padding: 8px 10px;
+   827→      background: #f0f9ff;
+   828→      border: 1px solid #bae6fd;
+   829→      border-radius: 4px;
+   830→    }
+   831→    .ri-bank-title {
+   832→      font-size: 7.5px; font-weight: 700;
+   833→      color: #0369a1; text-transform: uppercase;
+   834→      letter-spacing: 0.3px; margin-bottom: 4px;
+   835→    }
+   836→    .ri-bank-grid {
+   837→      display: grid;
+   838→      grid-template-columns: 1fr 1fr 1fr;
+   839→      gap: 4px 12px;
+   840→    }
+   841→    .ri-bank-item-label {
+   842→      font-size: 6.5px; color: #94a3b8;
+   843→      text-transform: uppercase; letter-spacing: 0.3px;
+   844→    }
+   845→    .ri-bank-item-value {
+   846→      font-size: 9px; font-weight: 600; color: #0c4a6e;
+   847→    }
+   848→
+   849→    /* ──── SIGNATURES ──── */
+   850→    .ri-signatures {
+   851→      margin-top: 16px;
+   852→      display: grid;
+   853→      grid-template-columns: 1fr 1fr;
+   854→      gap: 20px;
+   855→    }
+   856→    .ri-sign-box {
+   857→      text-align: center;
+   858→      padding: 8px;
+   859→      border: 1px dashed #cbd5e1;
+   860→      border-radius: 4px;
+   861→      min-height: 70px;
+   862→      display: flex;
+   863→      flex-direction: column;
+   864→      justify-content: flex-end;
+   865→    }
+   866→    .stamp-img {
+   867→      max-width: 80px; max-height: 60px;
+   868→      object-fit: contain; margin: 0 auto 4px;
+   869→    }
+   870→    .sign-label {
+   871→      font-size: 7px; color: #64748b;
+   872→      font-weight: 600; margin-top: auto;
+   873→      border-top: 1px solid #e2e8f0;
+   874→      padding-top: 4px;
+   875→    }
+   876→
+   877→    /* ──── TERMS ──── */
+   878→    .ri-terms {
+   879→      margin-top: 8px;
+   880→      padding: 6px 10px;
+   881→      background: #f8fafc;
+   882→      border: 1px solid #e2e8f0;
+   883→      border-radius: 4px;
+   884→      font-size: 8px; color: #64748b;
+   885→    }
+   886→    .ri-terms-title {
+   887→      font-size: 7.5px; font-weight: 700;
+   888→      color: #334155; margin-bottom: 3px;
+   889→      text-transform: uppercase; letter-spacing: 0.3px;
+   890→    }
+   891→
+   892→    /* ──── RENTAL INVOICE FOOTER ──── */
+   893→    .ri-footer {
+   894→      position: absolute;
+   895→      bottom: 0; left: 0; right: 0;
+   896→      background: #f8fafc;
+   897→      border-top: 2px solid #047857;
+   898→      padding: 5px 24px;
+   899→      display: flex;
+   900→      justify-content: space-between;
+   901→      align-items: center;
+   902→      font-size: 6.5px;
+   903→      color: #94a3b8;
+   904→    }
+   905→    .ri-footer .company-info {
+   906→      display: flex; gap: 8px; flex-wrap: wrap;
+   907→    }
+   908→
+   909→    /* ──── PRINT ACTIONS ──── */
+   910→    .ri-print-actions {
+   911→      position: fixed;
+   912→      top: 10px; left: 50%;
+   913→      transform: translateX(-50%);
+   914→      z-index: 999;
+   915→      display: flex; gap: 5px;
+   916→      background: white;
+   917→      padding: 5px 10px;
+   918→      border-radius: 8px;
+   919→      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+   920→      border: 1px solid #e2e8f0;
+   921→    }
+   922→    .ri-btn-print, .ri-btn-jpg, .ri-btn-png, .ri-btn-close {
+   923→      padding: 6px 14px;
+   924→      color: white; border: none;
+   925→      border-radius: 5px;
+   926→      font-size: 11px; font-weight: 600;
+   927→      cursor: pointer;
+   928→      font-family: ${fontFamily};
+   929→      transition: all 0.15s;
+   930→    }
+   931→    .ri-btn-print { background: #047857; }
+   932→    .ri-btn-print:hover { background: #065f46; }
+   933→    .ri-btn-jpg { background: #0369a1; }
+   934→    .ri-btn-jpg:hover { background: #075985; }
+   935→    .ri-btn-png { background: #4338ca; }
+   936→    .ri-btn-png:hover { background: #3730a3; }
+   937→    .ri-btn-close { background: #64748b; }
+   938→    .ri-btn-close:hover { background: #475569; }
+   939→    .ri-export-loading { opacity: 0.6; cursor: wait; }
+   940→
+   941→    .ri-custom-header img { width: 100%; max-height: 90px; object-fit: contain; }
+   942→    .ri-custom-footer img { width: 100%; max-height: 50px; object-fit: contain; }
+   943→  `
+   944→}
+   945→
+   946→// ============ Accounting CSS ============
+   947→
+   948→export function getAccountingCSS(lang: 'ar' | 'en'): string {
+   949→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+   950→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+   951→  const textAlign = lang === 'ar' ? 'right' : 'left'
+   952→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+   953→
+   954→  return `
+   955→    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+   956→    body {
+   957→      font-family: ${fontFamily};
+   958→      font-size: 10px;
+   959→      color: #1e293b;
+   960→      direction: ${dir};
+   961→      background: #e2e8f0;
+   962→      line-height: 1.5;
+   963→      -webkit-print-color-adjust: exact;
+   964→      print-color-adjust: exact;
+   965→    }
+   966→    @page {
+   967→      size: A4 portrait;
+   968→      margin: 12mm 10mm;
+   969→    }
+   970→    @media print {
+   971→      body { background: white; }
+   972→      .page { margin: 0; box-shadow: none; width: 100%; min-height: auto; }
+   973→      .no-print { display: none !important; }
+   974→    }
+   975→    .page {
+   976→      width: 210mm;
+   977→      min-height: 297mm;
+   978→      padding: 0;
+   979→      margin: 0 auto 16px;
+   980→      background: white;
+   981→      box-shadow: 0 1px 12px rgba(0,0,0,0.08);
+   982→      position: relative;
+   983→      overflow: hidden;
+   984→    }
+   985→
+   986→    /* ──── ACCOUNTING HEADER ──── */
+   987→    .acct-header {
+   988→      background: white;
+   989→      border-bottom: 3px solid #047857;
+   990→      padding: 18px 24px 14px;
+   991→      text-align: center;
+   992→    }
+   993→    .acct-header-company {
+   994→      font-size: 16px; font-weight: 800;
+   995→      color: #1e293b; margin-bottom: 2px;
+   996→    }
+   997→    .acct-header-title {
+   998→      font-size: 14px; font-weight: 700;
+   999→      color: #047857; margin-top: 6px;
+  1000→    }
+  1001→    .acct-header-subtitle {
+  1002→      font-size: 9px; color: #64748b;
+  1003→      margin-top: 2px;
+  1004→    }
+  1005→
+  1006→    /* ──── BODY ──── */
+  1007→    .doc-body { padding: 14px 24px 8px; }
+  1008→
+  1009→    /* ──── SECTION TITLE ──── */
+  1010→    .section-title {
+  1011→      font-size: 9px; font-weight: 700; color: #047857;
+  1012→      text-transform: uppercase; letter-spacing: 0.4px;
+  1013→      margin: 12px 0 6px;
+  1014→      padding-bottom: 3px;
+  1015→      border-bottom: 1px solid #d1fae5;
+  1016→    }
+  1017→
+  1018→    /* ──── INFO GRID ──── */
+  1019→    .info-grid {
+  1020→      display: grid;
+  1021→      grid-template-columns: 1fr 1fr;
+  1022→      gap: 5px 14px;
+  1023→      margin: 6px 0;
+  1024→    }
+  1025→    .info-grid-3 {
+  1026→      display: grid;
+  1027→      grid-template-columns: 1fr 1fr 1fr;
+  1028→      gap: 5px 14px;
+  1029→      margin: 6px 0;
+  1030→    }
+  1031→    .info-item {
+  1032→      padding: 4px 8px;
+  1033→      background: #f8fafc;
+  1034→      border-radius: 3px;
+  1035→      ${lang === 'ar' ? 'border-right' : 'border-left'}: 2px solid #047857;
+  1036→    }
+  1037→    .info-label {
+  1038→      font-size: 7px; color: #94a3b8;
+  1039→      text-transform: uppercase; letter-spacing: 0.3px;
+  1040→      margin-bottom: 1px;
+  1041→    }
+  1042→    .info-value {
+  1043→      font-size: 10px; font-weight: 600; color: #1e293b;
+  1044→    }
+  1045→
+  1046→    /* ──── TABLE ──── */
+  1047→    .doc-table {
+  1048→      width: 100%;
+  1049→      border-collapse: collapse;
+  1050→      margin: 8px 0;
+  1051→      border: 1px solid #cbd5e1;
+  1052→      font-size: 9px;
+  1053→    }
+  1054→    .doc-table thead {
+  1055→      background: #047857;
+  1056→    }
+  1057→    .doc-table thead th {
+  1058→      padding: 7px 8px;
+  1059→      color: white;
+  1060→      font-size: 7.5px;
+  1061→      font-weight: 600;
+  1062→      text-transform: uppercase;
+  1063→      letter-spacing: 0.2px;
+  1064→      text-align: ${textAlign};
+  1065→      border-bottom: 2px solid #065f46;
+  1066→    }
+  1067→    .doc-table thead th.amount-header {
+  1068→      text-align: ${amountAlign};
+  1069→    }
+  1070→    .doc-table tbody tr {
+  1071→      border-bottom: 1px solid #f1f5f9;
+  1072→    }
+  1073→    .doc-table tbody tr:nth-child(even) { background: #f8fafc; }
+  1074→    .doc-table tbody tr:hover { background: #ecfdf5; }
+  1075→    .doc-table tbody td {
+  1076→      padding: 5px 8px;
+  1077→      font-size: 9px;
+  1078→      text-align: ${textAlign};
+  1079→      vertical-align: middle;
+  1080→    }
+  1081→    .doc-table tbody td.amount-cell {
+  1082→      text-align: ${amountAlign};
+  1083→      font-variant-numeric: tabular-nums;
+  1084→      direction: ltr;
+  1085→      font-weight: 500;
+  1086→      font-family: 'Inter', 'Cairo', sans-serif;
+  1087→    }
+  1088→    .doc-table tbody td.row-num {
+  1089→      text-align: center; color: #94a3b8;
+  1090→      font-weight: 600; width: 28px; font-size: 8px;
+  1091→    }
+  1092→    .doc-table tfoot {
+  1093→      background: #f1f5f9;
+  1094→    }
+  1095→    .doc-table tfoot td {
+  1096→      padding: 6px 8px;
+  1097→      font-size: 9px;
+  1098→      font-weight: 600;
+  1099→      border-top: 2px solid #94a3b8;
+  1100→    }
+  1101→
+  1102→    /* ──── PARTIES ──── */
+  1103→    .parties-section {
+  1104→      display: grid;
+  1105→      grid-template-columns: 1fr 1fr;
+  1106→      gap: 10px;
+  1107→      margin: 8px 0;
+  1108→    }
+  1109→    .party-card {
+  1110→      border: 1px solid #e2e8f0;
+  1111→      border-radius: 5px;
+  1112→      padding: 8px 10px;
+  1113→      background: #fafbfc;
+  1114→    }
+  1115→    .party-card-title {
+  1116→      font-size: 7.5px; font-weight: 700;
+  1117→      color: #047857; text-transform: uppercase;
+  1118→      letter-spacing: 0.3px;
+  1119→      margin-bottom: 5px; padding-bottom: 3px;
+  1120→      border-bottom: 1px solid #e2e8f0;
+  1121→    }
+  1122→    .party-card-row {
+  1123→      display: flex; justify-content: space-between;
+  1124→      margin: 2px 0; font-size: 9px;
+  1125→    }
+  1126→    .party-card-row .label { color: #64748b; }
+  1127→    .party-card-row .value { font-weight: 600; color: #1e293b; }
+  1128→
+  1129→    /* ──── SIGNATURES ──── */
+  1130→    .signatures-section {
+  1131→      margin-top: 18px;
+  1132→      display: flex;
+  1133→      justify-content: space-between;
+  1134→      align-items: flex-end;
+  1135→      gap: 16px;
+  1136→    }
+  1137→    .stamp-area { text-align: center; }
+  1138→    .stamp-area img { max-width: 90px; max-height: 90px; object-fit: contain; }
+  1139→    .signature-box { text-align: center; min-width: 130px; }
+  1140→    .signature-line {
+  1141→      border-top: 1px solid #94a3b8;
+  1142→      margin-top: 30px; padding-top: 3px;
+  1143→      font-size: 7.5px; color: #64748b;
+  1144→    }
+  1145→
+  1146→    /* ──── TOTALS ──── */
+  1147→    .totals-section {
+  1148→      margin-top: 8px;
+  1149→      display: flex;
+  1150→      justify-content: flex-end;
+  1151→    }
+  1152→    .totals-box {
+  1153→      width: 250px;
+  1154→      border: 1px solid #cbd5e1;
+  1155→      border-radius: 3px;
+  1156→      overflow: hidden;
+  1157→    }
+  1158→    .total-row {
+  1159→      display: flex;
+  1160→      justify-content: space-between;
+  1161→      padding: 4px 8px;
+  1162→      font-size: 9px;
+  1163→      border-bottom: 1px solid #f1f5f9;
+  1164→    }
+  1165→    .total-row .label { color: #64748b; }
+  1166→    .total-row .value { font-weight: 600; direction: ltr; font-variant-numeric: tabular-nums; }
+  1167→    .total-row.grand {
+  1168→      background: #047857; color: white;
+  1169→      font-size: 10px; font-weight: 700;
+  1170→      padding: 6px 8px; border-bottom: none;
+  1171→    }
+  1172→    .total-row.grand .label { color: rgba(255,255,255,0.88); }
+  1173→    .total-row.grand .value { color: white; font-size: 11px; }
+  1174→
+  1175→    /* ──── AMOUNT IN WORDS ──── */
+  1176→    .amount-words {
+  1177→      margin-top: 8px;
+  1178→      padding: 6px 10px;
+  1179→      background: #fffef5;
+  1180→      border: 1px solid #fde68a;
+  1181→      border-radius: 3px;
+  1182→    }
+  1183→    .amount-words-label {
+  1184→      font-size: 7px; font-weight: 700;
+  1185→      color: #92400e; text-transform: uppercase;
+  1186→      letter-spacing: 0.3px; margin-bottom: 2px;
+  1187→    }
+  1188→    .amount-words-text {
+  1189→      font-size: 9px; color: #78350f;
+  1190→      font-weight: 600; line-height: 1.4;
+  1191→    }
+  1192→
+  1193→    /* ──── BANK INFO ──── */
+  1194→    .bank-info {
+  1195→      margin-top: 8px;
+  1196→      padding: 6px 10px;
+  1197→      background: #f0f9ff;
+  1198→      border: 1px solid #bae6fd;
+  1199→      border-radius: 3px;
+  1200→      font-size: 8px;
+  1201→    }
+  1202→    .bank-info-title {
+  1203→      font-weight: 700; color: #0369a1;
+  1204→      margin-bottom: 3px;
+  1205→      font-size: 7.5px; text-transform: uppercase;
+  1206→      letter-spacing: 0.3px;
+  1207→    }
+  1208→    .bank-info-row {
+  1209→      display: flex; gap: 10px;
+  1210→      color: #0c4a6e;
+  1211→    }
+  1212→    .bank-info-row span { font-weight: 600; }
+  1213→
+  1214→    /* ──── TERMS ──── */
+  1215→    .terms-section {
+  1216→      margin-top: 8px;
+  1217→      padding: 6px 10px;
+  1218→      background: #f8fafc;
+  1219→      border: 1px solid #e2e8f0;
+  1220→      border-radius: 3px;
+  1221→      font-size: 8px; color: #64748b;
+  1222→    }
+  1223→    .terms-title {
+  1224→      font-weight: 700; color: #334155;
+  1225→      margin-bottom: 2px;
+  1226→      font-size: 7.5px; text-transform: uppercase;
+  1227→      letter-spacing: 0.3px;
+  1228→    }
+  1229→
+  1230→    /* ──── STATUS BADGE ──── */
+  1231→    .status-badge {
+  1232→      display: inline-block;
+  1233→      padding: 2px 7px;
+  1234→      border-radius: 8px;
+  1235→      font-size: 7.5px; font-weight: 700;
+  1236→    }
+  1237→    .status-draft { background: #fef3c7; color: #92400e; }
+  1238→    .status-active { background: #d1fae5; color: #065f46; }
+  1239→    .status-paid { background: #d1fae5; color: #065f46; }
+  1240→    .status-partial { background: #dbeafe; color: #1e40af; }
+  1241→    .status-overdue { background: #fee2e2; color: #991b1b; }
+  1242→    .status-cancelled { background: #f1f5f9; color: #64748b; }
+  1243→
+  1244→    /* ──── RENTAL EQUIPMENT SECTION ──── */
+  1245→    .rental-equipment-section {
+  1246→      border: 1px solid #fde68a;
+  1247→      border-radius: 4px;
+  1248→      padding: 8px;
+  1249→      margin: 8px 0;
+  1250→      background: #fffef5;
+  1251→    }
+  1252→    .rental-equipment-section .section-title {
+  1253→      font-size: 8px; font-weight: 700;
+  1254→      color: #92400e; margin-bottom: 4px;
+  1255→      padding-bottom: 3px;
+  1256→      border-bottom: 1px solid #fde68a;
+  1257→    }
+  1258→    .rental-equipment-section .info-grid { grid-template-columns: 1fr 1fr 1fr; }
+  1259→    .rental-equipment-section .info-item {
+  1260→      ${lang === 'ar' ? 'border-right' : 'border-left'}-color: #d97706;
+  1261→      background: #fffef5;
+  1262→    }
+  1263→
+  1264→    /* ──── DIVIDER ──── */
+  1265→    .section-divider { border: none; border-top: 1px solid #e2e8f0; margin: 8px 0; }
+  1266→
+  1267→    /* ──── FOOTER ──── */
+  1268→    .doc-footer {
+  1269→      position: absolute;
+  1270→      bottom: 0; left: 0; right: 0;
+  1271→      background: #f8fafc;
+  1272→      border-top: 2px solid #047857;
+  1273→      padding: 5px 24px;
+  1274→      display: flex;
+  1275→      justify-content: space-between;
+  1276→      align-items: center;
+  1277→      font-size: 6.5px; color: #94a3b8;
+  1278→    }
+  1279→    .doc-footer .company-info { display: flex; gap: 8px; flex-wrap: wrap; }
+  1280→    .doc-footer .page-info { font-weight: 600; }
+  1281→
+  1282→    /* ──── CURRENCY ──── */
+  1283→    .ri-currency-img { height: 0.85em; width: auto; vertical-align: middle; display: inline-block; margin: 0 2px; }
+  1284→
+  1285→    /* ──── PRINT ACTIONS ──── */
+  1286→    .print-actions {
+  1287→      position: fixed;
+  1288→      top: 10px; left: 50%;
+  1289→      transform: translateX(-50%);
+  1290→      z-index: 999;
+  1291→      display: flex; gap: 5px;
+  1292→      background: white;
+  1293→      padding: 5px 10px;
+  1294→      border-radius: 8px;
+  1295→      box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  1296→      border: 1px solid #e2e8f0;
+  1297→    }
+  1298→    .print-actions button {
+  1299→      padding: 6px 16px;
+  1300→      background: #047857; color: white;
+  1301→      border: none; border-radius: 5px;
+  1302→      font-size: 11px; font-weight: 600;
+  1303→      cursor: pointer;
+  1304→      font-family: ${fontFamily};
+  1305→    }
+  1306→    .print-actions button:hover { background: #065f46; }
+  1307→    .print-actions .close-btn { background: #64748b; }
+  1308→    .print-actions .close-btn:hover { background: #475569; }
+  1309→  `
+  1310→}
+  1311→

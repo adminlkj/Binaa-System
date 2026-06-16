@@ -1,0 +1,702 @@
+     1→  2066→function generatePurchaseOrderBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+     2→  2067→  const items = (data.items as Array<Record<string, unknown>>) || []
+     3→  2068→  const currency = getCurrencySymbol(settings, lang)
+     4→  2069→
+     5→  2070→  return `
+     6→  2071→    <div class="parties-section">
+     7→  2072→      <div class="party-card">
+     8→  2073→        <div class="party-card-title">${lang === 'ar' ? '🏢 الطالب :' : '🏢 Buyer:'}</div>
+     9→  2074→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+    10→  2075→        ${settings.address ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
+    11→  2076→      </div>
+    12→  2077→      <div class="party-card">
+    13→  2078→        <div class="party-card-title">${lang === 'ar' ? '🏭 المورد :' : '🏭 Supplier:'}</div>
+    14→  2079→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.supplierName || ''}</span></div>
+    15→  2080→      </div>
+    16→  2081→    </div>
+    17→  2082→
+    18→  2083→    <div class="info-grid">
+    19→  2084→      <div class="info-item">
+    20→  2085→        <div class="info-label">${lang === 'ar' ? 'رقم أمر الشراء' : 'PO No'}</div>
+    21→  2086→        <div class="info-value">${data.orderNo || data.id || ''}</div>
+    22→  2087→      </div>
+    23→  2088→      <div class="info-item">
+    24→  2089→        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+    25→  2090→        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+    26→  2091→      </div>
+    27→  2092→      <div class="info-item">
+    28→  2093→        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+    29→  2094→        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+    30→  2095→      </div>
+    31→  2096→      <div class="info-item">
+    32→  2097→        <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+    33→  2098→        <div class="info-value">${data.projectName || '-'}</div>
+    34→  2099→      </div>
+    35→  2100→    </div>
+    36→  2101→
+    37→  2102→    <table class="doc-table">
+    38→  2103→      <thead>
+    39→  2104→        <tr>
+    40→  2105→          <th>#</th>
+    41→  2106→          <th>${lang === 'ar' ? 'الوصف' : 'Description'}</th>
+    42→  2107→          <th>${lang === 'ar' ? 'الكمية' : 'Qty'}</th>
+    43→  2108→          <th class="amount-header">${lang === 'ar' ? 'السعر' : 'Price'} (${currency})</th>
+    44→  2109→          <th class="amount-header">${lang === 'ar' ? 'الإجمالي' : 'Total'} (${currency})</th>
+    45→  2110→        </tr>
+    46→  2111→      </thead>
+    47→  2112→      <tbody>
+    48→  2113→        ${items.map((item, i) => `
+    49→  2114→          <tr>
+    50→  2115→            <td class="row-num">${i + 1}</td>
+    51→  2116→            <td>${item.description || ''}</td>
+    52→  2117→            <td>${item.quantity || 0}</td>
+    53→  2118→            <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+    54→  2119→            <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
+    55→  2120→          </tr>
+    56→  2121→        `).join('')}
+    57→  2122→      </tbody>
+    58→  2123→    </table>
+    59→  2124→
+    60→  2125→    <div class="totals-section">
+    61→  2126→      <div class="totals-box">
+    62→  2127→        <div class="total-row grand">
+    63→  2128→          <span class="label">${lang === 'ar' ? 'الإجمالي' : 'Total'}</span>
+    64→  2129→          <span class="value">${fmtMoney(Number(data.totalAmount) || 0, settings, lang)}</span>
+    65→  2130→        </div>
+    66→  2131→      </div>
+    67→  2132→    </div>
+    68→  2133→    ${signaturesSection(settings, lang)}
+    69→  2134→  `
+    70→  2135→}
+    71→  2136→
+    72→  2137→function generateTaxDeclarationBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+    73→  2138→  const currency = getCurrencySymbol(settings, lang)
+    74→  2139→
+    75→  2140→  return `
+    76→  2141→    <div class="info-grid">
+    77→  2142→      <div class="info-item">
+    78→  2143→        <div class="info-label">${lang === 'ar' ? 'السنة' : 'Year'}</div>
+    79→  2144→        <div class="info-value">${data.year || ''}</div>
+    80→  2145→      </div>
+    81→  2146→      <div class="info-item">
+    82→  2147→        <div class="info-label">${lang === 'ar' ? 'الربع' : 'Quarter'}</div>
+    83→  2148→        <div class="info-value">Q${data.quarter || ''}</div>
+    84→  2149→      </div>
+    85→  2150→    </div>
+    86→  2151→    <table class="doc-table">
+    87→  2152→      <thead>
+    88→  2153→        <tr>
+    89→  2154→          <th>${lang === 'ar' ? 'البند' : 'Item'}</th>
+    90→  2155→          <th class="amount-header">${lang === 'ar' ? 'المبلغ' : 'Amount'} (${currency})</th>
+    91→  2156→        </tr>
+    92→  2157→      </thead>
+    93→  2158→      <tbody>
+    94→  2159→        <tr>
+    95→  2160→          <td>${lang === 'ar' ? 'إجمالي المبيعات' : 'Total Sales'}</td>
+    96→  2161→          <td class="amount-cell">${fmtMoney(Number(data.totalSales) || 0, settings, lang)}</td>
+    97→  2162→        </tr>
+    98→  2163→        <tr>
+    99→  2164→          <td>${lang === 'ar' ? 'ضريبة المخرجات' : 'Output VAT'}</td>
+   100→  2165→          <td class="amount-cell">${fmtMoney(Number(data.outputVat) || 0, settings, lang)}</td>
+   101→  2166→        </tr>
+   102→  2167→        <tr>
+   103→  2168→          <td>${lang === 'ar' ? 'إجمالي المشتريات' : 'Total Purchases'}</td>
+   104→  2169→          <td class="amount-cell">${fmtMoney(Number(data.totalPurchases) || 0, settings, lang)}</td>
+   105→  2170→        </tr>
+   106→  2171→        <tr>
+   107→  2172→          <td>${lang === 'ar' ? 'ضريبة المدخلات' : 'Input VAT'}</td>
+   108→  2173→          <td class="amount-cell">${fmtMoney(Number(data.inputVat) || 0, settings, lang)}</td>
+   109→  2174→        </tr>
+   110→  2175→      </tbody>
+   111→  2176→    </table>
+   112→  2177→    <div class="totals-section">
+   113→  2178→      <div class="totals-box">
+   114→  2179→        <div class="total-row grand">
+   115→  2180→          <span class="label">${lang === 'ar' ? 'صافي الضريبة المستحقة' : 'Net VAT Payable'}</span>
+   116→  2181→          <span class="value">${fmtMoney(Number(data.netVat) || 0, settings, lang)}</span>
+   117→  2182→        </div>
+   118→  2183→      </div>
+   119→  2184→    </div>
+   120→  2185→    ${signaturesSection(settings, lang)}
+   121→  2186→  `
+   122→  2187→}
+   123→  2188→
+   124→  2189→// ============ Generic Table Report Body ============
+   125→  2190→function generateGenericTableBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   126→  2191→  const columns = (data.columns as Array<{ key: string; label: string; align?: string }>) || []
+   127→  2192→  const rows = (data.rows as Array<Record<string, unknown>>) || []
+   128→  2193→
+   129→  2194→  return `
+   130→  2195→    ${data.infoItems ? `
+   131→  2196→    <div class="info-grid">
+   132→  2197→      ${(data.infoItems as Array<{ label: string; value: string }>).map(item => `
+   133→  2198→        <div class="info-item">
+   134→  2199→          <div class="info-label">${item.label}</div>
+   135→  2200→          <div class="info-value">${item.value}</div>
+   136→  2201→        </div>
+   137→  2202→      `).join('')}
+   138→  2203→    </div>` : ''}
+   139→  2204→
+   140→  2205→    ${columns.length > 0 ? `
+   141→  2206→    <table class="doc-table">
+   142→  2207→      <thead>
+   143→  2208→        <tr>
+   144→  2209→          <th>#</th>
+   145→  2210→          ${columns.map(col => `<th class="${col.align === 'amount' ? 'amount-header' : ''}">${col.label}</th>`).join('')}
+   146→  2211→        </tr>
+   147→  2212→      </thead>
+   148→  2213→      <tbody>
+   149→  2214→        ${rows.map((row, i) => `
+   150→  2215→          <tr>
+   151→  2216→            <td class="row-num">${i + 1}</td>
+   152→  2217→            ${columns.map(col => {
+   153→  2218→              const val = row[col.key]
+   154→  2219→              const isAmount = col.align === 'amount'
+   155→  2220→              return `<td class="${isAmount ? 'amount-cell' : ''}">${isAmount ? fmtMoney(Number(val) || 0, settings, lang) : (val ?? '')}</td>`
+   156→  2221→            }).join('')}
+   157→  2222→          </tr>
+   158→  2223→        `).join('')}
+   159→  2224→      </tbody>
+   160→  2225→    </table>` : '<p style="text-align:center;color:#9ca3af;padding:30px;">No data to display</p>'}
+   161→  2226→
+   162→  2227→    ${data.totals ? `
+   163→  2228→    <div class="totals-section">
+   164→  2229→      <div class="totals-box">
+   165→  2230→        ${(data.totals as Array<{ label: string; value: number; isGrand?: boolean }>).map(t => `
+   166→  2231→          <div class="total-row ${t.isGrand ? 'grand' : ''}">
+   167→  2232→            <span class="label">${t.label}</span>
+   168→  2233→            <span class="value">${fmtMoney(t.value, settings, lang)}</span>
+   169→  2234→          </div>
+   170→  2235→        `).join('')}
+   171→  2236→      </div>
+   172→  2237→    </div>` : ''}
+   173→  2238→    ${signaturesSection(settings, lang)}
+   174→  2239→  `
+   175→  2240→}
+   176→  2241→
+   177→  2242→// ============ Payment Voucher Body ============
+   178→  2243→function generatePaymentVoucherBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   179→  2244→  const totalAmount = Number(data.amount) || Number(data.totalAmount) || 0
+   180→  2245→  const isClient = data.clientName !== undefined && data.clientName !== null
+   181→  2246→
+   182→  2247→  return `
+   183→  2248→    <div class="info-grid">
+   184→  2249→      <div class="info-item">
+   185→  2250→        <div class="info-label">${lang === 'ar' ? 'رقم السند' : 'Voucher No'}</div>
+   186→  2251→        <div class="info-value">${data.paymentNo || data.receiptNo || data.id || ''}</div>
+   187→  2252→      </div>
+   188→  2253→      <div class="info-item">
+   189→  2254→        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+   190→  2255→        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+   191→  2256→      </div>
+   192→  2257→      <div class="info-item">
+   193→  2258→        <div class="info-label">${isClient ? (lang === 'ar' ? 'العميل' : 'Client') : (lang === 'ar' ? 'المورد' : 'Supplier')}</div>
+   194→  2259→        <div class="info-value">${data.clientName || data.supplierName || ''}</div>
+   195→  2260→      </div>
+   196→  2261→      <div class="info-item">
+   197→  2262→        <div class="info-label">${lang === 'ar' ? 'طريقة الدفع' : 'Payment Method'}</div>
+   198→  2263→        <div class="info-value">${data.paymentMethod || (lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer')}</div>
+   199→  2264→      </div>
+   200→  2265→    </div>
+   201→  2266→
+   202→  2267→    ${data.description ? `
+   203→  2268→    <div style="margin:10px 0;padding:8px 12px;background:#f9fafb;border-radius:4px;border:1px solid #e5e7eb;">
+   204→  2269→      <span style="font-size:9px;color:#9ca3af;">${lang === 'ar' ? 'البيان' : 'Description'}</span><br/>
+   205→  2270→      <span style="font-size:11px;font-weight:500;">${data.description}</span>
+   206→  2271→    </div>` : ''}
+   207→  2272→
+   208→  2273→    <div class="totals-section">
+   209→  2274→      <div class="totals-box">
+   210→  2275→        <div class="total-row grand">
+   211→  2276→          <span class="label">${lang === 'ar' ? 'المبلغ' : 'Amount'}</span>
+   212→  2277→          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
+   213→  2278→        </div>
+   214→  2279→      </div>
+   215→  2280→    </div>
+   216→  2281→
+   217→  2282→    ${amountInWordsSection(totalAmount, lang)}
+   218→  2283→    ${bankInfoSection(settings, lang)}
+   219→  2284→    ${signaturesSection(settings, lang)}
+   220→  2285→  `
+   221→  2286→}
+   222→  2287→
+   223→  2288→// ============ Salary Slip Body ============
+   224→  2289→function generateSalarySlipBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   225→  2290→  const currency = getCurrencySymbol(settings, lang)
+   226→  2291→
+   227→  2292→  return `
+   228→  2293→    <div class="info-grid-3">
+   229→  2294→      <div class="info-item">
+   230→  2295→        <div class="info-label">${lang === 'ar' ? 'الموظف' : 'Employee'}</div>
+   231→  2296→        <div class="info-value">${data.employeeName || ''}</div>
+   232→  2297→      </div>
+   233→  2298→      <div class="info-item">
+   234→  2299→        <div class="info-label">${lang === 'ar' ? 'الشهر' : 'Month'}</div>
+   235→  2300→        <div class="info-value">${data.month || ''}</div>
+   236→  2301→      </div>
+   237→  2302→      <div class="info-item">
+   238→  2303→        <div class="info-label">${lang === 'ar' ? 'السنة' : 'Year'}</div>
+   239→  2304→        <div class="info-value">${data.year || ''}</div>
+   240→  2305→      </div>
+   241→  2306→    </div>
+   242→  2307→
+   243→  2308→    <table class="doc-table">
+   244→  2309→      <thead>
+   245→  2310→        <tr>
+   246→  2311→          <th>${lang === 'ar' ? 'البند' : 'Item'}</th>
+   247→  2312→          <th class="amount-header">${lang === 'ar' ? 'المبلغ' : 'Amount'} (${currency})</th>
+   248→  2313→        </tr>
+   249→  2314→      </thead>
+   250→  2315→      <tbody>
+   251→  2316→        <tr><td>${lang === 'ar' ? 'الراتب الأساسي' : 'Basic Salary'}</td><td class="amount-cell">${fmtMoney(Number(data.basicSalary) || 0, settings, lang)}</td></tr>
+   252→  2317→        <tr><td>${lang === 'ar' ? 'بدل سكن' : 'Housing Allowance'}</td><td class="amount-cell">${fmtMoney(Number(data.housingAllowance) || 0, settings, lang)}</td></tr>
+   253→  2318→        <tr><td>${lang === 'ar' ? 'بدل نقل' : 'Transport Allowance'}</td><td class="amount-cell">${fmtMoney(Number(data.transportAllowance) || 0, settings, lang)}</td></tr>
+   254→  2319→        <tr><td>${lang === 'ar' ? 'الإجمالي قبل الخصومات' : 'Gross Salary'}</td><td class="amount-cell">${fmtMoney(Number(data.grossSalary) || 0, settings, lang)}</td></tr>
+   255→  2320→        <tr><td>${lang === 'ar' ? 'خصم تأمينات' : 'GOSI Deduction'}</td><td class="amount-cell">${fmtMoney(Number(data.gosiDeduction) || 0, settings, lang)}</td></tr>
+   256→  2321→        <tr><td>${lang === 'ar' ? 'سلف' : 'Advance'}</td><td class="amount-cell">${fmtMoney(Number(data.advance) || 0, settings, lang)}</td></tr>
+   257→  2322→        <tr><td>${lang === 'ar' ? 'خصومات أخرى' : 'Other Deductions'}</td><td class="amount-cell">${fmtMoney(Number(data.otherDeductions) || 0, settings, lang)}</td></tr>
+   258→  2323→      </tbody>
+   259→  2324→    </table>
+   260→  2325→
+   261→  2326→    <div class="totals-section">
+   262→  2327→      <div class="totals-box">
+   263→  2328→        <div class="total-row grand">
+   264→  2329→          <span class="label">${lang === 'ar' ? 'صافي الراتب' : 'Net Salary'}</span>
+   265→  2330→          <span class="value">${fmtMoney(Number(data.netSalary) || 0, settings, lang)}</span>
+   266→  2331→        </div>
+   267→  2332→      </div>
+   268→  2333→    </div>
+   269→  2334→
+   270→  2335→    ${amountInWordsSection(Number(data.netSalary) || 0, lang)}
+   271→  2336→    ${signaturesSection(settings, lang)}
+   272→  2337→  `
+   273→  2338→}
+   274→  2339→
+   275→  2340→// ============ Timesheet Body ============
+   276→  2341→function generateTimesheetBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   277→  2342→  const operatingHours = Number(data.operatingHours) || 0
+   278→  2343→  const hourlyRate = Number(data.hourlyRate) || 0
+   279→  2344→  const subtotal = Number(data.subtotal) || (operatingHours * hourlyRate)
+   280→  2345→  const vatRate = settings.defaultVatRate || 0.15
+   281→  2346→  const vatAmount = Number(data.vatAmount) || (subtotal * vatRate)
+   282→  2347→  const deliveryFees = Number(data.deliveryFees) || 0
+   283→  2348→  const deliveryFeesTaxable = data.deliveryFeesTaxable === true || data.deliveryFeesTaxable === 'true'
+   284→  2349→  const deliveryVat = deliveryFeesTaxable ? deliveryFees * vatRate : 0
+   285→  2350→  const totalAmount = Number(data.totalAmount) || (subtotal + vatAmount + deliveryFees + deliveryVat)
+   286→  2351→
+   287→  2352→  const month = Number(data.month) || 0
+   288→  2353→  const year = Number(data.year) || 0
+   289→  2354→  const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+   290→  2355→  const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+   291→  2356→  const monthName = lang === 'ar' ? (arabicMonths[month - 1] || '') : (englishMonths[month - 1] || '')
+   292→  2357→  const periodLabel = month && year ? `${monthName} ${year}` : ''
+   293→  2358→
+   294→  2359→  // Status map for timesheet-specific statuses
+   295→  2360→  const tsStatusMap: Record<string, { ar: string; en: string; cls: string }> = {
+   296→  2361→    'DRAFT': { ar: 'مسودة', en: 'Draft', cls: 'status-draft' },
+   297→  2362→    'SUBMITTED': { ar: 'مقدم', en: 'Submitted', cls: 'status-active' },
+   298→  2363→    'APPROVED': { ar: 'معتمد', en: 'Approved', cls: 'status-active' },
+   299→  2364→    'INVOICED': { ar: 'مفوتر', en: 'Invoiced', cls: 'status-paid' },
+   300→  2365→  }
+   301→  2366→  const statusVal = data.status as string
+   302→  2367→  const statusInfo = tsStatusMap[statusVal]
+   303→  2368→  const statusBadgeHtml = statusInfo
+   304→  2369→    ? `<span class="status-badge ${statusInfo.cls}">${lang === 'ar' ? statusInfo.ar : statusInfo.en}</span>`
+   305→  2370→    : (statusVal || '')
+   306→  2371→
+   307→  2372→  return `
+   308→  2373→    <div class="info-grid">
+   309→  2374→      <div class="info-item">
+   310→  2375→        <div class="info-label">${lang === 'ar' ? 'رقم العقد' : 'Contract No'}</div>
+   311→  2376→        <div class="info-value">${data.contractNo || '-'}</div>
+   312→  2377→      </div>
+   313→  2378→      <div class="info-item">
+   314→  2379→        <div class="info-label">${lang === 'ar' ? 'الفترة' : 'Period'}</div>
+   315→  2380→        <div class="info-value">${periodLabel || '-'}</div>
+   316→  2381→      </div>
+   317→  2382→      <div class="info-item">
+   318→  2383→        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+   319→  2384→        <div class="info-value">${statusBadgeHtml}</div>
+   320→  2385→      </div>
+   321→  2386→      <div class="info-item">
+   322→  2387→        <div class="info-label">${lang === 'ar' ? 'رقم الفاتورة' : 'Invoice No'}</div>
+   323→  2388→        <div class="info-value">${data.invoiceNo || '-'}</div>
+   324→  2389→      </div>
+   325→  2390→    </div>
+   326→  2391→
+   327→  2392→    <div class="parties-section">
+   328→  2393→      <div class="party-card">
+   329→  2394→        <div class="party-card-title">${lang === 'ar' ? '⚙️ بيانات المعدة' : '⚙️ Equipment'}</div>
+   330→  2395→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</span><span class="value">${data.equipmentName || data.equipmentNameAr || '-'}</span></div>
+   331→  2396→        ${data.equipmentCode ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الكود' : 'Code'}</span><span class="value">${data.equipmentCode}</span></div>` : ''}
+   332→  2397→      </div>
+   333→  2398→      <div class="party-card">
+   334→  2399→        <div class="party-card-title">${lang === 'ar' ? '👤 العميل' : '👤 Client'}</div>
+   335→  2400→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.clientName || data.clientNameAr || '-'}</span></div>
+   336→  2401→        ${data.projectName ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'المشروع' : 'Project'}</span><span class="value">${data.projectName}</span></div>` : ''}
+   337→  2402→      </div>
+   338→  2403→    </div>
+   339→  2404→
+   340→  2405→    <div class="rental-equipment-section">
+   341→  2406→      <div class="section-title">${lang === 'ar' ? '⏱️ بيانات التشغيل / Operating Data' : '⏱️ Operating Data'}</div>
+   342→  2407→      <div class="info-grid">
+   343→  2408→        <div class="info-item">
+   344→  2409→          <div class="info-label">${lang === 'ar' ? 'ساعات التشغيل' : 'Operating Hours'}</div>
+   345→  2410→          <div class="info-value">${operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'}</div>
+   346→  2411→        </div>
+   347→  2412→        <div class="info-item">
+   348→  2413→          <div class="info-label">${lang === 'ar' ? 'سعر الساعة' : 'Hourly Rate'}</div>
+   349→  2414→          <div class="info-value">${fmtMoney(hourlyRate, settings, lang)}</div>
+   350→  2415→        </div>
+   351→  2416→        ${data.salesOrderNo ? `<div class="info-item">
+   352→  2417→          <div class="info-label">${lang === 'ar' ? 'رقم طلب البيع' : 'Sales Order'}</div>
+   353→  2418→          <div class="info-value">${data.salesOrderNo}</div>
+   354→  2419→        </div>` : ''}
+   355→  2420→        ${data.purchaseOrderNo ? `<div class="info-item">
+   356→  2421→          <div class="info-label">${lang === 'ar' ? 'رقم أمر الشراء' : 'Purchase Order'}</div>
+   357→  2422→          <div class="info-value">${data.purchaseOrderNo}</div>
+   358→  2423→        </div>` : ''}
+   359→  2424→      </div>
+   360→  2425→    </div>
+   361→  2426→
+   362→  2427→    <div class="totals-section">
+   363→  2428→      <div class="totals-box">
+   364→  2429→        <div class="total-row">
+   365→  2430→          <span class="label">${lang === 'ar' ? `المجموع الفرعي (${operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'} × ${fmtMoney(hourlyRate, settings, lang)})` : `Subtotal (${operatingHours} hrs × ${fmtMoney(hourlyRate, settings, lang)})`}</span>
+   366→  2431→          <span class="value">${fmtMoney(subtotal, settings, lang)}</span>
+   367→  2432→        </div>
+   368→  2433→        <div class="total-row">
+   369→  2434→          <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة (${(vatRate * 100).toFixed(0)}%)` : `VAT (${(vatRate * 100).toFixed(0)}%)`}</span>
+   370→  2435→          <span class="value">${fmtMoney(vatAmount, settings, lang)}</span>
+   371→  2436→        </div>
+   372→  2437→        ${deliveryFees > 0 ? `<div class="total-row">
+   373→  2438→          <span class="label">${lang === 'ar' ? 'رسوم النقل' : 'Delivery Fees'}</span>
+   374→  2439→          <span class="value">${fmtMoney(deliveryFees, settings, lang)}</span>
+   375→  2440→        </div>
+   376→  2441→        ${deliveryFeesTaxable && deliveryVat > 0 ? `<div class="total-row">
+   377→  2442→          <span class="label">${lang === 'ar' ? 'ضريبة رسوم النقل' : 'Delivery VAT'}</span>
+   378→  2443→          <span class="value">${fmtMoney(deliveryVat, settings, lang)}</span>
+   379→  2444→        </div>` : ''}` : ''}
+   380→  2445→        <div class="total-row grand">
+   381→  2446→          <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
+   382→  2447→          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
+   383→  2448→        </div>
+   384→  2449→      </div>
+   385→  2450→    </div>
+   386→  2451→
+   387→  2452→    ${amountInWordsSection(totalAmount, lang)}
+   388→  2453→    ${bankInfoSection(settings, lang)}
+   389→  2454→    ${signaturesSection(settings, lang)}
+   390→  2455→  `
+   391→  2456→}
+   392→  2457→
+   393→  2458→// ============ Rental Contract Body ============
+   394→  2459→function generateRentalContractBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   395→  2460→  const formatDate = (d: unknown) => {
+   396→  2461→    if (!d) return '—'
+   397→  2462→    try {
+   398→  2463→      return new Date(d as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+   399→  2464→    } catch {
+   400→  2465→      return String(d)
+   401→  2466→    }
+   402→  2467→  }
+   403→  2468→
+   404→  2469→  // Status badge for rental contracts
+   405→  2470→  const rcStatusMap: Record<string, { ar: string; en: string; cls: string }> = {
+   406→  2471→    'DRAFT': { ar: 'مسودة', en: 'Draft', cls: 'status-draft' },
+   407→  2472→    'UNDER_REVIEW': { ar: 'قيد المراجعة', en: 'Under Review', cls: 'status-partial' },
+   408→  2473→    'ACTIVE': { ar: 'نشط', en: 'Active', cls: 'status-active' },
+   409→  2474→    'EXPIRED': { ar: 'منتهي', en: 'Expired', cls: 'status-cancelled' },
+   410→  2475→    'CANCELLED': { ar: 'ملغي', en: 'Cancelled', cls: 'status-cancelled' },
+   411→  2476→    'TERMINATED': { ar: 'فسخ', en: 'Terminated', cls: 'status-overdue' },
+   412→  2477→  }
+   413→  2478→  const statusVal = data.status as string
+   414→  2479→  const statusInfo = rcStatusMap[statusVal]
+   415→  2480→  const statusBadgeHtml = statusInfo
+   416→  2481→    ? `<span class="status-badge ${statusInfo.cls}">${lang === 'ar' ? statusInfo.ar : statusInfo.en}</span>`
+   417→  2482→    : (statusVal || '—')
+   418→  2483→
+   419→  2484→  // Pricing type labels
+   420→  2485→  const pricingTypeMap: Record<string, { ar: string; en: string }> = {
+   421→  2486→    'HOURLY': { ar: 'بالساعة', en: 'Hourly' },
+   422→  2487→    'DAILY': { ar: 'باليوم', en: 'Daily' },
+   423→  2488→    'MONTHLY': { ar: 'بالشهر', en: 'Monthly' },
+   424→  2489→    'LUMP_SUM': { ar: 'مقطوع', en: 'Lump Sum' },
+   425→  2490→  }
+   426→  2491→  const pricingType = data.pricingType as string
+   427→  2492→  const pricingLabel = pricingTypeMap[pricingType]
+   428→  2493→    ? (lang === 'ar' ? pricingTypeMap[pricingType].ar : pricingTypeMap[pricingType].en)
+   429→  2494→    : (pricingType || '—')
+   430→  2495→
+   431→  2496→  // Rate display based on pricing type
+   432→  2497→  const rateDisplay = pricingType === 'HOURLY'
+   433→  2498→    ? fmtMoney(Number(data.hourlyRate) || 0, settings, lang) + (lang === 'ar' ? '/ساعة' : '/hr')
+   434→  2499→    : pricingType === 'DAILY'
+   435→  2500→    ? fmtMoney(Number(data.dailyRate) || 0, settings, lang) + (lang === 'ar' ? '/يوم' : '/day')
+   436→  2501→    : pricingType === 'MONTHLY'
+   437→  2502→    ? fmtMoney(Number(data.monthlyRate) || 0, settings, lang) + (lang === 'ar' ? '/شهر' : '/month')
+   438→  2503→    : fmtMoney(Number(data.lumpSumAmount) || 0, settings, lang)
+   439→  2504→
+   440→  2505→  // Timesheets table
+   441→  2506→  const timesheets = (data.timesheets as Array<Record<string, unknown>>) || []
+   442→  2507→  const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+   443→  2508→  const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+   444→  2509→
+   445→  2510→  const tsRows = timesheets.map((ts, i) => {
+   446→  2511→    const m = Number(ts.month) || 0
+   447→  2512→    const y = Number(ts.year) || 0
+   448→  2513→    const monthName = lang === 'ar' ? (arabicMonths[m - 1] || '') : (englishMonths[m - 1] || '')
+   449→  2514→    const period = m && y ? `${monthName} ${y}` : '—'
+   450→  2515→    const hours = Number(ts.operatingHours) || 0
+   451→  2516→    const tsStatusMap: Record<string, { ar: string; en: string; cls: string }> = {
+   452→  2517→      'DRAFT': { ar: 'مسودة', en: 'Draft', cls: 'status-draft' },
+   453→  2518→      'SUBMITTED': { ar: 'مقدم', en: 'Submitted', cls: 'status-active' },
+   454→  2519→      'APPROVED': { ar: 'معتمد', en: 'Approved', cls: 'status-active' },
+   455→  2520→      'INVOICED': { ar: 'مفوتر', en: 'Invoiced', cls: 'status-paid' },
+   456→  2521→    }
+   457→  2522→    const tsStatus = tsStatusMap[ts.status as string]
+   458→  2523→    const tsStatusHtml = tsStatus
+   459→  2524→      ? `<span class="status-badge ${tsStatus.cls}">${lang === 'ar' ? tsStatus.ar : tsStatus.en}</span>`
+   460→  2525→      : (ts.status || '—')
+   461→  2526→    return `<tr>
+   462→  2527→      <td class="row-num">${i + 1}</td>
+   463→  2528→      <td>${period}</td>
+   464→  2529→      <td style="text-align:center;">${hours} ${lang === 'ar' ? 'ساعة' : 'hrs'}</td>
+   465→  2530→      <td>${tsStatusHtml}</td>
+   466→  2531→    </tr>`
+   467→  2532→  }).join('')
+   468→  2533→
+   469→  2534→  const totalAmount = Number(data.totalAmount) || 0
+   470→  2535→
+   471→  2536→  return `
+   472→  2537→    <div class="info-grid">
+   473→  2538→      <div class="info-item">
+   474→  2539→        <div class="info-label">${lang === 'ar' ? 'رقم العقد / Contract No' : 'Contract No'}</div>
+   475→  2540→        <div class="info-value">${data.contractNo || '—'}</div>
+   476→  2541→      </div>
+   477→  2542→      <div class="info-item">
+   478→  2543→        <div class="info-label">${lang === 'ar' ? 'الحالة / Status' : 'Status'}</div>
+   479→  2544→        <div class="info-value">${statusBadgeHtml}</div>
+   480→  2545→      </div>
+   481→  2546→      <div class="info-item">
+   482→  2547→        <div class="info-label">${lang === 'ar' ? 'نوع التسعير / Pricing Type' : 'Pricing Type'}</div>
+   483→  2548→        <div class="info-value">${pricingLabel}</div>
+   484→  2549→      </div>
+   485→  2550→      <div class="info-item">
+   486→  2551→        <div class="info-label">${lang === 'ar' ? 'السعر / Rate' : 'Rate'}</div>
+   487→  2552→        <div class="info-value">${rateDisplay}</div>
+   488→  2553→      </div>
+   489→  2554→      <div class="info-item">
+   490→  2555→        <div class="info-label">${lang === 'ar' ? 'تاريخ البداية / Start Date' : 'Start Date'}</div>
+   491→  2556→        <div class="info-value">${formatDate(data.startDate)}</div>
+   492→  2557→      </div>
+   493→  2558→      <div class="info-item">
+   494→  2559→        <div class="info-label">${lang === 'ar' ? 'تاريخ النهاية / End Date' : 'End Date'}</div>
+   495→  2560→        <div class="info-value">${formatDate(data.endDate)}</div>
+   496→  2561→      </div>
+   497→  2562→    </div>
+   498→  2563→
+   499→  2564→    <div class="parties-section">
+   500→  2565→      <div class="party-card">
+   501→  2566→        <div class="party-card-title">${lang === 'ar' ? '⚙️ بيانات المعدة' : '⚙️ Equipment'}</div>
+   502→  2567→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</span><span class="value">${data.equipmentName || data.equipmentNameAr || '—'}</span></div>
+   503→  2568→        ${data.equipmentCode ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الكود' : 'Code'}</span><span class="value">${data.equipmentCode}</span></div>` : ''}
+   504→  2569→      </div>
+   505→  2570→      <div class="party-card">
+   506→  2571→        <div class="party-card-title">${lang === 'ar' ? '👤 العميل' : '👤 Client'}</div>
+   507→  2572→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.clientName || '—'}</span></div>
+   508→  2573→        ${data.clientPhone ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الهاتف' : 'Phone'}</span><span class="value">${data.clientPhone}</span></div>` : ''}
+   509→  2574→      </div>
+   510→  2575→    </div>
+   511→  2576→
+   512→  2577→    ${data.projectName ? `
+   513→  2578→    <div class="rental-equipment-section">
+   514→  2579→      <div class="section-title">${lang === 'ar' ? '📍 بيانات المشروع / Project Info' : '📍 Project Info'}</div>
+   515→  2580→      <div class="info-grid">
+   516→  2581→        <div class="info-item">
+   517→  2582→          <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+   518→  2583→          <div class="info-value">${data.projectName}</div>
+   519→  2584→        </div>
+   520→  2585→        ${data.projectCode ? `<div class="info-item">
+   521→  2586→          <div class="info-label">${lang === 'ar' ? 'كود المشروع' : 'Project Code'}</div>
+   522→  2587→          <div class="info-value">${data.projectCode}</div>
+   523→  2588→        </div>` : ''}
+   524→  2589→      </div>
+   525→  2590→    </div>` : ''}
+   526→  2591→
+   527→  2592→    ${(data.deliveryFees && Number(data.deliveryFees) > 0) || data.salesOrderNo || data.purchaseOrderNo ? `
+   528→  2593→    <div class="rental-equipment-section">
+   529→  2594→      <div class="section-title">${lang === 'ar' ? '🚛 بيانات التوصيل والمراجع / Delivery & References' : '🚛 Delivery & References'}</div>
+   530→  2595→      <div class="info-grid">
+   531→  2596→        ${Number(data.deliveryFees) > 0 ? `<div class="info-item">
+   532→  2597→          <div class="info-label">${lang === 'ar' ? 'رسوم النقل' : 'Delivery Fees'}</div>
+   533→  2598→          <div class="info-value">${fmtMoney(Number(data.deliveryFees) || 0, settings, lang)}</div>
+   534→  2599→        </div>` : ''}
+   535→  2600→        ${data.salesOrderNo ? `<div class="info-item">
+   536→  2601→          <div class="info-label">${lang === 'ar' ? 'رقم طلب البيع' : 'Sales Order'}</div>
+   537→  2602→          <div class="info-value">${data.salesOrderNo}</div>
+   538→  2603→        </div>` : ''}
+   539→  2604→        ${data.purchaseOrderNo ? `<div class="info-item">
+   540→  2605→          <div class="info-label">${lang === 'ar' ? 'رقم أمر الشراء' : 'Purchase Order'}</div>
+   541→  2606→          <div class="info-value">${data.purchaseOrderNo}</div>
+   542→  2607→        </div>` : ''}
+   543→  2608→      </div>
+   544→  2609→    </div>` : ''}
+   545→  2610→
+   546→  2611→    ${totalAmount > 0 ? `
+   547→  2612→    <div class="totals-section">
+   548→  2613→      <div class="totals-box">
+   549→  2614→        <div class="total-row grand">
+   550→  2615→          <span class="label">${lang === 'ar' ? 'القيمة الإجمالية / Total Value' : 'Total Value'}</span>
+   551→  2616→          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
+   552→  2617→        </div>
+   553→  2618→      </div>
+   554→  2619→    </div>
+   555→  2620→
+   556→  2621→    ${amountInWordsSection(totalAmount, lang)}` : ''}
+   557→  2622→
+   558→  2623→    ${timesheets.length > 0 ? `
+   559→  2624→    <hr class="section-divider" />
+   560→  2625→    <h3 style="font-size:12px;font-weight:700;margin-bottom:8px;">${lang === 'ar' ? '📊 سجلات التشغيل / Timesheets' : '📊 Timesheets'}</h3>
+   561→  2626→    <table class="doc-table">
+   562→  2627→      <thead>
+   563→  2628→        <tr>
+   564→  2629→          <th>#</th>
+   565→  2630→          <th>${lang === 'ar' ? 'الفترة' : 'Period'}</th>
+   566→  2631→          <th>${lang === 'ar' ? 'ساعات التشغيل' : 'Operating Hours'}</th>
+   567→  2632→          <th>${lang === 'ar' ? 'الحالة' : 'Status'}</th>
+   568→  2633→        </tr>
+   569→  2634→      </thead>
+   570→  2635→      <tbody>${tsRows}</tbody>
+   571→  2636→    </table>` : ''}
+   572→  2637→
+   573→  2638→    ${data.additionalTerms ? `
+   574→  2639→    <div class="terms-section">
+   575→  2640→      <div class="terms-title">${lang === 'ar' ? 'الشروط الإضافية' : 'Additional Terms'}</div>
+   576→  2641→      ${data.additionalTerms}
+   577→  2642→    </div>` : ''}
+   578→  2643→
+   579→  2644→    ${bankInfoSection(settings, lang)}
+   580→  2645→    ${signaturesSection(settings, lang)}
+   581→  2646→  `
+   582→  2647→}
+   583→  2648→
+   584→  2649→// ============ Delivery Order Body ============
+   585→  2650→function generateDeliveryOrderBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   586→  2651→  const formatDate = (d: unknown) => {
+   587→  2652→    if (!d) return '—'
+   588→  2653→    try {
+   589→  2654→      return new Date(d as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+   590→  2655→    } catch {
+   591→  2656→      return String(d)
+   592→  2657→    }
+   593→  2658→  }
+   594→  2659→
+   595→  2660→  // Status badge for delivery orders
+   596→  2661→  const doStatusMap: Record<string, { ar: string; en: string; cls: string }> = {
+   597→  2662→    'PENDING': { ar: 'في الانتظار', en: 'Pending', cls: 'status-draft' },
+   598→  2663→    'DELIVERED': { ar: 'تم التوصيل', en: 'Delivered', cls: 'status-active' },
+   599→  2664→    'RETURNED': { ar: 'تم الإرجاع', en: 'Returned', cls: 'status-paid' },
+   600→  2665→    'CANCELLED': { ar: 'ملغي', en: 'Cancelled', cls: 'status-cancelled' },
+   601→  2666→  }
+   602→  2667→  const statusVal = data.status as string
+   603→  2668→  const statusInfo = doStatusMap[statusVal]
+   604→  2669→  const statusBadgeHtml = statusInfo
+   605→  2670→    ? `<span class="status-badge ${statusInfo.cls}">${lang === 'ar' ? statusInfo.ar : statusInfo.en}</span>`
+   606→  2671→    : (statusVal || '—')
+   607→  2672→
+   608→  2673→  return `
+   609→  2674→    <div class="info-grid">
+   610→  2675→      <div class="info-item">
+   611→  2676→        <div class="info-label">${lang === 'ar' ? 'رقم الأمر / Order No' : 'Order No'}</div>
+   612→  2677→        <div class="info-value">${data.orderNo || data.id || '—'}</div>
+   613→  2678→      </div>
+   614→  2679→      <div class="info-item">
+   615→  2680→        <div class="info-label">${lang === 'ar' ? 'الحالة / Status' : 'Status'}</div>
+   616→  2681→        <div class="info-value">${statusBadgeHtml}</div>
+   617→  2682→      </div>
+   618→  2683→      <div class="info-item">
+   619→  2684→        <div class="info-label">${lang === 'ar' ? 'تاريخ التوصيل / Delivery Date' : 'Delivery Date'}</div>
+   620→  2685→        <div class="info-value">${formatDate(data.deliveryDate)}</div>
+   621→  2686→      </div>
+   622→  2687→      <div class="info-item">
+   623→  2688→        <div class="info-label">${lang === 'ar' ? 'تاريخ الإرجاع / Return Date' : 'Return Date'}</div>
+   624→  2689→        <div class="info-value">${data.returnDate ? formatDate(data.returnDate) : '—'}</div>
+   625→  2690→      </div>
+   626→  2691→    </div>
+   627→  2692→
+   628→  2693→    <div class="parties-section">
+   629→  2694→      <div class="party-card">
+   630→  2695→        <div class="party-card-title">${lang === 'ar' ? '⚙️ بيانات المعدة' : '⚙️ Equipment'}</div>
+   631→  2696→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</span><span class="value">${data.equipmentName || data.equipmentNameAr || '—'}</span></div>
+   632→  2697→        ${data.equipmentCode ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الكود' : 'Code'}</span><span class="value">${data.equipmentCode}</span></div>` : ''}
+   633→  2698→      </div>
+   634→  2699→      <div class="party-card">
+   635→  2700→        <div class="party-card-title">${lang === 'ar' ? '👤 العميل' : '👤 Client'}</div>
+   636→  2701→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.clientName || '—'}</span></div>
+   637→  2702→      </div>
+   638→  2703→    </div>
+   639→  2704→
+   640→  2705→    ${data.projectName ? `
+   641→  2706→    <div class="rental-equipment-section">
+   642→  2707→      <div class="section-title">${lang === 'ar' ? '📍 بيانات الموقع / Site Info' : '📍 Site Info'}</div>
+   643→  2708→      <div class="info-grid">
+   644→  2709→        ${data.projectName ? `<div class="info-item">
+   645→  2710→          <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+   646→  2711→          <div class="info-value">${data.projectName}</div>
+   647→  2712→        </div>` : ''}
+   648→  2713→        ${data.site ? `<div class="info-item">
+   649→  2714→          <div class="info-label">${lang === 'ar' ? 'الموقع' : 'Site'}</div>
+   650→  2715→          <div class="info-value">${data.site}</div>
+   651→  2716→        </div>` : ''}
+   652→  2717→      </div>
+   653→  2718→    </div>` : ''}
+   654→  2719→
+   655→  2720→    ${data.notes ? `
+   656→  2721→    <div class="terms-section">
+   657→  2722→      <div class="terms-title">${lang === 'ar' ? 'ملاحظات' : 'Notes'}</div>
+   658→  2723→      ${data.notes}
+   659→  2724→    </div>` : ''}
+   660→  2725→
+   661→  2726→    ${signaturesSection(settings, lang)}
+   662→  2727→  `
+   663→  2728→}
+   664→  2729→
+   665→  2730→// ============ Dispatch Body Generator ============
+   666→  2731→function generateDocumentBody(
+   667→  2732→  type: PrintDocumentType,
+   668→  2733→  data: Record<string, unknown>,
+   669→  2734→  settings: PrintOptions['settings'],
+   670→  2735→  lang: 'ar' | 'en'
+   671→  2736→): string {
+   672→  2737→  switch (type) {
+   673→  2738→    case 'rental-invoice':
+   674→  2739→      return generateRentalInvoiceBody(data, settings, lang)
+   675→  2740→    case 'service-invoice':
+   676→  2741→      return generateInvoiceBody(data, settings, lang)
+   677→  2742→    case 'extract':
+   678→  2743→      return generateExtractBody(data, settings, lang)
+   679→  2744→    case 'supplier-invoice':
+   680→  2745→      return generateSupplierInvoiceBody(data, settings, lang)
+   681→  2746→    case 'purchase-order':
+   682→  2747→      return generatePurchaseOrderBody(data, settings, lang)
+   683→  2748→    case 'tax-declaration':
+   684→  2749→      return generateTaxDeclarationBody(data, settings, lang)
+   685→  2750→    case 'client-payment':
+   686→  2751→    case 'supplier-payment':
+   687→  2752→    case 'rental-payment':
+   688→  2753→    case 'expense-report':
+   689→  2754→    case 'advance-voucher':
+   690→  2755→    case 'petty-cash-voucher':
+   691→  2756→      // If data has columns/rows structure (list report), use generic table; otherwise use voucher template
+   692→  2757→      if (data.columns && Array.isArray(data.columns)) {
+   693→  2758→        return generateGenericTableBody(data, settings, lang)
+   694→  2759→      }
+   695→  2760→      return generatePaymentVoucherBody(data, settings, lang)
+   696→  2761→    case 'salary-slip':
+   697→  2762→      // If data has columns/rows structure (list report), use generic table; otherwise use salary slip template
+   698→  2763→      if (data.columns && Array.isArray(data.columns)) {
+   699→  2764→        return generateGenericTableBody(data, settings, lang)
+   700→  2765→      }
+   701→
+   702→[showing lines 2066-2765 of 2915; use offset=2766 with limit to continue reading]

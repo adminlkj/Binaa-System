@@ -11,7 +11,8 @@ import {
   Wallet, Landmark, FileSpreadsheet, CircleDollarSign,
   CalendarCheck, Wrench, Banknote, FolderClosed, CheckCircle2,
   Printer, Download, Search, Link2, Pencil, FileSearch, ArrowRightLeft,
-  Settings, List,
+  Settings, List, Heart, Activity, Zap, ChevronUp, Trash2,
+  XCircle, AlertCircle, InfoIcon, ShieldCheck, Stethoscope,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -28,6 +29,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
@@ -96,16 +98,119 @@ interface AccountStatementData {
   closingBalance: number
 }
 
+// New types for financial mapping engine
+interface FinancialMappingItem {
+  id: string
+  operationType: string
+  labelAr: string
+  labelEn: string
+  description: string
+  debitRoles: string[]
+  creditRoles: string[]
+}
+
+interface RoleOverviewItem {
+  role: string
+  labelAr: string
+  labelEn: string
+  description: string
+  defaultCodes: string[]
+  isMapped: boolean
+  totalAccounts: number
+  activeAccounts: number
+  postingAccounts: number
+  childAccounts: number
+  accounts: { id: string; code: string; nameAr: string | null; name: string; isActive: boolean; allowPosting: boolean; parentCode: string | null }[]
+  childAccountList: { id: string; code: string; nameAr: string | null; name: string; parentCode: string | null }[]
+  operations: { operationType: string; labelAr: string; labelEn: string; side: 'debit' | 'credit' | 'both' }[]
+}
+
+interface AccountImpactSummaryItem {
+  id: string
+  code: string
+  name: string
+  type: string
+  accountRole: string | null
+  roleLabel: string | null
+  parentCode: string | null
+  allowPosting: boolean
+  level: number
+  childCount: number
+  journalLineCount: number
+  hasUsage: boolean
+}
+
+interface AccountImpactDetail {
+  account: {
+    id: string; code: string; name: string; nameAr: string | null
+    type: string; accountRole: string | null; parentCode: string | null
+    isActive: boolean; allowPosting: boolean; level: number
+  }
+  parentAccount: { id: string; code: string; name: string; nameAr: string | null } | null
+  childAccounts: { id: string; code: string; name: string; nameAr: string | null; isActive: boolean }[]
+  role: { role: string; labelAr: string; labelEn: string } | null
+  operations: { operationType: string; labelAr: string; labelEn: string; side: 'debit' | 'credit' | 'both' }[]
+  usageStats: {
+    journalLineCount: number
+    totalDebit: number
+    totalCredit: number
+    netBalance: number
+    lastUsedDate: string | null
+  }
+  documentReferences: { type: string; labelAr: string; count: number }[]
+  canDeactivate: boolean
+  deactivationBlockers: string[]
+}
+
+interface HealthCheckResult {
+  checkId: string
+  checkNameAr: string
+  checkNameEn: string
+  severity: 'error' | 'warning' | 'info'
+  passed: boolean
+  messageAr: string
+  messageEn: string
+  details?: unknown
+}
+
+interface HealthCheckReport {
+  overallScore: number
+  totalChecks: number
+  passedChecks: number
+  warnings: number
+  errors: number
+  checks: HealthCheckResult[]
+  checkedAt: string
+}
+
+interface HealthSummary {
+  score: number
+  status: 'healthy' | 'warning' | 'critical'
+  errors: number
+  warnings: number
+  lastChecked: string
+}
+
+interface HealthHistoryItem {
+  id: string
+  checkDate: string
+  overallScore: number
+  totalChecks: number
+  passedChecks: number
+  warnings: number
+  errors: number
+}
+
 // ============ Helpers ============
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
 
 // ============ Type Config ============
 const typeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
-  ASSET: { label: { ar: 'أصول', en: 'Asset' }, color: 'text-sky-700', bg: 'bg-sky-100' },
-  LIABILITY: { label: { ar: 'التزامات', en: 'Liability' }, color: 'text-orange-700', bg: 'bg-orange-100' },
-  EQUITY: { label: { ar: 'حقوق ملكية', en: 'Equity' }, color: 'text-purple-700', bg: 'bg-purple-100' },
-  REVENUE: { label: { ar: 'إيرادات', en: 'Revenue' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
-  EXPENSE: { label: { ar: 'مصروفات', en: 'Expense' }, color: 'text-rose-700', bg: 'bg-rose-100' },
+  ASSET: { label: { ar: 'أصول', en: 'Asset' }, color: 'text-blue-600', bg: 'bg-blue-50' },
+  LIABILITY: { label: { ar: 'التزامات', en: 'Liability' }, color: 'text-amber-600', bg: 'bg-amber-50' },
+  EQUITY: { label: { ar: 'حقوق ملكية', en: 'Equity' }, color: 'text-purple-600', bg: 'bg-purple-50' },
+  REVENUE: { label: { ar: 'إيرادات', en: 'Revenue' }, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+  EXPENSE: { label: { ar: 'مصروفات', en: 'Expense' }, color: 'text-red-600', bg: 'bg-red-50' },
 }
 
 function TypeBadge({ type, lang }: { type: string; lang: 'ar' | 'en' }) {
@@ -272,16 +377,11 @@ function AccountStatementDialog({ account, open, onClose }: {
     enabled: !!account && open,
   })
 
-  // Reset dates when account changes
   React.useEffect(() => {
-    if (account) {
-      setDateFrom('')
-      setDateTo('')
-    }
+    if (account) { setDateFrom(''); setDateTo('') }
   }, [account?.id])
 
   if (!account) return null
-
   const statement = statementData as AccountStatementData | null
 
   return (
@@ -296,9 +396,7 @@ function AccountStatementDialog({ account, open, onClose }: {
             <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
           </DialogTitle>
         </DialogHeader>
-
         <div className="space-y-4 flex-1 overflow-hidden">
-          {/* Date Filters */}
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1">
               <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
@@ -309,49 +407,22 @@ function AccountStatementDialog({ account, open, onClose }: {
               <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
             </div>
             <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1">
-              <RefreshCw className="size-3.5" />
-              {t('تحديث', 'Refresh', lang)}
+              <RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}
             </Button>
           </div>
-
-          {isLoading ? (
-            <TableSkeleton />
-          ) : isError ? (
+          {isLoading ? <TableSkeleton /> : isError ? (
             <div className="flex flex-col items-center gap-3 py-10">
               <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
               <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
             </div>
           ) : statement ? (
             <>
-              {/* Summary Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Card className="bg-sky-50 border-sky-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-sky-600">{t('الرصيد الافتتاحي', 'Opening Balance', lang)}</p>
-                    <MoneyDisplay value={statement.openingBalance} lang={lang} bold className={statement.openingBalance >= 0 ? 'text-sky-700' : 'text-rose-700'} />
-                  </CardContent>
-                </Card>
-                <Card className="bg-emerald-50 border-emerald-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p>
-                    <MoneyDisplay value={statement.totalDebit} lang={lang} bold className="text-emerald-700" />
-                  </CardContent>
-                </Card>
-                <Card className="bg-rose-50 border-rose-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p>
-                    <MoneyDisplay value={statement.totalCredit} lang={lang} bold className="text-rose-700" />
-                  </CardContent>
-                </Card>
-                <Card className="bg-purple-50 border-purple-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p>
-                    <MoneyDisplay value={statement.closingBalance} lang={lang} bold className={statement.closingBalance >= 0 ? 'text-purple-700' : 'text-rose-700'} />
-                  </CardContent>
-                </Card>
+                <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('الرصيد الافتتاحي', 'Opening Balance', lang)}</p><MoneyDisplay value={statement.openingBalance} lang={lang} bold className={statement.openingBalance >= 0 ? 'text-sky-700' : 'text-rose-700'} /></CardContent></Card>
+                <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p><MoneyDisplay value={statement.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+                <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p><MoneyDisplay value={statement.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+                <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p><MoneyDisplay value={statement.closingBalance} lang={lang} bold className={statement.closingBalance >= 0 ? 'text-purple-700' : 'text-rose-700'} /></CardContent></Card>
               </div>
-
-              {/* Statement Lines Table */}
               <Card className="flex-1 overflow-hidden">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
@@ -368,23 +439,17 @@ function AccountStatementDialog({ account, open, onClose }: {
                       </TableHeader>
                       <TableBody>
                         {statement.lines.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                              {t('لا توجد حركات', 'No transactions found', lang)}
-                            </TableCell>
+                          <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t('لا توجد حركات', 'No transactions found', lang)}</TableCell></TableRow>
+                        ) : statement.lines.map((line, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell>{formatDate(line.date, lang)}</TableCell>
+                            <TableCell className="font-mono">{line.entryNo}</TableCell>
+                            <TableCell>{line.description || '—'}</TableCell>
+                            <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+                            <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+                            <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" bold className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
                           </TableRow>
-                        ) : (
-                          statement.lines.map((line, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell>{formatDate(line.date, lang)}</TableCell>
-                              <TableCell className="font-mono">{line.entryNo}</TableCell>
-                              <TableCell>{line.description || '—'}</TableCell>
-                              <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                              <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                              <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" bold className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
-                            </TableRow>
-                          ))
-                        )}
+                        ))}
                         {statement.lines.length > 0 && (
                           <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
                             <TableCell colSpan={3}>{t('الإجمالي', 'Total', lang)}</TableCell>
@@ -433,7 +498,6 @@ function AccountTransactionsDialog({ account, open, onClose }: {
   })
 
   if (!account) return null
-
   const entries = data?.entries || []
   const totalDebit = entries.reduce((s, e) => s + e.debit, 0)
   const totalCredit = entries.reduce((s, e) => s + e.credit, 0)
@@ -450,46 +514,20 @@ function AccountTransactionsDialog({ account, open, onClose }: {
             <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
           </DialogTitle>
         </DialogHeader>
-
         <div className="space-y-4 flex-1 overflow-hidden">
-          {isLoading ? (
-            <TableSkeleton />
-          ) : isError ? (
+          {isLoading ? <TableSkeleton /> : isError ? (
             <div className="flex flex-col items-center gap-3 py-10">
               <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
               <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
             </div>
           ) : (
             <>
-              {/* Summary Cards */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <Card className="bg-emerald-50 border-emerald-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p>
-                    <MoneyDisplay value={totalDebit} lang={lang} bold className="text-emerald-700" />
-                  </CardContent>
-                </Card>
-                <Card className="bg-rose-50 border-rose-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p>
-                    <MoneyDisplay value={totalCredit} lang={lang} bold className="text-rose-700" />
-                  </CardContent>
-                </Card>
-                <Card className="bg-sky-50 border-sky-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-sky-600">{t('عدد القيود', 'Entry Count', lang)}</p>
-                    <p className="text-lg font-bold text-sky-700">{formatNumber(entries.length)}</p>
-                  </CardContent>
-                </Card>
-                <Card className="bg-purple-50 border-purple-200">
-                  <CardContent className="p-3 text-center">
-                    <p className="text-xs text-purple-600">{t('عدد البنود', 'Line Count', lang)}</p>
-                    <p className="text-lg font-bold text-purple-700">{formatNumber(data?.totalLines || 0)}</p>
-                  </CardContent>
-                </Card>
+                <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p><MoneyDisplay value={totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+                <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p><MoneyDisplay value={totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+                <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('عدد القيود', 'Entry Count', lang)}</p><p className="text-lg font-bold text-sky-700">{formatNumber(entries.length)}</p></CardContent></Card>
+                <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('عدد البنود', 'Line Count', lang)}</p><p className="text-lg font-bold text-purple-700">{formatNumber(data?.totalLines || 0)}</p></CardContent></Card>
               </div>
-
-              {/* Entries Table */}
               <Card className="flex-1 overflow-hidden">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
@@ -506,23 +544,17 @@ function AccountTransactionsDialog({ account, open, onClose }: {
                       </TableHeader>
                       <TableBody>
                         {entries.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
-                              {t('لا توجد حركات', 'No transactions found', lang)}
-                            </TableCell>
+                          <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t('لا توجد حركات', 'No transactions found', lang)}</TableCell></TableRow>
+                        ) : entries.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell className="font-mono">{entry.entryNo}</TableCell>
+                            <TableCell>{formatDate(entry.date, lang)}</TableCell>
+                            <TableCell>{entry.description || '—'}</TableCell>
+                            <TableCell>{entry.debit > 0 ? <MoneyDisplay value={entry.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+                            <TableCell>{entry.credit > 0 ? <MoneyDisplay value={entry.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+                            <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
                           </TableRow>
-                        ) : (
-                          entries.map((entry) => (
-                            <TableRow key={entry.id}>
-                              <TableCell className="font-mono">{entry.entryNo}</TableCell>
-                              <TableCell>{formatDate(entry.date, lang)}</TableCell>
-                              <TableCell>{entry.description || '—'}</TableCell>
-                              <TableCell>{entry.debit > 0 ? <MoneyDisplay value={entry.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                              <TableCell>{entry.credit > 0 ? <MoneyDisplay value={entry.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                              <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
-                            </TableRow>
-                          ))
-                        )}
+                        ))}
                         {entries.length > 0 && (
                           <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
                             <TableCell colSpan={3}>{t('الإجمالي', 'Total', lang)}</TableCell>
@@ -549,174 +581,114 @@ function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; 
   const { lang } = useAppStore()
   const [detailTab, setDetailTab] = useState('lines')
 
-  // Compute account impact data for the أثر الحسابات tab
   const accountImpactData = useMemo(() => {
-    // Get unique accounts in this JE
     const uniqueAccounts = new Map<string, { code: string; name: string; nameAr: string | null; totalDebit: number; totalCredit: number }>()
     for (const line of entry.lines) {
       const existing = uniqueAccounts.get(line.accountId)
-      if (existing) {
-        existing.totalDebit += line.debit
-        existing.totalCredit += line.credit
-      } else {
-        uniqueAccounts.set(line.accountId, {
-          code: line.account.code,
-          name: line.account.name,
-          nameAr: line.account.nameAr,
-          totalDebit: line.debit,
-          totalCredit: line.credit,
-        })
-      }
+      if (existing) { existing.totalDebit += line.debit; existing.totalCredit += line.credit }
+      else { uniqueAccounts.set(line.accountId, { code: line.account.code, name: line.account.name, nameAr: line.account.nameAr, totalDebit: line.debit, totalCredit: line.credit }) }
     }
 
-    // For each unique account, compute before/after balance
-    const impactItems: {
-      accountId: string; code: string; name: string; nameAr: string | null
-      beforeBalance: number; movementDebit: number; movementCredit: number; afterBalance: number
-    }[] = []
-
+    const impactItems: { accountId: string; code: string; name: string; nameAr: string | null; totalDebit: number; totalCredit: number; beforeBalance: number; afterBalance: number }[] = []
     for (const [accountId, info] of uniqueAccounts) {
-      const accountData = accounts.find(a => a.id === accountId)
-      const currentBalance = accountData?.balance || 0
-      const normalBalance = accountData?.normalBalance || 'DEBIT'
-      const isPosted = entry.status === 'POSTED'
-
-      // Net movement effect on this account
-      // For DEBIT-normal accounts: balance increases with debit, decreases with credit
-      // For CREDIT-normal accounts: balance increases with credit, decreases with debit
-      const netMovement = normalBalance === 'DEBIT'
-        ? info.totalDebit - info.totalCredit
-        : info.totalCredit - info.totalDebit
-
-      let beforeBalance: number
-      let afterBalance: number
-
-      if (isPosted) {
-        // Current balance includes this JE's effect
-        beforeBalance = currentBalance - netMovement
-        afterBalance = currentBalance
-      } else {
-        // Current balance does NOT include this JE's effect (DRAFT)
-        beforeBalance = currentBalance
-        afterBalance = currentBalance + netMovement
-      }
-
-      impactItems.push({
-        accountId,
-        code: info.code,
-        name: info.name,
-        nameAr: info.nameAr,
-        beforeBalance,
-        movementDebit: info.totalDebit,
-        movementCredit: info.totalCredit,
-        afterBalance,
-      })
+      const acct = accounts.find(a => a.id === accountId)
+      const currentBalance = acct?.balance || 0
+      const beforeBalance = currentBalance - (info.totalDebit - info.totalCredit)
+      impactItems.push({ accountId, ...info, beforeBalance, afterBalance: currentBalance })
     }
-
-    return impactItems.sort((a, b) => a.code.localeCompare(b.code))
+    return impactItems
   }, [entry, accounts])
 
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Button variant="outline" size="icon" onClick={onBack}><ChevronLeft className="size-4" /></Button>
-        <div>
-          <h2 className="text-xl font-bold">{entry.entryNo}</h2>
-          <p className="text-sm text-muted-foreground">{entry.description || ''}</p>
+        <Button variant="outline" size="sm" onClick={onBack} className="gap-1">
+          <ChevronLeft className="size-4" />{t('رجوع', 'Back', lang)}
+        </Button>
+        <div className="flex-1">
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            <FileText className="size-5 text-emerald-600" />
+            <span className="font-mono">{entry.entryNo}</span>
+            <span>-</span>
+            <span>{entry.description || t('قيد يومية', 'Journal Entry', lang)}</span>
+          </h3>
         </div>
-        <div className="mr-auto flex items-center gap-2">
-          <JEStatusBadge status={entry.status} lang={lang} />
-          {entry.sourceType && <Badge variant="outline" className="bg-gray-50">{sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType}</Badge>}
-        </div>
+        <JEStatusBadge status={entry.status} lang={lang} />
       </div>
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-gray-600">{t('التاريخ', 'Date', lang)}</p><p className="font-semibold">{formatDate(entry.date, lang)}</p></CardContent></Card>
+        <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('التاريخ', 'Date', lang)}</p><p className="text-sm font-bold text-sky-700">{formatDate(entry.date, lang)}</p></CardContent></Card>
         <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('مدين', 'Debit', lang)}</p><MoneyDisplay value={entry.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
         <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={entry.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
-        <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-gray-600">{t('عدد البنود', 'Lines', lang)}</p><p className="font-semibold">{formatNumber(entry.lines.length)}</p></CardContent></Card>
+        <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('المصدر', 'Source', lang)}</p><p className="text-sm font-bold text-purple-700">{entry.sourceType ? (sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType) : t('يدوي', 'Manual', lang)}</p></CardContent></Card>
       </div>
 
-      {/* Sub-tabs for Lines and Account Impact */}
       <Tabs value={detailTab} onValueChange={setDetailTab}>
         <TabsList>
-          <TabsTrigger value="lines" className="gap-1 text-xs">
-            <FileText className="size-3.5" />
-            {t('بنود القيد', 'Entry Lines', lang)}
-          </TabsTrigger>
-          <TabsTrigger value="impact" className="gap-1 text-xs">
-            <ArrowRightLeft className="size-3.5" />
-            {t('أثر الحسابات', 'Account Impact', lang)}
-          </TabsTrigger>
+          <TabsTrigger value="lines" className="gap-1"><BookOpen className="size-3.5" />{t('البنود', 'Lines', lang)}</TabsTrigger>
+          <TabsTrigger value="impact" className="gap-1"><ArrowRightLeft className="size-3.5" />{t('أثر الحسابات', 'Account Impact', lang)}</TabsTrigger>
         </TabsList>
-
         <TabsContent value="lines">
           <Card>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
-                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right">{t('كود الحساب', 'Account Code', lang)}</TableHead>
+                    <TableHead className="text-right">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
+                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+                    <TableHead className="text-right">{t('البيان', 'Description', lang)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {entry.lines.map(line => (
+                    <TableRow key={line.id}>
+                      <TableCell className="font-mono">{line.account.code}</TableCell>
+                      <TableCell>{lang === 'ar' && line.account.nameAr ? line.account.nameAr : line.account.name}</TableCell>
+                      <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+                      <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+                      <TableCell>{line.description || '—'}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entry.lines.map(line => (
-                      <TableRow key={line.id}>
-                        <TableCell className="font-medium">{line.account.code} - {lang === 'ar' && line.account.nameAr ? line.account.nameAr : line.account.name}</TableCell>
-                        <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                        <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                        <TableCell className="text-muted-foreground">{line.description || '—'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                  <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                    <TableCell colSpan={2}>{t('الإجمالي', 'Total', lang)}</TableCell>
+                    <TableCell><MoneyDisplay value={entry.totalDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+                    <TableCell><MoneyDisplay value={entry.totalCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+                    <TableCell />
+                  </TableRow>
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
-
         <TabsContent value="impact">
           <Card>
             <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
-                      <TableHead className="text-right">{t('رصيد قبل العملية', 'Before Balance', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الحركة مدين', 'Movement Debit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الحركة دائن', 'Movement Credit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('رصيد بعد العملية', 'After Balance', lang)}</TableHead>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right">{t('كود الحساب', 'Account Code', lang)}</TableHead>
+                    <TableHead className="text-right">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
+                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الرصيد قبل', 'Before', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الرصيد بعد', 'After', lang)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {accountImpactData.map(item => (
+                    <TableRow key={item.accountId}>
+                      <TableCell className="font-mono">{item.code}</TableCell>
+                      <TableCell>{lang === 'ar' && item.nameAr ? item.nameAr : item.name}</TableCell>
+                      <TableCell>{item.totalDebit > 0 ? <MoneyDisplay value={item.totalDebit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+                      <TableCell>{item.totalCredit > 0 ? <MoneyDisplay value={item.totalCredit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+                      <TableCell><MoneyDisplay value={item.beforeBalance} lang={lang} size="sm" className={item.beforeBalance >= 0 ? 'text-gray-700' : 'text-rose-700'} /></TableCell>
+                      <TableCell className="font-semibold"><MoneyDisplay value={item.afterBalance} lang={lang} size="sm" bold className={item.afterBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {accountImpactData.map(item => (
-                      <TableRow key={item.accountId}>
-                        <TableCell className="font-medium">
-                          <span className="font-mono">{item.code}</span>
-                          <span className="mx-1">-</span>
-                          <span>{lang === 'ar' && item.nameAr ? item.nameAr : item.name}</span>
-                        </TableCell>
-                        <TableCell>
-                          <MoneyDisplay value={item.beforeBalance} lang={lang} size="sm" className={item.beforeBalance >= 0 ? 'text-gray-700' : 'text-rose-700'} />
-                        </TableCell>
-                        <TableCell>
-                          {item.movementDebit > 0 ? <MoneyDisplay value={item.movementDebit} lang={lang} size="sm" className="text-emerald-700" /> : '—'}
-                        </TableCell>
-                        <TableCell>
-                          {item.movementCredit > 0 ? <MoneyDisplay value={item.movementCredit} lang={lang} size="sm" className="text-rose-700" /> : '—'}
-                        </TableCell>
-                        <TableCell>
-                          <MoneyDisplay value={item.afterBalance} lang={lang} size="sm" bold className={item.afterBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
         </TabsContent>
@@ -818,7 +790,6 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
 
   return (
     <div className="space-y-4">
-      {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {Object.entries(typeSummary).map(([type, count]) => {
           const cfg = typeConfig[type]
@@ -827,7 +798,6 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
         })}
       </div>
 
-      {/* Filters */}
       <Card className="bg-gray-50/50">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
@@ -873,7 +843,6 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
         </CardContent>
       </Card>
 
-      {/* Table */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
@@ -914,43 +883,14 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
                       <TableCell className="text-center">{formatNumber(a.entryCount)}</TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1 text-xs"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setStatementAccount(a)
-                              setStatementOpen(true)
-                            }}
-                          >
-                            <FileSearch className="size-3.5" />
-                            {t('كشف', 'Stmt', lang)}
+                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={(e) => { e.stopPropagation(); setStatementAccount(a); setStatementOpen(true) }}>
+                            <FileSearch className="size-3.5" />{t('كشف', 'Stmt', lang)}
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1 text-xs text-sky-700 hover:text-sky-800 hover:bg-sky-50"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              onViewLedger(a.code)
-                            }}
-                          >
-                            <BookOpen className="size-3.5" />
-                            {t('أستاذ', 'Ledger', lang)}
+                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-sky-700 hover:text-sky-800 hover:bg-sky-50" onClick={(e) => { e.stopPropagation(); onViewLedger(a.code) }}>
+                            <BookOpen className="size-3.5" />{t('أستاذ', 'Ledger', lang)}
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1 text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setTransactionsAccount(a)
-                              setTransactionsOpen(true)
-                            }}
-                          >
-                            <List className="size-3.5" />
-                            {t('حركات', 'Txns', lang)}
+                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50" onClick={(e) => { e.stopPropagation(); setTransactionsAccount(a); setTransactionsOpen(true) }}>
+                            <List className="size-3.5" />{t('حركات', 'Txns', lang)}
                           </Button>
                         </div>
                       </TableCell>
@@ -970,34 +910,1017 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   )
 }
 
-// ============ Tab 2: Journal Entries ============
+// ============ Tab 2: Role Mapping (ربط الحسابات بالنظام) ============
+const roleCategories = [
+  { key: 'current-assets', labelAr: 'أصول متداولة', labelEn: 'Current Assets', roles: ['CASH', 'BANK', 'CUSTOMER_AR', 'RETENTION_RECEIVABLE', 'EMPLOYEE_ADVANCE'] },
+  { key: 'fixed-assets', labelAr: 'أصول ثابتة', labelEn: 'Fixed Assets', roles: ['FIXED_ASSET', 'ACCUM_DEPRECIATION'] },
+  { key: 'vat', labelAr: 'ضرائب', labelEn: 'VAT/Tax', roles: ['VAT_INPUT', 'VAT_OUTPUT', 'VAT_DUE'] },
+  { key: 'liabilities', labelAr: 'خصوم', labelEn: 'Liabilities', roles: ['SUPPLIER_AP', 'SUBCONTRACTOR_AP', 'SALARIES_PAYABLE', 'GOSI_PAYABLE', 'ZAKAT_PAYABLE', 'CUSTOMER_ADVANCE', 'EOS_PROVISION'] },
+  { key: 'revenue', labelAr: 'إيرادات', labelEn: 'Revenue', roles: ['RENTAL_REVENUE', 'PROJECT_REVENUE', 'SERVICE_REVENUE'] },
+  { key: 'direct-costs', labelAr: 'تكاليف مباشرة', labelEn: 'Direct Costs', roles: ['PROJECT_COST', 'SUBCONTRACTOR_COST', 'FUEL_EXPENSE', 'MAINTENANCE_EXPENSE', 'DRIVER_EXPENSE', 'TRANSPORT_EXPENSE', 'RENTAL_DEPRECIATION'] },
+  { key: 'admin-expenses', labelAr: 'مصروفات إدارية', labelEn: 'Admin Expenses', roles: ['PAYROLL_EXPENSE', 'GOSI_EXPENSE', 'ADMIN_EXPENSE', 'DEPRECIATION_EXPENSE', 'ZAKAT_EXPENSE'] },
+]
+
+function RoleMappingTab({ accounts }: { accounts: Account[] }) {
+  const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const [editRole, setEditRole] = useState<string | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [selectedAccountId, setSelectedAccountId] = useState('')
+
+  const { data: overviewData, isLoading, isError, refetch } = useQuery<{ overview: RoleOverviewItem[] }>({
+    queryKey: ['financial-mapping-overview'],
+    queryFn: async () => {
+      const res = await fetch('/api/financial-mapping?action=overview')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const overview = overviewData?.overview || []
+
+  const postingAccounts = useMemo(
+    () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
+    [accounts]
+  )
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ accountId, accountRole }: { accountId: string; accountRole: string }) => {
+      const res = await fetch('/api/accounts/role-mapping', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, accountRole }),
+      })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-mapping-overview'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      setEditDialogOpen(false)
+      setEditRole(null)
+    },
+  })
+
+  const handleEdit = (role: string) => {
+    setEditRole(role)
+    const currentMapping = overview.find(m => m.role === role)
+    const primaryAccount = currentMapping?.accounts.find(a => a.isActive && a.allowPosting)
+    setSelectedAccountId(primaryAccount?.id || '')
+    setEditDialogOpen(true)
+  }
+
+  const handleSave = () => {
+    if (!selectedAccountId || !editRole) return
+    updateMutation.mutate({ accountId: selectedAccountId, accountRole: editRole })
+  }
+
+  const currentEditMapping = overview.find(m => m.role === editRole)
+
+  const groupedMappings = useMemo(() => {
+    const mappedRoles = new Set(overview.map(m => m.role))
+    const groups = roleCategories.map(cat => ({
+      ...cat,
+      items: cat.roles
+        .filter(role => mappedRoles.has(role))
+        .map(role => overview.find(m => m.role === role)!)
+        .filter(Boolean),
+    })).filter(g => g.items.length > 0)
+
+    const categorizedRoles = new Set(roleCategories.flatMap(c => c.roles))
+    const uncategorized = overview.filter(m => !categorizedRoles.has(m.role))
+    if (uncategorized.length > 0) {
+      groups.push({
+        key: 'other', labelAr: 'أخرى', labelEn: 'Other',
+        roles: uncategorized.map(m => m.role), items: uncategorized,
+      })
+    }
+    return groups
+  }, [overview])
+
+  const mappedCount = overview.filter(m => m.isMapped).length
+  const unmappedCount = overview.filter(m => !m.isMapped).length
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <SummaryCard title={t('إجمالي الأدوار', 'Total Roles', lang)} value={overview.length} icon={Link2} color="teal" lang={lang} isMoney={false} />
+        <SummaryCard title={t('مرتبط', 'Mapped', lang)} value={mappedCount} icon={CheckCircle2} color="emerald" lang={lang} isMoney={false} />
+        <SummaryCard title={t('غير مربوط', 'Unmapped', lang)} value={unmappedCount} icon={AlertTriangle} color="rose" lang={lang} isMoney={false} />
+        <SummaryCard title={t('حسابات فرعية', 'Child Accounts', lang)} value={overview.reduce((s, m) => s + m.childAccounts, 0)} icon={TreePine} color="purple" lang={lang} isMoney={false} />
+      </div>
+
+      {isLoading ? <TableSkeleton /> : isError ? (
+        <div className="flex flex-col items-center gap-3 py-10">
+          <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+          <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+        </div>
+      ) : groupedMappings.map(group => (
+        <Card key={group.key}>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Link2 className="size-4 text-teal-600" />
+              <h4 className="font-bold text-sm">{lang === 'ar' ? group.labelAr : group.labelEn}</h4>
+              <Badge variant="outline" className="text-xs">{group.items.length}</Badge>
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right">{t('الدور', 'Role', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الحساب الأب', 'Parent Account', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الحسابات الفرعية', 'Child Accounts', lang)}</TableHead>
+                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+                    <TableHead className="text-right">{t('العمليات المستخدمة', 'Operations', lang)}</TableHead>
+                    <TableHead className="text-right">{t('إجراء', 'Action', lang)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {group.items.map(mapping => (
+                    <TableRow key={mapping.role}>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium">{lang === 'ar' ? mapping.labelAr : mapping.labelEn}</p>
+                          <p className="text-xs text-muted-foreground">{mapping.role}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {mapping.accounts.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {mapping.accounts.filter(a => !a.allowPosting).map(a => (
+                              <div key={a.id} className="flex items-center gap-1">
+                                <span className="font-mono text-sm">{a.code}</span>
+                                <span>-</span>
+                                <span className="text-sm">{lang === 'ar' && a.nameAr ? a.nameAr : a.name}</span>
+                              </div>
+                            ))}
+                            {mapping.accounts.filter(a => !a.allowPosting).length === 0 && mapping.accounts.length > 0 && (
+                              <div className="flex items-center gap-1">
+                                <span className="font-mono text-sm">{mapping.accounts[0].code}</span>
+                                <span>-</span>
+                                <span className="text-sm">{lang === 'ar' && mapping.accounts[0].nameAr ? mapping.accounts[0].nameAr : mapping.accounts[0].name}</span>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <Badge className="bg-amber-100 text-amber-700 border-0 gap-1">
+                            <AlertTriangle className="size-3" />{t('غير مربوط', 'Unmapped', lang)}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {mapping.childAccountList.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {mapping.childAccountList.slice(0, 4).map(child => (
+                              <Badge key={child.id} variant="outline" className="text-xs font-mono">
+                                {child.code} {lang === 'ar' && child.nameAr ? child.nameAr : child.name}
+                              </Badge>
+                            ))}
+                            {mapping.childAccountList.length > 4 && (
+                              <Badge variant="outline" className="text-xs">+{mapping.childAccountList.length - 4}</Badge>
+                            )}
+                          </div>
+                        ) : mapping.postingAccounts > 0 ? (
+                          <Badge className="bg-emerald-50 text-emerald-700 border-0 text-xs">{t('حساب تفصيلي', 'Posting Account', lang)}</Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {mapping.isMapped ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0 gap-1"><CheckCircle2 className="size-3" />{t('مربوط', 'Mapped', lang)}</Badge>
+                        ) : (
+                          <Badge className="bg-rose-100 text-rose-700 border-0 gap-1"><XCircle className="size-3" />{t('غير مربوط', 'Unmapped', lang)}</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {mapping.operations.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {mapping.operations.map(op => (
+                              <Badge key={op.operationType} variant="outline" className="text-xs gap-1">
+                                <span className={op.side === 'debit' ? 'text-red-600' : op.side === 'credit' ? 'text-emerald-600' : 'text-blue-600'}>
+                                  {op.side === 'debit' ? '↑' : op.side === 'credit' ? '↓' : '↔'}
+                                </span>
+                                {lang === 'ar' ? op.labelAr : op.labelEn}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => handleEdit(mapping.role)}>
+                          <Pencil className="size-3" />{t('تعديل', 'Edit', lang)}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="size-5 text-teal-600" />
+              {t('ربط الحساب بالدور', 'Link Account to Role', lang)}
+            </DialogTitle>
+          </DialogHeader>
+          {currentEditMapping && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">{t('الدور', 'Role', lang)}</p>
+                <p className="text-lg font-bold">{lang === 'ar' ? currentEditMapping.labelAr : currentEditMapping.labelEn}</p>
+                <p className="text-xs text-muted-foreground">{currentEditMapping.description}</p>
+              </div>
+              <Separator />
+              <div className="space-y-1">
+                <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
+                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                  <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} /></SelectTrigger>
+                  <SelectContent>
+                    {postingAccounts.map(a => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setEditDialogOpen(false); setEditRole(null) }}>{t('إلغاء', 'Cancel', lang)}</Button>
+                <Button onClick={handleSave} disabled={!selectedAccountId || updateMutation.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                  {updateMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                  {t('حفظ', 'Save', lang)}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ============ Tab 3: Financial Mapping Engine (محرك الربط المحاسبي) ============
+function FinancialMappingEngineTab() {
+  const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const [editMapping, setEditMapping] = useState<FinancialMappingItem | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editDebitRoles, setEditDebitRoles] = useState<string[]>([])
+  const [editCreditRoles, setEditCreditRoles] = useState<string[]>([])
+
+  const { data: mappingsData, isLoading, isError, refetch } = useQuery<{ mappings: FinancialMappingItem[] }>({
+    queryKey: ['financial-mappings'],
+    queryFn: async () => {
+      const res = await fetch('/api/financial-mapping?action=list')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const { data: overviewData } = useQuery<{ overview: RoleOverviewItem[] }>({
+    queryKey: ['financial-mapping-overview'],
+    queryFn: async () => {
+      const res = await fetch('/api/financial-mapping?action=overview')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const roleMap = useMemo(() => {
+    const map = new Map<string, RoleOverviewItem>()
+    for (const item of overviewData?.overview || []) {
+      map.set(item.role, item)
+    }
+    return map
+  }, [overviewData])
+
+  const mappings = mappingsData?.mappings || []
+
+  const seedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/financial-mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'seed' }),
+      })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['financial-mappings'] }),
+  })
+
+  const updateMappingMutation = useMutation({
+    mutationFn: async ({ operationType, debitRoles, creditRoles }: { operationType: string; debitRoles: string[]; creditRoles: string[] }) => {
+      const res = await fetch('/api/financial-mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update', operationType, debitRoles, creditRoles }),
+      })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['financial-mappings'] })
+      setEditDialogOpen(false)
+      setEditMapping(null)
+    },
+  })
+
+  const handleEdit = (mapping: FinancialMappingItem) => {
+    setEditMapping(mapping)
+    setEditDebitRoles([...mapping.debitRoles])
+    setEditCreditRoles([...mapping.creditRoles])
+    setEditDialogOpen(true)
+  }
+
+  const handleSaveMapping = () => {
+    if (!editMapping) return
+    updateMappingMutation.mutate({
+      operationType: editMapping.operationType,
+      debitRoles: editDebitRoles,
+      creditRoles: editCreditRoles,
+    })
+  }
+
+  const allRoles = useMemo(() => {
+    return Array.from(roleMap.values()).map(r => ({ value: r.role, labelAr: r.labelAr, labelEn: r.labelEn }))
+  }, [roleMap])
+
+  const operationCategories = [
+    { key: 'sales', labelAr: 'المبيعات والإيرادات', labelEn: 'Sales & Revenue', types: ['RENTAL_INVOICE', 'PROJECT_INVOICE', 'SERVICE_INVOICE'] },
+    { key: 'payments', labelAr: 'التحصيلات والمدفوعات', labelEn: 'Payments', types: ['CLIENT_PAYMENT', 'SUPPLIER_PAYMENT', 'SUBCONTRACTOR_PAYMENT'] },
+    { key: 'purchases', labelAr: 'المشتريات', labelEn: 'Purchases', types: ['PURCHASE_INVOICE', 'GOODS_RECEIPT'] },
+    { key: 'hr', labelAr: 'الموارد البشرية', labelEn: 'HR & Payroll', types: ['PAYROLL', 'EMPLOYEE_ADVANCE', 'ADVANCE_SETTLEMENT'] },
+    { key: 'expenses', labelAr: 'المصروفات', labelEn: 'Expenses', types: ['FUEL_EXPENSE', 'MAINTENANCE_EXPENSE', 'GENERAL_EXPENSE', 'PROJECT_EXPENSE'] },
+    { key: 'assets', labelAr: 'الأصول', labelEn: 'Assets', types: ['ASSET_ACQUISITION', 'ASSET_DEPRECIATION'] },
+    { key: 'tax', labelAr: 'الضرائب', labelEn: 'Tax', types: ['VAT_PAYMENT', 'VAT_RETURN'] },
+    { key: 'other', labelAr: 'أخرى', labelEn: 'Other', types: ['MANUAL_JOURNAL', 'PETTY_CASH', 'BANK_RECONCILIATION', 'PROVISION', 'ZAKAT'] },
+  ]
+
+  const getRoleLabel = (roleKey: string) => {
+    const item = roleMap.get(roleKey)
+    if (item) return lang === 'ar' ? item.labelAr : item.labelEn
+    return roleKey
+  }
+
+  const getRoleAccountName = (roleKey: string) => {
+    const item = roleMap.get(roleKey)
+    if (!item || item.accounts.length === 0) return null
+    const postingAccount = item.accounts.find(a => a.isActive && a.allowPosting) || item.accounts[0]
+    return `${postingAccount.code} - ${lang === 'ar' && postingAccount.nameAr ? postingAccount.nameAr : postingAccount.name}`
+  }
+
+  const isRoleMapped = (roleKey: string) => {
+    const item = roleMap.get(roleKey)
+    return item?.isMapped || false
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <SectionTitle icon={Zap} title={{ ar: 'محرك الربط المحاسبي', en: 'Financial Mapping Engine' }} lang={lang} />
+        <Button variant="outline" size="sm" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending} className="gap-1">
+          {seedMutation.isPending ? <RefreshCw className="size-3.5 animate-spin" /> : <Database className="size-3.5" />}
+          {t('تهيئة الربط', 'Seed Mappings', lang)}
+        </Button>
+      </div>
+
+      {isLoading ? <TableSkeleton /> : isError ? (
+        <div className="flex flex-col items-center gap-3 py-10">
+          <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+          <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+        </div>
+      ) : (
+        operationCategories.map(cat => {
+          const catMappings = mappings.filter(m => cat.types.includes(m.operationType))
+          if (catMappings.length === 0) return null
+          return (
+            <Card key={cat.key}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Zap className="size-4 text-amber-600" />
+                  <h4 className="font-bold text-sm">{lang === 'ar' ? cat.labelAr : cat.labelEn}</h4>
+                  <Badge variant="outline" className="text-xs">{catMappings.length}</Badge>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {catMappings.map(mapping => {
+                    const allMapped = [...mapping.debitRoles, ...mapping.creditRoles].every(r => isRoleMapped(r))
+                    const missingRoles = [...mapping.debitRoles, ...mapping.creditRoles].filter(r => !isRoleMapped(r))
+                    return (
+                      <Card key={mapping.operationType} className={`border ${allMapped ? 'border-emerald-200' : 'border-amber-200'} bg-white`}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="font-bold text-sm">{lang === 'ar' ? mapping.labelAr : mapping.labelEn}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{mapping.operationType}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {allMapped ? (
+                                <Badge className="bg-emerald-100 text-emerald-700 border-0 gap-1"><CheckCircle2 className="size-3" />{t('مكتمل', 'Complete', lang)}</Badge>
+                              ) : (
+                                <Badge className="bg-amber-100 text-amber-700 border-0 gap-1"><AlertTriangle className="size-3" />{t('ناقص', 'Incomplete', lang)} ({missingRoles.length})</Badge>
+                              )}
+                              <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => handleEdit(mapping)}>
+                                <Pencil className="size-3" />{t('تعديل', 'Edit', lang)}
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            {/* Debit Side */}
+                            <div className="space-y-1.5">
+                              <p className="text-xs font-semibold text-red-600 flex items-center gap-1">
+                                <ArrowUpDown className="size-3" />{t('مدين (Debit)', 'Debit', lang)}
+                              </p>
+                              {mapping.debitRoles.length === 0 ? (
+                                <p className="text-xs text-muted-foreground italic">{t('يحدد المحاسب', 'Accountant decides', lang)}</p>
+                              ) : mapping.debitRoles.map(role => (
+                                <div key={role} className="flex items-center gap-1.5">
+                                  <span className={`size-2 rounded-full ${isRoleMapped(role) ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                  <span className="text-xs font-medium">{getRoleLabel(role)}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {/* Credit Side */}
+                            <div className="space-y-1.5">
+                              <p className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                                <ArrowUpDown className="size-3" />{t('دائن (Credit)', 'Credit', lang)}
+                              </p>
+                              {mapping.creditRoles.length === 0 ? (
+                                <p className="text-xs text-muted-foreground italic">{t('يحدد المحاسب', 'Accountant decides', lang)}</p>
+                              ) : mapping.creditRoles.map(role => (
+                                <div key={role} className="flex items-center gap-1.5">
+                                  <span className={`size-2 rounded-full ${isRoleMapped(role) ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                  <span className="text-xs font-medium">{getRoleLabel(role)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {mapping.description && (
+                            <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">{mapping.description}</p>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })
+      )}
+
+      {/* Edit Mapping Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="size-5 text-amber-600" />
+              {t('تعديل الربط المحاسبي', 'Edit Financial Mapping', lang)}
+            </DialogTitle>
+          </DialogHeader>
+          {editMapping && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium">{t('العملية', 'Operation', lang)}</p>
+                <p className="text-lg font-bold">{lang === 'ar' ? editMapping.labelAr : editMapping.labelEn}</p>
+                <p className="text-xs text-muted-foreground">{editMapping.description}</p>
+              </div>
+              <Separator />
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs text-red-600 font-semibold">{t('أدوار الجانب المدين', 'Debit Roles', lang)}</Label>
+                  <div className="mt-1 space-y-1">
+                    {allRoles.map(role => (
+                      <label key={role.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editDebitRoles.includes(role.value)}
+                          onChange={(e) => {
+                            if (e.target.checked) setEditDebitRoles([...editDebitRoles, role.value])
+                            else setEditDebitRoles(editDebitRoles.filter(r => r !== role.value))
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                        <span className={isRoleMapped(role.value) ? '' : 'text-amber-600'}>
+                          {lang === 'ar' ? role.labelAr : role.labelEn}
+                        </span>
+                        {!isRoleMapped(role.value) && <AlertTriangle className="size-3 text-amber-500" />}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-emerald-600 font-semibold">{t('أدوار الجانب الدائن', 'Credit Roles', lang)}</Label>
+                  <div className="mt-1 space-y-1">
+                    {allRoles.map(role => (
+                      <label key={role.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editCreditRoles.includes(role.value)}
+                          onChange={(e) => {
+                            if (e.target.checked) setEditCreditRoles([...editCreditRoles, role.value])
+                            else setEditCreditRoles(editCreditRoles.filter(r => r !== role.value))
+                          }}
+                          className="rounded border-gray-300"
+                        />
+                        <span className={isRoleMapped(role.value) ? '' : 'text-amber-600'}>
+                          {lang === 'ar' ? role.labelAr : role.labelEn}
+                        </span>
+                        {!isRoleMapped(role.value) && <AlertTriangle className="size-3 text-amber-500" />}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setEditDialogOpen(false); setEditMapping(null) }}>{t('إلغاء', 'Cancel', lang)}</Button>
+                <Button onClick={handleSaveMapping} disabled={updateMappingMutation.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                  {updateMappingMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                  {t('حفظ', 'Save', lang)}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ============ Tab 4: Account Impact (أثر الحسابات) ============
+function AccountImpactTab() {
+  const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null)
+  const [deactivateDialogOpen, setDeactivateDialogOpen] = useState(false)
+  const [deactivateTarget, setDeactivateTarget] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [typeFilter, setTypeFilter] = useState<string>('all')
+
+  const { data: summaryData, isLoading: summaryLoading, isError: summaryError, refetch: refetchSummary } = useQuery<{ summary: AccountImpactSummaryItem[] }>({
+    queryKey: ['account-impact-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/account-impact?action=summary')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const { data: detailData, isLoading: detailLoading } = useQuery<{ impact: AccountImpactDetail }>({
+    queryKey: ['account-impact-detail', selectedAccountId],
+    queryFn: async () => {
+      if (!selectedAccountId) return { impact: null as unknown as AccountImpactDetail }
+      const res = await fetch(`/api/account-impact?action=detail&accountId=${selectedAccountId}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    enabled: !!selectedAccountId,
+  })
+
+  const summary = summaryData?.summary || []
+  const impact = detailData?.impact || null
+
+  const deactivateMutation = useMutation({
+    mutationFn: async (accountId: string) => {
+      const res = await fetch('/api/account-impact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deactivate', accountId }),
+      })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['account-impact-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['account-impact-detail', selectedAccountId] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      setDeactivateDialogOpen(false)
+      setDeactivateTarget(null)
+      setSelectedAccountId(null)
+    },
+  })
+
+  const filteredSummary = useMemo(() => {
+    let filtered = summary
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase()
+      filtered = filtered.filter(a => a.code.toLowerCase().includes(term) || a.name.toLowerCase().includes(term))
+    }
+    if (typeFilter !== 'all') filtered = filtered.filter(a => a.type === typeFilter)
+    return filtered
+  }, [summary, searchTerm, typeFilter])
+
+  const accountsWithUsage = summary.filter(a => a.hasUsage).length
+  const accountsWithRole = summary.filter(a => a.accountRole).length
+
+  return (
+    <div className="space-y-4">
+      <SectionTitle icon={Activity} title={{ ar: 'أثر الحسابات على النظام', en: 'Account Impact Analysis' }} lang={lang} />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <SummaryCard title={t('إجمالي الحسابات', 'Total Accounts', lang)} value={summary.length} icon={Database} color="teal" lang={lang} isMoney={false} />
+        <SummaryCard title={t('حسابات مستخدمة', 'Used Accounts', lang)} value={accountsWithUsage} icon={Activity} color="emerald" lang={lang} isMoney={false} />
+        <SummaryCard title={t('حسابات بأدوار', 'With Roles', lang)} value={accountsWithRole} icon={Link2} color="purple" lang={lang} isMoney={false} />
+        <SummaryCard title={t('حسابات نشطة', 'Active', lang)} value={summary.filter(a => a.allowPosting).length} icon={CheckCircle2} color="sky" lang={lang} isMoney={false} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Account List */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Search className="size-4 text-gray-500" />
+              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث بالكود أو الاسم...', 'Search by code or name...', lang)} className="h-8" />
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-8 w-[120px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+                  <SelectItem value="ASSET">{t('أصول', 'Asset', lang)}</SelectItem>
+                  <SelectItem value="LIABILITY">{t('التزامات', 'Liability', lang)}</SelectItem>
+                  <SelectItem value="EQUITY">{t('حقوق ملكية', 'Equity', lang)}</SelectItem>
+                  <SelectItem value="REVENUE">{t('إيرادات', 'Revenue', lang)}</SelectItem>
+                  <SelectItem value="EXPENSE">{t('مصروفات', 'Expense', lang)}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="max-h-[500px] overflow-y-auto space-y-1">
+              {summaryLoading ? <TableSkeleton /> : summaryError ? (
+                <div className="text-center py-6"><p className="text-rose-600 text-sm">{t('حدث خطأ', 'Error', lang)}</p></div>
+              ) : filteredSummary.length === 0 ? (
+                <div className="text-center py-6"><p className="text-muted-foreground text-sm">{t('لا توجد نتائج', 'No results', lang)}</p></div>
+              ) : filteredSummary.map(account => (
+                <div
+                  key={account.id}
+                  className={`p-2.5 rounded-lg cursor-pointer transition-colors border ${selectedAccountId === account.id ? 'bg-emerald-50 border-emerald-300' : 'hover:bg-gray-50 border-transparent'}`}
+                  onClick={() => setSelectedAccountId(account.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-medium">{account.code}</span>
+                      <span className="text-sm">{account.name}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {account.roleLabel && <Badge className="bg-purple-50 text-purple-700 border-0 text-[10px]">{account.roleLabel}</Badge>}
+                      {account.journalLineCount > 0 && <Badge className="bg-sky-50 text-sky-700 border-0 text-[10px]">{account.journalLineCount} {t('قيد', 'JE', lang)}</Badge>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Account Impact Detail */}
+        <Card>
+          <CardContent className="p-4">
+            {detailLoading ? (
+              <div className="flex items-center justify-center py-12"><RefreshCw className="size-6 animate-spin text-gray-400" /></div>
+            ) : !impact ? (
+              <div className="flex flex-col items-center gap-3 py-12">
+                <Activity className="size-12 text-gray-300" />
+                <p className="text-muted-foreground text-sm">{t('اختر حساباً لعرض أثره', 'Select an account to view its impact', lang)}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Account Header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-lg font-bold">{impact.account.code}</span>
+                      <span className="font-bold">{lang === 'ar' && impact.account.nameAr ? impact.account.nameAr : impact.account.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <TypeBadge type={impact.account.type} lang={lang} />
+                      {impact.role && <Badge className="bg-purple-50 text-purple-700 border-0 gap-1"><Link2 className="size-3" />{lang === 'ar' ? impact.role.labelAr : impact.role.labelEn}</Badge>}
+                      {impact.account.allowPosting ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 border-0">{t('تفصيلي', 'Posting', lang)}</Badge>
+                      ) : (
+                        <Badge className="bg-gray-100 text-gray-700 border-0">{t('رأسي', 'Header', lang)}</Badge>
+                      )}
+                    </div>
+                  </div>
+                  {!impact.account.allowPosting && impact.canDeactivate && (
+                    <Button variant="outline" size="sm" className="h-7 gap-1 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50" onClick={() => { setDeactivateTarget(impact.account.id); setDeactivateDialogOpen(true) }}>
+                      <Trash2 className="size-3" />{t('تعطيل', 'Deactivate', lang)}
+                    </Button>
+                  )}
+                </div>
+
+                <Separator />
+
+                {/* Parent/Children */}
+                <div className="grid grid-cols-2 gap-3">
+                  {impact.parentAccount && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('الحساب الأب', 'Parent Account', lang)}</p>
+                      <p className="text-sm font-medium font-mono">{impact.parentAccount.code} - {lang === 'ar' && impact.parentAccount.nameAr ? impact.parentAccount.nameAr : impact.parentAccount.name}</p>
+                    </div>
+                  )}
+                  {impact.childAccounts.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground">{t('الحسابات الفرعية', 'Child Accounts', lang)} ({impact.childAccounts.length})</p>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {impact.childAccounts.map(child => (
+                          <Badge key={child.id} variant="outline" className="text-xs font-mono">
+                            {child.code} - {lang === 'ar' && child.nameAr ? child.nameAr : child.name}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Operations Using This Account */}
+                {impact.operations.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5">{t('العمليات المستخدمة', 'Operations Using This Account', lang)}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {impact.operations.map(op => (
+                        <Badge key={op.operationType} variant="outline" className="text-xs gap-1">
+                          <span className={op.side === 'debit' ? 'text-red-600' : op.side === 'credit' ? 'text-emerald-600' : 'text-blue-600'}>
+                            {op.side === 'debit' ? t('مدين', 'Dr', lang) : op.side === 'credit' ? t('دائن', 'Cr', lang) : t('كلاهما', 'Both', lang)}
+                          </span>
+                          {lang === 'ar' ? op.labelAr : op.labelEn}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Usage Stats */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <Card className="bg-sky-50 border-sky-200"><CardContent className="p-2 text-center"><p className="text-[10px] text-sky-600">{t('بنود القيود', 'Journal Lines', lang)}</p><p className="text-sm font-bold text-sky-700">{formatNumber(impact.usageStats.journalLineCount)}</p></CardContent></Card>
+                  <Card className="bg-red-50 border-red-200"><CardContent className="p-2 text-center"><p className="text-[10px] text-red-600">{t('إجمالي مدين', 'Total Debit', lang)}</p><MoneyDisplay value={impact.usageStats.totalDebit} lang={lang} bold className="text-sm text-red-700" /></CardContent></Card>
+                  <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-2 text-center"><p className="text-[10px] text-emerald-600">{t('إجمالي دائن', 'Total Credit', lang)}</p><MoneyDisplay value={impact.usageStats.totalCredit} lang={lang} bold className="text-sm text-emerald-700" /></CardContent></Card>
+                  <Card className="bg-purple-50 border-purple-200"><CardContent className="p-2 text-center"><p className="text-[10px] text-purple-600">{t('آخر استخدام', 'Last Used', lang)}</p><p className="text-xs font-bold text-purple-700">{impact.usageStats.lastUsedDate ? formatDate(impact.usageStats.lastUsedDate, lang) : '—'}</p></CardContent></Card>
+                </div>
+
+                {/* Document References */}
+                {impact.documentReferences.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold mb-1.5">{t('مراجع المستندات', 'Document References', lang)}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {impact.documentReferences.map(ref => (
+                        <Badge key={ref.type} variant="outline" className="text-xs gap-1">
+                          <FileText className="size-3" />{ref.labelAr} ({ref.count})
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Deactivation Blockers */}
+                {!impact.canDeactivate && (
+                  <Card className="bg-rose-50 border-rose-200">
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <AlertTriangle className="size-4 text-rose-600" />
+                        <p className="text-xs font-semibold text-rose-700">{t('لا يمكن تعطيل هذا الحساب', 'Cannot Deactivate This Account', lang)}</p>
+                      </div>
+                      <ul className="space-y-0.5">
+                        {impact.deactivationBlockers.map((blocker, idx) => (
+                          <li key={idx} className="text-xs text-rose-600 flex items-center gap-1">
+                            <XCircle className="size-3 shrink-0" />{blocker}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Deactivation Confirmation Dialog */}
+      <Dialog open={deactivateDialogOpen} onOpenChange={setDeactivateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-rose-700">
+              <AlertTriangle className="size-5" />
+              {t('تأكيد التعطيل', 'Confirm Deactivation', lang)}
+            </DialogTitle>
+            <DialogDescription>
+              {t('هل أنت متأكد من تعطيل هذا الحساب؟ يمكن التراجع عن التعطيل لاحقاً.', 'Are you sure you want to deactivate this account? This can be reversed later.', lang)}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setDeactivateDialogOpen(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+            <Button onClick={() => deactivateTarget && deactivateMutation.mutate(deactivateTarget)} disabled={deactivateMutation.isPending} className="gap-2 bg-rose-600 hover:bg-rose-700">
+              {deactivateMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              {t('تعطيل', 'Deactivate', lang)}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// ============ Tab 5: Health Check (فحص السلامة) ============
+function HealthCheckTab() {
+  const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+
+  const { data: summaryData, isLoading: summaryLoading } = useQuery<{ summary: HealthSummary }>({
+    queryKey: ['accounting-health-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/accounting-health?action=summary')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const { data: reportData, isLoading: reportLoading, refetch: refetchReport } = useQuery<{ report: HealthCheckReport | null }>({
+    queryKey: ['accounting-health-latest'],
+    queryFn: async () => {
+      const res = await fetch('/api/accounting-health?action=latest')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const { data: historyData } = useQuery<{ history: HealthHistoryItem[] }>({
+    queryKey: ['accounting-health-history'],
+    queryFn: async () => {
+      const res = await fetch('/api/accounting-health?action=history&limit=10')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+  })
+
+  const runCheckMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/accounting-health', { method: 'POST' })
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounting-health-summary'] })
+      queryClient.invalidateQueries({ queryKey: ['accounting-health-latest'] })
+      queryClient.invalidateQueries({ queryKey: ['accounting-health-history'] })
+    },
+  })
+
+  const summary = summaryData?.summary
+  const report = reportData?.report
+  const history = historyData?.history || []
+
+  const scoreColor = (score: number) => {
+    if (score >= 90) return { text: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-500', emoji: '🟢' }
+    if (score >= 70) return { text: 'text-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-500', emoji: '🟡' }
+    return { text: 'text-red-600', bg: 'bg-red-50', ring: 'ring-red-500', emoji: '🔴' }
+  }
+
+  const severityConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string; icon: React.ElementType }> = {
+    error: { label: { ar: 'خطأ', en: 'Error' }, color: 'text-red-600', bg: 'bg-red-50', icon: XCircle },
+    warning: { label: { ar: 'تحذير', en: 'Warning' }, color: 'text-amber-600', bg: 'bg-amber-50', icon: AlertTriangle },
+    info: { label: { ar: 'معلومات', en: 'Info' }, color: 'text-sky-600', bg: 'bg-sky-50', icon: InfoIcon },
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <SectionTitle icon={Stethoscope} title={{ ar: 'فحص السلامة المحاسبي', en: 'Accounting Health Check' }} lang={lang} />
+        <Button onClick={() => runCheckMutation.mutate()} disabled={runCheckMutation.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+          {runCheckMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Stethoscope className="size-4" />}
+          {t('فحص الآن', 'Run Check', lang)}
+        </Button>
+      </div>
+
+      {/* Health Score */}
+      {summaryLoading ? <TableSkeleton /> : summary && (
+        <Card className={`${scoreColor(summary.score).bg} border-2`}>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`size-20 rounded-full flex items-center justify-center ring-4 ${scoreColor(summary.score).ring} bg-white`}>
+                  <div className="text-center">
+                    <p className={`text-2xl font-black ${scoreColor(summary.score).text}`}>{summary.score}%</p>
+                  </div>
+                </div>
+                <div>
+                  <p className={`text-xl font-bold ${scoreColor(summary.score).text}`}>
+                    {scoreColor(summary.score).emoji} {summary.score >= 90 ? t('سليم', 'Healthy', lang) : summary.score >= 70 ? t('يحتاج انتباه', 'Needs Attention', lang) : t('خطر', 'Critical', lang)}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('آخر فحص', 'Last checked', lang)}: {summary.lastChecked ? formatDate(summary.lastChecked, lang) : '—'}
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Card className="bg-white"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('فحوصات ناجحة', 'Passed', lang)}</p><p className="text-xl font-bold text-emerald-700">{report?.passedChecks ?? '—'}</p></CardContent></Card>
+                <Card className="bg-white"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('تحذيرات', 'Warnings', lang)}</p><p className="text-xl font-bold text-amber-700">{summary.warnings}</p></CardContent></Card>
+                <Card className="bg-white"><CardContent className="p-3 text-center"><p className="text-xs text-red-600">{t('أخطاء', 'Errors', lang)}</p><p className="text-xl font-bold text-red-700">{summary.errors}</p></CardContent></Card>
+                <Card className="bg-white"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('إجمالي الفحوصات', 'Total Checks', lang)}</p><p className="text-xl font-bold text-sky-700">{report?.totalChecks ?? '—'}</p></CardContent></Card>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Check Results */}
+      {reportLoading ? <TableSkeleton /> : report && (
+        <Card>
+          <CardContent className="p-4">
+            <h4 className="font-bold mb-3 flex items-center gap-2">
+              <ShieldCheck className="size-4 text-emerald-600" />
+              {t('نتائج الفحوصات', 'Check Results', lang)}
+            </h4>
+            <div className="space-y-2">
+              {report.checks.map(check => {
+                const sev = severityConfig[check.severity] || severityConfig.info
+                const SevIcon = sev.icon
+                return (
+                  <div key={check.checkId} className={`p-3 rounded-lg border ${sev.bg} flex items-start gap-3`}>
+                    <div className="mt-0.5">
+                      {check.passed ? (
+                        <CheckCircle2 className="size-5 text-emerald-600" />
+                      ) : (
+                        <SevIcon className={`size-5 ${sev.color}`} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{lang === 'ar' ? check.checkNameAr : check.checkNameEn}</p>
+                        <Badge className={`${check.passed ? 'bg-emerald-100 text-emerald-700' : `${sev.bg} ${sev.color}`} border-0 text-[10px]`}>
+                          {check.passed ? t('ناجح', 'Passed', lang) : (lang === 'ar' ? sev.label.ar : sev.label.en)}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{lang === 'ar' ? check.messageAr : check.messageEn}</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* History Trend */}
+      {history.length > 1 && (
+        <Card>
+          <CardContent className="p-4">
+            <h4 className="font-bold mb-3 flex items-center gap-2">
+              <TrendingUp className="size-4 text-sky-600" />
+              {t('سجل الفحوصات', 'Check History', lang)}
+            </h4>
+            <div className="flex items-end gap-2 h-24">
+              {history.slice(0, 10).reverse().map((item, idx) => {
+                const sc = scoreColor(item.overallScore)
+                const height = Math.max(item.overallScore, 10)
+                return (
+                  <div key={item.id} className="flex-1 flex flex-col items-center gap-1">
+                    <span className={`text-[10px] font-bold ${sc.text}`}>{item.overallScore}%</span>
+                    <div className={`w-full rounded-t ${sc.bg} border ${sc.ring} border-opacity-30`} style={{ height: `${height}%` }} />
+                    <span className="text-[9px] text-muted-foreground">{formatDate(item.checkDate, lang).slice(0, 6)}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+
+// ============ Tab 6: Journal Entries ============
 function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
   entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void; accounts: Account[]
 }) {
   const { lang } = useAppStore()
-  const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
   const [statusFilter, setStatusFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
 
   const filtered = useMemo(() => {
-    let f = entries
-    if (statusFilter !== 'all') f = f.filter(e => e.status === statusFilter)
-    if (sourceFilter !== 'all') f = f.filter(e => e.sourceType === sourceFilter)
+    let list = entries
+    if (statusFilter !== 'all') list = list.filter(e => e.status === statusFilter)
+    if (sourceFilter !== 'all') list = list.filter(e => e.sourceType === sourceFilter)
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
-      f = f.filter(e => e.entryNo.toLowerCase().includes(term) || (e.description || '').toLowerCase().includes(term))
+      list = list.filter(e => e.entryNo.toLowerCase().includes(term) || (e.description && e.description.toLowerCase().includes(term)))
     }
-    return f
+    return list
   }, [entries, statusFilter, sourceFilter, searchTerm])
 
   if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} accounts={accounts} />
-  if (isLoading) return <TableSkeleton />
-  if (isError) return <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <Card className="bg-gray-50/50">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
@@ -1033,7 +1956,9 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
         </CardContent>
       </Card>
 
-      {filtered.length === 0 ? (
+      {isLoading ? <TableSkeleton /> : isError ? (
+        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+      ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10"><FileText className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد قيود', 'No journal entries found', lang)}</p></div>
       ) : (
         <Card>
@@ -1056,8 +1981,8 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
                     <TableRow key={entry.id} className="cursor-pointer hover:bg-emerald-50/30" onClick={() => setSelectedEntry(entry)}>
                       <TableCell className="font-mono font-medium">{entry.entryNo}</TableCell>
                       <TableCell>{formatDate(entry.date, lang)}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{entry.description || '—'}</TableCell>
-                      <TableCell>{entry.sourceType ? <Badge variant="outline" className="text-xs">{sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType}</Badge> : '—'}</TableCell>
+                      <TableCell>{entry.description || '—'}</TableCell>
+                      <TableCell>{entry.sourceType ? (sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType) : '—'}</TableCell>
                       <TableCell><MoneyDisplay value={entry.totalDebit} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
                       <TableCell><MoneyDisplay value={entry.totalCredit} lang={lang} size="sm" className="text-rose-700" /></TableCell>
                       <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
@@ -1073,73 +1998,86 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
   )
 }
 
-// ============ Tab 3: General Ledger ============
+// ============ Tab 7: General Ledger ============
 function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; preselectedCode?: string }) {
   const { lang } = useAppStore()
-  const postingAccounts = useMemo(() => accounts.filter(a => a.allowPosting).sort((a, b) => a.code.localeCompare(b.code)), [accounts])
-  const [selectedCode, setSelectedCode] = useState(preselectedCode || '')
+  const [selectedAccount, setSelectedAccount] = useState(preselectedCode || '')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
 
-  // Sync with preselectedCode from parent
   React.useEffect(() => {
-    if (preselectedCode) {
-      setSelectedCode(preselectedCode)
-    }
+    if (preselectedCode) setSelectedAccount(preselectedCode)
   }, [preselectedCode])
 
-  const { data: ledgerData, isLoading, isError, refetch } = useQuery<{
-    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
-    lines: StatementLine[]
-    totalDebit: number; totalCredit: number; closingBalance: number
-  } | null>({
-    queryKey: ['general-ledger', selectedCode, dateFrom, dateTo],
+  const postingAccounts = useMemo(
+    () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
+    [accounts]
+  )
+
+  const { data, isLoading, isError, refetch } = useQuery<AccountStatementData | null>({
+    queryKey: ['general-ledger', selectedAccount, dateFrom, dateTo],
     queryFn: async () => {
-      if (!selectedCode) return null
-      const params = new URLSearchParams({ accountCode: selectedCode })
+      if (!selectedAccount) return null
+      const account = accounts.find(a => a.code === selectedAccount)
+      if (!account) return null
+      const params = new URLSearchParams({ accountId: account.id })
       if (dateFrom) params.set('dateFrom', dateFrom)
       if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/general-ledger?${params}`)
+      const res = await fetch(`/api/accounts/statement?${params}`)
       if (!res.ok) throw new Error()
       return res.json()
     },
-    enabled: !!selectedCode,
+    enabled: !!selectedAccount,
   })
+
+  const statement = data as AccountStatementData | null
 
   return (
     <div className="space-y-4">
+      <SectionTitle icon={BookOpen} title={{ ar: 'دفتر الأستاذ العام', en: 'General Ledger' }} lang={lang} />
+
       <Card className="bg-gray-50/50">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
             <div className="space-y-1 flex-1 min-w-[200px]">
               <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
-              <Select value={selectedCode} onValueChange={setSelectedCode}>
+              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
                 <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} /></SelectTrigger>
                 <SelectContent>
                   {postingAccounts.map(a => (
-                    <SelectItem key={a.id} value={a.code}>{a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}</SelectItem>
+                    <SelectItem key={a.id} value={a.code}>
+                      {a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            {selectedCode && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>}
+            <div className="space-y-1">
+              <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1">
+              <RefreshCw className="size-3.5" />{t('عرض', 'Show', lang)}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {!selectedCode ? (
-        <div className="flex flex-col items-center gap-3 py-10"><BookOpen className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر حساباً لعرض حركته', 'Select an account to view its ledger', lang)}</p></div>
+      {!selectedAccount ? (
+        <div className="flex flex-col items-center gap-3 py-10"><BookOpen className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر حساباً', 'Select an account', lang)}</p></div>
       ) : isLoading ? <TableSkeleton /> : isError ? (
         <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
-      ) : ledgerData ? (
+      ) : statement ? (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('الحساب', 'Account', lang)}</p><p className="font-bold font-mono">{ledgerData.account.code}</p></CardContent></Card>
-            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('مدين', 'Debit', lang)}</p><MoneyDisplay value={ledgerData.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
-            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={ledgerData.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
-            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p><MoneyDisplay value={ledgerData.closingBalance} lang={lang} bold className="text-purple-700" /></CardContent></Card>
+            <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('الرصيد الافتتاحي', 'Opening Balance', lang)}</p><MoneyDisplay value={statement.openingBalance} lang={lang} bold className={statement.openingBalance >= 0 ? 'text-sky-700' : 'text-rose-700'} /></CardContent></Card>
+            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p><MoneyDisplay value={statement.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p><MoneyDisplay value={statement.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p><MoneyDisplay value={statement.closingBalance} lang={lang} bold className={statement.closingBalance >= 0 ? 'text-purple-700' : 'text-rose-700'} /></CardContent></Card>
           </div>
           <Card>
             <CardContent className="p-0">
@@ -1149,21 +2087,23 @@ function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; 
                     <TableRow>
                       <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
                       <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+                      <TableHead className="text-right">{t('البيان', 'Description', lang)}</TableHead>
                       <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
                       <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
                       <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {ledgerData.lines.map((line, idx) => (
+                    {statement.lines.length === 0 ? (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t('لا توجد حركات', 'No transactions found', lang)}</TableCell></TableRow>
+                    ) : statement.lines.map((line, idx) => (
                       <TableRow key={idx}>
                         <TableCell>{formatDate(line.date, lang)}</TableCell>
                         <TableCell className="font-mono">{line.entryNo}</TableCell>
-                        <TableCell>{line.description || line.lineDescription || '—'}</TableCell>
+                        <TableCell>{line.description || '—'}</TableCell>
                         <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
                         <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} bold /></TableCell>
+                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" bold className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -1177,13 +2117,14 @@ function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; 
   )
 }
 
-// ============ Tab 4: Trial Balance ============
+// ============ Tab 8: Trial Balance ============
 function TrialBalanceTab() {
   const { lang } = useAppStore()
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [generated, setGenerated] = useState(false)
 
-  const { data: trialData, isLoading, isError, refetch } = useQuery<TrialBalanceItem[]>({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['trial-balance', dateFrom, dateTo],
     queryFn: async () => {
       const params = new URLSearchParams()
@@ -1191,1341 +2132,107 @@ function TrialBalanceTab() {
       if (dateTo) params.set('dateTo', dateTo)
       const res = await fetch(`/api/trial-balance?${params}`)
       if (!res.ok) throw new Error()
-      const data = await res.json()
-      return Array.isArray(data) ? data : (data.items || [])
+      return res.json()
     },
+    enabled: generated,
   })
 
-  const safeData = trialData || []
-  const totals = useMemo(() => ({
-    netDebit: safeData.reduce((s, i) => s + i.netDebit, 0),
-    netCredit: safeData.reduce((s, i) => s + i.netCredit, 0),
-  }), [safeData])
+  const items = (data?.items || data || []) as TrialBalanceItem[]
+  const totalDebit = items.reduce((s, i) => s + i.totalDebit, 0)
+  const totalCredit = items.reduce((s, i) => s + i.totalCredit, 0)
+  const totalNetDebit = items.reduce((s, i) => s + i.netDebit, 0)
+  const totalNetCredit = items.reduce((s, i) => s + i.netCredit, 0)
+
+  const totalAssets = items.filter(i => i.account.type === 'ASSET').reduce((s, i) => s + i.netDebit - i.netCredit, 0)
+  const totalLiabilities = items.filter(i => i.account.type === 'LIABILITY').reduce((s, i) => s + i.netCredit - i.netDebit, 0)
+  const totalEquity = items.filter(i => i.account.type === 'EQUITY').reduce((s, i) => s + i.netCredit - i.netDebit, 0)
+  const totalRevenue = items.filter(i => i.account.type === 'REVENUE').reduce((s, i) => s + i.netCredit - i.netDebit, 0)
+  const totalExpenses = items.filter(i => i.account.type === 'EXPENSE').reduce((s, i) => s + i.netDebit - i.netCredit, 0)
+
+  const handleGenerate = () => { setGenerated(true); refetch() }
 
   return (
     <div className="space-y-4">
+      <SectionTitle icon={Scale} title={{ ar: 'ميزان المراجعة', en: 'Trial Balance' }} lang={lang} />
+
       <Card className="bg-gray-50/50">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>
-            <div className="mr-auto">
-              <Badge className={Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-rose-100 text-rose-700 border-0'}>
-                {Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? t('✓ متوازن', '✓ Balanced', lang) : t('✗ غير متوازن', '✗ Unbalanced', lang)}
-              </Badge>
+            <div className="space-y-1">
+              <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" />
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
+            </div>
+            <Button onClick={handleGenerate} className="gap-2 bg-emerald-600 hover:bg-emerald-700 h-9">
+              <Calculator className="size-4" />{t('عرض', 'Generate', lang)}
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {isLoading ? <TableSkeleton /> : isError ? (
-        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p></div>
-      ) : safeData.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Scale className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أرصدة', 'No balances found', lang)}</p></div>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
-                    <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
-                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {safeData.map((item, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono text-sm">{item.account.code}</TableCell>
-                      <TableCell className="font-medium">{lang === 'ar' && item.account.nameAr ? item.account.nameAr : item.account.name}</TableCell>
-                      <TableCell><TypeBadge type={item.account.type} lang={lang} /></TableCell>
-                      <TableCell>{item.netDebit > 0 ? <MoneyDisplay value={item.netDebit} lang={lang} size="sm" className="text-emerald-700" bold /> : '—'}</TableCell>
-                      <TableCell>{item.netCredit > 0 ? <MoneyDisplay value={item.netCredit} lang={lang} size="sm" className="text-rose-700" bold /> : '—'}</TableCell>
+      {generated && isLoading ? <TableSkeleton /> : generated && isError ? (
+        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+      ) : generated && items.length > 0 ? (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <Card className="bg-blue-50 border-blue-200"><CardContent className="p-3 text-center"><p className="text-xs text-blue-600">{t('الأصول', 'Assets', lang)}</p><MoneyDisplay value={totalAssets} lang={lang} bold className="text-blue-700" /></CardContent></Card>
+            <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('الخصوم', 'Liabilities', lang)}</p><MoneyDisplay value={totalLiabilities} lang={lang} bold className="text-amber-700" /></CardContent></Card>
+            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('حقوق الملكية', 'Equity', lang)}</p><MoneyDisplay value={totalEquity} lang={lang} bold className="text-purple-700" /></CardContent></Card>
+            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('الإيرادات', 'Revenue', lang)}</p><MoneyDisplay value={totalRevenue} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('المصروفات', 'Expenses', lang)}</p><MoneyDisplay value={totalExpenses} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+          </div>
+
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-right">{t('كود الحساب', 'Account Code', lang)}</TableHead>
+                      <TableHead className="text-right">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
+                      <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+                      <TableHead className="text-right">{t('صافي مدين', 'Net Debit', lang)}</TableHead>
+                      <TableHead className="text-right">{t('صافي دائن', 'Net Credit', lang)}</TableHead>
                     </TableRow>
-                  ))}
-                  <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
-                    <TableCell colSpan={3} className="text-lg">{t('الإجمالي', 'Total', lang)}</TableCell>
-                    <TableCell><MoneyDisplay value={totals.netDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
-                    <TableCell><MoneyDisplay value={totals.netCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab 5: Income Statement ============
-function IncomeStatementTab() {
-  const { lang } = useAppStore()
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['financial-reports', 'income-statement', dateFrom, dateTo],
-    queryFn: async () => {
-      const params = new URLSearchParams({ type: 'income-statement' })
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/financial-reports?${params}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-  })
-
-  const report = data as Record<string, unknown> | undefined
-  const revenues = (report?.revenues as Record<string, number>) || {}
-  const projectCosts = (report?.projectCosts as Record<string, number>) || {}
-  const rentalCosts = (report?.rentalCosts as Record<string, number>) || {}
-  const operatingExpenses = (report?.operatingExpenses as Record<string, number>) || {}
-  const grossProfit = (report?.grossProfit as number) || 0
-  const netProfit = (report?.netProfit as number) || 0
-  const totalRevenue = (report?.totalRevenue as number) || 0
-  const totalProjectCosts = (report?.totalProjectCosts as number) || 0
-  const totalRentalCosts = (report?.totalRentalCosts as number) || 0
-  const totalOperatingExpenses = (report?.totalOperatingExpenses as number) || 0
-
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض التقرير', 'Generate', lang)}</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {isLoading ? <TableSkeleton /> : isError ? (
-        <div className="text-center py-10 text-rose-600">{t('حدث خطأ', 'Error', lang)}</div>
-      ) : data ? (
-        <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <SummaryCard title={t('إجمالي الإيرادات', 'Total Revenue', lang)} value={totalRevenue} icon={TrendingUp} color="emerald" lang={lang} />
-            <SummaryCard title={t('تكاليف المشاريع', 'Project Costs', lang)} value={totalProjectCosts + totalRentalCosts} icon={Building2} color="rose" lang={lang} />
-            <SummaryCard title={t('مجمل الربح', 'Gross Profit', lang)} value={grossProfit} icon={BarChart3} color={grossProfit >= 0 ? 'emerald' : 'rose'} lang={lang} />
-            <SummaryCard title={t('صافي الربح', 'Net Profit', lang)} value={netProfit} icon={CircleDollarSign} color={netProfit >= 0 ? 'emerald' : 'rose'} lang={lang} />
-          </div>
-
-          {/* Revenue Section */}
-          <Card>
-            <CardContent className="p-4">
-              <SectionTitle icon={TrendingUp} title={{ ar: 'الإيرادات', en: 'Revenue' }} lang={lang} />
-              <Table>
-                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {Object.entries(revenues).map(([key, val]) => (
-                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-emerald-700" /></TableCell></TableRow>
-                  ))}
-                  <TableRow className="font-bold bg-emerald-50"><TableCell>{t('إجمالي الإيرادات', 'Total Revenue', lang)}</TableCell><TableCell><MoneyDisplay value={totalRevenue} lang={lang} bold className="text-emerald-700" /></TableCell></TableRow>
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((item, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="font-mono">{item.account.code}</TableCell>
+                        <TableCell>{lang === 'ar' && item.account.nameAr ? item.account.nameAr : item.account.name}</TableCell>
+                        <TableCell><TypeBadge type={item.account.type} lang={lang} /></TableCell>
+                        <TableCell><MoneyDisplay value={item.totalDebit} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+                        <TableCell><MoneyDisplay value={item.totalCredit} lang={lang} size="sm" className="text-rose-700" /></TableCell>
+                        <TableCell>{item.netDebit > 0 ? <MoneyDisplay value={item.netDebit} lang={lang} size="sm" className="text-emerald-700" bold /> : ''}</TableCell>
+                        <TableCell>{item.netCredit > 0 ? <MoneyDisplay value={item.netCredit} lang={lang} size="sm" className="text-rose-700" bold /> : ''}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                      <TableCell colSpan={3}>{t('الإجمالي', 'Total', lang)}</TableCell>
+                      <TableCell><MoneyDisplay value={totalDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+                      <TableCell><MoneyDisplay value={totalCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+                      <TableCell><MoneyDisplay value={totalNetDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+                      <TableCell><MoneyDisplay value={totalNetCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
 
-          {/* Costs Section */}
-          <Card>
-            <CardContent className="p-4">
-              <SectionTitle icon={Building2} title={{ ar: 'تكاليف المشاريع والتأجير', en: 'Project & Rental Costs' }} lang={lang} />
-              <Table>
-                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {Object.entries(projectCosts).map(([key, val]) => (
-                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-rose-700" /></TableCell></TableRow>
-                  ))}
-                  {Object.entries(rentalCosts).map(([key, val]) => (
-                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-rose-700" /></TableCell></TableRow>
-                  ))}
-                  <TableRow className="font-bold bg-rose-50"><TableCell>{t('إجمالي التكاليف', 'Total Costs', lang)}</TableCell><TableCell><MoneyDisplay value={totalProjectCosts + totalRentalCosts} lang={lang} bold className="text-rose-700" /></TableCell></TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          {/* Operating Expenses */}
-          <Card>
-            <CardContent className="p-4">
-              <SectionTitle icon={Calculator} title={{ ar: 'المصاريف الإدارية والتشغيلية', en: 'Operating Expenses' }} lang={lang} />
-              <Table>
-                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
-                <TableBody>
-                  {Object.entries(operatingExpenses).map(([key, val]) => (
-                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-orange-700" /></TableCell></TableRow>
-                  ))}
-                  <TableRow className="font-bold bg-orange-50"><TableCell>{t('إجمالي المصاريف', 'Total Operating', lang)}</TableCell><TableCell><MoneyDisplay value={totalOperatingExpenses} lang={lang} bold className="text-orange-700" /></TableCell></TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          {/* Net Profit */}
-          <Card className={`border-2 ${netProfit >= 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}>
-            <CardContent className="p-6 text-center">
-              <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
-                {t('صافي الربح', 'Net Profit', lang)}: <MoneyDisplay value={netProfit} lang={lang} bold className="text-3xl" />
-              </p>
-              {totalRevenue > 0 && (
-                <p className={`text-sm mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {t('هامش الربح', 'Profit Margin', lang)}: {((netProfit / totalRevenue) * 100).toFixed(1)}%
-                </p>
-              )}
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <div className="flex flex-col items-center gap-3 py-10"><BarChart3 className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد الفترة ثم اضغط عرض التقرير', 'Select period and click Generate', lang)}</p></div>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab 6: Balance Sheet ============
-function BalanceSheetTab() {
-  const { lang } = useAppStore()
-  const [dateTo, setDateTo] = useState('')
-
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['financial-reports', 'balance-sheet', dateTo],
-    queryFn: async () => {
-      const params = new URLSearchParams({ type: 'balance-sheet' })
-      if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/financial-reports?${params}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-  })
-
-  const report = data as Record<string, unknown> | undefined
-  const currentAssets = (report?.currentAssets as Record<string, number>) || {}
-  const nonCurrentAssets = (report?.nonCurrentAssets as Record<string, number>) || {}
-  const currentLiabilities = (report?.currentLiabilities as Record<string, number>) || {}
-  const nonCurrentLiabilities = (report?.nonCurrentLiabilities as Record<string, number>) || {}
-  const equity = (report?.equity as Record<string, number>) || {}
-  const totalAssets = (report?.totalAssets as number) || 0
-  const totalLiabilities = (report?.totalLiabilities as number) || 0
-  const totalEquity = (report?.totalEquity as number) || 0
-  const isBalanced = (report?.isBalanced as boolean) || false
-
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1"><Label className="text-xs">{t('حتى تاريخ', 'As of Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'Generate', lang)}</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {isLoading ? <TableSkeleton /> : data ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <SummaryCard title={t('إجمالي الأصول', 'Total Assets', lang)} value={totalAssets} icon={Wallet} color="sky" lang={lang} />
-            <SummaryCard title={t('إجمالي الخصوم', 'Total Liabilities', lang)} value={totalLiabilities} icon={CreditCard} color="orange" lang={lang} />
-            <SummaryCard title={t('حقوق الملكية', 'Equity', lang)} value={totalEquity} icon={Banknote} color="purple" lang={lang} />
-            <Card className={`${isBalanced ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'} border`}>
-              <CardContent className="p-4 text-center">
-                <p className="text-xs font-medium">{t('التحقق', 'Verification', lang)}</p>
-                <p className={`text-lg font-bold ${isBalanced ? 'text-emerald-700' : 'text-rose-700'}`}>
-                  {isBalanced ? t('✓ متوازنة', '✓ Balanced', lang) : t('✗ غير متوازنة', '✗ Unbalanced', lang)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* Assets Column */}
-            <div className="space-y-4">
-              <Card>
-                <CardContent className="p-4">
-                  <SectionTitle icon={Wallet} title={{ ar: 'الأصول المتداولة', en: 'Current Assets' }} lang={lang} />
-                  <Table>
-                    <TableBody>
-                      {Object.entries(currentAssets).map(([key, val]) => (
-                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-sky-700" /></TableCell></TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <SectionTitle icon={Wallet} title={{ ar: 'الأصول غير المتداولة', en: 'Non-Current Assets' }} lang={lang} />
-                  <Table>
-                    <TableBody>
-                      {Object.entries(nonCurrentAssets).map(([key, val]) => (
-                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-sky-700" /></TableCell></TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-              <Card className="bg-sky-50 border-sky-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-sky-800">{t('إجمالي الأصول', 'Total Assets', lang)}: <MoneyDisplay value={totalAssets} lang={lang} bold /></p></CardContent></Card>
-            </div>
-
-            {/* Liabilities & Equity Column */}
-            <div className="space-y-4">
-              <Card>
-                <CardContent className="p-4">
-                  <SectionTitle icon={CreditCard} title={{ ar: 'الخصوم المتداولة', en: 'Current Liabilities' }} lang={lang} />
-                  <Table>
-                    <TableBody>
-                      {Object.entries(currentLiabilities).map(([key, val]) => (
-                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-orange-700" /></TableCell></TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <SectionTitle icon={Banknote} title={{ ar: 'حقوق الملكية', en: 'Equity' }} lang={lang} />
-                  <Table>
-                    <TableBody>
-                      {Object.entries(equity).map(([key, val]) => (
-                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-purple-700" /></TableCell></TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-              <Card className="bg-purple-50 border-purple-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-purple-800">{t('إجمالي الخصوم + حقوق الملكية', 'Total Liabilities + Equity', lang)}: <MoneyDisplay value={totalLiabilities + totalEquity} lang={lang} bold /></p></CardContent></Card>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-emerald-800">{t('إجمالي الأصول', 'Total Assets', lang)}: <MoneyDisplay value={totalAssets} lang={lang} bold /></p></CardContent></Card>
+            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-purple-800">{t('إجمالي الخصوم + حقوق الملكية', 'Total Liabilities + Equity', lang)}: <MoneyDisplay value={totalLiabilities + totalEquity} lang={lang} bold /></p></CardContent></Card>
           </div>
         </>
       ) : (
         <div className="flex flex-col items-center gap-3 py-10"><Scale className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد التاريخ ثم اضغط عرض', 'Select date and click Generate', lang)}</p></div>
       )}
-    </div>
-  )
-}
-
-// ============ Tab 7: Cash Flow ============
-function CashFlowTab() {
-  const { lang } = useAppStore()
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['financial-reports', 'cash-flow', dateFrom, dateTo],
-    queryFn: async () => {
-      const params = new URLSearchParams({ type: 'cash-flow' })
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/financial-reports?${params}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-  })
-
-  const report = data as Record<string, unknown> | undefined
-  const operatingCF = (report?.operatingCashFlow as number) || 0
-  const investingCF = (report?.investingCashFlow as number) || 0
-  const financingCF = (report?.financingCashFlow as number) || 0
-  const netChange = (report?.netChangeInCash as number) || 0
-  const openingCash = (report?.openingCashBalance as number) || 0
-  const closingCash = (report?.closingCashBalance as number) || 0
-
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'Generate', lang)}</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {isLoading ? <TableSkeleton /> : data ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <SummaryCard title={t('تدفقات التشغيل', 'Operating CF', lang)} value={operatingCF} icon={Settings} color={operatingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
-            <SummaryCard title={t('تدفقات الاستثمار', 'Investing CF', lang)} value={investingCF} icon={Building2} color={investingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
-            <SummaryCard title={t('تدفقات التمويل', 'Financing CF', lang)} value={financingCF} icon={Banknote} color={financingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
-          </div>
-
-          <Card>
-            <CardContent className="p-4">
-              <Table>
-                <TableBody>
-                  <TableRow><TableCell className="font-semibold">{t('صافي الربح', 'Net Profit', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.netProfit as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
-                  <TableRow><TableCell>{t('+ تعديلات غير نقدية', '+ Non-cash adjustments', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.nonCashAdjustments as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
-                  <TableRow><TableCell>{t('+ تغيرات رأس المال العامل', '+ Working capital changes', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.workingCapitalChanges as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
-                  <TableRow className="bg-emerald-50 font-bold"><TableCell>{t('= تدفقات التشغيل', '= Operating Cash Flow', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={operatingCF} lang={lang} bold className={operatingCF >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell></TableRow>
-                  <TableRow><TableCell>{t('تدفقات الاستثمار', 'Investing Activities', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={investingCF} lang={lang} size="sm" /></TableCell></TableRow>
-                  <TableRow><TableCell>{t('تدفقات التمويل', 'Financing Activities', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={financingCF} lang={lang} size="sm" /></TableCell></TableRow>
-                  <TableRow className="bg-sky-50 font-bold"><TableCell>{t('صافي التغير في النقد', 'Net Change in Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={netChange} lang={lang} bold className="text-sky-700" /></TableCell></TableRow>
-                  <TableRow><TableCell>{t('رصيد النقد أول الفترة', 'Opening Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={openingCash} lang={lang} size="sm" /></TableCell></TableRow>
-                  <TableRow className="bg-purple-50 font-bold border-t-2"><TableCell>{t('رصيد النقد آخر الفترة', 'Closing Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={closingCash} lang={lang} bold className="text-purple-700" /></TableCell></TableRow>
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <div className="flex flex-col items-center gap-3 py-10"><Landmark className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد الفترة ثم اضغط عرض', 'Select period and click Generate', lang)}</p></div>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab 8: Cost Centers ============
-function CostCentersTab() {
-  const { lang } = useAppStore()
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['cost-centers'],
-    queryFn: async () => { const res = await fetch('/api/cost-centers'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const costCenters = (Array.isArray(data) ? data : (data?.costCenters || [])) as Record<string, unknown>[]
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <SummaryCard title={t('عدد المراكز', 'Total Centers', lang)} value={costCenters.length} icon={FolderClosed} color="teal" lang={lang} isMoney={false} />
-      </div>
-
-      {isLoading ? <TableSkeleton /> : costCenters.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-10"><FolderClosed className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد مراكز تكلفة', 'No cost centers found', lang)}</p></div>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الاسم', 'Name', lang)}</TableHead>
-                    <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {costCenters.map((cc, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono">{String(cc.code || '')}</TableCell>
-                      <TableCell className="font-medium">{String(cc.name || '')}</TableCell>
-                      <TableCell>{cc.project ? String((cc.project as Record<string, unknown>).name || '') : '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab 9: Customer Statement ============
-function CustomerStatementTab() {
-  const { lang } = useAppStore()
-  const [selectedClient, setSelectedClient] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  const { data: clients } = useQuery({
-    queryKey: ['clients-simple'],
-    queryFn: async () => { const res = await fetch('/api/clients?simple=true&active=true'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const clientList = (Array.isArray(clients) ? clients : []) as { id: string; name: string; code: string }[]
-
-  const { data: statementData, isLoading, refetch } = useQuery({
-    queryKey: ['account-statement', 'customer', selectedClient, dateFrom, dateTo],
-    queryFn: async () => {
-      if (!selectedClient) return null
-      const params = new URLSearchParams({ entityType: 'customer', entityId: selectedClient })
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/account-statement?${params}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-    enabled: !!selectedClient,
-  })
-
-  const statement = statementData as Record<string, unknown> | null
-
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1 flex-1 min-w-[200px]">
-              <Label className="text-xs">{t('العميل', 'Client', lang)}</Label>
-              <Select value={selectedClient} onValueChange={setSelectedClient}>
-                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر العميل...', 'Select client...', lang)} /></SelectTrigger>
-                <SelectContent>
-                  {clientList.map(c => <SelectItem key={c.id} value={c.id}>{c.code} - {c.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            {selectedClient && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {!selectedClient ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Users className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر عميلاً لعرض كشف حسابه', 'Select a client to view statement', lang)}</p></div>
-      ) : isLoading ? <TableSkeleton /> : statement ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <SummaryCard title={t('الرصيد الافتتاحي', 'Opening Balance', lang)} value={(statement.openingBalance as number) || 0} icon={Wallet} color="sky" lang={lang} />
-            <SummaryCard title={t('الرصيد الختامي', 'Closing Balance', lang)} value={(statement.closingBalance as number) || 0} icon={CircleDollarSign} color={((statement.closingBalance as number) || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
-            <SummaryCard title={t('إجمالي الفواتير', 'Total Invoices', lang)} value={((statement.summary as Record<string, number>)?.totalRevenues) || 0} icon={FileText} color="emerald" lang={lang} />
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
-                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
-                        <TableCell>{String(line.description || '')}</TableCell>
-                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance as number} lang={lang} size="sm" bold /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      ) : null}
-    </div>
-  )
-}
-
-// ============ Tab 10: Vendor Statement ============
-function VendorStatementTab() {
-  const { lang } = useAppStore()
-  const [selectedSupplier, setSelectedSupplier] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  const { data: suppliers } = useQuery({
-    queryKey: ['suppliers-simple'],
-    queryFn: async () => { const res = await fetch('/api/suppliers'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const supplierList = (Array.isArray(suppliers) ? suppliers : (suppliers?.suppliers || [])) as { id: string; name: string; code: string }[]
-
-  const { data: statementData, isLoading, refetch } = useQuery({
-    queryKey: ['account-statement', 'vendor', selectedSupplier, dateFrom, dateTo],
-    queryFn: async () => {
-      if (!selectedSupplier) return null
-      const params = new URLSearchParams({ entityType: 'vendor', entityId: selectedSupplier })
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/account-statement?${params}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-    enabled: !!selectedSupplier,
-  })
-
-  const statement = statementData as Record<string, unknown> | null
-
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1 flex-1 min-w-[200px]">
-              <Label className="text-xs">{t('المورد', 'Supplier', lang)}</Label>
-              <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المورد...', 'Select supplier...', lang)} /></SelectTrigger>
-                <SelectContent>
-                  {supplierList.map(s => <SelectItem key={s.id} value={s.id}>{s.code} - {s.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            {selectedSupplier && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {!selectedSupplier ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Package className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر مورداً لعرض كشف حسابه', 'Select a supplier to view statement', lang)}</p></div>
-      ) : isLoading ? <TableSkeleton /> : statement ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <SummaryCard title={t('الرصيد الافتتاحي', 'Opening Balance', lang)} value={(statement.openingBalance as number) || 0} icon={Wallet} color="sky" lang={lang} />
-            <SummaryCard title={t('الرصيد الختامي', 'Closing Balance', lang)} value={(statement.closingBalance as number) || 0} icon={CircleDollarSign} color={((statement.closingBalance as number) || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
-            <SummaryCard title={t('إجمالي الفواتير', 'Total Invoices', lang)} value={((statement.summary as Record<string, number>)?.totalRevenues) || 0} icon={FileText} color="rose" lang={lang} />
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
-                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
-                        <TableCell>{String(line.description || '')}</TableCell>
-                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance as number} lang={lang} size="sm" bold /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      ) : null}
-    </div>
-  )
-}
-
-// ============ Tab 11: Project Profitability ============
-function ProjectProfitabilityTab() {
-  const { lang } = useAppStore()
-  const [selectedProject, setSelectedProject] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  const { data: projects } = useQuery({
-    queryKey: ['projects-list'],
-    queryFn: async () => { const res = await fetch('/api/projects/list'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const projectList = (Array.isArray(projects) ? projects : []) as { id: string; name: string; code: string }[]
-
-  const { data: statementData, isLoading, refetch } = useQuery({
-    queryKey: ['account-statement', 'project', selectedProject, dateFrom, dateTo],
-    queryFn: async () => {
-      if (!selectedProject) return null
-      const params = new URLSearchParams({ entityType: 'project', entityId: selectedProject })
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/account-statement?${params}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-    enabled: !!selectedProject,
-  })
-
-  const statement = statementData as Record<string, unknown> | null
-  const summary = (statement?.summary as Record<string, number>) || {}
-
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1 flex-1 min-w-[200px]">
-              <Label className="text-xs">{t('المشروع', 'Project', lang)}</Label>
-              <Select value={selectedProject} onValueChange={setSelectedProject}>
-                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المشروع...', 'Select project...', lang)} /></SelectTrigger>
-                <SelectContent>
-                  {projectList.map(p => <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            {selectedProject && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {!selectedProject ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Building2 className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر مشروعاً لعرض ربحيته', 'Select a project to view profitability', lang)}</p></div>
-      ) : isLoading ? <TableSkeleton /> : statement ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <SummaryCard title={t('الإيرادات', 'Revenue', lang)} value={summary.totalRevenues || 0} icon={TrendingUp} color="emerald" lang={lang} />
-            <SummaryCard title={t('التكاليف', 'Costs', lang)} value={summary.totalCosts || 0} icon={Building2} color="rose" lang={lang} />
-            <SummaryCard title={t('الربح', 'Profit', lang)} value={summary.profit || 0} icon={CircleDollarSign} color={(summary.profit || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
-            <Card className="bg-teal-50 border-teal-200 border">
-              <CardContent className="p-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-1"><BarChart3 className="size-4 text-teal-600" /><p className="text-xs font-medium text-teal-600">{t('هامش الربح', 'Profit Margin', lang)}</p></div>
-                <p className="text-lg font-bold text-teal-700">{(summary.profitMargin || 0).toFixed(1)}%</p>
-              </CardContent>
-            </Card>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الفئة', 'Category', lang)}</TableHead>
-                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
-                        <TableCell>{String(line.description || '')}</TableCell>
-                        <TableCell><Badge variant="outline" className="text-xs">{String(line.category || '')}</Badge></TableCell>
-                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      ) : null}
-    </div>
-  )
-}
-
-// ============ Tab 12: Equipment Profitability ============
-function EquipmentProfitabilityTab() {
-  const { lang } = useAppStore()
-  const [selectedEquipment, setSelectedEquipment] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  const { data: equipmentList } = useQuery({
-    queryKey: ['equipment-list'],
-    queryFn: async () => { const res = await fetch('/api/equipment'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const equipList = (Array.isArray(equipmentList) ? equipmentList : (equipmentList?.equipment || [])) as { id: string; name: string; code: string }[]
-
-  const { data: statementData, isLoading, refetch } = useQuery({
-    queryKey: ['account-statement', 'equipment', selectedEquipment, dateFrom, dateTo],
-    queryFn: async () => {
-      if (!selectedEquipment) return null
-      const params = new URLSearchParams({ entityType: 'equipment', entityId: selectedEquipment })
-      if (dateFrom) params.set('dateFrom', dateFrom)
-      if (dateTo) params.set('dateTo', dateTo)
-      const res = await fetch(`/api/account-statement?${params}`)
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-    enabled: !!selectedEquipment,
-  })
-
-  const statement = statementData as Record<string, unknown> | null
-  const summary = (statement?.summary as Record<string, number>) || {}
-
-  return (
-    <div className="space-y-4">
-      <Card className="bg-gray-50/50">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="space-y-1 flex-1 min-w-[200px]">
-              <Label className="text-xs">{t('المعدة', 'Equipment', lang)}</Label>
-              <Select value={selectedEquipment} onValueChange={setSelectedEquipment}>
-                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المعدة...', 'Select equipment...', lang)} /></SelectTrigger>
-                <SelectContent>
-                  {equipList.map(e => <SelectItem key={e.id} value={e.id}>{e.code} - {e.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
-            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
-            {selectedEquipment && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
-          </div>
-        </CardContent>
-      </Card>
-
-      {!selectedEquipment ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Truck className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر معدة لعرض ربحيتها', 'Select equipment to view profitability', lang)}</p></div>
-      ) : isLoading ? <TableSkeleton /> : statement ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <SummaryCard title={t('إيرادات التأجير', 'Rental Revenue', lang)} value={summary.totalRevenues || 0} icon={TrendingUp} color="emerald" lang={lang} />
-            <SummaryCard title={t('تكاليف التشغيل', 'Operating Costs', lang)} value={summary.totalCosts || 0} icon={Wrench} color="rose" lang={lang} />
-            <SummaryCard title={t('صافي الربح', 'Net Profit', lang)} value={summary.profit || 0} icon={CircleDollarSign} color={(summary.profit || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
-            <Card className="bg-cyan-50 border-cyan-200 border">
-              <CardContent className="p-4 text-center">
-                <div className="flex items-center justify-center gap-2 mb-1"><BarChart3 className="size-4 text-cyan-600" /><p className="text-xs font-medium text-cyan-600">{t('هامش الربح', 'Profit Margin', lang)}</p></div>
-                <p className="text-lg font-bold text-cyan-700">{(summary.profitMargin || 0).toFixed(1)}%</p>
-              </CardContent>
-            </Card>
-          </div>
-          <Card>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
-                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
-                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
-                      <TableRow key={idx}>
-                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
-                        <TableCell>{String(line.description || '')}</TableCell>
-                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
-                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      ) : null}
-    </div>
-  )
-}
-
-// ============ Tab 13: Period Closing ============
-function PeriodClosingTab() {
-  const { lang } = useAppStore()
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['period-closing'],
-    queryFn: async () => { const res = await fetch('/api/period-closing'); if (!res.ok) throw new Error(); return res.json() },
-  })
-  const queryClient = useQueryClient()
-
-  const closePeriod = useMutation({
-    mutationFn: async (params: { year: number; month: number; type: string }) => {
-      const res = await fetch('/api/period-closing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'close', ...params }),
-      })
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['period-closing'] }),
-  })
-
-  const report = data as Record<string, unknown> | undefined
-  const closings = (report?.closings as Record<string, unknown>[]) || []
-  const year = new Date().getFullYear()
-
-  const months = Array.from({ length: 12 }, (_, i) => i + 1)
-  const monthNames = lang === 'ar'
-    ? ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
-    : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-  return (
-    <div className="space-y-4">
-      <SectionTitle icon={CalendarCheck} title={{ ar: `إقفال الفترات المالية - ${year}`, en: `Period Closing - ${year}` }} lang={lang} />
-
-      {isLoading ? <TableSkeleton /> : (
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-              {months.map(month => {
-                const closing = closings.find(c => (c.year === year || c.year === String(year)) && (c.month === month || c.month === String(month)))
-                const isClosed = closing?.status === 'CLOSED'
-                return (
-                  <Card key={month} className={`${isClosed ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'} border cursor-pointer hover:shadow-md transition-shadow`}
-                    onClick={() => {
-                      if (!isClosed && confirm(t(`هل تريد إقفال شهر ${monthNames[month - 1]}؟`, `Close ${monthNames[month - 1]}?`, lang))) {
-                        closePeriod.mutate({ year, month, type: 'MONTHLY' })
-                      }
-                    }}>
-                    <CardContent className="p-3 text-center">
-                      <p className="text-xs font-medium">{monthNames[month - 1]}</p>
-                      <p className={`text-sm font-bold ${isClosed ? 'text-rose-700' : 'text-emerald-700'}`}>
-                        {isClosed ? t('مقفل', 'Closed', lang) : t('مفتوح', 'Open', lang)}
-                      </p>
-                      {isClosed && <Lock className="size-3 text-rose-400 mx-auto mt-1" />}
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* History */}
-      {closings.length > 0 && (
-        <Card>
-          <CardContent className="p-4">
-            <h4 className="font-semibold mb-2">{t('سجل الإقفالات', 'Closing History', lang)}</h4>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-right">{t('السنة', 'Year', lang)}</TableHead>
-                  <TableHead className="text-right">{t('الشهر', 'Month', lang)}</TableHead>
-                  <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
-                  <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
-                  <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {closings.map((c, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>{String(c.year)}</TableCell>
-                    <TableCell>{c.month ? monthNames[(Number(c.month) - 1)] : t('سنوي', 'Yearly', lang)}</TableCell>
-                    <TableCell>{String(c.type)}</TableCell>
-                    <TableCell><Badge className={c.status === 'CLOSED' ? 'bg-rose-100 text-rose-700 border-0' : 'bg-emerald-100 text-emerald-700 border-0'}>{String(c.status)}</Badge></TableCell>
-                    <TableCell>{c.closedAt ? formatDate(String(c.closedAt), lang) : '—'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab 14: Fixed Assets ============
-function FixedAssetsTab() {
-  const { lang } = useAppStore()
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['fixed-assets'],
-    queryFn: async () => { const res = await fetch('/api/fixed-assets'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const assets = (Array.isArray(data) ? data : (data?.assets || [])) as Record<string, unknown>[]
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <SummaryCard title={t('عدد الأصول', 'Total Assets', lang)} value={assets.length} icon={Wrench} color="teal" lang={lang} isMoney={false} />
-        <SummaryCard title={t('إجمالي التكلفة', 'Total Cost', lang)} value={assets.reduce((s, a) => s + ((a.acquisitionCost as number) || 0), 0)} icon={Wallet} color="sky" lang={lang} />
-        <SummaryCard title={t('إجمالي الإهلاك', 'Total Depreciation', lang)} value={assets.reduce((s, a) => s + ((a.accumulatedDepreciation as number) || 0), 0)} icon={ArrowUpDown} color="orange" lang={lang} />
-        <SummaryCard title={t('صافي القيمة الدفترية', 'Net Book Value', lang)} value={assets.reduce((s, a) => s + ((a.netBookValue as number) || 0), 0)} icon={CircleDollarSign} color="emerald" lang={lang} />
-      </div>
-
-      {isLoading ? <TableSkeleton /> : assets.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Wrench className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أصول ثابتة', 'No fixed assets found', lang)}</p></div>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الاسم', 'Name', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الفئة', 'Category', lang)}</TableHead>
-                    <TableHead className="text-right">{t('تكلفة الاقتناء', 'Acquisition Cost', lang)}</TableHead>
-                    <TableHead className="text-right">{t('مجمع الإهلاك', 'Accum. Dep.', lang)}</TableHead>
-                    <TableHead className="text-right">{t('صافي القيمة', 'Net Value', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {assets.map((asset, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono">{String(asset.assetCode || '')}</TableCell>
-                      <TableCell className="font-medium">{String(asset.nameAr || asset.name || '')}</TableCell>
-                      <TableCell>{String(asset.category || '')}</TableCell>
-                      <TableCell><MoneyDisplay value={(asset.acquisitionCost as number) || 0} lang={lang} size="sm" /></TableCell>
-                      <TableCell><MoneyDisplay value={(asset.accumulatedDepreciation as number) || 0} lang={lang} size="sm" className="text-orange-700" /></TableCell>
-                      <TableCell><MoneyDisplay value={(asset.netBookValue as number) || 0} lang={lang} size="sm" className="text-emerald-700" bold /></TableCell>
-                      <TableCell><Badge className={asset.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>{String(asset.status)}</Badge></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab 15: Provisions ============
-function ProvisionsTab() {
-  const { lang } = useAppStore()
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['provisions'],
-    queryFn: async () => { const res = await fetch('/api/provisions'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const provisions = (Array.isArray(data) ? data : (data?.provisions || [])) as Record<string, unknown>[]
-
-  const provisionTypeLabels: Record<string, { ar: string; en: string }> = {
-    END_OF_SERVICE: { ar: 'نهاية خدمة', en: 'End of Service' },
-    WARRANTY: { ar: 'ضمان', en: 'Warranty' },
-    MAINTENANCE: { ar: 'صيانة', en: 'Maintenance' },
-    LEGAL: { ar: 'قانوني', en: 'Legal' },
-    OTHER: { ar: 'أخرى', en: 'Other' },
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <SummaryCard title={t('عدد المخصصات', 'Total Provisions', lang)} value={provisions.length} icon={Shield} color="purple" lang={lang} isMoney={false} />
-        <SummaryCard title={t('إجمالي المخصصات', 'Total Amount', lang)} value={provisions.reduce((s, p) => s + ((p.totalAmount as number) || 0), 0)} icon={Wallet} color="sky" lang={lang} />
-        <SummaryCard title={t('المتبقي', 'Remaining', lang)} value={provisions.reduce((s, p) => s + ((p.remainingAmount as number) || 0), 0)} icon={CircleDollarSign} color="emerald" lang={lang} />
-      </div>
-
-      {isLoading ? <TableSkeleton /> : provisions.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Shield className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد مخصصات', 'No provisions found', lang)}</p></div>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الاسم', 'Name', lang)}</TableHead>
-                    <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
-                    <TableHead className="text-right">{t('المستخدم', 'Used', lang)}</TableHead>
-                    <TableHead className="text-right">{t('المتبقي', 'Remaining', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {provisions.map((prov, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-mono">{String(prov.code || '')}</TableCell>
-                      <TableCell className="font-medium">{String(prov.nameAr || prov.name || '')}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-xs">{provisionTypeLabels[String(prov.type || '')]?.[lang] || String(prov.type || '')}</Badge></TableCell>
-                      <TableCell><MoneyDisplay value={(prov.totalAmount as number) || 0} lang={lang} size="sm" /></TableCell>
-                      <TableCell><MoneyDisplay value={(prov.usedAmount as number) || 0} lang={lang} size="sm" className="text-orange-700" /></TableCell>
-                      <TableCell><MoneyDisplay value={(prov.remainingAmount as number) || 0} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
-                      <TableCell><Badge className={prov.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>{String(prov.status)}</Badge></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab 16: Bank Reconciliation ============
-function BankReconciliationTab() {
-  const { lang } = useAppStore()
-  const { data: banksData, isLoading } = useQuery({
-    queryKey: ['bank-accounts'],
-    queryFn: async () => { const res = await fetch('/api/bank-accounts'); if (!res.ok) throw new Error(); return res.json() },
-  })
-
-  const banks = (Array.isArray(banksData) ? banksData : (banksData?.bankAccounts || [])) as Record<string, unknown>[]
-
-  return (
-    <div className="space-y-4">
-      <SectionTitle icon={Landmark} title={{ ar: 'التسويات البنكية', en: 'Bank Reconciliation' }} lang={lang} />
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <SummaryCard title={t('عدد الحسابات البنكية', 'Bank Accounts', lang)} value={banks.length} icon={Landmark} color="teal" lang={lang} isMoney={false} />
-        <SummaryCard title={t('إجمالي الأرصدة', 'Total Balance', lang)} value={banks.reduce((s, b) => s + ((b.balance as number) || 0), 0)} icon={Wallet} color="emerald" lang={lang} />
-      </div>
-
-      {isLoading ? <TableSkeleton /> : banks.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-10"><Landmark className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد حسابات بنكية', 'No bank accounts found', lang)}</p></div>
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-right">{t('البنك', 'Bank', lang)}</TableHead>
-                    <TableHead className="text-right">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
-                    <TableHead className="text-right">{t('رقم الحساب', 'Account No.', lang)}</TableHead>
-                    <TableHead className="text-right">{t('العملة', 'Currency', lang)}</TableHead>
-                    <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {banks.map((bank, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{String(bank.bankName || '')}</TableCell>
-                      <TableCell>{String(bank.accountName || '')}</TableCell>
-                      <TableCell className="font-mono">{String(bank.accountNumber || '')}</TableCell>
-                      <TableCell>{String(bank.currency || 'SAR')}</TableCell>
-                      <TableCell><MoneyDisplay value={(bank.balance as number) || 0} lang={lang} size="sm" className="text-emerald-700" bold /></TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  )
-}
-
-// ============ Tab: Role Mapping ============
-const roleCategories = [
-  { key: 'current-assets', labelAr: 'أصول متداولة', labelEn: 'Current Assets', roles: ['CASH', 'BANK', 'CUSTOMER_AR', 'RETENTION_RECEIVABLE', 'EMPLOYEE_ADVANCE'] },
-  { key: 'fixed-assets', labelAr: 'أصول ثابتة', labelEn: 'Fixed Assets', roles: ['FIXED_ASSET', 'ACCUM_DEPRECIATION'] },
-  { key: 'vat', labelAr: 'ضرائب', labelEn: 'VAT/Tax', roles: ['VAT_INPUT', 'VAT_OUTPUT', 'VAT_DUE'] },
-  { key: 'liabilities', labelAr: 'خصوم', labelEn: 'Liabilities', roles: ['SUPPLIER_AP', 'SUBCONTRACTOR_AP', 'SALARIES_PAYABLE', 'GOSI_PAYABLE', 'ZAKAT_PAYABLE', 'CUSTOMER_ADVANCE', 'EOS_PROVISION'] },
-  { key: 'revenue', labelAr: 'إيرادات', labelEn: 'Revenue', roles: ['RENTAL_REVENUE', 'PROJECT_REVENUE', 'SERVICE_REVENUE'] },
-  { key: 'direct-costs', labelAr: 'تكاليف مباشرة', labelEn: 'Direct Costs', roles: ['PROJECT_COST', 'SUBCONTRACTOR_COST', 'FUEL_EXPENSE', 'MAINTENANCE_EXPENSE', 'DRIVER_EXPENSE', 'TRANSPORT_EXPENSE', 'RENTAL_DEPRECIATION'] },
-  { key: 'admin-expenses', labelAr: 'مصروفات إدارية', labelEn: 'Admin Expenses', roles: ['PAYROLL_EXPENSE', 'GOSI_EXPENSE', 'ADMIN_EXPENSE', 'DEPRECIATION_EXPENSE', 'ZAKAT_EXPENSE'] },
-]
-
-function RoleMappingTab({ accounts }: { accounts: Account[] }) {
-  const { lang } = useAppStore()
-  const queryClient = useQueryClient()
-  const [editRole, setEditRole] = useState<string | null>(null)
-  const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [selectedAccountId, setSelectedAccountId] = useState('')
-
-  const { data: mappingData, isLoading, isError, refetch } = useQuery<{ mappings: RoleMappingItem[] }>({
-    queryKey: ['role-mapping'],
-    queryFn: async () => {
-      const res = await fetch('/api/accounts/role-mapping')
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-  })
-
-  const mappings = mappingData?.mappings || []
-
-  // Posting-allowed accounts for the edit dialog
-  const postingAccounts = useMemo(
-    () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
-    [accounts]
-  )
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ accountId, accountRole }: { accountId: string; accountRole: string }) => {
-      const res = await fetch('/api/accounts/role-mapping', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accountId, accountRole }),
-      })
-      if (!res.ok) throw new Error()
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['role-mapping'] })
-      queryClient.invalidateQueries({ queryKey: ['accounts'] })
-      setEditDialogOpen(false)
-      setEditRole(null)
-    },
-  })
-
-  const handleEdit = (role: string) => {
-    setEditRole(role)
-    const currentMapping = mappings.find(m => m.role === role)
-    setSelectedAccountId(currentMapping?.primaryAccount?.id || '')
-    setEditDialogOpen(true)
-  }
-
-  const handleSave = () => {
-    if (!selectedAccountId || !editRole) return
-    updateMutation.mutate({ accountId: selectedAccountId, accountRole: editRole })
-  }
-
-  const currentEditMapping = mappings.find(m => m.role === editRole)
-
-  // Group mappings by category
-  const groupedMappings = useMemo(() => {
-    const mappedRoles = new Set(mappings.map(m => m.role))
-    const groups = roleCategories.map(cat => ({
-      ...cat,
-      items: cat.roles
-        .filter(role => mappedRoles.has(role))
-        .map(role => mappings.find(m => m.role === role)!)
-        .filter(Boolean),
-    })).filter(g => g.items.length > 0)
-
-    // Add any unmapped roles that aren't in any category
-    const categorizedRoles = new Set(roleCategories.flatMap(c => c.roles))
-    const uncategorized = mappings.filter(m => !categorizedRoles.has(m.role))
-    if (uncategorized.length > 0) {
-      groups.push({
-        key: 'other',
-        labelAr: 'أخرى',
-        labelEn: 'Other',
-        roles: uncategorized.map(m => m.role),
-        items: uncategorized,
-      })
-    }
-
-    return groups
-  }, [mappings])
-
-  const mappedCount = mappings.filter(m => m.primaryAccount).length
-  const unmappedCount = mappings.filter(m => !m.primaryAccount).length
-
-  return (
-    <div className="space-y-4">
-      {/* Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <SummaryCard title={t('إجمالي الأدوار', 'Total Roles', lang)} value={mappings.length} icon={Link2} color="teal" lang={lang} isMoney={false} />
-        <SummaryCard title={t('مرتبط', 'Mapped', lang)} value={mappedCount} icon={CheckCircle2} color="emerald" lang={lang} isMoney={false} />
-        <SummaryCard title={t('غير مربوط', 'Unmapped', lang)} value={unmappedCount} icon={AlertTriangle} color="rose" lang={lang} isMoney={false} />
-      </div>
-
-      {isLoading ? (
-        <TableSkeleton />
-      ) : isError ? (
-        <div className="flex flex-col items-center gap-3 py-10">
-          <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
-          <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
-        </div>
-      ) : (
-        groupedMappings.map(group => (
-          <Card key={group.key}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Link2 className="size-4 text-teal-600" />
-                <h4 className="font-bold text-sm">{lang === 'ar' ? group.labelAr : group.labelEn}</h4>
-                <Badge variant="outline" className="text-xs">{group.items.length}</Badge>
-              </div>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">{t('الدور', 'Role', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الحساب المرتبط', 'Linked Account', lang)}</TableHead>
-                      <TableHead className="text-right">{t('الأكواد الافتراضية', 'Default Codes', lang)}</TableHead>
-                      <TableHead className="text-right">{t('إجراء', 'Action', lang)}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {group.items.map(mapping => (
-                      <TableRow key={mapping.role}>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{lang === 'ar' ? mapping.labelAr : mapping.labelEn}</p>
-                            <p className="text-xs text-muted-foreground">{mapping.role}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {mapping.primaryAccount ? (
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-sm">{mapping.primaryAccount.code}</span>
-                              <span>-</span>
-                              <span>{lang === 'ar' && mapping.primaryAccount.nameAr ? mapping.primaryAccount.nameAr : mapping.primaryAccount.name}</span>
-                            </div>
-                          ) : (
-                            <Badge className="bg-amber-100 text-amber-700 border-0 gap-1">
-                              <AlertTriangle className="size-3" />
-                              {t('غير مربوط', 'Unmapped', lang)}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1 flex-wrap">
-                            {mapping.defaultCodes.map(code => (
-                              <Badge key={code} variant="outline" className="text-xs font-mono">{code}</Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 gap-1 text-xs"
-                            onClick={() => handleEdit(mapping.role)}
-                          >
-                            <Pencil className="size-3" />
-                            {t('تعديل', 'Edit', lang)}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-        ))
-      )}
-
-      {/* Edit Role Mapping Dialog */}
-      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Pencil className="size-5 text-teal-600" />
-              {t('ربط الحساب بالدور', 'Link Account to Role', lang)}
-            </DialogTitle>
-          </DialogHeader>
-          {currentEditMapping && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium">{t('الدور', 'Role', lang)}</p>
-                <p className="text-lg font-bold">{lang === 'ar' ? currentEditMapping.labelAr : currentEditMapping.labelEn}</p>
-                <p className="text-xs text-muted-foreground">{currentEditMapping.description}</p>
-              </div>
-              <Separator />
-              <div className="space-y-1">
-                <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
-                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {postingAccounts.map(a => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => { setEditDialogOpen(false); setEditRole(null) }}>
-                  {t('إلغاء', 'Cancel', lang)}
-                </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={!selectedAccountId || updateMutation.isPending}
-                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
-                >
-                  {updateMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                  {t('حفظ', 'Save', lang)}
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -2573,23 +2280,14 @@ export function AccountingModule() {
   const isInitializing = initMutation.isPending || reInitMutation.isPending
 
   const tabConfig = [
-    { value: 'chart-of-accounts', label: { ar: 'دليل الحسابات', en: 'Chart of Accounts' }, icon: TreePine, group: 'basic' },
-    { value: 'role-mapping', label: { ar: 'ربط الحسابات', en: 'Role Mapping' }, icon: Link2, group: 'basic' },
-    { value: 'journal-entries', label: { ar: 'القيود اليومية', en: 'Journal Entries' }, icon: FileText, group: 'basic' },
-    { value: 'general-ledger', label: { ar: 'الأستاذ العام', en: 'General Ledger' }, icon: BookOpen, group: 'basic' },
-    { value: 'trial-balance', label: { ar: 'ميزان المراجعة', en: 'Trial Balance' }, icon: Scale, group: 'basic' },
-    { value: 'income-statement', label: { ar: 'قائمة الدخل', en: 'Income Statement' }, icon: TrendingUp, group: 'reports' },
-    { value: 'balance-sheet', label: { ar: 'الميزانية العمومية', en: 'Balance Sheet' }, icon: Scale, group: 'reports' },
-    { value: 'cash-flow', label: { ar: 'التدفقات النقدية', en: 'Cash Flow' }, icon: Landmark, group: 'reports' },
-    { value: 'cost-centers', label: { ar: 'مراكز التكلفة', en: 'Cost Centers' }, icon: FolderClosed, group: 'analysis' },
-    { value: 'customer-statement', label: { ar: 'كشف العملاء', en: 'Customer Statement' }, icon: Users, group: 'analysis' },
-    { value: 'vendor-statement', label: { ar: 'كشف الموردين', en: 'Vendor Statement' }, icon: Package, group: 'analysis' },
-    { value: 'project-profitability', label: { ar: 'ربحية المشاريع', en: 'Project P&L' }, icon: Building2, group: 'profitability' },
-    { value: 'equipment-profitability', label: { ar: 'ربحية المعدات', en: 'Equipment P&L' }, icon: Truck, group: 'profitability' },
-    { value: 'period-closing', label: { ar: 'إقفال الفترات', en: 'Period Closing' }, icon: CalendarCheck, group: 'management' },
-    { value: 'fixed-assets', label: { ar: 'الأصول الثابتة', en: 'Fixed Assets' }, icon: Wrench, group: 'management' },
-    { value: 'provisions', label: { ar: 'المخصصات', en: 'Provisions' }, icon: Shield, group: 'management' },
-    { value: 'bank-reconciliation', label: { ar: 'التسويات البنكية', en: 'Bank Reconciliation' }, icon: Landmark, group: 'management' },
+    { value: 'chart-of-accounts', label: { ar: 'شجرة الحسابات', en: 'Chart of Accounts' }, icon: TreePine, group: 'core' },
+    { value: 'role-mapping', label: { ar: 'ربط الحسابات بالنظام', en: 'Role Mapping' }, icon: Link2, group: 'core' },
+    { value: 'financial-mapping', label: { ar: 'محرك الربط المحاسبي', en: 'Mapping Engine' }, icon: Zap, group: 'core' },
+    { value: 'account-impact', label: { ar: 'أثر الحسابات', en: 'Account Impact' }, icon: Activity, group: 'core' },
+    { value: 'health-check', label: { ar: 'فحص السلامة', en: 'Health Check' }, icon: Stethoscope, group: 'core' },
+    { value: 'journal-entries', label: { ar: 'قيود اليومية', en: 'Journal Entries' }, icon: FileText, group: 'transactions' },
+    { value: 'general-ledger', label: { ar: 'دفتر الأستاذ', en: 'General Ledger' }, icon: BookOpen, group: 'transactions' },
+    { value: 'trial-balance', label: { ar: 'ميزان المراجعة', en: 'Trial Balance' }, icon: Scale, group: 'transactions' },
   ]
 
   return (
@@ -2625,6 +2323,18 @@ export function AccountingModule() {
           <RoleMappingTab accounts={accounts} />
         </TabsContent>
 
+        <TabsContent value="financial-mapping">
+          <FinancialMappingEngineTab />
+        </TabsContent>
+
+        <TabsContent value="account-impact">
+          <AccountImpactTab />
+        </TabsContent>
+
+        <TabsContent value="health-check">
+          <HealthCheckTab />
+        </TabsContent>
+
         <TabsContent value="journal-entries">
           <JournalEntriesTab entries={entries} isLoading={loadingEntries} isError={entriesError} refetch={refetchEntries} accounts={accounts} />
         </TabsContent>
@@ -2635,54 +2345,6 @@ export function AccountingModule() {
 
         <TabsContent value="trial-balance">
           <TrialBalanceTab />
-        </TabsContent>
-
-        <TabsContent value="income-statement">
-          <IncomeStatementTab />
-        </TabsContent>
-
-        <TabsContent value="balance-sheet">
-          <BalanceSheetTab />
-        </TabsContent>
-
-        <TabsContent value="cash-flow">
-          <CashFlowTab />
-        </TabsContent>
-
-        <TabsContent value="cost-centers">
-          <CostCentersTab />
-        </TabsContent>
-
-        <TabsContent value="customer-statement">
-          <CustomerStatementTab />
-        </TabsContent>
-
-        <TabsContent value="vendor-statement">
-          <VendorStatementTab />
-        </TabsContent>
-
-        <TabsContent value="project-profitability">
-          <ProjectProfitabilityTab />
-        </TabsContent>
-
-        <TabsContent value="equipment-profitability">
-          <EquipmentProfitabilityTab />
-        </TabsContent>
-
-        <TabsContent value="period-closing">
-          <PeriodClosingTab />
-        </TabsContent>
-
-        <TabsContent value="fixed-assets">
-          <FixedAssetsTab />
-        </TabsContent>
-
-        <TabsContent value="provisions">
-          <ProvisionsTab />
-        </TabsContent>
-
-        <TabsContent value="bank-reconciliation">
-          <BankReconciliationTab />
         </TabsContent>
       </Tabs>
     </ModuleLayout>

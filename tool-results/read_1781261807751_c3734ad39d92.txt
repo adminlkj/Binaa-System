@@ -1,0 +1,1010 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  ShoppingCart, FileText, Plus, Search, RefreshCw, Eye, ArrowRight, X, ClipboardList,
+     7→} from 'lucide-react'
+     8→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+     9→import { Button } from '@/components/ui/button'
+    10→import { Input } from '@/components/ui/input'
+    11→import { Badge } from '@/components/ui/badge'
+    12→import {
+    13→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    14→} from '@/components/ui/table'
+    15→import {
+    16→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    17→} from '@/components/ui/dialog'
+    18→import {
+    19→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    20→} from '@/components/ui/select'
+    21→import { Label } from '@/components/ui/label'
+    22→import { Textarea } from '@/components/ui/textarea'
+    23→import { Separator } from '@/components/ui/separator'
+    24→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    25→import { ModuleLayout } from '@/components/shared/module-layout'
+    26→import { MoneyDisplay } from '@/components/ui/money-display'
+    27→import { useAppStore, formatDate, formatNumber, formatSAR } from '@/stores/app-store'
+    28→import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+    29→
+    30→// ============ Types ============
+    31→interface SupplierOption { id: string; code: string; name: string }
+    32→interface ProjectOption { id: string; code: string; name: string }
+    33→
+    34→interface PRItem {
+    35→  id: string; description: string; quantity: number; unit: string | null; notes: string | null
+    36→}
+    37→
+    38→interface PurchaseRequest {
+    39→  id: string; requestNo: string; projectId: string | null; date: string
+    40→  description: string | null; status: string; requestedBy: string | null
+    41→  project: { id: string; name: string; code: string; projectType?: string } | null
+    42→  items: PRItem[]
+    43→}
+    44→
+    45→interface POLineItem {
+    46→  id: string; description: string; quantity: number; unit: string | null
+    47→  unitPrice: number; totalPrice: number
+    48→}
+    49→
+    50→interface PurchaseOrder {
+    51→  id: string; orderNo: string; projectId: string | null; supplierId: string
+    52→  date: string; deliveryDate: string | null; subtotal: number; vatRate: number
+    53→  vatAmount: number; totalAmount: number; paidAmount: number; status: string
+    54→  notes: string | null
+    55→  supplier: { id: string; name: string; code: string }
+    56→  project: { id: string; name: string; code: string; projectType?: string } | null
+    57→  items: POLineItem[]
+    58→}
+    59→
+    60→interface PILineItem {
+    61→  id: string; description: string; quantity: number; unitPrice: number; totalPrice: number
+    62→}
+    63→
+    64→interface PurchaseInvoice {
+    65→  id: string; invoiceNo: string; purchaseOrderId: string | null; goodsReceiptId: string | null; projectId: string | null
+    66→  supplierId: string; date: string; dueDate: string
+    67→  supplierInvoiceNo: string | null; supplierInvoiceDate: string | null; attachmentPath: string | null
+    68→  subtotal: number; vatRate: number; vatAmount: number
+    69→  totalAmount: number; paidAmount: number; status: string; notes: string | null
+    70→  expenseCategory: string | null
+    71→  supplier: { id: string; name: string; code: string }
+    72→  purchaseOrder: { id: string; orderNo: string; status?: string } | null
+    73→  goodsReceipt: { id: string; receiptNo: string; status?: string } | null
+    74→  project: { id: string; name: string; code: string; projectType?: string } | null
+    75→  items: PILineItem[]
+    76→}
+    77→
+    78→interface GRItem {
+    79→  id: string; description: string; quantityOrdered: number; quantityReceived: number
+    80→  quantityRemaining: number; unitPrice: number; totalPrice: number; destination: string
+    81→}
+    82→
+    83→interface GoodsReceipt {
+    84→  id: string; receiptNo: string; purchaseOrderId: string; supplierId: string
+    85→  projectId: string | null; date: string; status: string; notes: string | null
+    86→  supplier: { id: string; name: string; code: string }
+    87→  purchaseOrder: { id: string; orderNo: string; status: string }
+    88→  project: { id: string; name: string; code: string; projectType?: string } | null
+    89→  items: GRItem[]
+    90→}
+    91→
+    92→interface LineItemForm {
+    93→  description: string; quantity: number; unit: string; unitPrice: number
+    94→}
+    95→
+    96→// ============ Bilingual Helpers ============
+    97→const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
+    98→
+    99→// Status labels
+   100→const poStatusLabels: Record<string, { ar: string; en: string }> = {
+   101→  DRAFT: { ar: 'مسودة', en: 'Draft' },
+   102→  PENDING_APPROVAL: { ar: 'بانتظار الاعتماد', en: 'Pending Approval' },
+   103→  APPROVED: { ar: 'معتمد', en: 'Approved' },
+   104→  PARTIALLY_RECEIVED: { ar: 'مستلم جزئياً', en: 'Partially Received' },
+   105→  RECEIVED: { ar: 'مستلم', en: 'Received' },
+   106→  CANCELLED: { ar: 'ملغي', en: 'Cancelled' },
+   107→}
+   108→
+   109→const poStatusColors: Record<string, string> = {
+   110→  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
+   111→  PENDING_APPROVAL: 'bg-amber-100 text-amber-700 border-amber-200',
+   112→  APPROVED: 'bg-blue-100 text-blue-700 border-blue-200',
+   113→  PARTIALLY_RECEIVED: 'bg-orange-100 text-orange-700 border-orange-200',
+   114→  RECEIVED: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+   115→  CANCELLED: 'bg-rose-100 text-rose-700 border-rose-200',
+   116→}
+   117→
+   118→const invoiceStatusLabels: Record<string, { ar: string; en: string }> = {
+   119→  DRAFT: { ar: 'مسودة', en: 'Draft' },
+   120→  SENT: { ar: 'مرسلة', en: 'Sent' },
+   121→  PARTIALLY_PAID: { ar: 'مدفوعة جزئياً', en: 'Partially Paid' },
+   122→  PAID: { ar: 'مدفوعة', en: 'Paid' },
+   123→  OVERDUE: { ar: 'متأخرة', en: 'Overdue' },
+   124→  CANCELLED: { ar: 'ملغية', en: 'Cancelled' },
+   125→}
+   126→
+   127→const invoiceStatusColors: Record<string, string> = {
+   128→  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
+   129→  SENT: 'bg-blue-100 text-blue-700 border-blue-200',
+   130→  PARTIALLY_PAID: 'bg-amber-100 text-amber-700 border-amber-200',
+   131→  PAID: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+   132→  OVERDUE: 'bg-rose-100 text-rose-700 border-rose-200',
+   133→  CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
+   134→}
+   135→
+   136→const defaultLineItem: LineItemForm = { description: '', quantity: 1, unit: '', unitPrice: 0 }
+   137→
+   138→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   139→  return (
+   140→    <div className="space-y-2 p-4">
+   141→      {Array.from({ length: rows }).map((_, i) => (
+   142→        <div key={i} className="flex gap-4 p-3">
+   143→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   144→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   145→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   146→        </div>
+   147→      ))}
+   148→    </div>
+   149→  )
+   150→}
+   151→
+   152→// ============ Purchase Request Form Dialog ============
+   153→function PurchaseRequestFormDialog({
+   154→  open, onOpenChange, projects,
+   155→}: {
+   156→  open: boolean; onOpenChange: (open: boolean) => void; projects: ProjectOption[]
+   157→}) {
+   158→  const { lang } = useAppStore()
+   159→  const queryClient = useQueryClient()
+   160→  const [projectId, setProjectId] = useState('')
+   161→  const [date, setDate] = useState('')
+   162→  const [description, setDescription] = useState('')
+   163→  const [requestedBy, setRequestedBy] = useState('')
+   164→  const [items, setItems] = useState<{ description: string; quantity: string; unit: string; notes: string }[]>([
+   165→    { description: '', quantity: '1', unit: '', notes: '' },
+   166→  ])
+   167→
+   168→  React.useEffect(() => {
+   169→    if (open) { setProjectId(''); setDate(''); setDescription(''); setRequestedBy(''); setItems([{ description: '', quantity: '1', unit: '', notes: '' }]) }
+   170→  }, [open])
+   171→
+   172→  const addItem = () => setItems([...items, { description: '', quantity: '1', unit: '', notes: '' }])
+   173→  const removeItem = (idx: number) => { if (items.length > 1) setItems(items.filter((_, i) => i !== idx)) }
+   174→  const updateItem = (idx: number, field: string, value: string) => {
+   175→    setItems(items.map((item, i) => i === idx ? { ...item, [field]: value } : item))
+   176→  }
+   177→
+   178→  const createMutation = useMutation({
+   179→    mutationFn: (data: Record<string, unknown>) =>
+   180→      fetch('/api/purchase-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   181→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-requests'] }); onOpenChange(false) },
+   182→  })
+   183→
+   184→  const handleSubmit = (e: React.FormEvent) => {
+   185→    e.preventDefault()
+   186→    createMutation.mutate({
+   187→      projectId: projectId || null, date, description: description || null,
+   188→      requestedBy: requestedBy || null,
+   189→      items: items.map(i => ({ description: i.description, quantity: parseFloat(i.quantity) || 1, unit: i.unit || null, notes: i.notes || null })),
+   190→    })
+   191→  }
+   192→
+   193→  return (
+   194→    <Dialog open={open} onOpenChange={onOpenChange}>
+   195→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   196→        <DialogHeader>
+   197→          <DialogTitle>{t(lang, 'طلب شراء جديد', 'New Purchase Request')}</DialogTitle>
+   198→          <DialogDescription>{t(lang, 'إنشاء طلب شراء جديد', 'Create a new purchase request')}</DialogDescription>
+   199→        </DialogHeader>
+   200→        <form onSubmit={handleSubmit} className="space-y-4">
+   201→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   202→            <div className="space-y-2">
+   203→              <Label>{t(lang, 'المشروع (اختياري)', 'Project (optional)')}</Label>
+   204→              <Select value={projectId} onValueChange={setProjectId}>
+   205→                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المشروع', 'Select project')} /></SelectTrigger>
+   206→                <SelectContent>
+   207→                  {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   208→                </SelectContent>
+   209→              </Select>
+   210→            </div>
+   211→            <div className="space-y-2">
+   212→              <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
+   213→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   214→            </div>
+   215→            <div className="space-y-2 sm:col-span-2">
+   216→              <Label>{t(lang, 'الوصف', 'Description')}</Label>
+   217→              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف الطلب', 'Request description')} />
+   218→            </div>
+   219→            <div className="space-y-2 sm:col-span-2">
+   220→              <Label>{t(lang, 'مقدم الطلب', 'Requested By')}</Label>
+   221→              <Input value={requestedBy} onChange={e => setRequestedBy(e.target.value)} placeholder={t(lang, 'اسم مقدم الطلب', 'Requester name')} />
+   222→            </div>
+   223→          </div>
+   224→
+   225→          {/* Items */}
+   226→          <div className="space-y-3">
+   227→            <div className="flex items-center justify-between">
+   228→              <Label className="text-base font-semibold">{t(lang, 'بنود الطلب', 'Request Items')}</Label>
+   229→              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={addItem}>
+   230→                <Plus className="size-3" /> {t(lang, 'إضافة بند', 'Add Item')}
+   231→              </Button>
+   232→            </div>
+   233→            <div className="space-y-2 max-h-48 overflow-y-auto">
+   234→              {items.map((item, idx) => (
+   235→                <div key={idx} className="flex items-end gap-2 p-2 rounded-lg border bg-gray-50">
+   236→                  <div className="flex-1 min-w-0">
+   237→                    <Label className="text-xs">{t(lang, 'الوصف', 'Description')}</Label>
+   238→                    <Input value={item.description} onChange={e => updateItem(idx, 'description', e.target.value)} placeholder={t(lang, 'وصف البند', 'Item description')} className="h-9" />
+   239→                  </div>
+   240→                  <div className="w-20">
+   241→                    <Label className="text-xs">{t(lang, 'الكمية', 'Qty')}</Label>
+   242→                    <Input type="number" min="0" step="0.01" value={item.quantity} onChange={e => updateItem(idx, 'quantity', e.target.value)} className="h-9" dir="ltr" />
+   243→                  </div>
+   244→                  <div className="w-20">
+   245→                    <Label className="text-xs">{t(lang, 'الوحدة', 'Unit')}</Label>
+   246→                    <Input value={item.unit} onChange={e => updateItem(idx, 'unit', e.target.value)} placeholder={t(lang, 'وحدة', 'Unit')} className="h-9" />
+   247→                  </div>
+   248→                  <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 text-rose-500" onClick={() => removeItem(idx)} disabled={items.length <= 1}>
+   249→                    <X className="size-4" />
+   250→                  </Button>
+   251→                </div>
+   252→              ))}
+   253→            </div>
+   254→          </div>
+   255→
+   256→          <DialogFooter>
+   257→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
+   258→            <Button type="submit" disabled={createMutation.isPending || !date} className="bg-emerald-600 hover:bg-emerald-700">
+   259→              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إنشاء طلب الشراء', 'Create Purchase Request')}
+   260→            </Button>
+   261→          </DialogFooter>
+   262→        </form>
+   263→      </DialogContent>
+   264→    </Dialog>
+   265→  )
+   266→}
+   267→
+   268→// ============ Purchase Order Form Dialog ============
+   269→function PurchaseOrderFormDialog({
+   270→  open, onOpenChange, suppliers, projects,
+   271→}: {
+   272→  open: boolean; onOpenChange: (open: boolean) => void
+   273→  suppliers: SupplierOption[]; projects: ProjectOption[]
+   274→}) {
+   275→  const { lang } = useAppStore()
+   276→  const queryClient = useQueryClient()
+   277→
+   278→  const [supplierId, setSupplierId] = useState('')
+   279→  const [projectId, setProjectId] = useState('')
+   280→  const [date, setDate] = useState('')
+   281→  const [deliveryDate, setDeliveryDate] = useState('')
+   282→  const [notes, setNotes] = useState('')
+   283→  const [lineItems, setLineItems] = useState<LineItemForm[]>([{ ...defaultLineItem }])
+   284→
+   285→  React.useEffect(() => {
+   286→    if (open) {
+   287→      setSupplierId(''); setProjectId(''); setDate(''); setDeliveryDate('')
+   288→      setNotes(''); setLineItems([{ ...defaultLineItem }])
+   289→    }
+   290→  }, [open])
+   291→
+   292→  const subtotal = useMemo(() => lineItems.reduce((s, i) => s + (i.quantity * i.unitPrice), 0), [lineItems])
+   293→  const vatRate = 0.15
+   294→  const vatAmount = subtotal * vatRate
+   295→  const totalAmount = subtotal + vatAmount
+   296→
+   297→  const addLine = () => setLineItems([...lineItems, { ...defaultLineItem }])
+   298→  const removeLine = (idx: number) => { if (lineItems.length > 1) setLineItems(lineItems.filter((_, i) => i !== idx)) }
+   299→  const updateLine = (idx: number, field: keyof LineItemForm, value: string | number) => {
+   300→    setLineItems(lineItems.map((item, i) => i === idx ? { ...item, [field]: value } : item))
+   301→  }
+   302→
+   303→  const createMutation = useMutation({
+   304→    mutationFn: (data: Record<string, unknown>) =>
+   305→      fetch('/api/purchase-orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   306→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }); onOpenChange(false) },
+   307→  })
+   308→
+   309→  const handleSubmit = (e: React.FormEvent) => {
+   310→    e.preventDefault()
+   311→    createMutation.mutate({
+   312→      supplierId, projectId: projectId || null, date, deliveryDate: deliveryDate || null, notes,
+   313→      items: lineItems.map(i => ({ description: i.description, quantity: i.quantity, unit: i.unit, unitPrice: i.unitPrice })),
+   314→    })
+   315→  }
+   316→
+   317→  return (
+   318→    <Dialog open={open} onOpenChange={onOpenChange}>
+   319→      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+   320→        <DialogHeader>
+   321→          <DialogTitle>{t(lang, 'أمر شراء جديد', 'New Purchase Order')}</DialogTitle>
+   322→          <DialogDescription>{t(lang, 'إنشاء أمر شراء جديد مع البنود', 'Create a new purchase order with items')}</DialogDescription>
+   323→        </DialogHeader>
+   324→        <form onSubmit={handleSubmit} className="space-y-4">
+   325→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   326→            <div className="space-y-2">
+   327→              <Label>{t(lang, 'المورد *', 'Supplier *')}</Label>
+   328→              <Select value={supplierId} onValueChange={setSupplierId}>
+   329→                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المورد', 'Select supplier')} /></SelectTrigger>
+   330→                <SelectContent>
+   331→                  {suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+   332→                </SelectContent>
+   333→              </Select>
+   334→            </div>
+   335→            <div className="space-y-2">
+   336→              <Label>{t(lang, 'المشروع (اختياري)', 'Project (optional)')}</Label>
+   337→              <Select value={projectId} onValueChange={setProjectId}>
+   338→                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المشروع', 'Select project')} /></SelectTrigger>
+   339→                <SelectContent>
+   340→                  {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   341→                </SelectContent>
+   342→              </Select>
+   343→            </div>
+   344→            <div className="space-y-2">
+   345→              <Label>{t(lang, 'تاريخ الأمر *', 'Order Date *')}</Label>
+   346→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   347→            </div>
+   348→            <div className="space-y-2">
+   349→              <Label>{t(lang, 'تاريخ التسليم', 'Delivery Date')}</Label>
+   350→              <Input type="date" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+   351→            </div>
+   352→          </div>
+   353→
+   354→          {/* Line Items */}
+   355→          <div className="space-y-3">
+   356→            <div className="flex items-center justify-between">
+   357→              <Label className="text-base font-semibold">{t(lang, 'بنود أمر الشراء', 'Order Items')}</Label>
+   358→              <Button type="button" variant="outline" size="sm" className="gap-1" onClick={addLine}>
+   359→                <Plus className="size-3" /> {t(lang, 'إضافة بند', 'Add Item')}
+   360→              </Button>
+   361→            </div>
+   362→            <div className="space-y-2 max-h-64 overflow-y-auto">
+   363→              {lineItems.map((item, idx) => (
+   364→                <div key={idx} className="flex items-end gap-2 p-2 rounded-lg border bg-gray-50">
+   365→                  <div className="flex-1 min-w-0">
+   366→                    <Label className="text-xs">{t(lang, 'الوصف', 'Description')}</Label>
+   367→                    <Input value={item.description} onChange={e => updateLine(idx, 'description', e.target.value)} placeholder={t(lang, 'وصف البند', 'Item description')} className="h-9" />
+   368→                  </div>
+   369→                  <div className="w-20">
+   370→                    <Label className="text-xs">{t(lang, 'الكمية', 'Qty')}</Label>
+   371→                    <Input type="number" min="0" step="0.01" value={item.quantity || ''} onChange={e => updateLine(idx, 'quantity', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
+   372→                  </div>
+   373→                  <div className="w-20">
+   374→                    <Label className="text-xs">{t(lang, 'الوحدة', 'Unit')}</Label>
+   375→                    <Input value={item.unit} onChange={e => updateLine(idx, 'unit', e.target.value)} placeholder={t(lang, 'وحدة', 'Unit')} className="h-9" />
+   376→                  </div>
+   377→                  <div className="w-28">
+   378→                    <Label className="text-xs">{t(lang, 'سعر الوحدة', 'Unit Price')}</Label>
+   379→                    <Input type="number" min="0" step="0.01" value={item.unitPrice || ''} onChange={e => updateLine(idx, 'unitPrice', parseFloat(e.target.value) || 0)} className="h-9" dir="ltr" />
+   380→                  </div>
+   381→                  <div className="w-28 text-left">
+   382→                    <Label className="text-xs">{t(lang, 'الإجمالي', 'Total')}</Label>
+   383→                    <p className="text-sm font-medium mt-1.5"><MoneyDisplay value={item.quantity * item.unitPrice} lang={lang} size="xs" /></p>
+   384→                  </div>
+   385→                  <Button type="button" variant="ghost" size="icon" className="size-9 shrink-0 text-rose-500" onClick={() => removeLine(idx)} disabled={lineItems.length <= 1}>
+   386→                    <X className="size-4" />
+   387→                  </Button>
+   388→                </div>
+   389→              ))}
+   390→            </div>
+   391→          </div>
+   392→
+   393→          {/* Summary */}
+   394→          <Card className="bg-gray-50 border-dashed">
+   395→            <CardContent className="p-4 space-y-2">
+   396→              <div className="flex justify-between text-sm">
+   397→                <span>{t(lang, 'المجموع قبل الضريبة', 'Subtotal')}</span>
+   398→                <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" /></span>
+   399→              </div>
+   400→              <div className="flex justify-between text-sm">
+   401→                <span>{t(lang, 'ضريبة القيمة المضافة (15%)', 'VAT (15%)')}</span>
+   402→                <span className="font-medium"><MoneyDisplay value={vatAmount} lang={lang} size="sm" /></span>
+   403→              </div>
+   404→              <Separator />
+   405→              <div className="flex justify-between text-lg font-bold">
+   406→                <span>{t(lang, 'الإجمالي', 'Total')}</span>
+   407→                <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} bold size="md" /></span>
+   408→              </div>
+   409→            </CardContent>
+   410→          </Card>
+   411→
+   412→          <div className="space-y-2">
+   413→            <Label>{t(lang, 'ملاحظات', 'Notes')}</Label>
+   414→            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t(lang, 'ملاحظات إضافية', 'Additional notes')} rows={2} />
+   415→          </div>
+   416→
+   417→          <DialogFooter>
+   418→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
+   419→            <Button type="submit" disabled={createMutation.isPending || !supplierId || !date} className="bg-emerald-600 hover:bg-emerald-700">
+   420→              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إنشاء أمر الشراء', 'Create Order')}
+   421→            </Button>
+   422→          </DialogFooter>
+   423→        </form>
+   424→      </DialogContent>
+   425→    </Dialog>
+   426→  )
+   427→}
+   428→
+   429→// ============ GR-Based Invoice Form Dialog ============
+   430→function GRBasedInvoiceDialog({
+   431→  open, onOpenChange,
+   432→}: {
+   433→  open: boolean; onOpenChange: (open: boolean) => void
+   434→}) {
+   435→  const { lang } = useAppStore()
+   436→  const queryClient = useQueryClient()
+   437→
+   438→  const [goodsReceiptId, setGoodsReceiptId] = useState('')
+   439→  const [date, setDate] = useState('')
+   440→  const [dueDate, setDueDate] = useState('')
+   441→  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('')
+   442→  const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('')
+   443→  const [attachmentPath, setAttachmentPath] = useState('')
+   444→  const [notes, setNotes] = useState('')
+   445→
+   446→  // Fetch available (uninvoiced) GRs
+   447→  const { data: goodsReceipts = [], isLoading: grLoading } = useQuery<GoodsReceipt[]>({
+   448→    queryKey: ['goods-receipts-available'],
+   449→    queryFn: async () => {
+   450→      const res = await fetch('/api/goods-receipt')
+   451→      if (!res.ok) return []
+   452→      const allGRs: GoodsReceipt[] = await res.json()
+   453→      // Only show GRs that are confirmed and not yet invoiced
+   454→      return allGRs.filter(gr => gr.status === 'CONFIRMED' || gr.status === 'PENDING')
+   455→    },
+   456→    enabled: open,
+   457→  })
+   458→
+   459→  const selectedGR = useMemo(
+   460→    () => goodsReceipts.find(gr => gr.id === goodsReceiptId),
+   461→    [goodsReceipts, goodsReceiptId]
+   462→  )
+   463→
+   464→  // Financial amounts are computed from GR items (READ-ONLY)
+   465→  const subtotal = useMemo(() => selectedGR?.items.reduce((s, i) => s + i.totalPrice, 0) ?? 0, [selectedGR])
+   466→  const vatRate = 0.15
+   467→  const vatAmount = subtotal * vatRate
+   468→  const totalAmount = subtotal + vatAmount
+   469→
+   470→  React.useEffect(() => {
+   471→    if (open) {
+   472→      setGoodsReceiptId(''); setDate(''); setDueDate('')
+   473→      setSupplierInvoiceNo(''); setSupplierInvoiceDate('')
+   474→      setAttachmentPath(''); setNotes('')
+   475→    }
+   476→  }, [open])
+   477→
+   478→  const createMutation = useMutation({
+   479→    mutationFn: (data: Record<string, unknown>) =>
+   480→      fetch('/api/supplier-invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(async r => {
+   481→        if (!r.ok) { const err = await r.json().catch(() => ({})); throw new Error((err as { error?: string }).error || 'Failed') }
+   482→        return r.json()
+   483→      }),
+   484→    onSuccess: () => {
+   485→      queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] })
+   486→      onOpenChange(false)
+   487→    },
+   488→  })
+   489→
+   490→  const handleSubmit = (e: React.FormEvent) => {
+   491→    e.preventDefault()
+   492→    createMutation.mutate({
+   493→      goodsReceiptId,
+   494→      date, dueDate,
+   495→      supplierInvoiceNo: supplierInvoiceNo || undefined,
+   496→      supplierInvoiceDate: supplierInvoiceDate || undefined,
+   497→      attachmentPath: attachmentPath || undefined,
+   498→      notes: notes || undefined,
+   499→    })
+   500→  }
+   501→
+   502→  return (
+   503→    <Dialog open={open} onOpenChange={onOpenChange}>
+   504→      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+   505→        <DialogHeader>
+   506→          <DialogTitle>{t(lang, 'فاتورة مورد من إيصال استلام', 'Supplier Invoice from Goods Receipt')}</DialogTitle>
+   507→          <DialogDescription>{t(lang, 'إنشاء فاتورة مورد بناءً على إيصال استلام بضائع', 'Create a supplier invoice based on a goods receipt')}</DialogDescription>
+   508→        </DialogHeader>
+   509→        <form onSubmit={handleSubmit} className="space-y-4">
+   510→          {/* GR Selection */}
+   511→          <div className="space-y-2">
+   512→            <Label className="text-base font-semibold">{t(lang, 'إيصال الاستلام *', 'Goods Receipt *')}</Label>
+   513→            {grLoading ? (
+   514→              <div className="flex items-center gap-2 text-sm text-muted-foreground p-2">
+   515→                <RefreshCw className="size-4 animate-spin" /> {t(lang, 'جاري التحميل...', 'Loading...')}
+   516→              </div>
+   517→            ) : goodsReceipts.length === 0 ? (
+   518→              <div className="p-3 rounded-lg border border-dashed border-amber-300 bg-amber-50 text-sm text-amber-700">
+   519→                {t(lang, 'لا توجد إيصالات استلام متاحة. يجب إنشاء إيصال استلام أولاً قبل إصدار فاتورة.', 'No available goods receipts. A goods receipt must be created first before issuing an invoice.')}
+   520→              </div>
+   521→            ) : (
+   522→              <Select value={goodsReceiptId} onValueChange={setGoodsReceiptId}>
+   523→                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر إيصال الاستلام', 'Select Goods Receipt')} /></SelectTrigger>
+   524→                <SelectContent>
+   525→                  {goodsReceipts.map(gr => (
+   526→                    <SelectItem key={gr.id} value={gr.id}>
+   527→                      {gr.receiptNo} — {gr.supplier.name} ({formatDate(gr.date)})
+   528→                    </SelectItem>
+   529→                  ))}
+   530→                </SelectContent>
+   531→              </Select>
+   532→            )}
+   533→          </div>
+   534→
+   535→          {/* Auto-populated info from GR */}
+   536→          {selectedGR && (
+   537→            <Card className="bg-gray-50 border-dashed">
+   538→              <CardContent className="p-4 space-y-3">
+   539→                <p className="text-sm font-semibold">{t(lang, 'بيانات من إيصال الاستلام', 'Data from Goods Receipt')}</p>
+   540→                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+   541→                  <div>
+   542→                    <span className="text-muted-foreground">{t(lang, 'المورد', 'Supplier')}</span>
+   543→                    <p className="font-medium">{selectedGR.supplier.name}</p>
+   544→                  </div>
+   545→                  <div>
+   546→                    <span className="text-muted-foreground">{t(lang, 'أمر الشراء', 'Purchase Order')}</span>
+   547→                    <p className="font-medium font-mono">{selectedGR.purchaseOrder.orderNo}</p>
+   548→                  </div>
+   549→                  <div>
+   550→                    <span className="text-muted-foreground">{t(lang, 'المشروع', 'Project')}</span>
+   551→                    <p className="font-medium">{selectedGR.project?.name || '—'}</p>
+   552→                  </div>
+   553→                </div>
+   554→
+   555→                {/* GR Items (read-only) */}
+   556→                <div className="space-y-1 mt-2">
+   557→                  <p className="text-xs text-muted-foreground">{t(lang, 'بنود إيصال الاستلام', 'GR Items')}</p>
+   558→                  <div className="max-h-32 overflow-y-auto">
+   559→                    <Table size="sm">
+   560→                      <TableHeader>
+   561→                        <TableRow>
+   562→                          <TableHead className="text-xs h-8">{t(lang, 'الوصف', 'Description')}</TableHead>
+   563→                          <TableHead className="text-xs h-8 w-16">{t(lang, 'الكمية', 'Qty')}</TableHead>
+   564→                          <TableHead className="text-xs h-8 w-24">{t(lang, 'سعر الوحدة', 'Unit Price')}</TableHead>
+   565→                          <TableHead className="text-xs h-8 w-24">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+   566→                        </TableRow>
+   567→                      </TableHeader>
+   568→                      <TableBody>
+   569→                        {selectedGR.items.map(item => (
+   570→                          <TableRow key={item.id}>
+   571→                            <TableCell className="text-xs py-1">{item.description}</TableCell>
+   572→                            <TableCell className="text-xs py-1 font-mono">{item.quantityReceived}</TableCell>
+   573→                            <TableCell className="text-xs py-1"><MoneyDisplay value={item.unitPrice} lang={lang} size="xs" /></TableCell>
+   574→                            <TableCell className="text-xs py-1 font-medium"><MoneyDisplay value={item.totalPrice} lang={lang} size="xs" /></TableCell>
+   575→                          </TableRow>
+   576→                        ))}
+   577→                      </TableBody>
+   578→                    </Table>
+   579→                  </div>
+   580→                </div>
+   581→
+   582→                <Separator />
+   583→                <div className="space-y-1">
+   584→                  <div className="flex justify-between text-sm">
+   585→                    <span>{t(lang, 'المجموع قبل الضريبة', 'Subtotal')}</span>
+   586→                    <span className="font-medium"><MoneyDisplay value={subtotal} lang={lang} size="sm" /></span>
+   587→                  </div>
+   588→                  <div className="flex justify-between text-sm">
+   589→                    <span>{t(lang, 'ضريبة القيمة المضافة (15%)', 'VAT (15%)')}</span>
+   590→                    <span className="font-medium"><MoneyDisplay value={vatAmount} lang={lang} size="sm" /></span>
+   591→                  </div>
+   592→                  <Separator />
+   593→                  <div className="flex justify-between text-lg font-bold">
+   594→                    <span>{t(lang, 'الإجمالي', 'Total')}</span>
+   595→                    <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} bold size="md" /></span>
+   596→                  </div>
+   597→                </div>
+   598→              </CardContent>
+   599→            </Card>
+   600→          )}
+   601→
+   602→          {/* User-editable fields */}
+   603→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   604→            <div className="space-y-2">
+   605→              <Label>{t(lang, 'رقم فاتورة المورد', 'Supplier Invoice No')}</Label>
+   606→              <Input value={supplierInvoiceNo} onChange={e => setSupplierInvoiceNo(e.target.value)} placeholder={t(lang, 'رقم فاتورة المورد', 'Supplier invoice number')} />
+   607→            </div>
+   608→            <div className="space-y-2">
+   609→              <Label>{t(lang, 'تاريخ فاتورة المورد', 'Supplier Invoice Date')}</Label>
+   610→              <Input type="date" value={supplierInvoiceDate} onChange={e => setSupplierInvoiceDate(e.target.value)} />
+   611→            </div>
+   612→            <div className="space-y-2">
+   613→              <Label>{t(lang, 'تاريخ الفاتورة *', 'Invoice Date *')}</Label>
+   614→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   615→            </div>
+   616→            <div className="space-y-2">
+   617→              <Label>{t(lang, 'تاريخ الاستحقاق *', 'Due Date *')}</Label>
+   618→              <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+   619→            </div>
+   620→            <div className="space-y-2 sm:col-span-2">
+   621→              <Label>{t(lang, 'المرفق', 'Attachment')}</Label>
+   622→              <Input value={attachmentPath} onChange={e => setAttachmentPath(e.target.value)} placeholder={t(lang, 'مسار المرفق', 'Attachment path')} />
+   623→            </div>
+   624→          </div>
+   625→
+   626→          <div className="space-y-2">
+   627→            <Label>{t(lang, 'ملاحظات', 'Notes')}</Label>
+   628→            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t(lang, 'ملاحظات إضافية', 'Additional notes')} rows={2} />
+   629→          </div>
+   630→
+   631→          <DialogFooter>
+   632→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
+   633→            <Button type="submit" disabled={createMutation.isPending || !goodsReceiptId || !date || !dueDate || goodsReceipts.length === 0} className="bg-emerald-600 hover:bg-emerald-700">
+   634→              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إنشاء الفاتورة', 'Create Invoice')}
+   635→            </Button>
+   636→          </DialogFooter>
+   637→        </form>
+   638→      </DialogContent>
+   639→    </Dialog>
+   640→  )
+   641→}
+   642→
+   643→// ============ Main Purchases Module ============
+   644→export function PurchasesModule() {
+   645→  const { lang } = useAppStore()
+   646→  const [search, setSearch] = useState('')
+   647→  const [activeTab, setActiveTab] = useState('requests')
+   648→  const [prDialogOpen, setPrDialogOpen] = useState(false)
+   649→  const [poDialogOpen, setPoDialogOpen] = useState(false)
+   650→  const [piDialogOpen, setPiDialogOpen] = useState(false)
+   651→
+   652→  // Fetch purchase requests
+   653→  const { data: purchaseRequests = [], isLoading: prLoading, isError: prError, refetch: refetchPR } = useQuery<PurchaseRequest[]>({
+   654→    queryKey: ['purchase-requests'],
+   655→    queryFn: async () => {
+   656→      const res = await fetch('/api/purchase-requests')
+   657→      if (!res.ok) throw new Error()
+   658→      return res.json()
+   659→    },
+   660→  })
+   661→
+   662→  // Fetch purchase orders
+   663→  const { data: purchaseOrders = [], isLoading: poLoading, isError: poError, refetch: refetchPO } = useQuery<PurchaseOrder[]>({
+   664→    queryKey: ['purchase-orders'],
+   665→    queryFn: async () => {
+   666→      const res = await fetch('/api/purchase-orders')
+   667→      if (!res.ok) throw new Error()
+   668→      return res.json()
+   669→    },
+   670→  })
+   671→
+   672→  // Fetch purchase invoices (supplier invoices)
+   673→  const { data: purchaseInvoices = [], isLoading: piLoading, isError: piError, refetch: refetchPI } = useQuery<PurchaseInvoice[]>({
+   674→    queryKey: ['supplier-invoices'],
+   675→    queryFn: async () => {
+   676→      const res = await fetch('/api/supplier-invoices')
+   677→      if (!res.ok) throw new Error()
+   678→      return res.json()
+   679→    },
+   680→  })
+   681→
+   682→  // Fetch suppliers & projects for forms
+   683→  const { data: suppliers = [] } = useQuery<SupplierOption[]>({
+   684→    queryKey: ['suppliers-simple'],
+   685→    queryFn: async () => {
+   686→      const res = await fetch('/api/suppliers?active=true')
+   687→      if (!res.ok) return []
+   688→      const data = await res.json()
+   689→      return data.map((s: { id: string; code: string; name: string }) => ({ id: s.id, code: s.code, name: s.name }))
+   690→    },
+   691→  })
+   692→
+   693→  const { data: projects = [] } = useQuery<ProjectOption[]>({
+   694→    queryKey: ['projects-list'],
+   695→    queryFn: async () => {
+   696→      const res = await fetch('/api/projects/list')
+   697→      if (!res.ok) return []
+   698→      return res.json()
+   699→    },
+   700→  })
+   701→
+   702→  // Filters
+   703→  const filteredPR = purchaseRequests.filter(pr => {
+   704→    const matchSearch = !search || pr.requestNo.toLowerCase().includes(search.toLowerCase()) || (pr.description || '').toLowerCase().includes(search.toLowerCase())
+   705→    return matchSearch
+   706→  })
+   707→
+   708→  const filteredPO = purchaseOrders.filter(po => {
+   709→    const matchSearch = !search || po.orderNo.toLowerCase().includes(search.toLowerCase()) || po.supplier.name.toLowerCase().includes(search.toLowerCase())
+   710→    return matchSearch
+   711→  })
+   712→
+   713→  const filteredPI = purchaseInvoices.filter(pi => {
+   714→    const matchSearch = !search || pi.invoiceNo.toLowerCase().includes(search.toLowerCase()) || pi.supplier.name.toLowerCase().includes(search.toLowerCase()) || (pi.goodsReceipt?.receiptNo || '').toLowerCase().includes(search.toLowerCase())
+   715→    return matchSearch
+   716→  })
+   717→
+   718→  // Summary
+   719→  const totalPR = purchaseRequests.length
+   720→  const totalPO = purchaseOrders.reduce((s, o) => s + o.totalAmount, 0)
+   721→  const totalPI = purchaseInvoices.reduce((s, i) => s + i.totalAmount, 0)
+   722→  const totalPIPaid = purchaseInvoices.reduce((s, i) => s + i.paidAmount, 0)
+   723→
+   724→  const refetchAll = () => { refetchPR(); refetchPO(); refetchPI() }
+   725→
+   726→  return (
+   727→    <ModuleLayout
+   728→      title={{ ar: 'المشتريات', en: 'Purchases' }}
+   729→      subtitle={{ ar: 'إدارة طلبات الشراء وأوامر الشراء وفواتير الموردين', en: 'Manage purchase requests, orders, and supplier invoices' }}
+   730→      actions={
+   731→        <div className="flex items-center gap-2">
+   732→          <Button variant="outline" size="icon" onClick={refetchAll} title={t(lang, 'تحديث', 'Refresh')}>
+   733→            <RefreshCw className="size-4" />
+   734→          </Button>
+   735→        </div>
+   736→      }
+   737→    >
+   738→      {/* Summary Cards */}
+   739→      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+   740→        <Card className="bg-purple-50 border-purple-200">
+   741→          <CardContent className="p-4">
+   742→            <p className="text-sm text-purple-600">{t(lang, 'طلبات الشراء', 'Purchase Requests')}</p>
+   743→            <p className="text-xl font-bold text-purple-700">{totalPR}</p>
+   744→          </CardContent>
+   745→        </Card>
+   746→        <Card className="bg-teal-50 border-teal-200">
+   747→          <CardContent className="p-4">
+   748→            <p className="text-sm text-teal-600">{t(lang, 'إجمالي أوامر الشراء', 'Total POs')}</p>
+   749→            <MoneyDisplay value={totalPO} lang={lang} bold size="lg" className="text-teal-700" />
+   750→          </CardContent>
+   751→        </Card>
+   752→        <Card className="bg-rose-50 border-rose-200">
+   753→          <CardContent className="p-4">
+   754→            <p className="text-sm text-rose-600">{t(lang, 'إجمالي فواتير الشراء', 'Total Invoices')}</p>
+   755→            <MoneyDisplay value={totalPI} lang={lang} bold size="lg" className="text-rose-700" />
+   756→          </CardContent>
+   757→        </Card>
+   758→        <Card className="bg-amber-50 border-amber-200">
+   759→          <CardContent className="p-4">
+   760→            <p className="text-sm text-amber-600">{t(lang, 'المدفوع للموردين', 'Paid to Suppliers')}</p>
+   761→            <MoneyDisplay value={totalPIPaid} lang={lang} bold size="lg" className="text-amber-700" />
+   762→          </CardContent>
+   763→        </Card>
+   764→      </div>
+   765→
+   766→      {/* Search */}
+   767→      <Card>
+   768→        <CardContent className="p-4">
+   769→          <div className="relative">
+   770→            <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   771→            <Input placeholder={t(lang, 'بحث بالرقم أو الاسم...', 'Search by number or name...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   772→          </div>
+   773→        </CardContent>
+   774→      </Card>
+   775→
+   776→      {/* Tabs */}
+   777→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   778→        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+   779→          <TabsList>
+   780→            <TabsTrigger value="requests" className="gap-1.5">
+   781→              <ClipboardList className="size-4" /> {t(lang, 'طلبات الشراء', 'Requests')}
+   782→            </TabsTrigger>
+   783→            <TabsTrigger value="orders" className="gap-1.5">
+   784→              <ShoppingCart className="size-4" /> {t(lang, 'أوامر الشراء', 'Orders')}
+   785→            </TabsTrigger>
+   786→            <TabsTrigger value="invoices" className="gap-1.5">
+   787→              <FileText className="size-4" /> {t(lang, 'فواتير الموردين', 'Invoices')}
+   788→            </TabsTrigger>
+   789→          </TabsList>
+   790→          {activeTab === 'requests' ? (
+   791→            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setPrDialogOpen(true)}>
+   792→              <Plus className="size-4" /> {t(lang, 'طلب شراء جديد', 'New Request')}
+   793→            </Button>
+   794→          ) : activeTab === 'orders' ? (
+   795→            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setPoDialogOpen(true)}>
+   796→              <Plus className="size-4" /> {t(lang, 'أمر شراء جديد', 'New Order')}
+   797→            </Button>
+   798→          ) : (
+   799→            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setPiDialogOpen(true)}>
+   800→              <Plus className="size-4" /> {t(lang, 'فاتورة من إيصال استلام', 'Invoice from GR')}
+   801→            </Button>
+   802→          )}
+   803→        </div>
+   804→
+   805→        {/* Purchase Requests Tab */}
+   806→        <TabsContent value="requests">
+   807→          <Card>
+   808→            <CardContent className="p-0">
+   809→              {prLoading ? (
+   810→                <TableSkeleton />
+   811→              ) : prError ? (
+   812→                <div className="flex flex-col items-center gap-3 py-10">
+   813→                  <p className="text-rose-600">{t(lang, 'حدث خطأ', 'An error occurred')}</p>
+   814→                  <Button variant="outline" onClick={() => refetchPR()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
+   815→                </div>
+   816→              ) : filteredPR.length === 0 ? (
+   817→                <div className="flex flex-col items-center gap-3 py-10">
+   818→                  <ClipboardList className="size-12 text-gray-300" />
+   819→                  <p className="text-muted-foreground">{t(lang, 'لا توجد طلبات شراء', 'No purchase requests')}</p>
+   820→                  <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setPrDialogOpen(true)}>
+   821→                    <Plus className="size-4 mr-1" /> {t(lang, 'إنشاء طلب', 'Create Request')}
+   822→                  </Button>
+   823→                </div>
+   824→              ) : (
+   825→                <div className="overflow-x-auto">
+   826→                  <Table>
+   827→                    <TableHeader>
+   828→                      <TableRow>
+   829→                        <TableHead className="text-right">{t(lang, 'رقم الطلب', 'Request No')}</TableHead>
+   830→                        <TableHead className="text-right">{t(lang, 'المشروع', 'Project')}</TableHead>
+   831→                        <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
+   832→                        <TableHead className="text-right">{t(lang, 'عدد البنود', 'Items')}</TableHead>
+   833→                        <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+   834→                        <TableHead className="text-right">{t(lang, 'الحالة', 'Status')}</TableHead>
+   835→                      </TableRow>
+   836→                    </TableHeader>
+   837→                    <TableBody>
+   838→                      {filteredPR.map(pr => (
+   839→                        <TableRow key={pr.id}>
+   840→                          <TableCell className="font-medium font-mono">{pr.requestNo}</TableCell>
+   841→                          <TableCell>
+   842→                            <div className="flex items-center gap-1">
+   843→                              {pr.project?.name || '—'}
+   844→                              {pr.project?.projectType && <ProjectTypeBadge projectType={pr.project.projectType} lang={lang} />}
+   845→                            </div>
+   846→                          </TableCell>
+   847→                          <TableCell>{pr.description || '—'}</TableCell>
+   848→                          <TableCell>{pr.items.length}</TableCell>
+   849→                          <TableCell>{formatDate(pr.date, lang)}</TableCell>
+   850→                          <TableCell>
+   851→                            <Badge variant="outline" className={poStatusColors[pr.status] || 'bg-gray-100 text-gray-700'}>
+   852→                              {poStatusLabels[pr.status]?.[lang] || pr.status}
+   853→                            </Badge>
+   854→                          </TableCell>
+   855→                        </TableRow>
+   856→                      ))}
+   857→                    </TableBody>
+   858→                  </Table>
+   859→                </div>
+   860→              )}
+   861→            </CardContent>
+   862→          </Card>
+   863→        </TabsContent>
+   864→
+   865→        {/* Purchase Orders Tab */}
+   866→        <TabsContent value="orders">
+   867→          <Card>
+   868→            <CardContent className="p-0">
+   869→              {poLoading ? (
+   870→                <TableSkeleton />
+   871→              ) : poError ? (
+   872→                <div className="flex flex-col items-center gap-3 py-10">
+   873→                  <p className="text-rose-600">{t(lang, 'حدث خطأ', 'An error occurred')}</p>
+   874→                  <Button variant="outline" onClick={() => refetchPO()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
+   875→                </div>
+   876→              ) : filteredPO.length === 0 ? (
+   877→                <div className="flex flex-col items-center gap-3 py-10">
+   878→                  <ShoppingCart className="size-12 text-gray-300" />
+   879→                  <p className="text-muted-foreground">{t(lang, 'لا توجد أوامر شراء', 'No purchase orders')}</p>
+   880→                  <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setPoDialogOpen(true)}>
+   881→                    <Plus className="size-4 mr-1" /> {t(lang, 'إنشاء أمر شراء', 'Create PO')}
+   882→                  </Button>
+   883→                </div>
+   884→              ) : (
+   885→                <div className="overflow-x-auto">
+   886→                  <Table>
+   887→                    <TableHeader>
+   888→                      <TableRow>
+   889→                        <TableHead className="text-right">{t(lang, 'رقم الأمر', 'Order No')}</TableHead>
+   890→                        <TableHead className="text-right">{t(lang, 'المورد', 'Supplier')}</TableHead>
+   891→                        <TableHead className="text-right">{t(lang, 'المشروع', 'Project')}</TableHead>
+   892→                        <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+   893→                        <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+   894→                        <TableHead className="text-right">{t(lang, 'الحالة', 'Status')}</TableHead>
+   895→                      </TableRow>
+   896→                    </TableHeader>
+   897→                    <TableBody>
+   898→                      {filteredPO.map(po => (
+   899→                        <TableRow key={po.id}>
+   900→                          <TableCell className="font-medium font-mono">{po.orderNo}</TableCell>
+   901→                          <TableCell>{po.supplier.name}</TableCell>
+   902→                          <TableCell>
+   903→                            <div className="flex items-center gap-1">
+   904→                              {po.project?.name || '—'}
+   905→                              {po.project?.projectType && <ProjectTypeBadge projectType={po.project.projectType} lang={lang} />}
+   906→                            </div>
+   907→                          </TableCell>
+   908→                          <TableCell>{formatDate(po.date, lang)}</TableCell>
+   909→                          <TableCell className="font-semibold">
+   910→                            <MoneyDisplay value={po.totalAmount} lang={lang} bold size="sm" />
+   911→                          </TableCell>
+   912→                          <TableCell>
+   913→                            <Badge variant="outline" className={poStatusColors[po.status]}>
+   914→                              {poStatusLabels[po.status]?.[lang] || po.status}
+   915→                            </Badge>
+   916→                          </TableCell>
+   917→                        </TableRow>
+   918→                      ))}
+   919→                    </TableBody>
+   920→                  </Table>
+   921→                </div>
+   922→              )}
+   923→            </CardContent>
+   924→          </Card>
+   925→        </TabsContent>
+   926→
+   927→        {/* Purchase Invoices Tab */}
+   928→        <TabsContent value="invoices">
+   929→          <Card>
+   930→            <CardContent className="p-0">
+   931→              {piLoading ? (
+   932→                <TableSkeleton />
+   933→              ) : piError ? (
+   934→                <div className="flex flex-col items-center gap-3 py-10">
+   935→                  <p className="text-rose-600">{t(lang, 'حدث خطأ', 'An error occurred')}</p>
+   936→                  <Button variant="outline" onClick={() => refetchPI()}>{t(lang, 'إعادة المحاولة', 'Retry')}</Button>
+   937→                </div>
+   938→              ) : filteredPI.length === 0 ? (
+   939→                <div className="flex flex-col items-center gap-3 py-10">
+   940→                  <FileText className="size-12 text-gray-300" />
+   941→                  <p className="text-muted-foreground">{t(lang, 'لا توجد فواتير موردين', 'No supplier invoices')}</p>
+   942→                  <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setPiDialogOpen(true)}>
+   943→                    <Plus className="size-4 mr-1" /> {t(lang, 'إنشاء فاتورة من إيصال', 'Create Invoice from GR')}
+   944→                  </Button>
+   945→                </div>
+   946→              ) : (
+   947→                <div className="overflow-x-auto">
+   948→                  <Table>
+   949→                    <TableHeader>
+   950→                      <TableRow>
+   951→                        <TableHead className="text-right">{t(lang, 'رقم الفاتورة', 'Invoice No')}</TableHead>
+   952→                        <TableHead className="text-right">{t(lang, 'المورد', 'Supplier')}</TableHead>
+   953→                        <TableHead className="text-right">{t(lang, 'إيصال الاستلام', 'GR')}</TableHead>
+   954→                        <TableHead className="text-right">{t(lang, 'أمر الشراء', 'PO')}</TableHead>
+   955→                        <TableHead className="text-right">{t(lang, 'المشروع', 'Project')}</TableHead>
+   956→                        <TableHead className="text-right">{t(lang, 'الإجمالي', 'Total')}</TableHead>
+   957→                        <TableHead className="text-right">{t(lang, 'المدفوع', 'Paid')}</TableHead>
+   958→                        <TableHead className="text-right">{t(lang, 'الحالة', 'Status')}</TableHead>
+   959→                      </TableRow>
+   960→                    </TableHeader>
+   961→                    <TableBody>
+   962→                      {filteredPI.map(pi => (
+   963→                        <TableRow key={pi.id}>
+   964→                          <TableCell className="font-medium font-mono">{pi.invoiceNo}</TableCell>
+   965→                          <TableCell>{pi.supplier.name}</TableCell>
+   966→                          <TableCell>
+   967→                            {pi.goodsReceipt ? (
+   968→                              <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 gap-1">
+   969→                                <ArrowRight className="size-3" />
+   970→                                {pi.goodsReceipt.receiptNo}
+   971→                              </Badge>
+   972→                            ) : '—'}
+   973→                          </TableCell>
+   974→                          <TableCell className="font-mono text-xs">{pi.purchaseOrder?.orderNo || '—'}</TableCell>
+   975→                          <TableCell>
+   976→                            <div className="flex items-center gap-1">
+   977→                              {pi.project?.name || '—'}
+   978→                              {pi.project?.projectType && <ProjectTypeBadge projectType={pi.project.projectType} lang={lang} />}
+   979→                            </div>
+   980→                          </TableCell>
+   981→                          <TableCell className="font-semibold">
+   982→                            <MoneyDisplay value={pi.totalAmount} lang={lang} bold size="sm" />
+   983→                          </TableCell>
+   984→                          <TableCell className="text-amber-700">
+   985→                            <MoneyDisplay value={pi.paidAmount} lang={lang} size="sm" />
+   986→                          </TableCell>
+   987→                          <TableCell>
+   988→                            <Badge variant="outline" className={invoiceStatusColors[pi.status]}>
+   989→                              {invoiceStatusLabels[pi.status]?.[lang] || pi.status}
+   990→                            </Badge>
+   991→                          </TableCell>
+   992→                        </TableRow>
+   993→                      ))}
+   994→                    </TableBody>
+   995→                  </Table>
+   996→                </div>
+   997→              )}
+   998→            </CardContent>
+   999→          </Card>
+  1000→        </TabsContent>
+  1001→      </Tabs>
+  1002→
+  1003→      {/* Form Dialogs */}
+  1004→      <PurchaseRequestFormDialog open={prDialogOpen} onOpenChange={setPrDialogOpen} projects={projects} />
+  1005→      <PurchaseOrderFormDialog open={poDialogOpen} onOpenChange={setPoDialogOpen} suppliers={suppliers} projects={projects} />
+  1006→      <GRBasedInvoiceDialog open={piDialogOpen} onOpenChange={setPiDialogOpen} />
+  1007→    </ModuleLayout>
+  1008→  )
+  1009→}
+  1010→

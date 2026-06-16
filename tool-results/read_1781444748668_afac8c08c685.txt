@@ -1,0 +1,1421 @@
+     1→     1→// ============================================================================
+     2→     2→// المحرك المحاسبي - Accounting Engine
+     3→     3→// نظام بِنَاء ERP - Binaa Construction ERP
+     4→     4→//
+     5→     5→// Core accounting engine with automatic journal entries for all business transactions.
+     6→     6→// Follows double-entry bookkeeping principles and Saudi SOCPA standards.
+     7→     7→// Supports both Construction Projects and Equipment Rental activities.
+     8→     8→// ============================================================================
+     9→     9→
+    10→    10→import { db } from '@/lib/db'
+    11→    11→import { PrismaClient } from '@prisma/client'
+    12→    12→import { toNumber } from '@/lib/decimal'
+    13→    13→
+    14→    14→// Transaction client type - used for $transaction callbacks
+    15→    15→export type PrismaTransaction = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
+    16→    16→
+    17→    17→// ============ ACCOUNT TYPE DEFINITIONS ============
+    18→    18→
+    19→    19→export const AccountType = {
+    20→    20→  ASSET: 'ASSET',           // أصول
+    21→    21→  LIABILITY: 'LIABILITY',   // خصوم
+    22→    22→  EQUITY: 'EQUITY',         // حقوق ملكية
+    23→    23→  REVENUE: 'REVENUE',       // إيرادات
+    24→    24→  EXPENSE: 'EXPENSE',       // مصروفات
+    25→    25→} as const
+    26→    26→
+    27→    27→export type AccountTypeValue = (typeof AccountType)[keyof typeof AccountType]
+    28→    28→
+    29→    29→// Normal balance side for each account type
+    30→    30→export const NORMAL_BALANCE: Record<AccountTypeValue, 'DEBIT' | 'CREDIT'> = {
+    31→    31→  ASSET: 'DEBIT',
+    32→    32→  LIABILITY: 'CREDIT',
+    33→    33→  EQUITY: 'CREDIT',
+    34→    34→  REVENUE: 'CREDIT',
+    35→    35→  EXPENSE: 'DEBIT',
+    36→    36→}
+    37→    37→
+    38→    38→// ============ STANDARD CHART OF ACCOUNTS TEMPLATE ============
+    39→    39→// Based on Saudi SOCPA standards for construction & equipment rental companies
+    40→    40→
+    41→    41→export interface AccountTemplate {
+    42→    42→  code: string
+    43→    43→  name: string
+    44→    44→  nameAr: string
+    45→    45→  type: AccountTypeValue
+    46→    46→  parentId?: string
+    47→    47→  activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL' | 'BOTH'
+    48→    48→  isSystem?: boolean
+    49→    49→  allowPosting?: boolean
+    50→    50→  level?: number
+    51→    51→}
+    52→    52→
+    53→    53→export const CHART_OF_ACCOUNTS_TEMPLATE: AccountTemplate[] = [
+    54→    54→  // ============================================================================
+    55→    55→  // الأصول المتداولة - Current Assets (1xxx)
+    56→    56→  // ============================================================================
+    57→    57→  { code: '1000', name: 'Current Assets', nameAr: 'الأصول المتداولة', type: 'ASSET', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+    58→    58→    { code: '1100', name: 'Cash & Cash Equivalents', nameAr: 'النقد وما في حكمه', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    59→    59→      { code: '1110', name: 'Cash - Treasury', nameAr: 'الصندوق (الخزينة)', type: 'ASSET', parentId: '1100', allowPosting: true, level: 2, activityType: 'BOTH' },
+    60→    60→      { code: '1120', name: 'Bank Accounts', nameAr: 'البنوك', type: 'ASSET', parentId: '1100', allowPosting: true, level: 2, activityType: 'BOTH' },
+    61→    61→      { code: '1130', name: 'Petty Cash', nameAr: 'الصندوق النقدي', type: 'ASSET', parentId: '1100', allowPosting: true, level: 2, activityType: 'BOTH' },
+    62→    62→    { code: '1200', name: 'Receivables', nameAr: 'الذمم المدينة', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    63→    63→      { code: '1210', name: 'Clients Receivable', nameAr: 'عملاء', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    64→    64→      { code: '1220', name: 'Retention Receivable', nameAr: 'مبالغ محتجزة لدى العملاء', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    65→    65→      { code: '1230', name: 'Advances to Employees', nameAr: 'سلف الموظفين', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    66→    66→      { code: '1240', name: 'Advances to Suppliers', nameAr: 'مقدمات للموردين', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    67→    67→      { code: '1250', name: 'Other Receivables', nameAr: 'ذمم مدينة أخرى', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    68→    68→      { code: '1260', name: 'Tax Refund Receivable', nameAr: 'ضرائب مستحقة الاسترداد', type: 'ASSET', parentId: '1200', allowPosting: true, level: 2, activityType: 'BOTH' },
+    69→    69→    { code: '1300', name: 'Inventory', nameAr: 'المخزون', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    70→    70→      { code: '1310', name: 'Raw Materials', nameAr: 'مواد خام', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    71→    71→      { code: '1320', name: 'Work in Progress', nameAr: 'أعمال تحت التنفيذ', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    72→    72→      { code: '1330', name: 'Spare Parts', nameAr: 'قطع غيار', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    73→    73→      { code: '1340', name: 'Consumable Supplies', nameAr: 'لوازم مستهلكة', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'BOTH' },
+    74→    74→      { code: '1350', name: 'Equipment Available for Rent', nameAr: 'معدات جاهزة للتأجير', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    75→    75→    { code: '1400', name: 'Input VAT (Asset)', nameAr: 'ضريبة مدخلات (أصل)', type: 'ASSET', parentId: '1000', allowPosting: false, isSystem: true, level: 1, activityType: 'BOTH' },
+    76→    76→      { code: '1410', name: 'VAT Refund Receivable', nameAr: 'ضريبة مستحقة الاسترداد', type: 'ASSET', parentId: '1400', allowPosting: true, level: 2, activityType: 'BOTH' },
+    77→    77→    { code: '1500', name: 'Prepaid Expenses', nameAr: 'مصروفات مقدمة', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    78→    78→      { code: '1510', name: 'Prepaid Rent', nameAr: 'إيجار مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
+    79→    79→      { code: '1520', name: 'Prepaid Insurance', nameAr: 'تأمين مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
+    80→    80→      { code: '1530', name: 'Other Prepaid Expenses', nameAr: 'مصروفات أخرى مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
+    81→    81→    { code: '1600', name: 'Contract Assets', nameAr: 'أصول العقود', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    82→    82→      { code: '1610', name: 'Construction Contract Assets', nameAr: 'أصول عقود المشاريع', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    83→    83→      { code: '1620', name: 'Rental Contract Assets', nameAr: 'أصول عقود التأجير', type: 'ASSET', parentId: '1600', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    84→    84→    { code: '1700', name: 'Statutory Deposits', nameAr: 'وديعة نظامية', type: 'ASSET', parentId: '1000', allowPosting: true, level: 1, activityType: 'BOTH' },
+    85→    85→
+    86→    86→  // ============================================================================
+    87→    87→  // الأصول غير المتداولة - Non-Current Assets (2xxx)
+    88→    88→  // ============================================================================
+    89→    89→  { code: '2000', name: 'Non-Current Assets', nameAr: 'الأصول غير المتداولة', type: 'ASSET', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+    90→    90→    { code: '2100', name: 'Property & Equipment', nameAr: 'الممتلكات والمعدات', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    91→    91→      { code: '2110', name: 'Construction Equipment', nameAr: 'معدات الإنشاء', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    92→    92→      { code: '2120', name: 'Rental Equipment', nameAr: 'معدات التأجير', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    93→    93→      { code: '2130', name: 'Vehicles', nameAr: 'المركبات', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'BOTH' },
+    94→    94→      { code: '2140', name: 'Office Equipment', nameAr: 'أثاث ومعدات مكتبية', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'BOTH' },
+    95→    95→      { code: '2150', name: 'Construction in Progress (Assets)', nameAr: 'أصول تحت الإنشاء', type: 'ASSET', parentId: '2100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    96→    96→    { code: '2200', name: 'Accumulated Depreciation', nameAr: 'مجمع الإهلاك', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+    97→    97→      { code: '2210', name: 'Accum. Depreciation - Construction Equip', nameAr: 'إهلاك متراكم - معدات إنشاء', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+    98→    98→      { code: '2220', name: 'Accum. Depreciation - Rental Equip', nameAr: 'إهلاك متراكم - معدات تأجير', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+    99→    99→      { code: '2230', name: 'Accum. Depreciation - Vehicles', nameAr: 'إهلاك متراكم - مركبات', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   100→   100→      { code: '2240', name: 'Accum. Depreciation - Office', nameAr: 'إهلاك متراكم - أثاث', type: 'ASSET', parentId: '2200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   101→   101→    { code: '2300', name: 'Right-of-Use Assets (IFRS 16)', nameAr: 'أصول حق الاستخدام', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   102→   102→      { code: '2310', name: 'Leased Equipment ROU', nameAr: 'معدات مستأجرة حق الاستخدام', type: 'ASSET', parentId: '2300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   103→   103→      { code: '2320', name: 'Leased Vehicles ROU', nameAr: 'مركبات مستأجرة حق الاستخدام', type: 'ASSET', parentId: '2300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   104→   104→    { code: '2400', name: 'Intangible Assets', nameAr: 'أصول غير ملموسة', type: 'ASSET', parentId: '2000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   105→   105→      { code: '2410', name: 'Software', nameAr: 'برمجيات', type: 'ASSET', parentId: '2400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   106→   106→      { code: '2420', name: 'Licenses', nameAr: 'تراخيص', type: 'ASSET', parentId: '2400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   107→   107→
+   108→   108→  // ============================================================================
+   109→   109→  // الخصوم المتداولة - Current Liabilities (3xxx)
+   110→   110→  // ============================================================================
+   111→   111→  { code: '3000', name: 'Current Liabilities', nameAr: 'الخصوم المتداولة', type: 'LIABILITY', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   112→   112→    { code: '3100', name: 'Taxes', nameAr: 'الضرائب', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   113→   113→      { code: '3110', name: 'Output VAT', nameAr: 'ضريبة مخرجات', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+   114→   114→      { code: '3120', name: 'Input VAT', nameAr: 'ضريبة مدخلات', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+   115→   115→      { code: '3130', name: 'VAT Due', nameAr: 'ضريبة مستحقة', type: 'LIABILITY', parentId: '3100', allowPosting: true, isSystem: true, level: 2, activityType: 'BOTH' },
+   116→   116→    { code: '3200', name: 'Accounts Payable', nameAr: 'الذمم الدائنة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   117→   117→      { code: '3210', name: 'Suppliers Payable', nameAr: 'موردون', type: 'LIABILITY', parentId: '3200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   118→   118→      { code: '3220', name: 'Subcontractors Payable', nameAr: 'مقاولو الباطن', type: 'LIABILITY', parentId: '3200', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   119→   119→    { code: '3300', name: 'Accrued Expenses', nameAr: 'مصروفات مستحقة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   120→   120→      { code: '3310', name: 'Salaries Payable', nameAr: 'رواتب مستحقة', type: 'LIABILITY', parentId: '3300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   121→   121→      { code: '3320', name: 'Other Accrued Expenses', nameAr: 'مصروفات مستحقة أخرى', type: 'LIABILITY', parentId: '3300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   122→   122→    { code: '3400', name: 'Customer Advances', nameAr: 'مقدمات العملاء', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   123→   123→      { code: '3410', name: 'Construction Customer Advances', nameAr: 'مقدمات عملاء المشاريع', type: 'LIABILITY', parentId: '3400', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   124→   124→      { code: '3420', name: 'Rental Customer Advances', nameAr: 'مقدمات عملاء التأجير', type: 'LIABILITY', parentId: '3400', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   125→   125→    { code: '3500', name: 'Retention Payable', nameAr: 'مبالغ محتجزة لدى الشركة', type: 'LIABILITY', parentId: '3000', allowPosting: true, level: 1, activityType: 'CONSTRUCTION' },
+   126→   126→    { code: '3600', name: 'Contract Liabilities', nameAr: 'التزامات العقود', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   127→   127→      { code: '3610', name: 'Construction Contract Liabilities', nameAr: 'التزامات عقود المشاريع', type: 'LIABILITY', parentId: '3600', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   128→   128→      { code: '3620', name: 'Rental Contract Liabilities', nameAr: 'التزامات عقود التأجير', type: 'LIABILITY', parentId: '3600', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   129→   129→    { code: '3700', name: 'Provisions', nameAr: 'مخصصات', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   130→   130→      { code: '3710', name: 'End of Service Benefits Provision', nameAr: 'مخصص مكافأة نهاية الخدمة', type: 'LIABILITY', parentId: '3700', allowPosting: true, level: 2, activityType: 'BOTH' },
+   131→   131→      { code: '3720', name: 'Warranty Provision', nameAr: 'مخصص الضمان', type: 'LIABILITY', parentId: '3700', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   132→   132→      { code: '3730', name: 'Equipment Maintenance Provision', nameAr: 'مخصص صيانة معدات', type: 'LIABILITY', parentId: '3700', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   133→   133→    { code: '3800', name: 'Taxes & Zakat Payable', nameAr: 'ضرائب وزكاة مستحقة', type: 'LIABILITY', parentId: '3000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   134→   134→      { code: '3810', name: 'Zakat Payable', nameAr: 'زكاة مستحقة', type: 'LIABILITY', parentId: '3800', allowPosting: true, level: 2, activityType: 'BOTH' },
+   135→   135→      { code: '3820', name: 'Income Tax Payable', nameAr: 'ضريبة دخل مستحقة', type: 'LIABILITY', parentId: '3800', allowPosting: true, level: 2, activityType: 'BOTH' },
+   136→   136→      { code: '3830', name: 'GOSI Payable', nameAr: 'تأمينات اجتماعية مستحقة', type: 'LIABILITY', parentId: '3800', allowPosting: true, level: 2, activityType: 'BOTH' },
+   137→   137→    { code: '3900', name: 'Short-term Loans', nameAr: 'قروض قصيرة الأجل', type: 'LIABILITY', parentId: '3000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   138→   138→
+   139→   139→  // ============================================================================
+   140→   140→  // الخصوم غير المتداولة - Non-Current Liabilities (4xxx)
+   141→   141→  // ============================================================================
+   142→   142→  { code: '4000', name: 'Non-Current Liabilities', nameAr: 'الخصوم غير المتداولة', type: 'LIABILITY', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   143→   143→    { code: '4100', name: 'Long-term Loans', nameAr: 'قروض طويلة الأجل', type: 'LIABILITY', parentId: '4000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   144→   144→    { code: '4200', name: 'Finance Lease Obligations', nameAr: 'التزامات عقود الإيجار التمويلي', type: 'LIABILITY', parentId: '4000', allowPosting: true, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   145→   145→    { code: '4300', name: 'Deferred Revenue', nameAr: 'إيرادات مؤجلة', type: 'LIABILITY', parentId: '4000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   146→   146→      { code: '4310', name: 'Deferred Construction Revenue', nameAr: 'إيرادات مشاريع مؤجلة', type: 'LIABILITY', parentId: '4300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   147→   147→      { code: '4320', name: 'Deferred Rental Revenue', nameAr: 'إيرادات تأجير مؤجلة', type: 'LIABILITY', parentId: '4300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   148→   148→
+   149→   149→  // ============================================================================
+   150→   150→  // حقوق الملكية - Equity (5xxx)
+   151→   151→  // ============================================================================
+   152→   152→  { code: '5000', name: 'Equity', nameAr: 'حقوق الملكية', type: 'EQUITY', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   153→   153→    { code: '5100', name: 'Capital', nameAr: 'رأس المال', type: 'EQUITY', parentId: '5000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+   154→   154→    { code: '5200', name: 'Retained Earnings', nameAr: 'الأرباح المحتجزة', type: 'EQUITY', parentId: '5000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+   155→   155→    { code: '5300', name: 'Current Year Earnings', nameAr: 'أرباح (خسائر) السنة الحالية', type: 'EQUITY', parentId: '5000', allowPosting: true, isSystem: true, level: 1, activityType: 'BOTH' },
+   156→   156→    { code: '5400', name: 'Statutory Reserve', nameAr: 'احتياطي نظامي', type: 'EQUITY', parentId: '5000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   157→   157→    { code: '5500', name: 'Voluntary Reserve', nameAr: 'احتياطي اختياري', type: 'EQUITY', parentId: '5000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   158→   158→    { code: '5600', name: "Owner's Current Account", nameAr: 'حساب المالك الجاري', type: 'EQUITY', parentId: '5000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   159→   159→
+   160→   160→  // ============================================================================
+   161→   161→  // الإيرادات - Revenue (6xxx)
+   162→   162→  // ============================================================================
+   163→   163→  { code: '6000', name: 'Revenue', nameAr: 'الإيرادات', type: 'REVENUE', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   164→   164→    { code: '6100', name: 'Project Revenue', nameAr: 'إيرادات المشاريع', type: 'REVENUE', parentId: '6000', allowPosting: false, level: 1, activityType: 'CONSTRUCTION' },
+   165→   165→      { code: '6110', name: 'Progress Claims Revenue', nameAr: 'إيرادات المستخلصات', type: 'REVENUE', parentId: '6100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   166→   166→      { code: '6120', name: 'Contract Modifications Revenue', nameAr: 'إيرادات تعديلات العقود', type: 'REVENUE', parentId: '6100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   167→   167→      { code: '6130', name: 'Claims Revenue', nameAr: 'إيرادات المطالبات', type: 'REVENUE', parentId: '6100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   168→   168→    { code: '6200', name: 'Rental Revenue', nameAr: 'إيرادات التأجير', type: 'REVENUE', parentId: '6000', allowPosting: false, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   169→   169→      { code: '6210', name: 'Equipment Rental Revenue', nameAr: 'إيرادات تأجير المعدات', type: 'REVENUE', parentId: '6200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   170→   170→      { code: '6220', name: 'Delivery Fees Revenue', nameAr: 'إيرادات نقل وتوصيل', type: 'REVENUE', parentId: '6200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   171→   171→      { code: '6230', name: 'Equipment Operation Revenue', nameAr: 'إيرادات تشغيل المعدات للغير', type: 'REVENUE', parentId: '6200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   172→   172→    { code: '6300', name: 'Other Revenue', nameAr: 'إيرادات أخرى', type: 'REVENUE', parentId: '6000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   173→   173→      { code: '6310', name: 'Sale of Used Equipment', nameAr: 'إيرادات بيع معدات مستعملة', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   174→   174→      { code: '6320', name: 'Penalties Revenue', nameAr: 'إيرادات غرامات', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   175→   175→      { code: '6330', name: 'Discounts Received', nameAr: 'خصومات مكتسبة', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   176→   176→      { code: '6340', name: 'Service Revenue', nameAr: 'إيرادات خدمات', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   177→   177→      { code: '6350', name: 'Other Miscellaneous Revenue', nameAr: 'إيرادات أخرى متنوعة', type: 'REVENUE', parentId: '6300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   178→   178→
+   179→   179→  // ============================================================================
+   180→   180→  // التكاليف المباشرة - Direct Costs (7xxx)
+   181→   181→  // ============================================================================
+   182→   182→  { code: '7000', name: 'Direct Costs', nameAr: 'التكاليف المباشرة', type: 'EXPENSE', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   183→   183→    { code: '7100', name: 'Cost of Contracts', nameAr: 'تكلفة العقود', type: 'EXPENSE', parentId: '7000', allowPosting: false, level: 1, activityType: 'CONSTRUCTION' },
+   184→   184→      { code: '7110', name: 'Material Costs', nameAr: 'تكاليف المواد', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   185→   185→      { code: '7120', name: 'Labor Costs', nameAr: 'تكاليف العمالة', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   186→   186→      { code: '7130', name: 'Subcontractor Costs', nameAr: 'تكاليف مقاولي الباطن', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   187→   187→      { code: '7140', name: 'Site Establishment Costs', nameAr: 'تكاليف تأسيس الموقع', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   188→   188→      { code: '7150', name: 'Temporary Works', nameAr: 'أعمال مؤقتة', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   189→   189→      { code: '7160', name: 'Project Permits & Licenses', nameAr: 'تصاريح وتراخيص مشاريع', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   190→   190→      { code: '7170', name: 'Testing & Commissioning', nameAr: 'اختبارات وتشغيل تجريبي', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   191→   191→      { code: '7180', name: 'Project Overhead', nameAr: 'مصروفات عامة مشاريع', type: 'EXPENSE', parentId: '7100', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   192→   192→    { code: '7200', name: 'Equipment Costs', nameAr: 'تكاليف المعدات', type: 'EXPENSE', parentId: '7000', allowPosting: false, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   193→   193→      { code: '7210', name: 'Equipment Fuel', nameAr: 'وقود المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   194→   194→      { code: '7220', name: 'Equipment Maintenance', nameAr: 'صيانة المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   195→   195→      { code: '7230', name: 'Driver Costs', nameAr: 'تكاليف السائقين', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   196→   196→      { code: '7240', name: 'Equipment Transport Costs', nameAr: 'تكاليف نقل المعدات', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   197→   197→      { code: '7250', name: 'Rental Equipment Depreciation', nameAr: 'إهلاك معدات التأجير', type: 'EXPENSE', parentId: '7200', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
+   198→   198→    { code: '7300', name: 'Rental Project Costs', nameAr: 'تكاليف مشاريع التأجير', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'EQUIPMENT_RENTAL' },
+   199→   199→    { code: '7400', name: 'Project Insurance', nameAr: 'تأمين مشاريع', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'CONSTRUCTION' },
+   200→   200→    { code: '7500', name: 'Project Expenses', nameAr: 'مصروفات المشاريع', type: 'EXPENSE', parentId: '7000', allowPosting: true, level: 1, activityType: 'BOTH' },
+   201→   201→
+   202→   202→  // ============================================================================
+   203→   203→  // التكاليف غير المباشرة - Indirect Costs (8xxx)
+   204→   204→  // ============================================================================
+   205→   205→  { code: '8000', name: 'Indirect Costs', nameAr: 'التكاليف غير المباشرة', type: 'EXPENSE', allowPosting: false, isSystem: true, level: 0, activityType: 'BOTH' },
+   206→   206→    { code: '8100', name: 'Administrative Expenses', nameAr: 'مصروفات إدارية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   207→   207→      { code: '8110', name: 'Salaries & Wages', nameAr: 'رواتب وأجور', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   208→   208→      { code: '8120', name: 'Office Rent', nameAr: 'إيجار مكتب', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   209→   209→      { code: '8130', name: 'Utilities (Electricity/Water/Internet)', nameAr: 'خدمات', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   210→   210→      { code: '8140', name: 'Office Supplies', nameAr: 'لوازم مكتبية', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   211→   211→      { code: '8150', name: 'Communication Expenses', nameAr: 'اتصالات', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   212→   212→      { code: '8160', name: 'Professional Fees', nameAr: 'أتعاب مهنية', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   213→   213→      { code: '8170', name: 'Legal Fees', nameAr: 'أتعاب قانونية', type: 'EXPENSE', parentId: '8100', allowPosting: true, level: 2, activityType: 'BOTH' },
+   214→   214→    { code: '8200', name: 'HR Expenses', nameAr: 'مصروفات الموارد البشرية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   215→   215→      { code: '8210', name: 'GOSI Expense', nameAr: 'تأمينات اجتماعية', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   216→   216→      { code: '8220', name: 'Staff Housing', nameAr: 'سكن عمال', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   217→   217→      { code: '8230', name: 'Worker Permits', nameAr: 'تصاريح عمالة', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   218→   218→      { code: '8240', name: 'Travel & Accommodation', nameAr: 'سفر وإقامة', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   219→   219→      { code: '8250', name: 'Safety Equipment', nameAr: 'معدات سلامة', type: 'EXPENSE', parentId: '8200', allowPosting: true, level: 2, activityType: 'BOTH' },
+   220→   220→    { code: '8300', name: 'Depreciation Expense', nameAr: 'مصروف الإهلاك', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   221→   221→      { code: '8310', name: 'Depreciation - Construction Equipment', nameAr: 'إهلاك معدات إنشاء', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'CONSTRUCTION' },
+   222→   222→      { code: '8320', name: 'Depreciation - Vehicles', nameAr: 'إهلاك مركبات', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   223→   223→      { code: '8330', name: 'Depreciation - Office', nameAr: 'إهلاك أثاث', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   224→   224→      { code: '8340', name: 'Depreciation - Software', nameAr: 'إهلاك برمجيات', type: 'EXPENSE', parentId: '8300', allowPosting: true, level: 2, activityType: 'BOTH' },
+   225→   225→    { code: '8400', name: 'Financial Expenses', nameAr: 'مصروفات مالية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   226→   226→      { code: '8410', name: 'Bank Charges', nameAr: 'مصاريف بنكية', type: 'EXPENSE', parentId: '8400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   227→   227→      { code: '8420', name: 'Loan Interest', nameAr: 'فوائد قروض', type: 'EXPENSE', parentId: '8400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   228→   228→      { code: '8430', name: 'Bad Debts', nameAr: 'ديون معدومة', type: 'EXPENSE', parentId: '8400', allowPosting: true, level: 2, activityType: 'BOTH' },
+   229→   229→    { code: '8500', name: 'Tax Expenses', nameAr: 'مصروفات ضريبية', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   230→   230→      { code: '8510', name: 'Zakat Expense', nameAr: 'زكاة', type: 'EXPENSE', parentId: '8500', allowPosting: true, level: 2, activityType: 'BOTH' },
+   231→   231→      { code: '8520', name: 'Income Tax Expense', nameAr: 'ضريبة دخل', type: 'EXPENSE', parentId: '8500', allowPosting: true, level: 2, activityType: 'BOTH' },
+   232→   232→    { code: '8600', name: 'Other Losses', nameAr: 'خسائر متنوعة', type: 'EXPENSE', parentId: '8000', allowPosting: false, level: 1, activityType: 'BOTH' },
+   233→   233→      { code: '8610', name: 'Loss on Asset Disposal', nameAr: 'خسارة التخلص من أصول', type: 'EXPENSE', parentId: '8600', allowPosting: true, level: 2, activityType: 'BOTH' },
+   234→   234→      { code: '8620', name: 'Penalties Expense', nameAr: 'غرامات', type: 'EXPENSE', parentId: '8600', allowPosting: true, level: 2, activityType: 'BOTH' },
+   235→   235→      { code: '8630', name: 'Other Expenses', nameAr: 'مصروفات أخرى', type: 'EXPENSE', parentId: '8600', allowPosting: true, level: 2, activityType: 'BOTH' },
+   236→   236→]
+   237→   237→
+   238→   238→// ============ AUTO-ENTRY ACCOUNT RESOLVER ============
+   239→   239→// Maps business transactions to their debit/credit accounts
+   240→   240→
+   241→   241→export interface JournalEntryTemplate {
+   242→   242→  entryNo: string
+   243→   243→  date: Date
+   244→   244→  description: string
+   245→   245→  descriptionAr: string
+   246→   246→  lines: {
+   247→   247→    accountCode: string
+   248→   248→    debit: number
+   249→   249→    credit: number
+   250→   250→    costCenterId?: string
+   251→   251→    description?: string
+   252→   252→  }[]
+   253→   253→  sourceType: string   // What triggered this entry
+   254→   254→  sourceId: string     // ID of the source document
+   255→   255→}
+   256→   256→
+   257→   257→// ============ ACCOUNT LOOKUP HELPERS ============
+   258→   258→
+   259→   259→export async function getAccountByCode(code: string, tx?: PrismaTransaction) {
+   260→   260→  return (tx || db).account.findUnique({ where: { code } })
+   261→   261→}
+   262→   262→
+   263→   263→export async function ensureAccountExists(template: AccountTemplate, tx?: PrismaTransaction) {
+   264→   264→  const client = tx || db
+   265→   265→  const existing = await client.account.findUnique({ where: { code: template.code } })
+   266→   266→  if (existing) {
+   267→   267→    // Update existing account with new fields if they are missing
+   268→   268→    if (
+   269→   269→      existing.activityType !== (template.activityType || null) ||
+   270→   270→      existing.isSystem !== (template.isSystem || false) ||
+   271→   271→      existing.allowPosting !== (template.allowPosting || false) ||
+   272→   272→      existing.level !== (template.level || 0)
+   273→   273→    ) {
+   274→   274→      await client.account.update({
+   275→   275→        where: { code: template.code },
+   276→   276→        data: {
+   277→   277→          name: template.name,
+   278→   278→          nameAr: template.nameAr,
+   279→   279→          type: template.type,
+   280→   280→          activityType: template.activityType || null,
+   281→   281→          isSystem: template.isSystem || false,
+   282→   282→          allowPosting: template.allowPosting || false,
+   283→   283→          level: template.level || 0,
+   284→   284→        },
+   285→   285→      })
+   286→   286→    }
+   287→   287→    return client.account.findUnique({ where: { code: template.code } })
+   288→   288→  }
+   289→   289→
+   290→   290→  let parentId: string | undefined
+   291→   291→  if (template.parentId) {
+   292→   292→    const parent = await client.account.findUnique({ where: { code: template.parentId } })
+   293→   293→    if (parent) parentId = parent.id
+   294→   294→  }
+   295→   295→
+   296→   296→  return client.account.create({
+   297→   297→    data: {
+   298→   298→      code: template.code,
+   299→   299→      name: template.name,
+   300→   300→      nameAr: template.nameAr,
+   301→   301→      type: template.type,
+   302→   302→      parentId,
+   303→   303→      isActive: true,
+   304→   304→      activityType: template.activityType || null,
+   305→   305→      isSystem: template.isSystem || false,
+   306→   306→      allowPosting: template.allowPosting || false,
+   307→   307→      level: template.level || 0,
+   308→   308→    },
+   309→   309→  })
+   310→   310→}
+   311→   311→
+   312→   312→// ============ INITIALIZE CHART OF ACCOUNTS ============
+   313→   313→
+   314→   314→export async function initializeChartOfAccounts() {
+   315→   315→  let created = 0
+   316→   316→  let updated = 0
+   317→   317→
+   318→   318→  // Create parent accounts first, then children (sorted by code length then code)
+   319→   319→  const sorted = [...CHART_OF_ACCOUNTS_TEMPLATE].sort((a, b) => {
+   320→   320→    if (a.code.length !== b.code.length) return a.code.length - b.code.length
+   321→   321→    return a.code.localeCompare(b.code)
+   322→   322→  })
+   323→   323→
+   324→   324→  for (const tmpl of sorted) {
+   325→   325→    const existing = await db.account.findUnique({ where: { code: tmpl.code } })
+   326→   326→    if (existing) {
+   327→   327→      // Update existing account with new fields
+   328→   328→      await db.account.update({
+   329→   329→        where: { code: tmpl.code },
+   330→   330→        data: {
+   331→   331→          name: tmpl.name,
+   332→   332→          nameAr: tmpl.nameAr,
+   333→   333→          type: tmpl.type,
+   334→   334→          activityType: tmpl.activityType || null,
+   335→   335→          isSystem: tmpl.isSystem || false,
+   336→   336→          allowPosting: tmpl.allowPosting || false,
+   337→   337→          level: tmpl.level || 0,
+   338→   338→          isActive: true,
+   339→   339→        },
+   340→   340→      })
+   341→   341→      // Update parent reference if needed
+   342→   342→      if (tmpl.parentId) {
+   343→   343→        const parent = await db.account.findUnique({ where: { code: tmpl.parentId } })
+   344→   344→        if (parent && existing.parentId !== parent.id) {
+   345→   345→          await db.account.update({
+   346→   346→            where: { code: tmpl.code },
+   347→   347→            data: { parentId: parent.id },
+   348→   348→          })
+   349→   349→        }
+   350→   350→      }
+   351→   351→      updated++
+   352→   352→    } else {
+   353→   353→      await ensureAccountExists(tmpl)
+   354→   354→      created++
+   355→   355→    }
+   356→   356→  }
+   357→   357→
+   358→   358→  const total = await db.account.count()
+   359→   359→  return { created, updated, total }
+   360→   360→}
+   361→   361→
+   362→   362→// ============ JOURNAL ENTRY CREATION ============
+   363→   363→
+   364→   364→export async function createJournalEntry(template: JournalEntryTemplate, tx?: PrismaTransaction) {
+   365→   365→  const client = tx || db
+   366→   366→  // Validate: total debits must equal total credits
+   367→   367→  const totalDebit = template.lines.reduce((sum, l) => sum + l.debit, 0)
+   368→   368→  const totalCredit = template.lines.reduce((sum, l) => sum + l.credit, 0)
+   369→   369→
+   370→   370→  if (Math.abs(totalDebit - totalCredit) > 0.01) {
+   371→   371→    throw new Error(
+   372→   372→      `Journal entry not balanced: Debits=${totalDebit}, Credits=${totalCredit}, Diff=${Math.abs(totalDebit - totalCredit)}`
+   373→   373→    )
+   374→   374→  }
+   375→   375→
+   376→   376→  // Ensure all referenced accounts exist
+   377→   377→  for (const line of template.lines) {
+   378→   378→    const account = await getAccountByCode(line.accountCode, tx)
+   379→   379→    if (!account) {
+   380→   380→      throw new Error(`Account not found: ${line.accountCode}`)
+   381→   381→    }
+   382→   382→  }
+   383→   383→
+   384→   384→  // Create the journal entry with lines
+   385→   385→  const entry = await client.journalEntry.create({
+   386→   386→    data: {
+   387→   387→      entryNo: template.entryNo,
+   388→   388→      date: template.date,
+   389→   389→      description: template.description,
+   390→   390→      status: 'POSTED', // Auto-entries are posted immediately
+   391→   391→      lines: {
+   392→   392→        create: await Promise.all(
+   393→   393→          template.lines.map(async (line) => {
+   394→   394→            const account = await getAccountByCode(line.accountCode, tx)
+   395→   395→            return {
+   396→   396→              accountId: account!.id,
+   397→   397→              costCenterId: line.costCenterId,
+   398→   398→              debit: line.debit,
+   399→   399→              credit: line.credit,
+   400→   400→              description: line.description,
+   401→   401→            };
+   402→   402→          })
+   403→   403→        ),
+   404→   404→      },
+   405→   405→    },
+   406→   406→    include: { lines: true },
+   407→   407→  })
+   408→   408→
+   409→   409→  return entry
+   410→   410→}
+   411→   411→
+   412→   412→// ============ AUTO-ENTRY FUNCTIONS ============
+   413→   413→// Each function creates the appropriate journal entries for a business transaction
+   414→   414→
+   415→   415→/**
+   416→   416→ * فاتورة مبيعات - Sales Invoice (from Extract)
+   417→   417→ * Dr: Clients Receivable (1210) - totalAmount
+   418→   418→ * Cr: Progress Claims Revenue (6110) - subtotal
+   419→   419→ * Cr: VAT Payable (3200) - vatAmount
+   420→   420→ */
+   421→   421→export async function autoEntrySalesInvoice(data: {
+   422→   422→  invoiceNo: string
+   423→   423→  clientId: string
+   424→   424→  subtotal: number
+   425→   425→  vatRate: number
+   426→   426→  vatAmount: number
+   427→   427→  totalAmount: number
+   428→   428→  invoiceType: string // TAX_INVOICE, PROGRESS_CLAIM, RENTAL
+   429→   429→  date: Date
+   430→   430→  projectId?: string
+   431→   431→  costCenterId?: string
+   432→   432→}, tx?: PrismaTransaction) {
+   433→   433→  // Determine revenue account based on invoice type
+   434→   434→  let revenueAccountCode: string
+   435→   435→  switch (data.invoiceType) {
+   436→   436→    case 'RENTAL':
+   437→   437→      revenueAccountCode = '6210' // Equipment Rental Revenue
+   438→   438→      break
+   439→   439→    case 'PROGRESS_CLAIM':
+   440→   440→      revenueAccountCode = '6110' // Progress Claims Revenue
+   441→   441→      break
+   442→   442→    default:
+   443→   443→      revenueAccountCode = '6340' // Service Revenue
+   444→   444→  }
+   445→   445→
+   446→   446→  const lines = [
+   447→   447→    { accountCode: '1210', debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId }, // Clients Receivable
+   448→   448→    { accountCode: revenueAccountCode, debit: 0, credit: data.subtotal, costCenterId: data.costCenterId }, // Revenue
+   449→   449→  ]
+   450→   450→
+   451→   451→  // Add VAT line only if VAT > 0 (Output VAT)
+   452→   452→  if (data.vatAmount > 0) {
+   453→   453→    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
+   454→   454→  }
+   455→   455→
+   456→   456→  return createJournalEntry({
+   457→   457→    entryNo: `JE-SI-${Date.now()}`,
+   458→   458→    date: data.date,
+   459→   459→    description: `Sales Invoice ${data.invoiceNo}`,
+   460→   460→    descriptionAr: `فاتورة مبيعات ${data.invoiceNo}`,
+   461→   461→    lines,
+   462→   462→    sourceType: 'SALES_INVOICE',
+   463→   463→    sourceId: data.invoiceNo,
+   464→   464→  }, tx)
+   465→   465→}
+   466→   466→
+   467→   467→/**
+   468→   468→ * فاتورة مشتريات - Purchase Invoice
+   469→   469→ * Dr: Expense/Asset account - subtotal
+   470→   470→ * Dr: VAT Receivable (1400) - vatAmount
+   471→   471→ * Cr: Suppliers Payable (3110) - totalAmount
+   472→   472→ */
+   473→   473→export async function autoEntryPurchaseInvoice(data: {
+   474→   474→  invoiceNo: string
+   475→   475→  supplierId: string
+   476→   476→  subtotal: number
+   477→   477→  vatRate: number
+   478→   478→  vatAmount: number
+   479→   479→  totalAmount: number
+   480→   480→  date: Date
+   481→   481→  projectId?: string
+   482→   482→  costCenterId?: string
+   483→   483→  expenseCategory?: string
+   484→   484→  activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL' | 'BOTH'
+   485→   485→}, tx?: PrismaTransaction) {
+   486→   486→  // Determine expense account based on context
+   487→   487→  let expenseAccountCode = '7110' // Default: Material Costs
+   488→   488→  if (data.expenseCategory) {
+   489→   489→    const categoryMap: Record<string, string> = {
+   490→   490→      'CONSUMABLES': '7110',
+   491→   491→      'SERVICES': data.activityType === 'EQUIPMENT_RENTAL' ? '7210' : '7130',
+   492→   492→      'MAINTENANCE': '7220',
+   493→   493→      'FUEL': '7210',
+   494→   494→      'DRIVERS': '7230',
+   495→   495→      'TRANSPORT': '7240',
+   496→   496→      'DELIVERY': '7240',
+   497→   497→      'RENT': '8120',
+   498→   498→      'OFFICE': '8140',
+   499→   499→      'INTERNET': '8130',
+   500→   500→      'ELECTRICITY': '8130',
+   501→   501→      'WATER': '8130',
+   502→   502→      'SALARIES': '8110',
+   503→   503→      'INSURANCE': '7400',
+   504→   504→      'PERMITS': '7160',
+   505→   505→      'HOSPITALITY': '8630',
+   506→   506→      'MANAGEMENT_CARS': '8630',
+   507→   507→      'OTHER': '8630',
+   508→   508→    }
+   509→   509→    expenseAccountCode = categoryMap[data.expenseCategory] || '8630'
+   510→   510→  }
+   511→   511→
+   512→   512→  const lines = [
+   513→   513→    { accountCode: expenseAccountCode, debit: data.subtotal, credit: 0, costCenterId: data.costCenterId },
+   514→   514→  ]
+   515→   515→
+   516→   516→  if (data.vatAmount > 0) {
+   517→   517→    lines.push({ accountCode: '3120', debit: data.vatAmount, credit: 0 }) // Input VAT (ضريبة مدخلات)
+   518→   518→  }
+   519→   519→
+   520→   520→  lines.push({ accountCode: '3210', debit: 0, credit: data.totalAmount }) // Suppliers Payable (موردون)
+   521→   521→
+   522→   522→  return createJournalEntry({
+   523→   523→    entryNo: `JE-PI-${Date.now()}`,
+   524→   524→    date: data.date,
+   525→   525→    description: `Purchase Invoice ${data.invoiceNo}`,
+   526→   526→    descriptionAr: `فاتورة مشتريات ${data.invoiceNo}`,
+   527→   527→    lines,
+   528→   528→    sourceType: 'PURCHASE_INVOICE',
+   529→   529→    sourceId: data.invoiceNo,
+   530→   530→  }, tx)
+   531→   531→}
+   532→   532→
+   533→   533→/**
+   534→   534→ * مستخلص - Progress Claim
+   535→   535→ * Dr: Clients Receivable (1210) - totalAmount
+   536→   536→ * Cr: Progress Claims Revenue (6110) - amount
+   537→   537→ * Cr: VAT Payable (3200) - vatAmount
+   538→   538→ */
+   539→   539→export async function autoEntryProgressClaim(data: {
+   540→   540→  claimNo: string
+   541→   541→  projectId: string
+   542→   542→  contractId: string
+   543→   543→  amount: number
+   544→   544→  vatRate: number
+   545→   545→  vatAmount: number
+   546→   546→  totalAmount: number
+   547→   547→  date: Date
+   548→   548→  costCenterId?: string
+   549→   549→}, tx?: PrismaTransaction) {
+   550→   550→  const lines = [
+   551→   551→    { accountCode: '1210', debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId }, // Clients Receivable
+   552→   552→    { accountCode: '6110', debit: 0, credit: data.amount, costCenterId: data.costCenterId }, // Progress Claims Revenue
+   553→   553→  ]
+   554→   554→
+   555→   555→  if (data.vatAmount > 0) {
+   556→   556→    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
+   557→   557→  }
+   558→   558→
+   559→   559→  return createJournalEntry({
+   560→   560→    entryNo: `JE-PC-${Date.now()}`,
+   561→   561→    date: data.date,
+   562→   562→    description: `Progress Claim ${data.claimNo}`,
+   563→   563→    descriptionAr: `مستخلص رقم ${data.claimNo}`,
+   564→   564→    lines,
+   565→   565→    sourceType: 'PROGRESS_CLAIM',
+   566→   566→    sourceId: data.claimNo,
+   567→   567→  }, tx)
+   568→   568→}
+   569→   569→
+   570→   570→/**
+   571→   571→ * مصروف - Expense
+   572→   572→ * Dr: Expense account - amount
+   573→   573→ * Dr: VAT Receivable (1400) - vatAmount (if applicable)
+   574→   574→ * Cr: Cash (1110/1120/1130) - total
+   575→   575→ */
+   576→   576→export async function autoEntryExpense(data: {
+   577→   577→  description: string
+   578→   578→  amount: number
+   579→   579→  vatAmount: number | null
+   580→   580→  category: string
+   581→   581→  date: Date
+   582→   582→  payFrom: 'TREASURY' | 'PETTY_CASH' | 'BANK'
+   583→   583→  costCenterId?: string
+   584→   584→}, tx?: PrismaTransaction) {
+   585→   585→  const categoryMap: Record<string, string> = {
+   586→   586→    'CONSUMABLES': '7110',
+   587→   587→    'SERVICES': '7130',
+   588→   588→    'MAINTENANCE': '7220',
+   589→   589→    'FUEL': '7210',
+   590→   590→    'DRIVERS': '7230',
+   591→   591→    'TRANSPORT': '7240',
+   592→   592→    'DELIVERY': '7240',
+   593→   593→    'RENT': '8120',
+   594→   594→    'OFFICE': '8140',
+   595→   595→    'INTERNET': '8130',
+   596→   596→    'ELECTRICITY': '8130',
+   597→   597→    'WATER': '8130',
+   598→   598→    'SALARIES': '8110',
+   599→   599→    'INSURANCE': '7400',
+   600→   600→    'PERMITS': '7160',
+   601→   601→    'HOSPITALITY': '8630',
+   602→   602→    'MANAGEMENT_CARS': '8630',
+   603→   603→    'OTHER': '8630',
+   604→   604→  }
+   605→   605→  const expenseAccountCode = categoryMap[data.category] || '8630'
+   606→   606→  const cashAccountCode = data.payFrom === 'PETTY_CASH' ? '1130' : data.payFrom === 'BANK' ? '1120' : '1110'
+   607→   607→
+   608→   608→  const totalCashOut = data.amount + (data.vatAmount || 0)
+   609→   609→
+   610→   610→  const lines = [
+   611→   611→    { accountCode: expenseAccountCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+   612→   612→  ]
+   613→   613→
+   614→   614→  if (data.vatAmount && data.vatAmount > 0) {
+   615→   615→    lines.push({ accountCode: '3120', debit: data.vatAmount, credit: 0 }) // Input VAT (ضريبة مدخلات)
+   616→   616→  }
+   617→   617→
+   618→   618→  lines.push({ accountCode: cashAccountCode, debit: 0, credit: totalCashOut })
+   619→   619→
+   620→   620→  return createJournalEntry({
+   621→   621→    entryNo: `JE-EXP-${Date.now()}`,
+   622→   622→    date: data.date,
+   623→   623→    description: `Expense: ${data.description}`,
+   624→   624→    descriptionAr: `مصروف: ${data.description}`,
+   625→   625→    lines,
+   626→   626→    sourceType: 'EXPENSE',
+   627→   627→    sourceId: `EXP-${Date.now()}`,
+   628→   628→  }, tx)
+   629→   629→}
+   630→   630→
+   631→   631→/**
+   632→   632→ * تحصيل من عميل - Client Payment Receipt
+   633→   633→ * Dr: Cash/Bank (1110/1120)
+   634→   634→ * Cr: Clients Receivable (1210)
+   635→   635→ */
+   636→   636→export async function autoEntryClientPayment(data: {
+   637→   637→  clientName: string
+   638→   638→  amount: number
+   639→   639→  date: Date
+   640→   640→  receivedIn: 'TREASURY' | 'BANK'
+   641→   641→  reference?: string
+   642→   642→}, tx?: PrismaTransaction) {
+   643→   643→  const cashAccountCode = data.receivedIn === 'BANK' ? '1120' : '1110'
+   644→   644→
+   645→   645→  return createJournalEntry({
+   646→   646→    entryNo: `JE-CP-${Date.now()}`,
+   647→   647→    date: data.date,
+   648→   648→    description: `Payment received from ${data.clientName}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
+   649→   649→    descriptionAr: `تحصيل من ${data.clientName}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
+   650→   650→    lines: [
+   651→   651→      { accountCode: cashAccountCode, debit: data.amount, credit: 0 },
+   652→   652→      { accountCode: '1210', debit: 0, credit: data.amount }, // Clients Receivable
+   653→   653→    ],
+   654→   654→    sourceType: 'CLIENT_PAYMENT',
+   655→   655→    sourceId: data.reference || `CP-${Date.now()}`,
+   656→   656→  }, tx)
+   657→   657→}
+   658→   658→
+   659→   659→/**
+   660→   660→ * دفع لمورد - Supplier Payment
+   661→   661→ * Dr: Suppliers Payable (3110)
+   662→   662→ * Cr: Cash/Bank (1110/1120)
+   663→   663→ */
+   664→   664→export async function autoEntrySupplierPayment(data: {
+   665→   665→  supplierName: string
+   666→   666→  amount: number
+   667→   667→  date: Date
+   668→   668→  paidFrom: 'TREASURY' | 'BANK'
+   669→   669→  reference?: string
+   670→   670→}, tx?: PrismaTransaction) {
+   671→   671→  const cashAccountCode = data.paidFrom === 'BANK' ? '1120' : '1110'
+   672→   672→
+   673→   673→  return createJournalEntry({
+   674→   674→    entryNo: `JE-SP-${Date.now()}`,
+   675→   675→    date: data.date,
+   676→   676→    description: `Payment to ${data.supplierName}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
+   677→   677→    descriptionAr: `دفع إلى ${data.supplierName}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
+   678→   678→    lines: [
+   679→   679→      { accountCode: '3210', debit: data.amount, credit: 0 }, // Suppliers Payable (موردون)
+   680→   680→      { accountCode: cashAccountCode, debit: 0, credit: data.amount },
+   681→   681→    ],
+   682→   682→    sourceType: 'SUPPLIER_PAYMENT',
+   683→   683→    sourceId: data.reference || `SP-${Date.now()}`,
+   684→   684→  }, tx)
+   685→   685→}
+   686→   686→
+   687→   687→/**
+   688→   688→ * سلفة موظف - Employee Advance
+   689→   689→ * Dr: Advances to Employees (1230)
+   690→   690→ * Cr: Cash (1110)
+   691→   691→ */
+   692→   692→export async function autoEntryEmployeeAdvance(data: {
+   693→   693→  employeeName: string
+   694→   694→  amount: number
+   695→   695→  date: Date
+   696→   696→}, tx?: PrismaTransaction) {
+   697→   697→  return createJournalEntry({
+   698→   698→    entryNo: `JE-EA-${Date.now()}`,
+   699→   699→    date: data.date,
+   700→   700→    description: `Advance to ${data.employeeName}`,
+   701→   701→    descriptionAr: `سلفة لموظف ${data.employeeName}`,
+   702→   702→    lines: [
+   703→   703→      { accountCode: '1230', debit: data.amount, credit: 0 }, // Advances to Employees
+   704→   704→      { accountCode: '1110', debit: 0, credit: data.amount }, // Cash - Treasury
+   705→   705→    ],
+   706→   706→    sourceType: 'EMPLOYEE_ADVANCE',
+   707→   707→    sourceId: `EA-${Date.now()}`,
+   708→   708→  }, tx)
+   709→   709→}
+   710→   710→
+   711→   711→/**
+   712→   712→ * تسوية سلفة - Advance Settlement
+   713→   713→ * Dr: Salaries & Wages (8110)
+   714→   714→ * Cr: Advances to Employees (1230)
+   715→   715→ */
+   716→   716→export async function autoEntryAdvanceSettlement(data: {
+   717→   717→  employeeName: string
+   718→   718→  settledAmount: number
+   719→   719→  date: Date
+   720→   720→}, tx?: PrismaTransaction) {
+   721→   721→  return createJournalEntry({
+   722→   722→    entryNo: `JE-AS-${Date.now()}`,
+   723→   723→    date: data.date,
+   724→   724→    description: `Advance settlement - ${data.employeeName}`,
+   725→   725→    descriptionAr: `تسوية سلفة - ${data.employeeName}`,
+   726→   726→    lines: [
+   727→   727→      { accountCode: '8110', debit: data.settledAmount, credit: 0 }, // Salaries & Wages
+   728→   728→      { accountCode: '1230', debit: 0, credit: data.settledAmount }, // Clear advance
+   729→   729→    ],
+   730→   730→    sourceType: 'ADVANCE_SETTLEMENT',
+   731→   731→    sourceId: `AS-${Date.now()}`,
+   732→   732→  }, tx)
+   733→   733→}
+   734→   734→
+   735→   735→/**
+   736→   736→ * فاتورة مقاول باطن - Subcontractor Invoice
+   737→   737→ * Dr: Subcontractor Costs (7130)
+   738→   738→ * Dr: VAT Receivable (1400)
+   739→   739→ * Cr: Subcontractors Payable (3120)
+   740→   740→ */
+   741→   741→export async function autoEntrySubcontractorInvoice(data: {
+   742→   742→  invoiceNo: string
+   743→   743→  subcontractorName: string
+   744→   744→  amount: number
+   745→   745→  vatRate: number
+   746→   746→  vatAmount: number
+   747→   747→  totalAmount: number
+   748→   748→  date: Date
+   749→   749→  costCenterId?: string
+   750→   750→}, tx?: PrismaTransaction) {
+   751→   751→  const lines = [
+   752→   752→    { accountCode: '7130', debit: data.amount, credit: 0, costCenterId: data.costCenterId }, // Subcontractor Costs
+   753→   753→  ]
+   754→   754→
+   755→   755→  if (data.vatAmount > 0) {
+   756→   756→    lines.push({ accountCode: '3120', debit: data.vatAmount, credit: 0 }) // Input VAT (ضريبة مدخلات)
+   757→   757→  }
+   758→   758→
+   759→   759→  lines.push({ accountCode: '3220', debit: 0, credit: data.totalAmount }) // Subcontractors Payable (مقاولو الباطن)
+   760→   760→
+   761→   761→  return createJournalEntry({
+   762→   762→    entryNo: `JE-SCI-${Date.now()}`,
+   763→   763→    date: data.date,
+   764→   764→    description: `Subcontractor Invoice ${data.invoiceNo} - ${data.subcontractorName}`,
+   765→   765→    descriptionAr: `فاتورة مقاول باطن ${data.invoiceNo} - ${data.subcontractorName}`,
+   766→   766→    lines,
+   767→   767→    sourceType: 'SUBCONTRACTOR_INVOICE',
+   768→   768→    sourceId: data.invoiceNo,
+   769→   769→  }, tx)
+   770→   770→}
+   771→   771→
+   772→   772→/**
+   773→   773→ * تكلفة معدات - Equipment Cost
+   774→   774→ * Dr: Equipment Costs (7210/7220/7230/7240)
+   775→   775→ * Cr: Cash/Accounts Payable
+   776→   776→ */
+   777→   777→export async function autoEntryEquipmentCost(data: {
+   778→   778→  equipmentName: string
+   779→   779→  costType: 'OPERATION' | 'MAINTENANCE' | 'FUEL' | 'OTHER'
+   780→   780→  amount: number
+   781→   781→  date: Date
+   782→   782→  payFrom: 'CASH' | 'AP'
+   783→   783→  costCenterId?: string
+   784→   784→}, tx?: PrismaTransaction) {
+   785→   785→  const accountMap: Record<string, string> = {
+   786→   786→    'OPERATION': '7210',  // Equipment Operation Costs
+   787→   787→    'MAINTENANCE': '7220', // Equipment Maintenance
+   788→   788→    'FUEL': '7230',       // Equipment Fuel
+   789→   789→    'OTHER': '7300',      // Rental Project Costs
+   790→   790→  }
+   791→   791→  const creditAccountCode = data.payFrom === 'AP' ? '3210' : '1110'
+   792→   792→
+   793→   793→  return createJournalEntry({
+   794→   794→    entryNo: `JE-EQC-${Date.now()}`,
+   795→   795→    date: data.date,
+   796→   796→    description: `Equipment ${data.costType} cost - ${data.equipmentName}`,
+   797→   797→    descriptionAr: `تكلفة ${data.costType === 'OPERATION' ? 'تشغيل' : data.costType === 'MAINTENANCE' ? 'صيانة' : data.costType === 'FUEL' ? 'وقود' : 'أخرى'} معدات - ${data.equipmentName}`,
+   798→   798→    lines: [
+   799→   799→      { accountCode: accountMap[data.costType], debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+   800→   800→      { accountCode: creditAccountCode, debit: 0, credit: data.amount },
+   801→   801→    ],
+   802→   802→    sourceType: 'EQUIPMENT_COST',
+   803→   803→    sourceId: `EQC-${Date.now()}`,
+   804→   804→  }, tx)
+   805→   805→}
+   806→   806→
+   807→   807→/**
+   808→   808→ * إيراد تأجير - Rental Invoice (from Timesheet)
+   809→   809→ * Dr: Clients Receivable (1210)
+   810→   810→ * Cr: Equipment Rental Revenue (6210)
+   811→   811→ * Cr: Output VAT (3110)
+   812→   812→ */
+   813→   813→export async function autoEntryRentalInvoice(data: {
+   814→   814→  invoiceNo: string
+   815→   815→  subtotal: number
+   816→   816→  vatAmount: number
+   817→   817→  totalAmount: number
+   818→   818→  date: Date
+   819→   819→  costCenterId?: string
+   820→   820→}, tx?: PrismaTransaction) {
+   821→   821→  const lines = [
+   822→   822→    { accountCode: '1210', debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId }, // Clients Receivable
+   823→   823→    { accountCode: '6210', debit: 0, credit: data.subtotal, costCenterId: data.costCenterId }, // Equipment Rental Revenue
+   824→   824→  ]
+   825→   825→
+   826→   826→  if (data.vatAmount > 0) {
+   827→   827→    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
+   828→   828→  }
+   829→   829→
+   830→   830→  return createJournalEntry({
+   831→   831→    entryNo: `JE-RI-${Date.now()}`,
+   832→   832→    date: data.date,
+   833→   833→    description: `Rental Invoice ${data.invoiceNo}`,
+   834→   834→    descriptionAr: `فاتورة تأجير ${data.invoiceNo}`,
+   835→   835→    lines,
+   836→   836→    sourceType: 'RENTAL_INVOICE',
+   837→   837→    sourceId: data.invoiceNo,
+   838→   838→  }, tx)
+   839→   839→}
+   840→   840→
+   841→   841→/**
+   842→   842→ * صندوق نقدي - Petty Cash
+   843→   843→ * Dr: Expense account (8xxx)
+   844→   844→ * Cr: Petty Cash (1130)
+   845→   845→ */
+   846→   846→export async function autoEntryPettyCash(data: {
+   847→   847→  description: string
+   848→   848→  amount: number
+   849→   849→  category: string
+   850→   850→  date: Date
+   851→   851→  costCenterId?: string
+   852→   852→}, tx?: PrismaTransaction) {
+   853→   853→  const categoryMap: Record<string, string> = {
+   854→   854→    'OFFICE': '8140',
+   855→   855→    'TRANSPORT': '7240',
+   856→   856→    'HOSPITALITY': '8630',
+   857→   857→    'MAINTENANCE': '7220',
+   858→   858→    'OTHER': '8630',
+   859→   859→  }
+   860→   860→  const expenseAccountCode = categoryMap[data.category] || '8630'
+   861→   861→
+   862→   862→  return createJournalEntry({
+   863→   863→    entryNo: `JE-PTC-${Date.now()}`,
+   864→   864→    date: data.date,
+   865→   865→    description: `Petty Cash: ${data.description}`,
+   866→   866→    descriptionAr: `صندوق نقدي: ${data.description}`,
+   867→   867→    lines: [
+   868→   868→      { accountCode: expenseAccountCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+   869→   869→      { accountCode: '1130', debit: 0, credit: data.amount }, // Petty Cash
+   870→   870→    ],
+   871→   871→    sourceType: 'PETTY_CASH',
+   872→   872→    sourceId: `PTC-${Date.now()}`,
+   873→   873→  }, tx)
+   874→   874→}
+   875→   875→
+   876→   876→// ============================================================================
+   877→   877→// NEW AUTO-ENTRY FUNCTIONS
+   878→   878→// ============================================================================
+   879→   879→
+   880→   880→/**
+   881→   881→ * رواتب - Salary Payment
+   882→   882→ * Dr: Salaries & Wages (8110)
+   883→   883→ * Dr: GOSI Expense (8210)
+   884→   884→ * Cr: Cash/Bank (1110/1120)
+   885→   885→ * Cr: GOSI Payable (3830)
+   886→   886→ */
+   887→   887→export async function autoEntrySalary(data: {
+   888→   888→  employeeName: string
+   889→   889→  grossSalary: number
+   890→   890→  gosiEmployeeDeduction: number
+   891→   891→  gosiEmployerContribution: number
+   892→   892→  date: Date
+   893→   893→  payFrom: 'TREASURY' | 'BANK'
+   894→   894→  costCenterId?: string
+   895→   895→}, tx?: PrismaTransaction) {
+   896→   896→  const cashAccountCode = data.payFrom === 'BANK' ? '1120' : '1110'
+   897→   897→  const netCashPaid = data.grossSalary - data.gosiEmployeeDeduction
+   898→   898→
+   899→   899→  const lines = [
+   900→   900→    { accountCode: '8110', debit: data.grossSalary, credit: 0, costCenterId: data.costCenterId }, // Salaries & Wages (gross)
+   901→   901→    { accountCode: '8210', debit: data.gosiEmployerContribution, credit: 0, costCenterId: data.costCenterId }, // GOSI Expense (employer)
+   902→   902→  ]
+   903→   903→
+   904→   904→  if (data.gosiEmployeeDeduction > 0) {
+   905→   905→    lines.push({ accountCode: '8110', debit: 0, credit: data.gosiEmployeeDeduction, costCenterId: data.costCenterId }) // Reduce salary by GOSI employee share
+   906→   906→  }
+   907→   907→
+   908→   908→  lines.push({ accountCode: cashAccountCode, debit: 0, credit: netCashPaid }) // Cash/Bank paid
+   909→   909→  lines.push({ accountCode: '3830', debit: 0, credit: data.gosiEmployeeDeduction + data.gosiEmployerContribution }) // GOSI Payable (total)
+   910→   910→
+   911→   911→  return createJournalEntry({
+   912→   912→    entryNo: `JE-SAL-${Date.now()}`,
+   913→   913→    date: data.date,
+   914→   914→    description: `Salary payment - ${data.employeeName}`,
+   915→   915→    descriptionAr: `صرف راتب - ${data.employeeName}`,
+   916→   916→    lines,
+   917→   917→    sourceType: 'SALARY',
+   918→   918→    sourceId: `SAL-${Date.now()}`,
+   919→   919→  }, tx)
+   920→   920→}
+   921→   921→
+   922→   922→/**
+   923→   923→ * تأمينات اجتماعية - GOSI Contribution
+   924→   924→ * Dr: GOSI Expense (8210)
+   925→   925→ * Cr: GOSI Payable (3830)
+   926→   926→ */
+   927→   927→export async function autoEntryGOSI(data: {
+   928→   928→  employeeContribution: number
+   929→   929→  employerContribution: number
+   930→   930→  date: Date
+   931→   931→  costCenterId?: string
+   932→   932→}, tx?: PrismaTransaction) {
+   933→   933→  const totalGOSI = data.employeeContribution + data.employerContribution
+   934→   934→
+   935→   935→  return createJournalEntry({
+   936→   936→    entryNo: `JE-GOSI-${Date.now()}`,
+   937→   937→    date: data.date,
+   938→   938→    description: `GOSI contribution - Employer: ${data.employerContribution}, Employee: ${data.employeeContribution}`,
+   939→   939→    descriptionAr: `اشتراك تأمينات اجتماعية - صاحب العمل: ${data.employerContribution}, الموظف: ${data.employeeContribution}`,
+   940→   940→    lines: [
+   941→   941→      { accountCode: '8210', debit: data.employerContribution, credit: 0, costCenterId: data.costCenterId }, // GOSI Expense
+   942→   942→      { accountCode: '3830', debit: 0, credit: totalGOSI }, // GOSI Payable
+   943→   943→    ],
+   944→   944→    sourceType: 'GOSI',
+   945→   945→    sourceId: `GOSI-${Date.now()}`,
+   946→   946→  }, tx)
+   947→   947→}
+   948→   948→
+   949→   949→/**
+   950→   950→ * إهلاك - Depreciation (General)
+   951→   951→ * Dr: Depreciation Expense (8310/8320/8330/8340)
+   952→   952→ * Cr: Accumulated Depreciation (2210/2220/2230/2240)
+   953→   953→ */
+   954→   954→export async function autoEntryDepreciation(data: {
+   955→   955→  assetType: 'CONSTRUCTION_EQUIPMENT' | 'VEHICLES' | 'OFFICE' | 'SOFTWARE'
+   956→   956→  amount: number
+   957→   957→  date: Date
+   958→   958→  costCenterId?: string
+   959→   959→}, tx?: PrismaTransaction) {
+   960→   960→  const depreciationMap: Record<string, { expense: string; accumulated: string }> = {
+   961→   961→    'CONSTRUCTION_EQUIPMENT': { expense: '8310', accumulated: '2210' },
+   962→   962→    'VEHICLES': { expense: '8320', accumulated: '2230' },
+   963→   963→    'OFFICE': { expense: '8330', accumulated: '2240' },
+   964→   964→    'SOFTWARE': { expense: '8340', accumulated: '2240' },
+   965→   965→  }
+   966→   966→
+   967→   967→  const mapping = depreciationMap[data.assetType]
+   968→   968→
+   969→   969→  return createJournalEntry({
+   970→   970→    entryNo: `JE-DEP-${Date.now()}`,
+   971→   971→    date: data.date,
+   972→   972→    description: `Depreciation - ${data.assetType}`,
+   973→   973→    descriptionAr: `إهلاك - ${data.assetType === 'CONSTRUCTION_EQUIPMENT' ? 'معدات إنشاء' : data.assetType === 'VEHICLES' ? 'مركبات' : data.assetType === 'OFFICE' ? 'أثاث' : 'برمجيات'}`,
+   974→   974→    lines: [
+   975→   975→      { accountCode: mapping.expense, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+   976→   976→      { accountCode: mapping.accumulated, debit: 0, credit: data.amount },
+   977→   977→    ],
+   978→   978→    sourceType: 'DEPRECIATION',
+   979→   979→    sourceId: `DEP-${Date.now()}`,
+   980→   980→  }, tx)
+   981→   981→}
+   982→   982→
+   983→   983→/**
+   984→   984→ * إهلاك معدات التأجير - Rental Equipment Depreciation
+   985→   985→ * Dr: Rental Equipment Depreciation (7250)
+   986→   986→ * Cr: Accum. Depreciation - Rental Equip (2220)
+   987→   987→ */
+   988→   988→export async function autoEntryRentalDepreciation(data: {
+   989→   989→  amount: number
+   990→   990→  date: Date
+   991→   991→  costCenterId?: string
+   992→   992→}, tx?: PrismaTransaction) {
+   993→   993→  return createJournalEntry({
+   994→   994→    entryNo: `JE-RDEP-${Date.now()}`,
+   995→   995→    date: data.date,
+   996→   996→    description: 'Rental equipment depreciation',
+   997→   997→    descriptionAr: 'إهلاك معدات التأجير',
+   998→   998→    lines: [
+   999→   999→      { accountCode: '7250', debit: data.amount, credit: 0, costCenterId: data.costCenterId }, // Rental Equipment Depreciation
+  1000→  1000→      { accountCode: '2220', debit: 0, credit: data.amount }, // Accum. Depreciation - Rental Equip
+  1001→  1001→    ],
+  1002→  1002→    sourceType: 'RENTAL_DEPRECIATION',
+  1003→  1003→    sourceId: `RDEP-${Date.now()}`,
+  1004→  1004→  }, tx)
+  1005→  1005→}
+  1006→  1006→
+  1007→  1007→/**
+  1008→  1008→ * رسوم نقل وتوصيل - Delivery Fees on Rental
+  1009→  1009→ * Dr: Clients Receivable (1210)
+  1010→  1010→ * Cr: Delivery Fees Revenue (6220)
+  1011→  1011→ * Cr: VAT Payable (3200)
+  1012→  1012→ */
+  1013→  1013→export async function autoEntryDeliveryFees(data: {
+  1014→  1014→  clientId: string
+  1015→  1015→  amount: number
+  1016→  1016→  vatAmount: number
+  1017→  1017→  totalAmount: number
+  1018→  1018→  date: Date
+  1019→  1019→  costCenterId?: string
+  1020→  1020→}, tx?: PrismaTransaction) {
+  1021→  1021→  const lines = [
+  1022→  1022→    { accountCode: '1210', debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId }, // Clients Receivable
+  1023→  1023→    { accountCode: '6220', debit: 0, credit: data.amount, costCenterId: data.costCenterId }, // Delivery Fees Revenue
+  1024→  1024→  ]
+  1025→  1025→
+  1026→  1026→  if (data.vatAmount > 0) {
+  1027→  1027→    lines.push({ accountCode: '3110', debit: 0, credit: data.vatAmount }) // Output VAT (ضريبة مخرجات)
+  1028→  1028→  }
+  1029→  1029→
+  1030→  1030→  return createJournalEntry({
+  1031→  1031→    entryNo: `JE-DF-${Date.now()}`,
+  1032→  1032→    date: data.date,
+  1033→  1033→    description: 'Delivery fees',
+  1034→  1034→    descriptionAr: 'رسوم نقل وتوصيل',
+  1035→  1035→    lines,
+  1036→  1036→    sourceType: 'DELIVERY_FEES',
+  1037→  1037→    sourceId: `DF-${Date.now()}`,
+  1038→  1038→  }, tx)
+  1039→  1039→}
+  1040→  1040→
+  1041→  1041→/**
+  1042→  1042→ * مقدمات العملاء - Contract Advance
+  1043→  1043→ * Dr: Cash/Bank (1110/1120)
+  1044→  1044→ * Cr: Construction Customer Advances (3410) or Rental Customer Advances (3420)
+  1045→  1045→ */
+  1046→  1046→export async function autoEntryContractAdvance(data: {
+  1047→  1047→  clientName: string
+  1048→  1048→  amount: number
+  1049→  1049→  date: Date
+  1050→  1050→  receivedIn: 'TREASURY' | 'BANK'
+  1051→  1051→  activityType: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL'
+  1052→  1052→  reference?: string
+  1053→  1053→}, tx?: PrismaTransaction) {
+  1054→  1054→  const cashAccountCode = data.receivedIn === 'BANK' ? '1120' : '1110'
+  1055→  1055→  const advanceAccountCode = data.activityType === 'CONSTRUCTION' ? '3410' : '3420'
+  1056→  1056→
+  1057→  1057→  return createJournalEntry({
+  1058→  1058→    entryNo: `JE-CA-${Date.now()}`,
+  1059→  1059→    date: data.date,
+  1060→  1060→    description: `Contract advance from ${data.clientName}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
+  1061→  1061→    descriptionAr: `مقدمة عقد من ${data.clientName}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
+  1062→  1062→    lines: [
+  1063→  1063→      { accountCode: cashAccountCode, debit: data.amount, credit: 0 },
+  1064→  1064→      { accountCode: advanceAccountCode, debit: 0, credit: data.amount },
+  1065→  1065→    ],
+  1066→  1066→    sourceType: 'CONTRACT_ADVANCE',
+  1067→  1067→    sourceId: data.reference || `CA-${Date.now()}`,
+  1068→  1068→  }, tx)
+  1069→  1069→}
+  1070→  1070→
+  1071→  1071→/**
+  1072→  1072→ * احتجازات - Retention
+  1073→  1073→ * Dr: Retention Receivable (1220)
+  1074→  1074→ * Cr: Clients Receivable (1210)
+  1075→  1075→ */
+  1076→  1076→export async function autoEntryRetention(data: {
+  1077→  1077→  clientName: string
+  1078→  1078→  retentionAmount: number
+  1079→  1079→  date: Date
+  1080→  1080→  costCenterId?: string
+  1081→  1081→}, tx?: PrismaTransaction) {
+  1082→  1082→  return createJournalEntry({
+  1083→  1083→    entryNo: `JE-RET-${Date.now()}`,
+  1084→  1084→    date: data.date,
+  1085→  1085→    description: `Retention withheld by ${data.clientName}`,
+  1086→  1086→    descriptionAr: `احتجاز لدى ${data.clientName}`,
+  1087→  1087→    lines: [
+  1088→  1088→      { accountCode: '1220', debit: data.retentionAmount, credit: 0, costCenterId: data.costCenterId }, // Retention Receivable
+  1089→  1089→      { accountCode: '1210', debit: 0, credit: data.retentionAmount, costCenterId: data.costCenterId }, // Clients Receivable
+  1090→  1090→    ],
+  1091→  1091→    sourceType: 'RETENTION',
+  1092→  1092→    sourceId: `RET-${Date.now()}`,
+  1093→  1093→  }, tx)
+  1094→  1094→}
+  1095→  1095→
+  1096→  1096→/**
+  1097→  1097→ * زكاة - Zakat
+  1098→  1098→ * Dr: Zakat Expense (8510)
+  1099→  1099→ * Cr: Zakat Payable (3810)
+  1100→  1100→ */
+  1101→  1101→export async function autoEntryZakat(data: {
+  1102→  1102→  amount: number
+  1103→  1103→  date: Date
+  1104→  1104→}, tx?: PrismaTransaction) {
+  1105→  1105→  return createJournalEntry({
+  1106→  1106→    entryNo: `JE-ZAK-${Date.now()}`,
+  1107→  1107→    date: data.date,
+  1108→  1108→    description: 'Zakat provision',
+  1109→  1109→    descriptionAr: 'مخصص الزكاة',
+  1110→  1110→    lines: [
+  1111→  1111→      { accountCode: '8510', debit: data.amount, credit: 0 }, // Zakat Expense
+  1112→  1112→      { accountCode: '3810', debit: 0, credit: data.amount }, // Zakat Payable
+  1113→  1113→    ],
+  1114→  1114→    sourceType: 'ZAKAT',
+  1115→  1115→    sourceId: `ZAK-${Date.now()}`,
+  1116→  1116→  }, tx)
+  1117→  1117→}
+  1118→  1118→
+  1119→  1119→/**
+  1120→  1120→ * مكافأة نهاية الخدمة - End of Service Provision
+  1121→  1121→ * Dr: Salaries & Wages (8110)
+  1122→  1122→ * Cr: End of Service Benefits Provision (3710)
+  1123→  1123→ */
+  1124→  1124→export async function autoEntryEndOfService(data: {
+  1125→  1125→  amount: number
+  1126→  1126→  date: Date
+  1127→  1127→  costCenterId?: string
+  1128→  1128→}, tx?: PrismaTransaction) {
+  1129→  1129→  return createJournalEntry({
+  1130→  1130→    entryNo: `JE-EOS-${Date.now()}`,
+  1131→  1131→    date: data.date,
+  1132→  1132→    description: 'End of service benefits provision',
+  1133→  1133→    descriptionAr: 'مخصص مكافأة نهاية الخدمة',
+  1134→  1134→    lines: [
+  1135→  1135→      { accountCode: '8110', debit: data.amount, credit: 0, costCenterId: data.costCenterId }, // Salaries & Wages
+  1136→  1136→      { accountCode: '3710', debit: 0, credit: data.amount }, // End of Service Benefits Provision
+  1137→  1137→    ],
+  1138→  1138→    sourceType: 'END_OF_SERVICE',
+  1139→  1139→    sourceId: `EOS-${Date.now()}`,
+  1140→  1140→  }, tx)
+  1141→  1141→}
+  1142→  1142→
+  1143→  1143→/**
+  1144→  1144→ * التخلص من أصل - Asset Disposal
+  1145→  1145→ * Dr: Cash/Bank (1110/1120) - sale price
+  1146→  1146→ * Cr: Asset account (2110/2120/2130/2140) - original cost (or net book value)
+  1147→  1147→ * Dr/Cr: Gain/Loss on disposal (6310 gain / 8610 loss)
+  1148→  1148→ */
+  1149→  1149→export async function autoEntryAssetDisposal(data: {
+  1150→  1150→  assetAccountCode: string // e.g., '2110', '2120', '2130', '2140'
+  1151→  1151→  accumulatedDepAccountCode: string // e.g., '2210', '2220', '2230', '2240'
+  1152→  1152→  originalCost: number
+  1153→  1153→  accumulatedDepreciation: number
+  1154→  1154→  salePrice: number
+  1155→  1155→  date: Date
+  1156→  1156→  receivedIn: 'TREASURY' | 'BANK'
+  1157→  1157→}, tx?: PrismaTransaction) {
+  1158→  1158→  const cashAccountCode = data.receivedIn === 'BANK' ? '1120' : '1110'
+  1159→  1159→  const netBookValue = data.originalCost - data.accumulatedDepreciation
+  1160→  1160→  const gainLoss = data.salePrice - netBookValue
+  1161→  1161→
+  1162→  1162→  const lines = [
+  1163→  1163→    { accountCode: cashAccountCode, debit: data.salePrice, credit: 0 }, // Cash received
+  1164→  1164→    { accountCode: data.accumulatedDepAccountCode, debit: data.accumulatedDepreciation, credit: 0 }, // Remove accumulated depreciation
+  1165→  1165→    { accountCode: data.assetAccountCode, debit: 0, credit: data.originalCost }, // Remove asset
+  1166→  1166→  ]
+  1167→  1167→
+  1168→  1168→  // If gain, credit gain account. If loss, debit loss account.
+  1169→  1169→  if (gainLoss > 0) {
+  1170→  1170→    lines.push({ accountCode: '6310', debit: 0, credit: gainLoss }) // Gain on Sale of Used Equipment
+  1171→  1171→  } else if (gainLoss < 0) {
+  1172→  1172→    lines.push({ accountCode: '8610', debit: Math.abs(gainLoss), credit: 0 }) // Loss on Asset Disposal
+  1173→  1173→  }
+  1174→  1174→
+  1175→  1175→  return createJournalEntry({
+  1176→  1176→    entryNo: `JE-DSP-${Date.now()}`,
+  1177→  1177→    date: data.date,
+  1178→  1178→    description: `Asset disposal - ${data.assetAccountCode}`,
+  1179→  1179→    descriptionAr: `التخلص من أصل - ${data.assetAccountCode}`,
+  1180→  1180→    lines,
+  1181→  1181→    sourceType: 'ASSET_DISPOSAL',
+  1182→  1182→    sourceId: `DSP-${Date.now()}`,
+  1183→  1183→  }, tx)
+  1184→  1184→}
+  1185→  1185→
+  1186→  1186→/**
+  1187→  1187→ * إقرار ضريبي - VAT Declaration
+  1188→  1188→ * Dr: Output VAT (3110) - total output VAT
+  1189→  1189→ * Cr: Input VAT (3120) - total input VAT
+  1190→  1190→ * Cr: VAT Due (3130) - net VAT payable (if output > input)
+  1191→  1191→ * OR
+  1192→  1192→ * Dr: Input VAT (3120) - if input > output (refund scenario)
+  1193→  1193→ * Cr: Output VAT (3110)
+  1194→  1194→ * Dr: VAT Refund Receivable (1410) - if refund due
+  1195→  1195→ */
+  1196→  1196→export async function autoEntryVATDeclaration(data: {
+  1197→  1197→  period: string
+  1198→  1198→  outputVat: number
+  1199→  1199→  inputVat: number
+  1200→  1200→  netVat: number // positive = payable, negative = refundable
+  1201→  1201→  date: Date
+  1202→  1202→}, tx?: PrismaTransaction) {
+  1203→  1203→  const lines: { accountCode: string; debit: number; credit: number }[] = []
+  1204→  1204→
+  1205→  1205→  // Close Output VAT (3110) - debit to zero it out
+  1206→  1206→  lines.push({ accountCode: '3110', debit: data.outputVat, credit: 0 })
+  1207→  1207→
+  1208→  1208→  // Close Input VAT (3120) - credit to zero it out
+  1209→  1209→  lines.push({ accountCode: '3120', debit: 0, credit: data.inputVat })
+  1210→  1210→
+  1211→  1211→  // Net VAT position
+  1212→  1212→  if (data.netVat > 0) {
+  1213→  1213→    // More output than input → owe VAT
+  1214→  1214→    lines.push({ accountCode: '3130', debit: 0, credit: data.netVat }) // VAT Due
+  1215→  1215→  } else if (data.netVat < 0) {
+  1216→  1216→    // More input than output → refund due
+  1217→  1217→    lines.push({ accountCode: '1410', debit: Math.abs(data.netVat), credit: 0 }) // VAT Refund Receivable
+  1218→  1218→  }
+  1219→  1219→
+  1220→  1220→  return createJournalEntry({
+  1221→  1221→    entryNo: `JE-VAT-${Date.now()}`,
+  1222→  1222→    date: data.date,
+  1223→  1223→    description: `VAT Declaration - ${data.period}`,
+  1224→  1224→    descriptionAr: `إقرار ضريبي - ${data.period}`,
+  1225→  1225→    lines,
+  1226→  1226→    sourceType: 'VAT_DECLARATION',
+  1227→  1227→    sourceId: `VAT-${data.period}`,
+  1228→  1228→  }, tx)
+  1229→  1229→}
+  1230→  1230→
+  1231→  1231→/**
+  1232→  1232→ * سداد الضريبة - VAT Payment
+  1233→  1233→ * Dr: VAT Due (3130)
+  1234→  1234→ * Cr: Bank (1120)
+  1235→  1235→ */
+  1236→  1236→export async function autoEntryVATPayment(data: {
+  1237→  1237→  period: string
+  1238→  1238→  amount: number
+  1239→  1239→  date: Date
+  1240→  1240→  reference?: string
+  1241→  1241→}, tx?: PrismaTransaction) {
+  1242→  1242→  return createJournalEntry({
+  1243→  1243→    entryNo: `JE-VTP-${Date.now()}`,
+  1244→  1244→    date: data.date,
+  1245→  1245→    description: `VAT Payment - ${data.period}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
+  1246→  1246→    descriptionAr: `سداد ضريبي - ${data.period}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
+  1247→  1247→    lines: [
+  1248→  1248→      { accountCode: '3130', debit: data.amount, credit: 0 }, // VAT Due (ضريبة مستحقة)
+  1249→  1249→      { accountCode: '1120', debit: 0, credit: data.amount }, // Bank (البنك)
+  1250→  1250→    ],
+  1251→  1251→    sourceType: 'VAT_PAYMENT',
+  1252→  1252→    sourceId: `VTP-${data.period}`,
+  1253→  1253→  }, tx)
+  1254→  1254→}
+  1255→  1255→
+  1256→  1256→// ============ TRIAL BALANCE ============
+  1257→  1257→
+  1258→  1258→export async function getTrialBalance(dateFrom?: Date, dateTo?: Date) {
+  1259→  1259→  const dateFilter: { date?: { gte?: Date; lte?: Date } } = {}
+  1260→  1260→  if (dateFrom || dateTo) {
+  1261→  1261→    dateFilter.date = {
+  1262→  1262→      ...(dateFrom && { gte: dateFrom }),
+  1263→  1263→      ...(dateTo && { lte: dateTo }),
+  1264→  1264→    }
+  1265→  1265→  }
+  1266→  1266→  const entries = await db.journalEntry.findMany({
+  1267→  1267→    where: {
+  1268→  1268→      status: 'POSTED',
+  1269→  1269→      ...dateFilter,
+  1270→  1270→    },
+  1271→  1271→    include: {
+  1272→  1272→      lines: {
+  1273→  1273→        include: {
+  1274→  1274→          account: true,
+  1275→  1275→        },
+  1276→  1276→      },
+  1277→  1277→    },
+  1278→  1278→  })
+  1279→  1279→
+  1280→  1280→  // Aggregate by account
+  1281→  1281→  const accountBalances = new Map<string, {
+  1282→  1282→    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+  1283→  1283→    totalDebit: number
+  1284→  1284→    totalCredit: number
+  1285→  1285→  }>()
+  1286→  1286→
+  1287→  1287→  for (const entry of entries) {
+  1288→  1288→    for (const line of entry.lines) {
+  1289→  1289→      const key = line.accountId
+  1290→  1290→      if (!accountBalances.has(key)) {
+  1291→  1291→        accountBalances.set(key, {
+  1292→  1292→          account: line.account,
+  1293→  1293→          totalDebit: 0,
+  1294→  1294→          totalCredit: 0,
+  1295→  1295→        })
+  1296→  1296→      }
+  1297→  1297→      const bal = accountBalances.get(key)!
+  1298→  1298→      bal.totalDebit += toNumber(line.debit)
+  1299→  1299→      bal.totalCredit += toNumber(line.credit)
+  1300→  1300→    }
+  1301→  1301→  }
+  1302→  1302→
+  1303→  1303→  // Calculate net balance for each account
+  1304→  1304→  const results = Array.from(accountBalances.values()).map(bal => {
+  1305→  1305→    const normalBalance = NORMAL_BALANCE[bal.account.type as AccountTypeValue] || 'DEBIT'
+  1306→  1306→    let netDebit = 0
+  1307→  1307→    let netCredit = 0
+  1308→  1308→
+  1309→  1309→    if (normalBalance === 'DEBIT') {
+  1310→  1310→      const net = bal.totalDebit - bal.totalCredit
+  1311→  1311→      if (net >= 0) netDebit = net
+  1312→  1312→      else netCredit = Math.abs(net)
+  1313→  1313→    } else {
+  1314→  1314→      const net = bal.totalCredit - bal.totalDebit
+  1315→  1315→      if (net >= 0) netCredit = net
+  1316→  1316→      else netDebit = Math.abs(net)
+  1317→  1317→    }
+  1318→  1318→
+  1319→  1319→    return {
+  1320→  1320→      ...bal,
+  1321→  1321→      netDebit,
+  1322→  1322→      netCredit,
+  1323→  1323→    }
+  1324→  1324→  })
+  1325→  1325→
+  1326→  1326→  // Sort by account code
+  1327→  1327→  results.sort((a, b) => a.account.code.localeCompare(b.account.code))
+  1328→  1328→
+  1329→  1329→  return results
+  1330→  1330→}
+  1331→  1331→
+  1332→  1332→// ============ SALARY ACCOUNT HELPER ============
+  1333→  1333→
+  1334→  1334→/**
+  1335→  1335→ * Get the salary expense account code based on activity type
+  1336→  1336→ * PROJECT: Salaries & Wages (8110)
+  1337→  1337→ * RENTAL: Equipment Operation Costs (7210)
+  1338→  1338→ * ADMIN: Salaries & Wages (8110)
+  1339→  1339→ */
+  1340→  1340→export function getSalaryAccountCode(activity: 'PROJECT' | 'RENTAL' | 'ADMIN'): string {
+  1341→  1341→  switch (activity) {
+  1342→  1342→    case 'RENTAL':
+  1343→  1343→      return '7210' // Equipment Operation Costs (تكاليف تشغيل معدات)
+  1344→  1344→    case 'PROJECT':
+  1345→  1345→    case 'ADMIN':
+  1346→  1346→    default:
+  1347→  1347→      return '8110' // Salaries & Wages (رواتب وأجور)
+  1348→  1348→  }
+  1349→  1349→}
+  1350→  1350→
+  1351→  1351→// ============ ACCOUNT BALANCE HELPERS ============
+  1352→  1352→
+  1353→  1353→export async function getAccountBalance(accountCode: string): Promise<number> {
+  1354→  1354→  const account = await getAccountByCode(accountCode)
+  1355→  1355→  if (!account) return 0
+  1356→  1356→
+  1357→  1357→  const lines = await db.journalLine.findMany({
+  1358→  1358→    where: {
+  1359→  1359→      accountId: account.id,
+  1360→  1360→      journalEntry: { status: 'POSTED' },
+  1361→  1361→    },
+  1362→  1362→  })
+  1363→  1363→
+  1364→  1364→  const totalDebit = lines.reduce((sum, l) => sum + toNumber(l.debit), 0)
+  1365→  1365→  const totalCredit = lines.reduce((sum, l) => sum + toNumber(l.credit), 0)
+  1366→  1366→
+  1367→  1367→  const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
+  1368→  1368→
+  1369→  1369→  return normalBalance === 'DEBIT'
+  1370→  1370→    ? totalDebit - totalCredit
+  1371→  1371→    : totalCredit - totalDebit
+  1372→  1372→}
+  1373→  1373→
+  1374→  1374→// ============ GENERAL LEDGER ============
+  1375→  1375→
+  1376→  1376→export async function getGeneralLedger(accountCode: string, dateFrom?: Date, dateTo?: Date) {
+  1377→  1377→  const account = await getAccountByCode(accountCode)
+  1378→  1378→  if (!account) return []
+  1379→  1379→
+  1380→  1380→  const glDateFilter: { date?: { gte?: Date; lte?: Date } } = {}
+  1381→  1381→  if (dateFrom || dateTo) {
+  1382→  1382→    glDateFilter.date = {
+  1383→  1383→      ...(dateFrom && { gte: dateFrom }),
+  1384→  1384→      ...(dateTo && { lte: dateTo }),
+  1385→  1385→    }
+  1386→  1386→  }
+  1387→  1387→  const lines = await db.journalLine.findMany({
+  1388→  1388→    where: {
+  1389→  1389→      accountId: account.id,
+  1390→  1390→      journalEntry: {
+  1391→  1391→        status: 'POSTED',
+  1392→  1392→        ...glDateFilter,
+  1393→  1393→      },
+  1394→  1394→    },
+  1395→  1395→    include: { journalEntry: true },
+  1396→  1396→    orderBy: { journalEntry: { date: 'asc' } },
+  1397→  1397→  })
+  1398→  1398→
+  1399→  1399→  let runningBalance = 0
+  1400→  1400→  const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
+  1401→  1401→
+  1402→  1402→  return lines.map(line => {
+  1403→  1403→    const debit = toNumber(line.debit)
+  1404→  1404→    const credit = toNumber(line.credit)
+  1405→  1405→    if (normalBalance === 'DEBIT') {
+  1406→  1406→      runningBalance += debit - credit
+  1407→  1407→    } else {
+  1408→  1408→      runningBalance += credit - debit
+  1409→  1409→    }
+  1410→  1410→
+  1411→  1411→    return {
+  1412→  1412→      date: line.journalEntry.date,
+  1413→  1413→      entryNo: line.journalEntry.entryNo,
+  1414→  1414→      description: line.journalEntry.description,
+  1415→  1415→      debit,
+  1416→  1416→      credit,
+  1417→  1417→      balance: runningBalance,
+  1418→  1418→    }
+  1419→  1419→  })
+  1420→  1420→}
+  1421→  1421→

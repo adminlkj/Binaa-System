@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { initializeChartOfAccounts } from '@/lib/accounting/engine'
+import { seedFinancialMappings } from '@/lib/financial-mapping-engine'
 import { NextResponse } from 'next/server'
 
 export async function POST() {
@@ -138,6 +139,10 @@ export async function POST() {
     // 0. Initialize Chart of Accounts using the accounting engine
     const coaResult = await initializeChartOfAccounts()
     console.log(`Chart of Accounts initialized: ${coaResult.created} created, ${coaResult.total} total`)
+
+    // 0b. Seed Financial Mapping Engine
+    const mappingResult = await seedFinancialMappings()
+    console.log(`Financial Mappings seeded: ${mappingResult.created} created, ${mappingResult.skipped} skipped`)
 
     // 1. Company Settings
     await db.companySetting.create({

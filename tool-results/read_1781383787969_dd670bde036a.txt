@@ -1,0 +1,1877 @@
+     1→'use client'
+     2→
+     3→import React, { useState } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Building2, Plus, Search, Eye, Pencil, Trash2, ArrowRight,
+     7→  FileText, ClipboardList, TrendingUp, Calculator, RefreshCw,
+     8→  Truck, Users, Clock, Fuel, Wrench, Package, Receipt,
+     9→  DollarSign, AlertTriangle, ChevronLeft, ChevronDown,
+    10→  CircleDot, ArrowDown, User, HardHat, Cog, CreditCard,
+    11→  BookOpen, BarChart3, Link2, Shield,
+    12→} from 'lucide-react'
+    13→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    14→import { Button } from '@/components/ui/button'
+    15→import { Input } from '@/components/ui/input'
+    16→import { Badge } from '@/components/ui/badge'
+    17→import {
+    18→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    19→} from '@/components/ui/table'
+    20→import {
+    21→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    22→} from '@/components/ui/dialog'
+    23→import {
+    24→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    25→} from '@/components/ui/select'
+    26→import { Label } from '@/components/ui/label'
+    27→import { Textarea } from '@/components/ui/textarea'
+    28→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    29→import { Separator } from '@/components/ui/separator'
+    30→import { Skeleton } from '@/components/ui/skeleton'
+    31→import { ScrollArea } from '@/components/ui/scroll-area'
+    32→import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, CONSTRUCTION_WORKFLOW } from '@/stores/app-store'
+    33→import { MoneyDisplay } from '@/components/ui/money-display'
+    34→import { PrintButton } from '@/components/shared/print-button'
+    35→
+    36→// ============ Types ============
+    37→interface Client { id: string; code: string; name: string }
+    38→interface Branch { id: string; code: string; name: string }
+    39→interface ContractSummary { id: string; contractNo: string; totalValue: number; status: string }
+    40→interface ProjectListItem {
+    41→  id: string; code: string; name: string; nameAr: string | null; location: string | null
+    42→  startDate: string; endDate: string | null; status: string; description: string | null
+    43→  projectType: string; contractValue: number
+    44→  client: { id: string; name: string; code: string }
+    45→  branch: { id: string; name: string; code: string }
+    46→  contracts: ContractSummary[]
+    47→  _count: { boqItems: number; progressClaims: number }
+    48→}
+    49→
+    50→interface BOQItem {
+    51→  id: string; code: string; description: string; unit: string
+    52→  quantity: number; unitPrice: number; totalPrice: number; category: string | null
+    53→}
+    54→
+    55→interface ProgressClaimItem {
+    56→  id: string; claimNo: string; date: string; percentage: number; amount: number
+    57→  vatAmount: number; totalAmount: number; status: string
+    58→  contract: { contractNo: string; id: string }
+    59→}
+    60→
+    61→interface ClientPayment {
+    62→  id: string; amount: number; date: string; reference: string | null; notes: string | null
+    63→}
+    64→
+    65→interface SalesInvoiceItem {
+    66→  id: string; invoiceNo: string; date: string; dueDate: string; subtotal: number
+    67→  vatAmount: number; totalAmount: number; paidAmount: number; status: string
+    68→  sourceType: string; invoiceType: string
+    69→  client: { id: string; name: string; code: string }
+    70→  progressClaim: { claimNo: string; id: string } | null
+    71→  timesheet: { id: string; operatingHours: number } | null
+    72→  clientPayments: ClientPayment[]
+    73→}
+    74→
+    75→interface PurchaseInvoiceItem {
+    76→  id: string; invoiceNo: string; date: string; totalAmount: number; status: string
+    77→  supplierInvoiceNo: string | null
+    78→  supplier: { id: string; name: string; code: string }
+    79→  goodsReceipt: { receiptNo: string; id: string } | null
+    80→}
+    81→
+    82→interface ExpenseItem {
+    83→  id: string; category: string; description: string; amount: number
+    84→  vatAmount: number; totalAmount: number; date: string; expenseType: string
+    85→}
+    86→
+    87→interface LaborCostItem {
+    88→  id: string; description: string; workers: number; days: number
+    89→  dailyRate: number; totalAmount: number; date: string
+    90→}
+    91→
+    92→interface EquipmentCostItem {
+    93→  id: string; description: string; amount: number; date: string
+    94→}
+    95→
+    96→interface EquipmentUsageItem {
+    97→  id: string; date: string; hours: number; cost: number; description: string | null
+    98→  equipment: { id: string; name: string; code: string }
+    99→}
+   100→
+   101→interface SubcontractorInvoiceItem {
+   102→  id: string; invoiceNo: string; date: string; amount: number
+   103→  vatAmount: number; totalAmount: number; status: string; description: string | null
+   104→  subcontractor: { id: string; name: string; code: string }
+   105→}
+   106→
+   107→interface EquipmentOperationItem {
+   108→  id: string; date: string; hours: number; notes: string | null
+   109→  equipment: { id: string; name: string; code: string }
+   110→  operator: { id: string; name: string; code: string } | null
+   111→}
+   112→
+   113→interface FuelLogItem {
+   114→  id: string; date: string; liters: number; costPerLiter: number; totalCost: number
+   115→  equipment: { id: string; name: string; code: string }
+   116→}
+   117→
+   118→interface TimesheetItem {
+   119→  id: string; month: number; year: number; operatingHours: number; status: string
+   120→  equipment: { id: string; name: string; code: string }
+   121→  rental: { id: string; rateType: string; rate: number } | null
+   122→}
+   123→
+   124→interface WorkTeamItem {
+   125→  id: string; code: string; name: string; specialty: string | null; isActive: boolean
+   126→  members: { id: string; role: string | null; isLeader: boolean; employee: { id: string; name: string; code: string } }[]
+   127→}
+   128→
+   129→interface ResourceAllocationItem {
+   130→  id: string; resourceType: string; resourceId: string; startDate: string; endDate: string | null; notes: string | null
+   131→}
+   132→
+   133→interface CostSheet {
+   134→  contractValue: number; revenue: number; serviceInvoices: number; totalRevenue: number
+   135→  purchases: number; subcontractors: number; labor: number; equipment: number
+   136→  expenses: number; totalCosts: number; profit: number; profitMargin: number
+   137→}
+   138→
+   139→interface WorkflowCounts {
+   140→  clients: number; projects: number; contracts: number; boq: number
+   141→  workHours: number; expenses: number; subcontractors: number; purchases: number
+   142→  extracts: number; invoice: number; collection: number; accounting: number
+   143→}
+   144→
+   145→interface ProjectDetail extends Omit<ProjectListItem, 'contracts' | '_count'> {
+   146→  contractValue: number
+   147→  contracts: (ContractSummary & { progressClaims: ProgressClaimItem[] })[]
+   148→  boqItems: BOQItem[]
+   149→  progressClaims: ProgressClaimItem[]
+   150→  salesInvoices: SalesInvoiceItem[]
+   151→  purchaseOrders: { id: string; orderNo: string; totalAmount: number; status: string; date: string; supplier: { id: string; name: string } }[]
+   152→  purchaseInvoices: PurchaseInvoiceItem[]
+   153→  expenses: ExpenseItem[]
+   154→  laborCosts: LaborCostItem[]
+   155→  equipmentCosts: EquipmentCostItem[]
+   156→  equipmentUsages: EquipmentUsageItem[]
+   157→  subcontractorInvoices: SubcontractorInvoiceItem[]
+   158→  goodsReceipts: { id: string; receiptNo: string; date: string; status: string; supplier: { id: string; name: string }; purchaseOrder: { orderNo: string } }[]
+   159→  timesheets: TimesheetItem[]
+   160→  workTeams: WorkTeamItem[]
+   161→  fuelLogs: FuelLogItem[]
+   162→  equipmentOperations: EquipmentOperationItem[]
+   163→  resourceAllocations: ResourceAllocationItem[]
+   164→  costSheet: CostSheet
+   165→  workflowCounts: WorkflowCounts
+   166→}
+   167→
+   168→// ============ Format Helpers ============
+   169→function formatSAR(value: number, lang: 'ar' | 'en' = 'ar'): string {
+   170→  return storeFormatSAR(value, lang)
+   171→}
+   172→
+   173→function formatDate(dateStr: string | null, lang: 'ar' | 'en' = 'ar'): string {
+   174→  if (!dateStr) return '—'
+   175→  return storeFormatDate(dateStr, lang)
+   176→}
+   177→
+   178→// ============ Status Configs ============
+   179→const statusLabels: Record<string, string> = {
+   180→  PLANNING: 'تخطيط', ACTIVE: 'نشط', ON_HOLD: 'معلق', COMPLETED: 'مكتمل', CANCELLED: 'ملغي',
+   181→}
+   182→const statusColors: Record<string, string> = {
+   183→  PLANNING: 'bg-amber-100 text-amber-700 border-amber-200',
+   184→  ACTIVE: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+   185→  ON_HOLD: 'bg-orange-100 text-orange-700 border-orange-200',
+   186→  COMPLETED: 'bg-teal-100 text-teal-700 border-teal-200',
+   187→  CANCELLED: 'bg-rose-100 text-rose-700 border-rose-200',
+   188→}
+   189→
+   190→const contractStatusLabels: Record<string, string> = {
+   191→  DRAFT: 'مسودة', ACTIVE: 'نشط', EXPIRED: 'منتهي', TERMINATED: 'ملغي',
+   192→}
+   193→const contractStatusColors: Record<string, string> = {
+   194→  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
+   195→  ACTIVE: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+   196→  EXPIRED: 'bg-amber-100 text-amber-700 border-amber-200',
+   197→  TERMINATED: 'bg-rose-100 text-rose-700 border-rose-200',
+   198→}
+   199→
+   200→const claimStatusLabels: Record<string, string> = {
+   201→  DRAFT: 'مسودة', SUBMITTED: 'مقدم', APPROVED: 'معتمد',
+   202→  PARTIALLY_PAID: 'مدفوع جزئياً', PAID: 'مدفوع', REJECTED: 'مرفوض',
+   203→}
+   204→const claimStatusColors: Record<string, string> = {
+   205→  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
+   206→  SUBMITTED: 'bg-blue-100 text-blue-700 border-blue-200',
+   207→  APPROVED: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+   208→  PARTIALLY_PAID: 'bg-amber-100 text-amber-700 border-amber-200',
+   209→  PAID: 'bg-teal-100 text-teal-700 border-teal-200',
+   210→  REJECTED: 'bg-rose-100 text-rose-700 border-rose-200',
+   211→}
+   212→
+   213→const invoiceStatusLabels: Record<string, string> = {
+   214→  DRAFT: 'مسودة', SENT: 'مرسلة', PARTIALLY_PAID: 'مدفوعة جزئياً',
+   215→  PAID: 'مدفوعة', OVERDUE: 'متأخرة', CANCELLED: 'ملغاة',
+   216→}
+   217→const invoiceStatusColors: Record<string, string> = {
+   218→  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
+   219→  SENT: 'bg-blue-100 text-blue-700 border-blue-200',
+   220→  PARTIALLY_PAID: 'bg-amber-100 text-amber-700 border-amber-200',
+   221→  PAID: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+   222→  OVERDUE: 'bg-rose-100 text-rose-700 border-rose-200',
+   223→  CANCELLED: 'bg-gray-100 text-gray-500 border-gray-200',
+   224→}
+   225→
+   226→const expenseCategoryLabels: Record<string, string> = {
+   227→  RENT: 'إيجار', MAINTENANCE: 'صيانة', TRANSPORT: 'نقل', DELIVERY: 'توصيل',
+   228→  CONSUMABLES: 'مستهلكات', SERVICES: 'خدمات', INSURANCE: 'تأمين', FUEL: 'وقود',
+   229→  PERMITS: 'تراخيص', OFFICE: 'مكتبية', HOSPITALITY: 'ضيافة', OTHER: 'أخرى',
+   230→  SALARIES: 'رواتب', INTERNET: 'إنترنت', ELECTRICITY: 'كهرباء', WATER: 'مياه',
+   231→  MANAGEMENT_CARS: 'سيارات إدارية', DRIVERS: 'سائقون',
+   232→}
+   233→
+   234→// ============ Skeleton ============
+   235→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   236→  return (
+   237→    <div className="space-y-3">
+   238→      {Array.from({ length: rows }).map((_, i) => (
+   239→        <div key={i} className="flex gap-4 p-3">
+   240→          <Skeleton className="h-5 w-24" />
+   241→          <Skeleton className="h-5 w-40" />
+   242→          <Skeleton className="h-5 w-28" />
+   243→          <Skeleton className="h-5 w-20" />
+   244→        </div>
+   245→      ))}
+   246→    </div>
+   247→  )
+   248→}
+   249→
+   250→function DetailSkeleton() {
+   251→  return (
+   252→    <div className="space-y-6 p-6">
+   253→      <div className="flex items-center gap-3">
+   254→        <Skeleton className="h-10 w-10 rounded-lg" />
+   255→        <div className="space-y-2">
+   256→          <Skeleton className="h-6 w-64" />
+   257→          <Skeleton className="h-4 w-40" />
+   258→        </div>
+   259→      </div>
+   260→      <div className="grid grid-cols-5 gap-3">
+   261→        {Array.from({ length: 5 }).map((_, i) => (
+   262→          <Skeleton key={i} className="h-20 rounded-lg" />
+   263→        ))}
+   264→      </div>
+   265→      <Skeleton className="h-10 w-full" />
+   266→      <Skeleton className="h-64 w-full" />
+   267→    </div>
+   268→  )
+   269→}
+   270→
+   271→// ============ Project Form Dialog ============
+   272→interface ProjectFormData {
+   273→  code: string; name: string; nameAr: string; clientId: string; branchId: string
+   274→  location: string; startDate: string; endDate: string; status: string; description: string
+   275→  contractValue: string; projectType: string
+   276→}
+   277→
+   278→function ProjectFormDialog({
+   279→  open, onOpenChange, editingProject, clients, branches,
+   280→}: {
+   281→  open: boolean; onOpenChange: (open: boolean) => void
+   282→  editingProject: ProjectListItem | null
+   283→  clients: Client[]; branches: Branch[]
+   284→}) {
+   285→  const queryClient = useQueryClient()
+   286→  const { lang } = useAppStore()
+   287→  const isEdit = !!editingProject
+   288→
+   289→  const [form, setForm] = useState<ProjectFormData>({
+   290→    code: '', name: '', nameAr: '', clientId: '', branchId: '',
+   291→    location: '', startDate: '', endDate: '', status: 'PLANNING', description: '',
+   292→    contractValue: '', projectType: 'CONSTRUCTION',
+   293→  })
+   294→
+   295→  React.useEffect(() => {
+   296→    if (open) {
+   297→      if (editingProject) {
+   298→        setForm({
+   299→          code: editingProject.code,
+   300→          name: editingProject.name,
+   301→          nameAr: editingProject.nameAr || '',
+   302→          clientId: editingProject.client.id,
+   303→          branchId: editingProject.branch.id,
+   304→          location: editingProject.location || '',
+   305→          startDate: editingProject.startDate ? new Date(editingProject.startDate).toISOString().split('T')[0] : '',
+   306→          endDate: editingProject.endDate ? new Date(editingProject.endDate).toISOString().split('T')[0] : '',
+   307→          status: editingProject.status,
+   308→          description: editingProject.description || '',
+   309→          contractValue: editingProject.contractValue ? String(editingProject.contractValue) : '',
+   310→          projectType: editingProject.projectType || 'CONSTRUCTION',
+   311→        })
+   312→      } else {
+   313→        setForm({ code: '', name: '', nameAr: '', clientId: '', branchId: '', location: '', startDate: '', endDate: '', status: 'PLANNING', description: '', contractValue: '', projectType: 'CONSTRUCTION' })
+   314→      }
+   315→    }
+   316→  }, [open, editingProject])
+   317→
+   318→  const createMutation = useMutation({
+   319→    mutationFn: (data: ProjectFormData) =>
+   320→      fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   321→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); onOpenChange(false) },
+   322→  })
+   323→
+   324→  const updateMutation = useMutation({
+   325→    mutationFn: (data: ProjectFormData) =>
+   326→      fetch(`/api/projects/${editingProject?.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   327→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); onOpenChange(false) },
+   328→  })
+   329→
+   330→  const handleSubmit = (e: React.FormEvent) => {
+   331→    e.preventDefault()
+   332→    if (isEdit) updateMutation.mutate(form)
+   333→    else createMutation.mutate(form)
+   334→  }
+   335→
+   336→  const isLoading = createMutation.isPending || updateMutation.isPending
+   337→
+   338→  return (
+   339→    <Dialog open={open} onOpenChange={onOpenChange}>
+   340→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   341→        <DialogHeader>
+   342→          <DialogTitle>{isEdit ? 'تعديل المشروع' : 'مشروع جديد'}</DialogTitle>
+   343→          <DialogDescription>{isEdit ? 'تعديل بيانات المشروع' : 'إضافة مشروع جديد للنظام'}</DialogDescription>
+   344→        </DialogHeader>
+   345→        <form onSubmit={handleSubmit} className="space-y-4">
+   346→          {/* Project Type Selector */}
+   347→          <div className="space-y-2">
+   348→            <Label>{lang === 'ar' ? 'نوع المشروع' : 'Project Type'}</Label>
+   349→            <div className="grid grid-cols-2 gap-3">
+   350→              <button
+   351→                type="button"
+   352→                onClick={() => setForm(f => ({ ...f, projectType: 'CONSTRUCTION' }))}
+   353→                className={`flex items-center gap-3 rounded-lg border-2 p-4 transition-all ${
+   354→                  form.projectType === 'CONSTRUCTION'
+   355→                    ? 'border-emerald-500 bg-emerald-50 shadow-sm'
+   356→                    : 'border-gray-200 bg-white hover:border-gray-300'
+   357→                }`}
+   358→              >
+   359→                <div className={`flex size-10 items-center justify-center rounded-lg ${
+   360→                  form.projectType === 'CONSTRUCTION' ? 'bg-emerald-100' : 'bg-gray-100'
+   361→                }`}>
+   362→                  <Building2 className={`size-5 ${form.projectType === 'CONSTRUCTION' ? 'text-emerald-600' : 'text-gray-400'}`} />
+   363→                </div>
+   364→                <div className="text-right">
+   365→                  <p className={`text-sm font-bold ${form.projectType === 'CONSTRUCTION' ? 'text-emerald-700' : 'text-gray-700'}`}>
+   366→                    {lang === 'ar' ? 'مشروع تنفيذي' : 'Construction'}
+   367→                  </p>
+   368→                  <p className="text-xs text-gray-500">
+   369→                    {lang === 'ar' ? 'Construction Project' : 'Construction Project'}
+   370→                  </p>
+   371→                </div>
+   372→              </button>
+   373→              <button
+   374→                type="button"
+   375→                onClick={() => setForm(f => ({ ...f, projectType: 'EQUIPMENT_RENTAL' }))}
+   376→                className={`flex items-center gap-3 rounded-lg border-2 p-4 transition-all ${
+   377→                  form.projectType === 'EQUIPMENT_RENTAL'
+   378→                    ? 'border-cyan-500 bg-cyan-50 shadow-sm'
+   379→                    : 'border-gray-200 bg-white hover:border-gray-300'
+   380→                }`}
+   381→              >
+   382→                <div className={`flex size-10 items-center justify-center rounded-lg ${
+   383→                  form.projectType === 'EQUIPMENT_RENTAL' ? 'bg-cyan-100' : 'bg-gray-100'
+   384→                }`}>
+   385→                  <Truck className={`size-5 ${form.projectType === 'EQUIPMENT_RENTAL' ? 'text-cyan-600' : 'text-gray-400'}`} />
+   386→                </div>
+   387→                <div className="text-right">
+   388→                  <p className={`text-sm font-bold ${form.projectType === 'EQUIPMENT_RENTAL' ? 'text-cyan-700' : 'text-gray-700'}`}>
+   389→                    {lang === 'ar' ? 'مشروع تأجير معدات' : 'Equipment Rental'}
+   390→                  </p>
+   391→                  <p className="text-xs text-gray-500">
+   392→                    {lang === 'ar' ? 'Equipment Rental Project' : 'Equipment Rental Project'}
+   393→                  </p>
+   394→                </div>
+   395→              </button>
+   396→            </div>
+   397→          </div>
+   398→
+   399→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   400→            <div className="space-y-2">
+   401→              <Label htmlFor="code">كود المشروع *</Label>
+   402→              <Input id="code" value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="PRJ-004" required />
+   403→            </div>
+   404→            <div className="space-y-2">
+   405→              <Label htmlFor="name">اسم المشروع *</Label>
+   406→              <Input id="name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="اسم المشروع" required />
+   407→            </div>
+   408→            <div className="space-y-2">
+   409→              <Label htmlFor="nameAr">الاسم بالعربي</Label>
+   410→              <Input id="nameAr" value={form.nameAr} onChange={e => setForm(f => ({ ...f, nameAr: e.target.value }))} placeholder="الاسم بالعربي" />
+   411→            </div>
+   412→            <div className="space-y-2">
+   413→              <Label htmlFor="location">الموقع</Label>
+   414→              <Input id="location" value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} placeholder="المدينة - الحي" />
+   415→            </div>
+   416→            <div className="space-y-2">
+   417→              <Label>العميل *</Label>
+   418→              <Select value={form.clientId} onValueChange={v => setForm(f => ({ ...f, clientId: v }))}>
+   419→                <SelectTrigger className="w-full"><SelectValue placeholder="اختر العميل" /></SelectTrigger>
+   420→                <SelectContent>
+   421→                  {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+   422→                </SelectContent>
+   423→              </Select>
+   424→            </div>
+   425→            <div className="space-y-2">
+   426→              <Label>الفرع *</Label>
+   427→              <Select value={form.branchId} onValueChange={v => setForm(f => ({ ...f, branchId: v }))}>
+   428→                <SelectTrigger className="w-full"><SelectValue placeholder="اختر الفرع" /></SelectTrigger>
+   429→                <SelectContent>
+   430→                  {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+   431→                </SelectContent>
+   432→              </Select>
+   433→            </div>
+   434→            <div className="space-y-2">
+   435→              <Label htmlFor="startDate">تاريخ البدء *</Label>
+   436→              <Input id="startDate" type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} required />
+   437→            </div>
+   438→            <div className="space-y-2">
+   439→              <Label htmlFor="endDate">تاريخ الانتهاء</Label>
+   440→              <Input id="endDate" type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} />
+   441→            </div>
+   442→            <div className="space-y-2">
+   443→              <Label htmlFor="contractValue">قيمة العقد</Label>
+   444→              <Input id="contractValue" type="number" min="0" step="0.01" value={form.contractValue} onChange={e => setForm(f => ({ ...f, contractValue: e.target.value }))} placeholder="0.00" dir="ltr" />
+   445→            </div>
+   446→            <div className="space-y-2">
+   447→              <Label>الحالة</Label>
+   448→              <Select value={form.status} onValueChange={v => setForm(f => ({ ...f, status: v }))}>
+   449→                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+   450→                <SelectContent>
+   451→                  <SelectItem value="PLANNING">تخطيط</SelectItem>
+   452→                  <SelectItem value="ACTIVE">نشط</SelectItem>
+   453→                  <SelectItem value="ON_HOLD">معلق</SelectItem>
+   454→                  <SelectItem value="COMPLETED">مكتمل</SelectItem>
+   455→                  <SelectItem value="CANCELLED">ملغي</SelectItem>
+   456→                </SelectContent>
+   457→              </Select>
+   458→            </div>
+   459→            <div className="space-y-2 sm:col-span-2">
+   460→              <Label htmlFor="description">الوصف</Label>
+   461→              <Textarea id="description" value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} placeholder="وصف المشروع" rows={3} />
+   462→            </div>
+   463→          </div>
+   464→          <DialogFooter>
+   465→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>إلغاء</Button>
+   466→            <Button type="submit" disabled={isLoading} className="bg-emerald-600 hover:bg-emerald-700">
+   467→              {isLoading ? 'جاري الحفظ...' : isEdit ? 'تحديث' : 'إنشاء'}
+   468→            </Button>
+   469→          </DialogFooter>
+   470→        </form>
+   471→      </DialogContent>
+   472→    </Dialog>
+   473→  )
+   474→}
+   475→
+   476→// ============ Workflow Chain Step Icon Map ============
+   477→const workflowStepIcons: Record<string, React.ReactNode> = {
+   478→  'clients': <User className="size-4" />,
+   479→  'projects': <Building2 className="size-4" />,
+   480→  'contracts': <FileText className="size-4" />,
+   481→  'boq': <ClipboardList className="size-4" />,
+   482→  'work-hours': <Clock className="size-4" />,
+   483→  'expenses': <Receipt className="size-4" />,
+   484→  'subcontractors': <HardHat className="size-4" />,
+   485→  'purchases': <Package className="size-4" />,
+   486→  'extracts': <TrendingUp className="size-4" />,
+   487→  'invoice': <DollarSign className="size-4" />,
+   488→  'collection': <CreditCard className="size-4" />,
+   489→  'accounting': <BookOpen className="size-4" />,
+   490→  'reports': <BarChart3 className="size-4" />,
+   491→}
+   492→
+   493→// ============ Cost Sheet Component (كرت المشروع) ============
+   494→function CostSheetView({ costSheet, projectName, lang }: { costSheet: CostSheet; projectName: string; lang: 'ar' | 'en' }) {
+   495→  const isProfit = costSheet.profit >= 0
+   496→  const profitColor = isProfit ? 'text-emerald-600' : 'text-rose-600'
+   497→  const profitBg = isProfit ? 'bg-emerald-50' : 'bg-rose-50'
+   498→
+   499→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   500→
+   501→  const revenueRows = [
+   502→    { label: t('قيمة العقد', 'Contract Value'), value: costSheet.contractValue, color: 'text-emerald-700' },
+   503→    { label: t('إجمالي المستخلصات', 'Total Progress Claims'), value: costSheet.revenue, color: 'text-emerald-600' },
+   504→    { label: t('فواتير الخدمة', 'Service Invoices'), value: costSheet.serviceInvoices, color: 'text-teal-600' },
+   505→  ]
+   506→
+   507→  const costRows = [
+   508→    { label: t('المشتريات', 'Purchases'), value: costSheet.purchases, color: 'text-rose-600', icon: <Package className="size-3.5" /> },
+   509→    { label: t('مصروفات المشروع', 'Project Expenses'), value: costSheet.expenses, color: 'text-rose-600', icon: <Receipt className="size-3.5" /> },
+   510→    { label: t('مقاولو الباطن', 'Subcontractors'), value: costSheet.subcontractors, color: 'text-orange-600', icon: <HardHat className="size-3.5" /> },
+   511→    { label: t('تكاليف العمالة', 'Labor Costs'), value: costSheet.labor, color: 'text-amber-600', icon: <Users className="size-3.5" /> },
+   512→    { label: t('تكاليف المعدات', 'Equipment Costs'), value: costSheet.equipment, color: 'text-cyan-600', icon: <Cog className="size-3.5" /> },
+   513→  ]
+   514→
+   515→  return (
+   516→    <div className="space-y-0">
+   517→      {/* Header */}
+   518→      <div className="bg-gradient-to-l from-emerald-700 to-emerald-800 rounded-t-lg px-6 py-4">
+   519→        <div className="flex items-center gap-3">
+   520→          <div className="flex size-10 items-center justify-center rounded-lg bg-white/20">
+   521→            <Calculator className="size-5 text-white" />
+   522→          </div>
+   523→          <div>
+   524→            <h3 className="text-lg font-bold text-white">{t('كرت المشروع', 'Project Card')}</h3>
+   525→            <p className="text-sm text-emerald-200">{projectName}</p>
+   526→          </div>
+   527→        </div>
+   528→      </div>
+   529→
+   530→      {/* Body */}
+   531→      <div className="border-x border-b rounded-b-lg border-gray-200 overflow-hidden">
+   532→        {/* Revenue Section */}
+   533→        <div className="px-6 pt-4 pb-2">
+   534→          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-600 mb-3">
+   535→            {t('الإيرادات', 'Revenue')}
+   536→          </p>
+   537→          {revenueRows.map((row, idx) => (
+   538→            <div key={idx} className={`flex items-center justify-between py-2.5 ${idx < revenueRows.length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
+   539→              <span className="text-sm font-medium text-gray-700">{row.label}</span>
+   540→              <span className={row.color}>
+   541→                <MoneyDisplay value={row.value} mode="system" lang={lang} bold size="md" />
+   542→              </span>
+   543→            </div>
+   544→          ))}
+   545→          <div className="flex items-center justify-between py-2.5 bg-emerald-50/50 -mx-6 px-6 mt-1">
+   546→            <span className="text-sm font-bold text-emerald-800">{t('إجمالي الإيرادات', 'Total Revenue')}</span>
+   547→            <span className="text-emerald-700">
+   548→              <MoneyDisplay value={costSheet.totalRevenue} mode="system" lang={lang} bold size="lg" />
+   549→            </span>
+   550→          </div>
+   551→        </div>
+   552→
+   553→        <div className="mx-6 border-t-2 border-emerald-200" />
+   554→
+   555→        {/* Costs Section */}
+   556→        <div className="px-6 pt-3 pb-2">
+   557→          <p className="text-xs font-semibold uppercase tracking-wider text-rose-600 mb-3">
+   558→            {t('التكاليف', 'Costs')}
+   559→          </p>
+   560→          {costRows.map((row, idx) => (
+   561→            <div key={idx} className={`flex items-center justify-between py-2.5 ${idx < costRows.length - 1 ? 'border-b border-dashed border-gray-100' : ''}`}>
+   562→              <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+   563→                <span className="text-gray-400">{row.icon}</span>
+   564→                {row.label}
+   565→              </span>
+   566→              <span className={row.color}>
+   567→                <MoneyDisplay value={row.value} mode="system" lang={lang} bold size="md" />
+   568→              </span>
+   569→            </div>
+   570→          ))}
+   571→        </div>
+   572→
+   573→        {/* Total Costs */}
+   574→        <div className="mx-6 border-t-2 border-rose-200" />
+   575→        <div className="px-6 py-3 bg-rose-50/50">
+   576→          <div className="flex items-center justify-between">
+   577→            <span className="text-sm font-bold text-gray-800">{t('إجمالي التكلفة', 'Total Cost')}</span>
+   578→            <span className="text-rose-700">
+   579→              <MoneyDisplay value={costSheet.totalCosts} mode="system" lang={lang} bold size="lg" />
+   580→            </span>
+   581→          </div>
+   582→        </div>
+   583→
+   584→        <div className="mx-6 border-t-2 border-gray-200" />
+   585→
+   586→        {/* Profit Section */}
+   587→        <div className={`px-6 py-4 ${profitBg}`}>
+   588→          <div className="flex items-center justify-between">
+   589→            <div className="flex items-center gap-3">
+   590→              <div className={`flex size-12 items-center justify-center rounded-full ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+   591→                <TrendingUp className={`size-6 ${profitColor}`} />
+   592→              </div>
+   593→              <div>
+   594→                <p className="text-sm font-bold text-gray-800">{t('الربح / الخسارة', 'Profit / Loss')}</p>
+   595→                <span className={profitColor}>
+   596→                  <MoneyDisplay value={costSheet.profit} mode="system" lang={lang} bold size="xl" />
+   597→                </span>
+   598→              </div>
+   599→            </div>
+   600→            <div className={`text-center rounded-xl px-6 py-3 ${isProfit ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+   601→              <p className="text-xs font-medium text-gray-500 mb-1">{t('هامش الربح', 'Profit Margin')}</p>
+   602→              <p className={`text-3xl font-bold ${profitColor}`}>
+   603→                {Math.abs(costSheet.profitMargin ?? 0).toFixed(2)}%
+   604→              </p>
+   605→            </div>
+   606→          </div>
+   607→        </div>
+   608→      </div>
+   609→    </div>
+   610→  )
+   611→}
+   612→
+   613→// ============ Workflow Chain Component (سلسلة العمل) ============
+   614→function WorkflowChainView({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
+   615→  const { setActiveItem } = useAppStore()
+   616→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   617→
+   618→  const steps = CONSTRUCTION_WORKFLOW.map((wf, idx) => {
+   619→    const count = project.workflowCounts[wf.step as keyof WorkflowCounts] || 0
+   620→    const hasData = count > 0
+   621→    const isSkipped = !hasData && idx > 1 // Client and Project always have data
+   622→    // Check if previous step has data but this one doesn't
+   623→    const prevCount = idx > 0 ? project.workflowCounts[CONSTRUCTION_WORKFLOW[idx - 1].step as keyof WorkflowCounts] || 0 : 1
+   624→    const isWarning = prevCount > 0 && !hasData && idx > 2
+   625→
+   626→    return {
+   627→      ...wf,
+   628→      count,
+   629→      hasData,
+   630→      isSkipped,
+   631→      isWarning,
+   632→      stepIndex: idx,
+   633→    }
+   634→  })
+   635→
+   636→  const handleNavigate = (navItem: string) => {
+   637→    setActiveItem(navItem as 'projects' | 'contracts' | 'boq' | 'extracts' | 'sales' | 'client-payments' | 'expenses' | 'subcontractors' | 'purchase-requests' | 'attendance' | 'accounting' | 'reports' | 'clients')
+   638→  }
+   639→
+   640→  return (
+   641→    <div className="space-y-4">
+   642→      <div className="flex items-center gap-3 mb-2">
+   643→        <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-100">
+   644→          <Link2 className="size-5 text-emerald-600" />
+   645→        </div>
+   646→        <div>
+   647→          <h3 className="text-lg font-bold text-gray-900">{t('سلسلة العمل', 'Workflow Chain')}</h3>
+   648→          <p className="text-sm text-muted-foreground">{t('الخطوات المتسلسلة لمشروع المقاولات', 'Sequential steps for construction project')}</p>
+   649→        </div>
+   650→      </div>
+   651→
+   652→      {/* Legend */}
+   653→      <div className="flex items-center gap-4 text-xs">
+   654→        <div className="flex items-center gap-1.5">
+   655→          <div className="size-3 rounded-full bg-emerald-500" />
+   656→          <span className="text-gray-600">{t('بيانات موجودة', 'Has data')}</span>
+   657→        </div>
+   658→        <div className="flex items-center gap-1.5">
+   659→          <div className="size-3 rounded-full bg-gray-300" />
+   660→          <span className="text-gray-600">{t('لا توجد بيانات', 'No data')}</span>
+   661→        </div>
+   662→        <div className="flex items-center gap-1.5">
+   663→          <div className="size-3 rounded-full bg-amber-500" />
+   664→          <span className="text-gray-600">{t('تنبيه: خطوة مفقودة', 'Warning: Missing step')}</span>
+   665→        </div>
+   666→      </div>
+   667→
+   668→      {/* Workflow Steps - Vertical chain */}
+   669→      <div className="space-y-0">
+   670→        {steps.map((step, idx) => (
+   671→          <div key={step.step} className="relative">
+   672→            {/* Connector line */}
+   673→            {idx > 0 && (
+   674→              <div className={`absolute right-5 top-0 w-0.5 h-4 ${
+   675→                step.hasData ? 'bg-emerald-300' : 'bg-gray-200'
+   676→              }`} />
+   677→            )}
+   678→            <button
+   679→              onClick={() => handleNavigate(step.navItem)}
+   680→              className={`w-full flex items-center gap-4 p-3 rounded-lg border transition-all hover:shadow-sm ${
+   681→                step.hasData
+   682→                  ? 'border-emerald-200 bg-emerald-50/50 hover:bg-emerald-50'
+   683→                  : step.isWarning
+   684→                    ? 'border-amber-200 bg-amber-50/50 hover:bg-amber-50'
+   685→                    : 'border-gray-200 bg-gray-50/50 hover:bg-gray-50'
+   686→              }`}
+   687→            >
+   688→              {/* Step indicator */}
+   689→              <div className={`flex size-10 shrink-0 items-center justify-center rounded-full border-2 ${
+   690→                step.hasData
+   691→                  ? 'border-emerald-500 bg-emerald-100 text-emerald-600'
+   692→                  : step.isWarning
+   693→                    ? 'border-amber-500 bg-amber-100 text-amber-600'
+   694→                    : 'border-gray-300 bg-gray-100 text-gray-400'
+   695→              }`}>
+   696→                {workflowStepIcons[step.step] || <CircleDot className="size-4" />}
+   697→              </div>
+   698→
+   699→              {/* Step info */}
+   700→              <div className="flex-1 text-right">
+   701→                <div className="flex items-center gap-2">
+   702→                  <span className={`text-sm font-bold ${
+   703→                    step.hasData ? 'text-emerald-700' : step.isWarning ? 'text-amber-700' : 'text-gray-500'
+   704→                  }`}>
+   705→                    {lang === 'ar' ? step.label.ar : step.label.en}
+   706→                  </span>
+   707→                  {step.isWarning && (
+   708→                    <span className="flex items-center gap-1 text-xs text-amber-600">
+   709→                      <AlertTriangle className="size-3" />
+   710→                      {t('مفقود', 'Missing')}
+   711→                    </span>
+   712→                  )}
+   713→                </div>
+   714→                <span className={`text-xs ${step.hasData ? 'text-emerald-600' : 'text-gray-400'}`}>
+   715→                  {step.hasData
+   716→                    ? t(`${step.count} سجل`, `${step.count} record${step.count !== 1 ? 's' : ''}`)
+   717→                    : t('لا توجد بيانات', 'No data')
+   718→                  }
+   719→                </span>
+   720→              </div>
+   721→
+   722→              {/* Count badge */}
+   723→              <div className={`flex size-8 items-center justify-center rounded-full text-xs font-bold ${
+   724→                step.hasData
+   725→                  ? 'bg-emerald-200 text-emerald-700'
+   726→                  : 'bg-gray-200 text-gray-400'
+   727→              }`}>
+   728→                {step.count}
+   729→              </div>
+   730→
+   731→              {/* Navigate icon */}
+   732→              <ChevronLeft className="size-4 text-gray-400" />
+   733→            </button>
+   734→          </div>
+   735→        ))}
+   736→      </div>
+   737→    </div>
+   738→  )
+   739→}
+   740→
+   741→// ============ Costs Tab Component (التكاليف) ============
+   742→function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
+   743→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   744→
+   745→  const purchaseTotal = project.purchaseInvoices.reduce((s, p) => s + (p.totalAmount ?? 0), 0)
+   746→  const expenseTotal = project.expenses.reduce((s, e) => s + (e.totalAmount ?? 0), 0)
+   747→  const laborTotal = project.laborCosts.reduce((s, l) => s + (l.totalAmount ?? 0), 0)
+   748→  const equipmentTotal = project.equipmentCosts.reduce((s, e) => s + (e.amount ?? 0), 0) +
+   749→    project.equipmentUsages.reduce((s, e) => s + (e.cost ?? 0), 0)
+   750→  const subcontractorTotal = project.subcontractorInvoices.reduce((s, si) => s + (si.totalAmount ?? 0), 0)
+   751→
+   752→  const categories = [
+   753→    { key: 'purchases', label: t('فواتير المشتريات', 'Purchase Invoices'), count: project.purchaseInvoices.length, total: purchaseTotal, color: 'bg-rose-50 border-rose-200', badge: 'bg-rose-100 text-rose-700' },
+   754→    { key: 'expenses', label: t('المصروفات', 'Expenses'), count: project.expenses.length, total: expenseTotal, color: 'bg-orange-50 border-orange-200', badge: 'bg-orange-100 text-orange-700' },
+   755→    { key: 'labor', label: t('تكاليف العمالة', 'Labor Costs'), count: project.laborCosts.length, total: laborTotal, color: 'bg-amber-50 border-amber-200', badge: 'bg-amber-100 text-amber-700' },
+   756→    { key: 'equipment', label: t('تكاليف المعدات', 'Equipment Costs'), count: project.equipmentCosts.length + project.equipmentUsages.length, total: equipmentTotal, color: 'bg-cyan-50 border-cyan-200', badge: 'bg-cyan-100 text-cyan-700' },
+   757→    { key: 'subcontractors', label: t('مقاولو الباطن', 'Subcontractors'), count: project.subcontractorInvoices.length, total: subcontractorTotal, color: 'bg-violet-50 border-violet-200', badge: 'bg-violet-100 text-violet-700' },
+   758→  ]
+   759→
+   760→  const grandTotal = purchaseTotal + expenseTotal + laborTotal + equipmentTotal + subcontractorTotal
+   761→
+   762→  return (
+   763→    <div className="space-y-4">
+   764→      {/* Summary Cards */}
+   765→      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+   766→        {categories.map(cat => (
+   767→          <Card key={cat.key} className={`${cat.color} border`}>
+   768→            <CardContent className="p-3">
+   769→              <p className="text-xs font-medium text-gray-600 mb-1">{cat.label}</p>
+   770→              <p className="text-sm font-bold">
+   771→                <MoneyDisplay value={cat.total} mode="system" lang={lang} bold size="sm" />
+   772→              </p>
+   773→              <Badge className={`${cat.badge} text-[10px] mt-1`}>{cat.count} {t('سجل', 'records')}</Badge>
+   774→            </CardContent>
+   775→          </Card>
+   776→        ))}
+   777→      </div>
+   778→
+   779→      {/* Grand Total */}
+   780→      <Card className="border-2 border-gray-300">
+   781→        <CardContent className="p-4 flex items-center justify-between">
+   782→          <span className="text-base font-bold text-gray-800">{t('إجمالي التكاليف', 'Total Costs')}</span>
+   783→          <span className="text-rose-700">
+   784→            <MoneyDisplay value={grandTotal} mode="system" lang={lang} bold size="xl" />
+   785→          </span>
+   786→        </CardContent>
+   787→      </Card>
+   788→
+   789→      {/* Purchase Invoices Table */}
+   790→      {project.purchaseInvoices.length > 0 && (
+   791→        <Card>
+   792→          <CardHeader className="pb-2">
+   793→            <CardTitle className="text-base flex items-center gap-2">
+   794→              <Package className="size-4 text-rose-600" />
+   795→              {t('فواتير المشتريات', 'Purchase Invoices')}
+   796→            </CardTitle>
+   797→          </CardHeader>
+   798→          <CardContent className="px-0 pb-2">
+   799→            <Table>
+   800→              <TableHeader>
+   801→                <TableRow>
+   802→                  <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No')}</TableHead>
+   803→                  <TableHead className="text-right">{t('المورد', 'Supplier')}</TableHead>
+   804→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+   805→                  <TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead>
+   806→                  <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+   807→                </TableRow>
+   808→              </TableHeader>
+   809→              <TableBody>
+   810→                {project.purchaseInvoices.map(pi => (
+   811→                  <TableRow key={pi.id}>
+   812→                    <TableCell className="font-medium">{pi.invoiceNo}</TableCell>
+   813→                    <TableCell>{pi.supplier.name}</TableCell>
+   814→                    <TableCell>{formatDate(pi.date, lang)}</TableCell>
+   815→                    <TableCell><MoneyDisplay value={pi.totalAmount} mode="system" lang={lang} size="sm" /></TableCell>
+   816→                    <TableCell>
+   817→                      <Badge variant="outline" className={invoiceStatusColors[pi.status] || 'bg-gray-100 text-gray-600'}>
+   818→                        {invoiceStatusLabels[pi.status] || pi.status}
+   819→                      </Badge>
+   820→                    </TableCell>
+   821→                  </TableRow>
+   822→                ))}
+   823→                <TableRow className="bg-rose-50 font-bold">
+   824→                  <TableCell colSpan={3}>{t('الإجمالي', 'Total')}</TableCell>
+   825→                  <TableCell><MoneyDisplay value={purchaseTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+   826→                  <TableCell />
+   827→                </TableRow>
+   828→              </TableBody>
+   829→            </Table>
+   830→          </CardContent>
+   831→        </Card>
+   832→      )}
+   833→
+   834→      {/* Expenses Table */}
+   835→      {project.expenses.length > 0 && (
+   836→        <Card>
+   837→          <CardHeader className="pb-2">
+   838→            <CardTitle className="text-base flex items-center gap-2">
+   839→              <Receipt className="size-4 text-orange-600" />
+   840→              {t('المصروفات', 'Expenses')}
+   841→            </CardTitle>
+   842→          </CardHeader>
+   843→          <CardContent className="px-0 pb-2">
+   844→            <Table>
+   845→              <TableHeader>
+   846→                <TableRow>
+   847→                  <TableHead className="text-right">{t('الفئة', 'Category')}</TableHead>
+   848→                  <TableHead className="text-right">{t('الوصف', 'Description')}</TableHead>
+   849→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+   850→                  <TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead>
+   851→                  <TableHead className="text-right">{t('الضريبة', 'VAT')}</TableHead>
+   852→                  <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+   853→                </TableRow>
+   854→              </TableHeader>
+   855→              <TableBody>
+   856→                {project.expenses.map(exp => (
+   857→                  <TableRow key={exp.id}>
+   858→                    <TableCell>
+   859→                      <Badge variant="outline" className="bg-orange-50 text-orange-700 text-[10px]">
+   860→                        {expenseCategoryLabels[exp.category] || exp.category}
+   861→                      </Badge>
+   862→                    </TableCell>
+   863→                    <TableCell>{exp.description}</TableCell>
+   864→                    <TableCell>{formatDate(exp.date, lang)}</TableCell>
+   865→                    <TableCell><MoneyDisplay value={exp.amount} mode="system" lang={lang} size="sm" /></TableCell>
+   866→                    <TableCell><MoneyDisplay value={exp.vatAmount} mode="system" lang={lang} size="sm" /></TableCell>
+   867→                    <TableCell className="font-semibold"><MoneyDisplay value={exp.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
+   868→                  </TableRow>
+   869→                ))}
+   870→                <TableRow className="bg-orange-50 font-bold">
+   871→                  <TableCell colSpan={3}>{t('الإجمالي', 'Total')}</TableCell>
+   872→                  <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + e.amount, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+   873→                  <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + e.vatAmount, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+   874→                  <TableCell><MoneyDisplay value={expenseTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+   875→                </TableRow>
+   876→              </TableBody>
+   877→            </Table>
+   878→          </CardContent>
+   879→        </Card>
+   880→      )}
+   881→
+   882→      {/* Labor Costs Table */}
+   883→      {project.laborCosts.length > 0 && (
+   884→        <Card>
+   885→          <CardHeader className="pb-2">
+   886→            <CardTitle className="text-base flex items-center gap-2">
+   887→              <Users className="size-4 text-amber-600" />
+   888→              {t('تكاليف العمالة', 'Labor Costs')}
+   889→            </CardTitle>
+   890→          </CardHeader>
+   891→          <CardContent className="px-0 pb-2">
+   892→            <Table>
+   893→              <TableHeader>
+   894→                <TableRow>
+   895→                  <TableHead className="text-right">{t('الوصف', 'Description')}</TableHead>
+   896→                  <TableHead className="text-right">{t('العمال', 'Workers')}</TableHead>
+   897→                  <TableHead className="text-right">{t('الأيام', 'Days')}</TableHead>
+   898→                  <TableHead className="text-right">{t('اليومية', 'Daily Rate')}</TableHead>
+   899→                  <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+   900→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+   901→                </TableRow>
+   902→              </TableHeader>
+   903→              <TableBody>
+   904→                {project.laborCosts.map(lc => (
+   905→                  <TableRow key={lc.id}>
+   906→                    <TableCell>{lc.description}</TableCell>
+   907→                    <TableCell>{lc.workers}</TableCell>
+   908→                    <TableCell>{lc.days}</TableCell>
+   909→                    <TableCell><MoneyDisplay value={lc.dailyRate} mode="system" lang={lang} size="sm" /></TableCell>
+   910→                    <TableCell className="font-semibold"><MoneyDisplay value={lc.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
+   911→                    <TableCell>{formatDate(lc.date, lang)}</TableCell>
+   912→                  </TableRow>
+   913→                ))}
+   914→                <TableRow className="bg-amber-50 font-bold">
+   915→                  <TableCell colSpan={4}>{t('الإجمالي', 'Total')}</TableCell>
+   916→                  <TableCell><MoneyDisplay value={laborTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+   917→                  <TableCell />
+   918→                </TableRow>
+   919→              </TableBody>
+   920→            </Table>
+   921→          </CardContent>
+   922→        </Card>
+   923→      )}
+   924→
+   925→      {/* Equipment Costs */}
+   926→      {(project.equipmentCosts.length > 0 || project.equipmentUsages.length > 0) && (
+   927→        <Card>
+   928→          <CardHeader className="pb-2">
+   929→            <CardTitle className="text-base flex items-center gap-2">
+   930→              <Cog className="size-4 text-cyan-600" />
+   931→              {t('تكاليف المعدات', 'Equipment Costs')}
+   932→            </CardTitle>
+   933→          </CardHeader>
+   934→          <CardContent className="px-0 pb-2">
+   935→            <Table>
+   936→              <TableHeader>
+   937→                <TableRow>
+   938→                  <TableHead className="text-right">{t('النوع', 'Type')}</TableHead>
+   939→                  <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
+   940→                  <TableHead className="text-right">{t('الوصف', 'Description')}</TableHead>
+   941→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+   942→                  <TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead>
+   943→                </TableRow>
+   944→              </TableHeader>
+   945→              <TableBody>
+   946→                {project.equipmentUsages.map(eu => (
+   947→                  <TableRow key={`u-${eu.id}`}>
+   948→                    <TableCell><Badge className="bg-cyan-100 text-cyan-700 text-[10px]">{t('استخدام', 'Usage')}</Badge></TableCell>
+   949→                    <TableCell>{eu.equipment.name}</TableCell>
+   950→                    <TableCell>{eu.description || `${eu.hours} ${t('ساعات', 'hours')}`}</TableCell>
+   951→                    <TableCell>{formatDate(eu.date, lang)}</TableCell>
+   952→                    <TableCell className="font-semibold"><MoneyDisplay value={eu.cost} mode="system" lang={lang} bold size="sm" /></TableCell>
+   953→                  </TableRow>
+   954→                ))}
+   955→                {project.equipmentCosts.map(ec => (
+   956→                  <TableRow key={`c-${ec.id}`}>
+   957→                    <TableCell><Badge className="bg-teal-100 text-teal-700 text-[10px]">{t('تكلفة', 'Cost')}</Badge></TableCell>
+   958→                    <TableCell>—</TableCell>
+   959→                    <TableCell>{ec.description}</TableCell>
+   960→                    <TableCell>{formatDate(ec.date, lang)}</TableCell>
+   961→                    <TableCell className="font-semibold"><MoneyDisplay value={ec.amount} mode="system" lang={lang} bold size="sm" /></TableCell>
+   962→                  </TableRow>
+   963→                ))}
+   964→                <TableRow className="bg-cyan-50 font-bold">
+   965→                  <TableCell colSpan={4}>{t('الإجمالي', 'Total')}</TableCell>
+   966→                  <TableCell><MoneyDisplay value={equipmentTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+   967→                </TableRow>
+   968→              </TableBody>
+   969→            </Table>
+   970→          </CardContent>
+   971→        </Card>
+   972→      )}
+   973→
+   974→      {/* Subcontractor Invoices */}
+   975→      {project.subcontractorInvoices.length > 0 && (
+   976→        <Card>
+   977→          <CardHeader className="pb-2">
+   978→            <CardTitle className="text-base flex items-center gap-2">
+   979→              <HardHat className="size-4 text-violet-600" />
+   980→              {t('فواتير مقاولي الباطن', 'Subcontractor Invoices')}
+   981→            </CardTitle>
+   982→          </CardHeader>
+   983→          <CardContent className="px-0 pb-2">
+   984→            <Table>
+   985→              <TableHeader>
+   986→                <TableRow>
+   987→                  <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No')}</TableHead>
+   988→                  <TableHead className="text-right">{t('المقاول', 'Subcontractor')}</TableHead>
+   989→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+   990→                  <TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead>
+   991→                  <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+   992→                </TableRow>
+   993→              </TableHeader>
+   994→              <TableBody>
+   995→                {project.subcontractorInvoices.map(si => (
+   996→                  <TableRow key={si.id}>
+   997→                    <TableCell className="font-medium">{si.invoiceNo}</TableCell>
+   998→                    <TableCell>{si.subcontractor.name}</TableCell>
+   999→                    <TableCell>{formatDate(si.date, lang)}</TableCell>
+  1000→                    <TableCell><MoneyDisplay value={si.totalAmount} mode="system" lang={lang} size="sm" /></TableCell>
+  1001→                    <TableCell>
+  1002→                      <Badge variant="outline" className={invoiceStatusColors[si.status] || 'bg-gray-100 text-gray-600'}>
+  1003→                        {invoiceStatusLabels[si.status] || si.status}
+  1004→                      </Badge>
+  1005→                    </TableCell>
+  1006→                  </TableRow>
+  1007→                ))}
+  1008→                <TableRow className="bg-violet-50 font-bold">
+  1009→                  <TableCell colSpan={3}>{t('الإجمالي', 'Total')}</TableCell>
+  1010→                  <TableCell><MoneyDisplay value={subcontractorTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1011→                  <TableCell />
+  1012→                </TableRow>
+  1013→              </TableBody>
+  1014→            </Table>
+  1015→          </CardContent>
+  1016→        </Card>
+  1017→      )}
+  1018→
+  1019→      {/* Empty state */}
+  1020→      {grandTotal === 0 && (
+  1021→        <div className="flex flex-col items-center gap-3 py-10">
+  1022→          <Receipt className="size-12 text-gray-300" />
+  1023→          <p className="text-muted-foreground">{t('لا توجد تكاليف مسجلة لهذا المشروع', 'No costs recorded for this project')}</p>
+  1024→        </div>
+  1025→      )}
+  1026→    </div>
+  1027→  )
+  1028→}
+  1029→
+  1030→// ============ Revenue Tab Component (الإيرادات) ============
+  1031→function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
+  1032→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  1033→
+  1034→  const extractsTotal = project.progressClaims.reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+  1035→  const invoicesTotal = project.salesInvoices.reduce((s, si) => s + (si.totalAmount ?? 0), 0)
+  1036→  const paidTotal = project.salesInvoices.reduce((s, si) => s + (si.paidAmount ?? 0), 0)
+  1037→  const collectionsTotal = project.salesInvoices.reduce((s, si) =>
+  1038→    s + si.clientPayments.reduce((ps, cp) => ps + (cp.amount ?? 0), 0), 0)
+  1039→
+  1040→  return (
+  1041→    <div className="space-y-4">
+  1042→      {/* Summary Cards */}
+  1043→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1044→        <Card className="border-emerald-200 bg-emerald-50/50">
+  1045→          <CardContent className="p-3">
+  1046→            <p className="text-xs text-gray-600">{t('إجمالي المستخلصات', 'Total Claims')}</p>
+  1047→            <p className="text-sm font-bold text-emerald-700"><MoneyDisplay value={extractsTotal} mode="system" lang={lang} bold size="sm" /></p>
+  1048→          </CardContent>
+  1049→        </Card>
+  1050→        <Card className="border-teal-200 bg-teal-50/50">
+  1051→          <CardContent className="p-3">
+  1052→            <p className="text-xs text-gray-600">{t('إجمالي الفواتير', 'Total Invoices')}</p>
+  1053→            <p className="text-sm font-bold text-teal-700"><MoneyDisplay value={invoicesTotal} mode="system" lang={lang} bold size="sm" /></p>
+  1054→          </CardContent>
+  1055→        </Card>
+  1056→        <Card className="border-blue-200 bg-blue-50/50">
+  1057→          <CardContent className="p-3">
+  1058→            <p className="text-xs text-gray-600">{t('المحصل', 'Collected')}</p>
+  1059→            <p className="text-sm font-bold text-blue-700"><MoneyDisplay value={paidTotal} mode="system" lang={lang} bold size="sm" /></p>
+  1060→          </CardContent>
+  1061→        </Card>
+  1062→        <Card className="border-amber-200 bg-amber-50/50">
+  1063→          <CardContent className="p-3">
+  1064→            <p className="text-xs text-gray-600">{t('المتبقي', 'Outstanding')}</p>
+  1065→            <p className="text-sm font-bold text-amber-700"><MoneyDisplay value={invoicesTotal - paidTotal} mode="system" lang={lang} bold size="sm" /></p>
+  1066→          </CardContent>
+  1067→        </Card>
+  1068→      </div>
+  1069→
+  1070→      {/* Progress Claims Table */}
+  1071→      <Card>
+  1072→        <CardHeader className="pb-2">
+  1073→          <CardTitle className="text-base flex items-center gap-2">
+  1074→            <TrendingUp className="size-4 text-emerald-600" />
+  1075→            {t('المستخلصات', 'Progress Claims')}
+  1076→          </CardTitle>
+  1077→        </CardHeader>
+  1078→        <CardContent className="px-0 pb-2">
+  1079→          {project.progressClaims.length > 0 ? (
+  1080→            <Table>
+  1081→              <TableHeader>
+  1082→                <TableRow>
+  1083→                  <TableHead className="text-right">{t('رقم المستخلص', 'Claim No')}</TableHead>
+  1084→                  <TableHead className="text-right">{t('العقد', 'Contract')}</TableHead>
+  1085→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+  1086→                  <TableHead className="text-right">{t('النسبة', '%')}</TableHead>
+  1087→                  <TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead>
+  1088→                  <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+  1089→                  <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+  1090→                </TableRow>
+  1091→              </TableHeader>
+  1092→              <TableBody>
+  1093→                {project.progressClaims.map(cl => (
+  1094→                  <TableRow key={cl.id}>
+  1095→                    <TableCell className="font-medium">{cl.claimNo}</TableCell>
+  1096→                    <TableCell>{cl.contract.contractNo}</TableCell>
+  1097→                    <TableCell>{formatDate(cl.date, lang)}</TableCell>
+  1098→                    <TableCell>{cl.percentage}%</TableCell>
+  1099→                    <TableCell><MoneyDisplay value={cl.amount} mode="system" lang={lang} size="sm" /></TableCell>
+  1100→                    <TableCell className="font-semibold"><MoneyDisplay value={cl.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1101→                    <TableCell>
+  1102→                      <Badge variant="outline" className={claimStatusColors[cl.status]}>
+  1103→                        {claimStatusLabels[cl.status]}
+  1104→                      </Badge>
+  1105→                    </TableCell>
+  1106→                  </TableRow>
+  1107→                ))}
+  1108→                <TableRow className="bg-emerald-50 font-bold">
+  1109→                  <TableCell colSpan={4}>{t('الإجمالي', 'Total')}</TableCell>
+  1110→                  <TableCell><MoneyDisplay value={project.progressClaims.reduce((s, c) => s + c.amount, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1111→                  <TableCell><MoneyDisplay value={extractsTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1112→                  <TableCell />
+  1113→                </TableRow>
+  1114→              </TableBody>
+  1115→            </Table>
+  1116→          ) : (
+  1117→            <p className="px-6 py-6 text-center text-muted-foreground">{t('لا توجد مستخلصات', 'No claims')}</p>
+  1118→          )}
+  1119→        </CardContent>
+  1120→      </Card>
+  1121→
+  1122→      {/* Sales Invoices Table */}
+  1123→      <Card>
+  1124→        <CardHeader className="pb-2">
+  1125→          <CardTitle className="text-base flex items-center gap-2">
+  1126→            <DollarSign className="size-4 text-teal-600" />
+  1127→            {t('فواتير العملاء', 'Client Invoices')}
+  1128→          </CardTitle>
+  1129→        </CardHeader>
+  1130→        <CardContent className="px-0 pb-2">
+  1131→          {project.salesInvoices.length > 0 ? (
+  1132→            <Table>
+  1133→              <TableHeader>
+  1134→                <TableRow>
+  1135→                  <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No')}</TableHead>
+  1136→                  <TableHead className="text-right">{t('المصدر', 'Source')}</TableHead>
+  1137→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+  1138→                  <TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead>
+  1139→                  <TableHead className="text-right">{t('المدفوع', 'Paid')}</TableHead>
+  1140→                  <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+  1141→                </TableRow>
+  1142→              </TableHeader>
+  1143→              <TableBody>
+  1144→                {project.salesInvoices.map(si => (
+  1145→                  <TableRow key={si.id}>
+  1146→                    <TableCell className="font-medium">{si.invoiceNo}</TableCell>
+  1147→                    <TableCell>
+  1148→                      <Badge className={`text-[10px] ${si.sourceType === 'EXTRACT' ? 'bg-teal-100 text-teal-700' : 'bg-purple-100 text-purple-700'}`}>
+  1149→                        {si.sourceType === 'EXTRACT' ? t('مستخلص', 'Extract') : t('تايم شيت', 'Timesheet')}
+  1150→                      </Badge>
+  1151→                    </TableCell>
+  1152→                    <TableCell>{formatDate(si.date, lang)}</TableCell>
+  1153→                    <TableCell><MoneyDisplay value={si.totalAmount} mode="system" lang={lang} size="sm" /></TableCell>
+  1154→                    <TableCell><MoneyDisplay value={si.paidAmount} mode="system" lang={lang} size="sm" /></TableCell>
+  1155→                    <TableCell>
+  1156→                      <Badge variant="outline" className={invoiceStatusColors[si.status] || 'bg-gray-100'}>
+  1157→                        {invoiceStatusLabels[si.status] || si.status}
+  1158→                      </Badge>
+  1159→                    </TableCell>
+  1160→                  </TableRow>
+  1161→                ))}
+  1162→                <TableRow className="bg-teal-50 font-bold">
+  1163→                  <TableCell colSpan={3}>{t('الإجمالي', 'Total')}</TableCell>
+  1164→                  <TableCell><MoneyDisplay value={invoicesTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1165→                  <TableCell><MoneyDisplay value={paidTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1166→                  <TableCell />
+  1167→                </TableRow>
+  1168→              </TableBody>
+  1169→            </Table>
+  1170→          ) : (
+  1171→            <p className="px-6 py-6 text-center text-muted-foreground">{t('لا توجد فواتير', 'No invoices')}</p>
+  1172→          )}
+  1173→        </CardContent>
+  1174→      </Card>
+  1175→
+  1176→      {/* Collections from Client Payments */}
+  1177→      <Card>
+  1178→        <CardHeader className="pb-2">
+  1179→          <CardTitle className="text-base flex items-center gap-2">
+  1180→            <CreditCard className="size-4 text-blue-600" />
+  1181→            {t('التحصيلات', 'Collections')}
+  1182→          </CardTitle>
+  1183→        </CardHeader>
+  1184→        <CardContent className="px-0 pb-2">
+  1185→          {collectionsTotal > 0 ? (
+  1186→            <div className="px-6 py-4">
+  1187→              <div className="flex items-center justify-between py-2">
+  1188→                <span className="text-sm font-medium text-gray-700">{t('إجمالي التحصيلات', 'Total Collections')}</span>
+  1189→                <span className="text-blue-700">
+  1190→                  <MoneyDisplay value={collectionsTotal} mode="system" lang={lang} bold size="lg" />
+  1191→                </span>
+  1192→              </div>
+  1193→            </div>
+  1194→          ) : (
+  1195→            <p className="px-6 py-6 text-center text-muted-foreground">{t('لا توجد تحصيلات', 'No collections')}</p>
+  1196→          )}
+  1197→        </CardContent>
+  1198→      </Card>
+  1199→    </div>
+  1200→  )
+  1201→}
+  1202→
+  1203→// ============ Resources Tab Component (الموارد) ============
+  1204→function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
+  1205→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  1206→
+  1207→  const totalEmployees = project.workTeams.reduce((s, wt) => s + wt.members.length, 0) +
+  1208→    project.resourceAllocations.filter(ra => ra.resourceType === 'EMPLOYEE').length
+  1209→
+  1210→  return (
+  1211→    <div className="space-y-4">
+  1212→      {/* Summary Cards */}
+  1213→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1214→        <Card className="border-violet-200 bg-violet-50/50">
+  1215→          <CardContent className="p-3">
+  1216→            <p className="text-xs text-gray-600">{t('فرق العمل', 'Work Teams')}</p>
+  1217→            <p className="text-2xl font-bold text-violet-700">{project.workTeams.length}</p>
+  1218→            <p className="text-xs text-gray-500">{t(`${totalEmployees} موظف`, `${totalEmployees} employees`)}</p>
+  1219→          </CardContent>
+  1220→        </Card>
+  1221→        <Card className="border-cyan-200 bg-cyan-50/50">
+  1222→          <CardContent className="p-3">
+  1223→            <p className="text-xs text-gray-600">{t('المعدات', 'Equipment')}</p>
+  1224→            <p className="text-2xl font-bold text-cyan-700">{project.equipmentOperations.length + project.equipmentUsages.length}</p>
+  1225→          </CardContent>
+  1226→        </Card>
+  1227→        <Card className="border-amber-200 bg-amber-50/50">
+  1228→          <CardContent className="p-3">
+  1229→            <p className="text-xs text-gray-600">{t('ساعات التشغيل', 'Operating Hours')}</p>
+  1230→            <p className="text-2xl font-bold text-amber-700">{formatNumber(project.equipmentOperations.reduce((s, eo) => s + eo.hours, 0) + project.equipmentUsages.reduce((s, eu) => s + eu.hours, 0))}</p>
+  1231→          </CardContent>
+  1232→        </Card>
+  1233→        <Card className="border-orange-200 bg-orange-50/50">
+  1234→          <CardContent className="p-3">
+  1235→            <p className="text-xs text-gray-600">{t('الوقود', 'Fuel')}</p>
+  1236→            <p className="text-2xl font-bold text-orange-700">{project.fuelLogs.length}</p>
+  1237→            <p className="text-xs text-gray-500">{formatNumber(project.fuelLogs.reduce((s, f) => s + f.liters, 0))} {t('لتر', 'L')}</p>
+  1238→          </CardContent>
+  1239→        </Card>
+  1240→      </div>
+  1241→
+  1242→      {/* Work Teams */}
+  1243→      {project.workTeams.length > 0 && (
+  1244→        <Card>
+  1245→          <CardHeader className="pb-2">
+  1246→            <CardTitle className="text-base flex items-center gap-2">
+  1247→              <Users className="size-4 text-violet-600" />
+  1248→              {t('فرق العمل', 'Work Teams')}
+  1249→            </CardTitle>
+  1250→          </CardHeader>
+  1251→          <CardContent className="px-4 pb-4">
+  1252→            <div className="space-y-3">
+  1253→              {project.workTeams.map(wt => (
+  1254→                <div key={wt.id} className="border rounded-lg p-3">
+  1255→                  <div className="flex items-center justify-between mb-2">
+  1256→                    <div className="flex items-center gap-2">
+  1257→                      <span className="font-bold text-sm">{wt.name}</span>
+  1258→                      <span className="text-xs text-gray-400">{wt.code}</span>
+  1259→                      {wt.specialty && <Badge className="bg-violet-100 text-violet-700 text-[10px]">{wt.specialty}</Badge>}
+  1260→                    </div>
+  1261→                    <Badge variant="outline" className="text-[10px]">
+  1262→                      {wt.members.length} {t('أعضاء', 'members')}
+  1263→                    </Badge>
+  1264→                  </div>
+  1265→                  <div className="flex flex-wrap gap-1.5">
+  1266→                    {wt.members.map(m => (
+  1267→                      <div key={m.id} className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${
+  1268→                        m.isLeader ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'
+  1269→                      }`}>
+  1270→                        {m.isLeader && <Shield className="size-3" />}
+  1271→                        {m.employee.name}
+  1272→                      </div>
+  1273→                    ))}
+  1274→                  </div>
+  1275→                </div>
+  1276→              ))}
+  1277→            </div>
+  1278→          </CardContent>
+  1279→        </Card>
+  1280→      )}
+  1281→
+  1282→      {/* Equipment Operations */}
+  1283→      {project.equipmentOperations.length > 0 && (
+  1284→        <Card>
+  1285→          <CardHeader className="pb-2">
+  1286→            <CardTitle className="text-base flex items-center gap-2">
+  1287→              <Cog className="size-4 text-cyan-600" />
+  1288→              {t('تشغيل المعدات', 'Equipment Operations')}
+  1289→            </CardTitle>
+  1290→          </CardHeader>
+  1291→          <CardContent className="px-0 pb-2">
+  1292→            <Table>
+  1293→              <TableHeader>
+  1294→                <TableRow>
+  1295→                  <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
+  1296→                  <TableHead className="text-right">{t('المشغل', 'Operator')}</TableHead>
+  1297→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+  1298→                  <TableHead className="text-right">{t('الساعات', 'Hours')}</TableHead>
+  1299→                </TableRow>
+  1300→              </TableHeader>
+  1301→              <TableBody>
+  1302→                {project.equipmentOperations.map(eo => (
+  1303→                  <TableRow key={eo.id}>
+  1304→                    <TableCell className="font-medium">{eo.equipment.name}</TableCell>
+  1305→                    <TableCell>{eo.operator?.name || '—'}</TableCell>
+  1306→                    <TableCell>{formatDate(eo.date, lang)}</TableCell>
+  1307→                    <TableCell>{eo.hours}</TableCell>
+  1308→                  </TableRow>
+  1309→                ))}
+  1310→              </TableBody>
+  1311→            </Table>
+  1312→          </CardContent>
+  1313→        </Card>
+  1314→      )}
+  1315→
+  1316→      {/* Fuel Logs */}
+  1317→      {project.fuelLogs.length > 0 && (
+  1318→        <Card>
+  1319→          <CardHeader className="pb-2">
+  1320→            <CardTitle className="text-base flex items-center gap-2">
+  1321→              <Fuel className="size-4 text-orange-600" />
+  1322→              {t('سجل الوقود', 'Fuel Log')}
+  1323→            </CardTitle>
+  1324→          </CardHeader>
+  1325→          <CardContent className="px-0 pb-2">
+  1326→            <Table>
+  1327→              <TableHeader>
+  1328→                <TableRow>
+  1329→                  <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
+  1330→                  <TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead>
+  1331→                  <TableHead className="text-right">{t('اللترات', 'Liters')}</TableHead>
+  1332→                  <TableHead className="text-right">{t('سعر اللتر', 'Price/L')}</TableHead>
+  1333→                  <TableHead className="text-right">{t('التكلفة', 'Cost')}</TableHead>
+  1334→                </TableRow>
+  1335→              </TableHeader>
+  1336→              <TableBody>
+  1337→                {project.fuelLogs.map(fl => (
+  1338→                  <TableRow key={fl.id}>
+  1339→                    <TableCell className="font-medium">{fl.equipment.name}</TableCell>
+  1340→                    <TableCell>{formatDate(fl.date, lang)}</TableCell>
+  1341→                    <TableCell>{fl.liters}</TableCell>
+  1342→                    <TableCell><MoneyDisplay value={fl.costPerLiter} mode="system" lang={lang} size="sm" /></TableCell>
+  1343→                    <TableCell className="font-semibold"><MoneyDisplay value={fl.totalCost} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1344→                  </TableRow>
+  1345→                ))}
+  1346→                <TableRow className="bg-orange-50 font-bold">
+  1347→                  <TableCell colSpan={2}>{t('الإجمالي', 'Total')}</TableCell>
+  1348→                  <TableCell>{formatNumber(project.fuelLogs.reduce((s, f) => s + f.liters, 0))}</TableCell>
+  1349→                  <TableCell />
+  1350→                  <TableCell><MoneyDisplay value={project.fuelLogs.reduce((s, f) => s + f.totalCost, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+  1351→                </TableRow>
+  1352→              </TableBody>
+  1353→            </Table>
+  1354→          </CardContent>
+  1355→        </Card>
+  1356→      )}
+  1357→
+  1358→      {/* Timesheets */}
+  1359→      {project.timesheets.length > 0 && (
+  1360→        <Card>
+  1361→          <CardHeader className="pb-2">
+  1362→            <CardTitle className="text-base flex items-center gap-2">
+  1363→              <Clock className="size-4 text-amber-600" />
+  1364→              {t('ساعات التشغيل', 'Timesheets')}
+  1365→            </CardTitle>
+  1366→          </CardHeader>
+  1367→          <CardContent className="px-0 pb-2">
+  1368→            <Table>
+  1369→              <TableHeader>
+  1370→                <TableRow>
+  1371→                  <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
+  1372→                  <TableHead className="text-right">{t('الشهر', 'Month')}</TableHead>
+  1373→                  <TableHead className="text-right">{t('ساعات التشغيل', 'Hours')}</TableHead>
+  1374→                  <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+  1375→                </TableRow>
+  1376→              </TableHeader>
+  1377→              <TableBody>
+  1378→                {project.timesheets.map(ts => (
+  1379→                  <TableRow key={ts.id}>
+  1380→                    <TableCell className="font-medium">{ts.equipment.name}</TableCell>
+  1381→                    <TableCell>{ts.month}/{ts.year}</TableCell>
+  1382→                    <TableCell>{ts.operatingHours}</TableCell>
+  1383→                    <TableCell>
+  1384→                      <Badge variant="outline" className={claimStatusColors[ts.status] || 'bg-gray-100'}>
+  1385→                        {claimStatusLabels[ts.status] || ts.status}
+  1386→                      </Badge>
+  1387→                    </TableCell>
+  1388→                  </TableRow>
+  1389→                ))}
+  1390→              </TableBody>
+  1391→            </Table>
+  1392→          </CardContent>
+  1393→        </Card>
+  1394→      )}
+  1395→
+  1396→      {/* Resource Allocations */}
+  1397→      {project.resourceAllocations.length > 0 && (
+  1398→        <Card>
+  1399→          <CardHeader className="pb-2">
+  1400→            <CardTitle className="text-base flex items-center gap-2">
+  1401→              <Users className="size-4 text-teal-600" />
+  1402→              {t('توزيع الموارد', 'Resource Allocations')}
+  1403→            </CardTitle>
+  1404→          </CardHeader>
+  1405→          <CardContent className="px-0 pb-2">
+  1406→            <Table>
+  1407→              <TableHeader>
+  1408→                <TableRow>
+  1409→                  <TableHead className="text-right">{t('نوع المورد', 'Resource Type')}</TableHead>
+  1410→                  <TableHead className="text-right">{t('تاريخ البدء', 'Start Date')}</TableHead>
+  1411→                  <TableHead className="text-right">{t('تاريخ الانتهاء', 'End Date')}</TableHead>
+  1412→                  <TableHead className="text-right">{t('ملاحظات', 'Notes')}</TableHead>
+  1413→                </TableRow>
+  1414→              </TableHeader>
+  1415→              <TableBody>
+  1416→                {project.resourceAllocations.map(ra => (
+  1417→                  <TableRow key={ra.id}>
+  1418→                    <TableCell>
+  1419→                      <Badge className={`text-[10px] ${
+  1420→                        ra.resourceType === 'EMPLOYEE' ? 'bg-violet-100 text-violet-700' :
+  1421→                        ra.resourceType === 'TEAM' ? 'bg-amber-100 text-amber-700' :
+  1422→                        'bg-cyan-100 text-cyan-700'
+  1423→                      }`}>
+  1424→                        {ra.resourceType === 'EMPLOYEE' ? t('موظف', 'Employee') :
+  1425→                         ra.resourceType === 'TEAM' ? t('فريق', 'Team') :
+  1426→                         t('معدة', 'Equipment')}
+  1427→                      </Badge>
+  1428→                    </TableCell>
+  1429→                    <TableCell>{formatDate(ra.startDate, lang)}</TableCell>
+  1430→                    <TableCell>{formatDate(ra.endDate, lang)}</TableCell>
+  1431→                    <TableCell>{ra.notes || '—'}</TableCell>
+  1432→                  </TableRow>
+  1433→                ))}
+  1434→              </TableBody>
+  1435→            </Table>
+  1436→          </CardContent>
+  1437→        </Card>
+  1438→      )}
+  1439→
+  1440→      {/* Empty state */}
+  1441→      {totalEmployees === 0 && project.equipmentOperations.length === 0 && project.fuelLogs.length === 0 && project.timesheets.length === 0 && project.resourceAllocations.length === 0 && (
+  1442→        <div className="flex flex-col items-center gap-3 py-10">
+  1443→          <Users className="size-12 text-gray-300" />
+  1444→          <p className="text-muted-foreground">{t('لا توجد موارد مخصصة لهذا المشروع', 'No resources allocated to this project')}</p>
+  1445→        </div>
+  1446→      )}
+  1447→    </div>
+  1448→  )
+  1449→}
+  1450→
+  1451→// ============ Project Detail View ============
+  1452→function ProjectDetailView({ project, onBack, lang }: { project: ProjectDetail; onBack: () => void; lang: 'ar' | 'en' }) {
+  1453→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  1454→
+  1455→  return (
+  1456→    <div className="space-y-6">
+  1457→      {/* Header */}
+  1458→      <div className="flex items-center gap-3">
+  1459→        <Button variant="outline" size="icon" onClick={onBack}>
+  1460→          <ArrowRight className="size-4" />
+  1461→        </Button>
+  1462→        <div className="flex-1">
+  1463→          <div className="flex items-center gap-3 flex-wrap">
+  1464→            <h2 className="text-xl font-bold">{project.name}</h2>
+  1465→            <Badge variant="outline" className={statusColors[project.status]}>
+  1466→              {statusLabels[project.status]}
+  1467→            </Badge>
+  1468→            <Badge className={`text-[10px] px-2 py-0.5 ${
+  1469→              project.projectType === 'CONSTRUCTION'
+  1470→                ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+  1471→                : 'bg-cyan-100 text-cyan-700 border-cyan-200'
+  1472→            }`}>
+  1473→              {project.projectType === 'CONSTRUCTION' ? t('تنفيذي', 'Construction') : t('تأجير', 'Rental')}
+  1474→            </Badge>
+  1475→          </div>
+  1476→          <p className="text-sm text-muted-foreground">{project.code} — {project.client.name}</p>
+  1477→        </div>
+  1478→      </div>
+  1479→
+  1480→      {/* Project Type Banner */}
+  1481→      {project.projectType === 'EQUIPMENT_RENTAL' ? (
+  1482→        <div className="flex items-center gap-3 rounded-lg bg-cyan-50 border border-cyan-200 px-4 py-3">
+  1483→          <div className="flex size-9 items-center justify-center rounded-lg bg-cyan-100">
+  1484→            <Truck className="size-5 text-cyan-600" />
+  1485→          </div>
+  1486→          <div>
+  1487→            <p className="text-sm font-bold text-cyan-700">{t('مشروع تأجير معدات', 'Equipment Rental Project')}</p>
+  1488→            <p className="text-xs text-cyan-600">{t('هذا المشروع مخصص لتأجير المعدات', 'This project is dedicated to equipment rental')}</p>
+  1489→          </div>
+  1490→        </div>
+  1491→      ) : (
+  1492→        <div className="flex items-center gap-3 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3">
+  1493→          <div className="flex size-9 items-center justify-center rounded-lg bg-emerald-100">
+  1494→            <Building2 className="size-5 text-emerald-600" />
+  1495→          </div>
+  1496→          <div>
+  1497→            <p className="text-sm font-bold text-emerald-700">{t('مشروع تنفيذي', 'Construction Project')}</p>
+  1498→            <p className="text-xs text-emerald-600">{t('هذا المشروع تنفيذي للمقاولات', 'This is a construction project')}</p>
+  1499→          </div>
+  1500→        </div>
+  1501→      )}
+  1502→
+  1503→      {/* Info Cards */}
+  1504→      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+  1505→        <Card>
+  1506→          <CardContent className="p-3">
+  1507→            <p className="text-xs text-muted-foreground">{t('قيمة العقد', 'Contract Value')}</p>
+  1508→            <p className="text-sm font-medium text-emerald-700">
+  1509→              <MoneyDisplay value={project.contractValue || 0} mode="system" lang={lang} bold size="sm" />
+  1510→            </p>
+  1511→          </CardContent>
+  1512→        </Card>
+  1513→        <Card>
+  1514→          <CardContent className="p-3">
+  1515→            <p className="text-xs text-muted-foreground">{t('العميل', 'Client')}</p>
+  1516→            <p className="text-sm font-medium truncate">{project.client.name}</p>
+  1517→          </CardContent>
+  1518→        </Card>
+  1519→        <Card>
+  1520→          <CardContent className="p-3">
+  1521→            <p className="text-xs text-muted-foreground">{t('الموقع', 'Location')}</p>
+  1522→            <p className="text-sm font-medium truncate">{project.location || '—'}</p>
+  1523→          </CardContent>
+  1524→        </Card>
+  1525→        <Card>
+  1526→          <CardContent className="p-3">
+  1527→            <p className="text-xs text-muted-foreground">{t('تاريخ البدء', 'Start Date')}</p>
+  1528→            <p className="text-sm font-medium">{formatDate(project.startDate, lang)}</p>
+  1529→          </CardContent>
+  1530→        </Card>
+  1531→        <Card>
+  1532→          <CardContent className="p-3">
+  1533→            <p className="text-xs text-muted-foreground">{t('تاريخ الانتهاء', 'End Date')}</p>
+  1534→            <p className="text-sm font-medium">{formatDate(project.endDate, lang)}</p>
+  1535→          </CardContent>
+  1536→        </Card>
+  1537→        <Card>
+  1538→          <CardContent className="p-3">
+  1539→            <p className="text-xs text-muted-foreground">{t('العقود', 'Contracts')}</p>
+  1540→            <p className="text-sm font-medium">{project.contracts.length}</p>
+  1541→          </CardContent>
+  1542→        </Card>
+  1543→      </div>
+  1544→
+  1545→      {/* Tabs */}
+  1546→      <Tabs defaultValue="project-card" dir="rtl">
+  1547→        <TabsList className="flex-wrap">
+  1548→          <TabsTrigger value="project-card" className="gap-1.5">
+  1549→            <Calculator className="size-4" /> {t('كرت المشروع', 'Project Card')}
+  1550→          </TabsTrigger>
+  1551→          <TabsTrigger value="workflow" className="gap-1.5">
+  1552→            <Link2 className="size-4" /> {t('سلسلة العمل', 'Workflow')}
+  1553→          </TabsTrigger>
+  1554→          <TabsTrigger value="costs" className="gap-1.5">
+  1555→            <Receipt className="size-4" /> {t('التكاليف', 'Costs')}
+  1556→          </TabsTrigger>
+  1557→          <TabsTrigger value="revenue" className="gap-1.5">
+  1558→            <TrendingUp className="size-4" /> {t('الإيرادات', 'Revenue')}
+  1559→          </TabsTrigger>
+  1560→          <TabsTrigger value="resources" className="gap-1.5">
+  1561→            <Users className="size-4" /> {t('الموارد', 'Resources')}
+  1562→          </TabsTrigger>
+  1563→        </TabsList>
+  1564→
+  1565→        {/* Project Card Tab (كرت المشروع) */}
+  1566→        <TabsContent value="project-card">
+  1567→          <CostSheetView costSheet={project.costSheet} projectName={project.name} lang={lang} />
+  1568→        </TabsContent>
+  1569→
+  1570→        {/* Workflow Chain Tab (سلسلة العمل) */}
+  1571→        <TabsContent value="workflow">
+  1572→          <Card>
+  1573→            <CardContent className="p-6">
+  1574→              <WorkflowChainView project={project} lang={lang} />
+  1575→            </CardContent>
+  1576→          </Card>
+  1577→        </TabsContent>
+  1578→
+  1579→        {/* Costs Tab (التكاليف) */}
+  1580→        <TabsContent value="costs">
+  1581→          <CostsTab project={project} lang={lang} />
+  1582→        </TabsContent>
+  1583→
+  1584→        {/* Revenue Tab (الإيرادات) */}
+  1585→        <TabsContent value="revenue">
+  1586→          <RevenueTab project={project} lang={lang} />
+  1587→        </TabsContent>
+  1588→
+  1589→        {/* Resources Tab (الموارد) */}
+  1590→        <TabsContent value="resources">
+  1591→          <ResourcesTab project={project} lang={lang} />
+  1592→        </TabsContent>
+  1593→      </Tabs>
+  1594→    </div>
+  1595→  )
+  1596→}
+  1597→
+  1598→// ============ Project Card (List Item) ============
+  1599→function ProjectCard({ project, lang, onClick, onEdit, onDelete }: {
+  1600→  project: ProjectListItem; lang: 'ar' | 'en'
+  1601→  onClick: () => void; onEdit: () => void; onDelete: () => void
+  1602→}) {
+  1603→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  1604→  const isConstruction = project.projectType === 'CONSTRUCTION'
+  1605→
+  1606→  return (
+  1607→    <Card className={`cursor-pointer hover:shadow-md transition-all border-r-4 ${
+  1608→      isConstruction ? 'border-r-emerald-500' : 'border-r-cyan-500'
+  1609→    }`} onClick={onClick}>
+  1610→      <CardContent className="p-4">
+  1611→        <div className="flex items-start justify-between">
+  1612→          <div className="flex-1 min-w-0">
+  1613→            <div className="flex items-center gap-2 mb-1 flex-wrap">
+  1614→              <h3 className="font-bold text-base truncate">{project.name}</h3>
+  1615→              <Badge className={`text-[10px] ${
+  1616→                isConstruction ? 'bg-emerald-100 text-emerald-700' : 'bg-cyan-100 text-cyan-700'
+  1617→              }`}>
+  1618→                {isConstruction ? t('تنفيذي', 'Const.') : t('تأجير', 'Rental')}
+  1619→              </Badge>
+  1620→              <Badge variant="outline" className={statusColors[project.status]}>
+  1621→                {statusLabels[project.status]}
+  1622→              </Badge>
+  1623→            </div>
+  1624→            <div className="flex items-center gap-3 text-xs text-muted-foreground mb-2">
+  1625→              <span>{project.code}</span>
+  1626→              <span>•</span>
+  1627→              <span>{project.client.name}</span>
+  1628→            </div>
+  1629→            <div className="flex items-center gap-4 text-xs text-gray-500">
+  1630→              <span>{t('قيمة العقد', 'Contract')}: <span className="font-semibold text-emerald-700"><MoneyDisplay value={project.contractValue || 0} mode="system" lang={lang} bold size="xs" showSymbol={false} /></span></span>
+  1631→              <span>{t('العقود', 'Contracts')}: {project.contracts.length}</span>
+  1632→              <span>{t('المستخلصات', 'Claims')}: {project._count.progressClaims}</span>
+  1633→              <span>{t('BOQ', 'BOQ')}: {project._count.boqItems}</span>
+  1634→            </div>
+  1635→          </div>
+  1636→          <div className="flex items-center gap-1 shrink-0">
+  1637→            <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); onEdit() }}>
+  1638→              <Pencil className="size-3.5" />
+  1639→            </Button>
+  1640→            <Button variant="ghost" size="icon" className="size-8 text-rose-500 hover:text-rose-700" onClick={e => { e.stopPropagation(); onDelete() }}>
+  1641→              <Trash2 className="size-3.5" />
+  1642→            </Button>
+  1643→          </div>
+  1644→        </div>
+  1645→      </CardContent>
+  1646→    </Card>
+  1647→  )
+  1648→}
+  1649→
+  1650→// ============ Main Projects Module ============
+  1651→export function ProjectsModule() {
+  1652→  const queryClient = useQueryClient()
+  1653→  const { lang } = useAppStore()
+  1654→  const [search, setSearch] = useState('')
+  1655→  const [statusFilter, setStatusFilter] = useState<string>('all')
+  1656→  const [typeFilter, setTypeFilter] = useState<string>('all')
+  1657→  const [dialogOpen, setDialogOpen] = useState(false)
+  1658→  const [editingProject, setEditingProject] = useState<ProjectListItem | null>(null)
+  1659→  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  1660→
+  1661→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  1662→
+  1663→  // Fetch projects list
+  1664→  const { data: projects = [], isLoading, isError, refetch } = useQuery<ProjectListItem[]>({
+  1665→    queryKey: ['projects'],
+  1666→    queryFn: async () => {
+  1667→      const res = await fetch('/api/projects')
+  1668→      if (!res.ok) throw new Error('Failed to fetch')
+  1669→      return res.json()
+  1670→    },
+  1671→  })
+  1672→
+  1673→  // Fetch project detail
+  1674→  const { data: projectDetail, isLoading: isLoadingDetail } = useQuery<ProjectDetail>({
+  1675→    queryKey: ['project', selectedProjectId],
+  1676→    queryFn: async () => {
+  1677→      const res = await fetch(`/api/projects/${selectedProjectId}`)
+  1678→      if (!res.ok) throw new Error('Failed to fetch')
+  1679→      return res.json()
+  1680→    },
+  1681→    enabled: !!selectedProjectId,
+  1682→  })
+  1683→
+  1684→  // Fetch clients & branches for form
+  1685→  const { data: clients = [] } = useQuery<Client[]>({
+  1686→    queryKey: ['clients-for-form'],
+  1687→    queryFn: async () => {
+  1688→      const res = await fetch('/api/clients')
+  1689→      if (!res.ok) return []
+  1690→      return res.json()
+  1691→    },
+  1692→  })
+  1693→
+  1694→  const { data: branches = [] } = useQuery<Branch[]>({
+  1695→    queryKey: ['branches-for-form'],
+  1696→    queryFn: async () => {
+  1697→      const res = await fetch('/api/branches')
+  1698→      if (!res.ok) return []
+  1699→      return res.json()
+  1700→    },
+  1701→  })
+  1702→
+  1703→  // Delete mutation
+  1704→  const deleteMutation = useMutation({
+  1705→    mutationFn: (id: string) => fetch(`/api/projects/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+  1706→    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+  1707→  })
+  1708→
+  1709→  // Filter projects
+  1710→  const filtered = projects.filter(p => {
+  1711→    const matchSearch = !search || p.name.includes(search) || p.code.includes(search) || p.client.name.includes(search)
+  1712→    const matchStatus = statusFilter === 'all' || p.status === statusFilter
+  1713→    const matchType = typeFilter === 'all' || p.projectType === typeFilter
+  1714→    return matchSearch && matchStatus && matchType
+  1715→  })
+  1716→
+  1717→  // Detail view
+  1718→  if (selectedProjectId && projectDetail) {
+  1719→    return <ProjectDetailView project={projectDetail} onBack={() => setSelectedProjectId(null)} lang={lang} />
+  1720→  }
+  1721→
+  1722→  if (selectedProjectId && isLoadingDetail) {
+  1723→    return <DetailSkeleton />
+  1724→  }
+  1725→
+  1726→  // Summary stats
+  1727→  const totalContractValue = filtered.reduce((s, p) => s + (p.contractValue || 0), 0)
+  1728→  const activeProjects = filtered.filter(p => p.status === 'ACTIVE').length
+  1729→  const constructionProjects = filtered.filter(p => p.projectType === 'CONSTRUCTION').length
+  1730→  const rentalProjects = filtered.filter(p => p.projectType === 'EQUIPMENT_RENTAL').length
+  1731→
+  1732→  return (
+  1733→    <div className="space-y-6">
+  1734→      {/* Header */}
+  1735→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  1736→        <div>
+  1737→          <h1 className="text-2xl font-bold text-gray-900">{t('المشاريع', 'Projects')}</h1>
+  1738→          <p className="text-sm text-muted-foreground">{t('إدارة ومتابعة مشاريع المقاولات', 'Manage and track construction projects')}</p>
+  1739→        </div>
+  1740→        <div className="flex items-center gap-2">
+  1741→          <PrintButton type="generic-table" size="icon" />
+  1742→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
+  1743→            <RefreshCw className="size-4" />
+  1744→          </Button>
+  1745→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingProject(null); setDialogOpen(true) }}>
+  1746→            <Plus className="size-4" /> {t('مشروع جديد', 'New Project')}
+  1747→          </Button>
+  1748→        </div>
+  1749→      </div>
+  1750→
+  1751→      {/* Summary Cards */}
+  1752→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1753→        <Card className="border-emerald-200">
+  1754→          <CardContent className="p-3">
+  1755→            <p className="text-xs text-gray-500">{t('إجمالي المشاريع', 'Total Projects')}</p>
+  1756→            <p className="text-2xl font-bold text-gray-900">{filtered.length}</p>
+  1757→          </CardContent>
+  1758→        </Card>
+  1759→        <Card className="border-emerald-200">
+  1760→          <CardContent className="p-3">
+  1761→            <p className="text-xs text-gray-500">{t('المشاريع النشطة', 'Active Projects')}</p>
+  1762→            <p className="text-2xl font-bold text-emerald-700">{activeProjects}</p>
+  1763→          </CardContent>
+  1764→        </Card>
+  1765→        <Card className="border-emerald-200">
+  1766→          <CardContent className="p-3">
+  1767→            <p className="text-xs text-gray-500">{t('قيمة العقود', 'Contract Value')}</p>
+  1768→            <p className="text-sm font-bold text-emerald-700">
+  1769→              <MoneyDisplay value={totalContractValue} mode="system" lang={lang} bold size="sm" />
+  1770→            </p>
+  1771→          </CardContent>
+  1772→        </Card>
+  1773→        <Card className="border-gray-200">
+  1774→          <CardContent className="p-3">
+  1775→            <div className="flex items-center gap-3">
+  1776→              <div>
+  1777→                <p className="text-xs text-emerald-600">{t('تنفيذي', 'Const.')}: <span className="font-bold">{constructionProjects}</span></p>
+  1778→                <p className="text-xs text-cyan-600">{t('تأجير', 'Rental')}: <span className="font-bold">{rentalProjects}</span></p>
+  1779→              </div>
+  1780→            </div>
+  1781→          </CardContent>
+  1782→        </Card>
+  1783→      </div>
+  1784→
+  1785→      {/* Filters */}
+  1786→      <Card>
+  1787→        <CardContent className="p-4">
+  1788→          <div className="flex flex-col sm:flex-row gap-3">
+  1789→            <div className="relative flex-1">
+  1790→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+  1791→              <Input
+  1792→                placeholder={t('بحث بالاسم أو الكود أو العميل...', 'Search by name, code or client...')}
+  1793→                value={search}
+  1794→                onChange={e => setSearch(e.target.value)}
+  1795→                className="pr-9"
+  1796→              />
+  1797→            </div>
+  1798→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1799→              <SelectTrigger className="w-full sm:w-36">
+  1800→                <SelectValue placeholder={t('كل الحالات', 'All Status')} />
+  1801→              </SelectTrigger>
+  1802→              <SelectContent>
+  1803→                <SelectItem value="all">{t('كل الحالات', 'All Status')}</SelectItem>
+  1804→                <SelectItem value="PLANNING">{t('تخطيط', 'Planning')}</SelectItem>
+  1805→                <SelectItem value="ACTIVE">{t('نشط', 'Active')}</SelectItem>
+  1806→                <SelectItem value="ON_HOLD">{t('معلق', 'On Hold')}</SelectItem>
+  1807→                <SelectItem value="COMPLETED">{t('مكتمل', 'Completed')}</SelectItem>
+  1808→                <SelectItem value="CANCELLED">{t('ملغي', 'Cancelled')}</SelectItem>
+  1809→              </SelectContent>
+  1810→            </Select>
+  1811→            <Select value={typeFilter} onValueChange={setTypeFilter}>
+  1812→              <SelectTrigger className="w-full sm:w-36">
+  1813→                <SelectValue placeholder={t('كل الأنواع', 'All Types')} />
+  1814→              </SelectTrigger>
+  1815→              <SelectContent>
+  1816→                <SelectItem value="all">{t('كل الأنواع', 'All Types')}</SelectItem>
+  1817→                <SelectItem value="CONSTRUCTION">{t('تنفيذي', 'Construction')}</SelectItem>
+  1818→                <SelectItem value="EQUIPMENT_RENTAL">{t('تأجير', 'Rental')}</SelectItem>
+  1819→              </SelectContent>
+  1820→            </Select>
+  1821→          </div>
+  1822→        </CardContent>
+  1823→      </Card>
+  1824→
+  1825→      {/* Projects Cards */}
+  1826→      {isLoading ? (
+  1827→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  1828→          {Array.from({ length: 6 }).map((_, i) => (
+  1829→            <Card key={i}>
+  1830→              <CardContent className="p-4 space-y-3">
+  1831→                <Skeleton className="h-5 w-3/4" />
+  1832→                <Skeleton className="h-4 w-1/2" />
+  1833→                <Skeleton className="h-4 w-2/3" />
+  1834→              </CardContent>
+  1835→            </Card>
+  1836→          ))}
+  1837→        </div>
+  1838→      ) : isError ? (
+  1839→        <div className="flex flex-col items-center gap-3 py-10">
+  1840→          <p className="text-rose-600">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+  1841→          <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry')}</Button>
+  1842→        </div>
+  1843→      ) : filtered.length === 0 ? (
+  1844→        <div className="flex flex-col items-center gap-3 py-10">
+  1845→          <Building2 className="size-12 text-gray-300" />
+  1846→          <p className="text-muted-foreground">{t('لا توجد مشاريع', 'No projects found')}</p>
+  1847→          <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingProject(null); setDialogOpen(true) }}>
+  1848→            <Plus className="size-4 mr-1" /> {t('إنشاء مشروع', 'Create Project')}
+  1849→          </Button>
+  1850→        </div>
+  1851→      ) : (
+  1852→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  1853→          {filtered.map(project => (
+  1854→            <ProjectCard
+  1855→              key={project.id}
+  1856→              project={project}
+  1857→              lang={lang}
+  1858→              onClick={() => setSelectedProjectId(project.id)}
+  1859→              onEdit={() => { setEditingProject(project); setDialogOpen(true) }}
+  1860→              onDelete={() => { if (confirm(t('هل أنت متأكد من حذف هذا المشروع؟', 'Are you sure you want to delete this project?'))) deleteMutation.mutate(project.id) }}
+  1861→            />
+  1862→          ))}
+  1863→        </div>
+  1864→      )}
+  1865→
+  1866→      {/* Form Dialog */}
+  1867→      <ProjectFormDialog
+  1868→        open={dialogOpen}
+  1869→        onOpenChange={setDialogOpen}
+  1870→        editingProject={editingProject}
+  1871→        clients={clients}
+  1872→        branches={branches}
+  1873→      />
+  1874→    </div>
+  1875→  )
+  1876→}
+  1877→

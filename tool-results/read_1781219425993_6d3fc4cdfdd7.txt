@@ -1,0 +1,1669 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo, useEffect } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  FileText, Plus, Search, RefreshCw, ArrowRight, Calendar,
+     7→  DollarSign, Clock, Truck, Info, Eye, Edit3,
+     8→  CheckCircle, XCircle, AlertTriangle, MapPin,
+     9→  User, Phone, Fuel, Shield, Wrench, Send, Ban,
+    10→} from 'lucide-react'
+    11→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    12→import { Button } from '@/components/ui/button'
+    13→import { Input } from '@/components/ui/input'
+    14→import { Badge } from '@/components/ui/badge'
+    15→import { Textarea } from '@/components/ui/textarea'
+    16→import { Checkbox } from '@/components/ui/checkbox'
+    17→import {
+    18→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    19→} from '@/components/ui/table'
+    20→import {
+    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→} from '@/components/ui/select'
+    23→import { Label } from '@/components/ui/label'
+    24→import { Separator } from '@/components/ui/separator'
+    25→import { useAppStore, formatNumber, formatDate } from '@/stores/app-store'
+    26→import { MoneyDisplay } from '@/components/ui/money-display'
+    27→import { ModuleLayout } from '@/components/shared/module-layout'
+    28→import { PrintButton } from '@/components/shared/print-button'
+    29→
+    30→// ============ Helper ============
+    31→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    32→
+    33→// ============ Types ============
+    34→interface EquipmentOption {
+    35→  id: string; code: string; name: string; nameAr: string | null; status: string
+    36→}
+    37→
+    38→interface ClientOption {
+    39→  id: string; code: string; name: string; nameAr: string | null
+    40→}
+    41→
+    42→interface ProjectOption {
+    43→  id: string; code: string; name: string; nameAr: string | null
+    44→}
+    45→
+    46→interface Timesheet {
+    47→  id: string; contractId: string; month: number; year: number
+    48→  workedHours: number; hourlyRate: number; subtotal: number
+    49→  vatRate: number; vatAmount: number; totalAmount: number
+    50→  status: string; remarks: string | null; approvedBy: string | null
+    51→  approvedDate: string | null; invoiceId: string | null
+    52→  createdAt: string
+    53→}
+    54→
+    55→interface RentalContract {
+    56→  id: string; contractNo: string
+    57→  equipmentId: string; clientId: string; projectId: string | null
+    58→  startDate: string; endDate: string | null
+    59→  // Pricing
+    60→  pricingType: string // HOURLY, DAILY, MONTHLY, LUMP_SUM
+    61→  referenceRate: number  // القيمة الشهرية المرجعية
+    62→  referenceHours: number // ساعات التسعير المرجعية
+    63→  hourlyRate: number     // محسوب تلقائياً
+    64→  dailyRate: number
+    65→  monthlyRate: number
+    66→  lumpSumAmount: number
+    67→  // Work Location
+    68→  workCity: string | null
+    69→  workLocation: string | null
+    70→  siteSupervisor: string | null
+    71→  siteSupervisorPhone: string | null
+    72→  // Delivery
+    73→  deliveryFeesType: string // NONE, FIXED, ONE_WAY, ROUND_TRIP, BY_DISTANCE
+    74→  deliveryFees: number
+    75→  deliveryFeesTaxable: boolean
+    76→  // Operation
+    77→  operationMode: string // WITHOUT_DRIVER, WITH_DRIVER, WITH_CREW
+    78→  fuelResponsibility: string | null // ON_CLIENT, ON_COMPANY
+    79→  insuranceResponsibility: string | null // ON_CLIENT, ON_COMPANY
+    80→  // References
+    81→  salesOrderNo: string | null
+    82→  purchaseOrderNo: string | null
+    83→  quotationNo: string | null
+    84→  // Terms
+    85→  status: string // DRAFT, UNDER_REVIEW, ACTIVE, EXPIRED, CANCELLED
+    86→  paymentDuration: string | null
+    87→  additionalTerms: string | null
+    88→  notes: string | null
+    89→  totalAmount: number
+    90→  createdAt: string; updatedAt: string
+    91→  equipment: { id: string; code: string; name: string; nameAr: string | null; status?: string }
+    92→  timesheets: Timesheet[]
+    93→  client?: { id: string; code: string; name: string; nameAr: string | null }
+    94→  project?: { id: string; name: string; code: string }
+    95→}
+    96→
+    97→// ============ Status Config ============
+    98→const contractStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+    99→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-yellow-700', bg: 'bg-yellow-100' },
+   100→  UNDER_REVIEW: { label: { ar: 'قيد المراجعة', en: 'Under Review' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+   101→  ACTIVE: { label: { ar: 'فعال', en: 'Active' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   102→  EXPIRED: { label: { ar: 'منتهي', en: 'Expired' }, color: 'text-gray-600', bg: 'bg-gray-100' },
+   103→  CANCELLED: { label: { ar: 'ملغي', en: 'Cancelled' }, color: 'text-red-700', bg: 'bg-red-100' },
+   104→}
+   105→
+   106→function ContractStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   107→  const cfg = contractStatusConfig[status] || contractStatusConfig.DRAFT
+   108→  return <Badge className={`${cfg.bg} ${cfg.color} border-0 font-medium`}>{cfg.label[lang]}</Badge>
+   109→}
+   110→
+   111→// Timesheet status config
+   112→const timesheetStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   113→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-gray-700', bg: 'bg-gray-100' },
+   114→  SUBMITTED: { label: { ar: 'مرسل', en: 'Submitted' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+   115→  APPROVED: { label: { ar: 'معتمد', en: 'Approved' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   116→  REJECTED: { label: { ar: 'مرفوض', en: 'Rejected' }, color: 'text-red-700', bg: 'bg-red-100' },
+   117→}
+   118→
+   119→function TimesheetStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   120→  const cfg = timesheetStatusConfig[status] || timesheetStatusConfig.DRAFT
+   121→  return <Badge className={`${cfg.bg} ${cfg.color} border-0 text-xs`}>{cfg.label[lang]}</Badge>
+   122→}
+   123→
+   124→// ============ Option Labels ============
+   125→const pricingTypeOptions: { value: string; ar: string; en: string }[] = [
+   126→  { value: 'HOURLY', ar: 'بالساعة', en: 'Hourly' },
+   127→  { value: 'DAILY', ar: 'باليوم', en: 'Daily' },
+   128→  { value: 'MONTHLY', ar: 'بالشهر', en: 'Monthly' },
+   129→  { value: 'LUMP_SUM', ar: 'مبلغ مقطوع', en: 'Lump Sum' },
+   130→]
+   131→
+   132→const deliveryFeesTypeOptions: { value: string; ar: string; en: string }[] = [
+   133→  { value: 'NONE', ar: 'بدون رسوم', en: 'No Fees' },
+   134→  { value: 'FIXED', ar: 'مبلغ ثابت', en: 'Fixed Amount' },
+   135→  { value: 'ONE_WAY', ar: 'ذهاب فقط', en: 'One Way' },
+   136→  { value: 'ROUND_TRIP', ar: 'ذهاب وعودة', en: 'Round Trip' },
+   137→  { value: 'BY_DISTANCE', ar: 'حسب المسافة', en: 'By Distance' },
+   138→]
+   139→
+   140→const operationModeOptions: { value: string; ar: string; en: string }[] = [
+   141→  { value: 'WITHOUT_DRIVER', ar: 'بدون سائق', en: 'Without Driver' },
+   142→  { value: 'WITH_DRIVER', ar: 'مع سائق', en: 'With Driver' },
+   143→  { value: 'WITH_CREW', ar: 'مع فريق تشغيل', en: 'With Crew' },
+   144→]
+   145→
+   146→const responsibilityOptions: { value: string; ar: string; en: string }[] = [
+   147→  { value: 'ON_CLIENT', ar: 'على العميل', en: 'On Client' },
+   148→  { value: 'ON_COMPANY', ar: 'على الشركة', en: 'On Company' },
+   149→]
+   150→
+   151→// Month names
+   152→const monthNames = [
+   153→  { ar: 'يناير', en: 'January' }, { ar: 'فبراير', en: 'February' },
+   154→  { ar: 'مارس', en: 'March' }, { ar: 'أبريل', en: 'April' },
+   155→  { ar: 'مايو', en: 'May' }, { ar: 'يونيو', en: 'June' },
+   156→  { ar: 'يوليو', en: 'July' }, { ar: 'أغسطس', en: 'August' },
+   157→  { ar: 'سبتمبر', en: 'September' }, { ar: 'أكتوبر', en: 'October' },
+   158→  { ar: 'نوفمبر', en: 'November' }, { ar: 'ديسمبر', en: 'December' },
+   159→]
+   160→
+   161→// ============ Skeleton ============
+   162→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   163→  return (
+   164→    <div className="space-y-2">
+   165→      {Array.from({ length: rows }).map((_, i) => (
+   166→        <div key={i} className="flex gap-4 p-3">
+   167→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   168→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+   169→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   170→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   171→        </div>
+   172→      ))}
+   173→    </div>
+   174→  )
+   175→}
+   176→
+   177→// ============ Detail Row Helper ============
+   178→function DetailRow({ label, value, mono, dirLtr }: { label: string; value: string | number | React.ReactNode; mono?: boolean; dirLtr?: boolean }) {
+   179→  return (
+   180→    <div className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+   181→      <span className="text-sm text-muted-foreground">{label}</span>
+   182→      <span className={`text-sm font-medium ${mono ? 'font-mono' : ''}`} dir={dirLtr ? 'ltr' : undefined}>
+   183→        {value || '—'}
+   184→      </span>
+   185→    </div>
+   186→  )
+   187→}
+   188→
+   189→// ============ Main Component ============
+   190→type ViewMode = 'list' | 'create' | 'edit' | 'detail'
+   191→
+   192→export function RentalContractsModule() {
+   193→  const { lang } = useAppStore()
+   194→  const queryClient = useQueryClient()
+   195→  const [viewMode, setViewMode] = useState<ViewMode>('list')
+   196→  const [selectedId, setSelectedId] = useState<string | null>(null)
+   197→  const [searchQuery, setSearchQuery] = useState('')
+   198→  const [statusFilter, setStatusFilter] = useState('all')
+   199→
+   200→  // Fetch contracts
+   201→  const { data: contracts = [], isLoading, refetch } = useQuery<RentalContract[]>({
+   202→    queryKey: ['rental-contracts', statusFilter],
+   203→    queryFn: async () => {
+   204→      const params = new URLSearchParams()
+   205→      if (statusFilter !== 'all') params.set('status', statusFilter)
+   206→      const r = await fetch(`/api/equipment/rental-contracts?${params.toString()}`)
+   207→      if (!r.ok) throw new Error()
+   208→      return r.json()
+   209→    },
+   210→  })
+   211→
+   212→  // Fetch equipment options
+   213→  const { data: equipmentOptions = [] } = useQuery<EquipmentOption[]>({
+   214→    queryKey: ['equipment-options'],
+   215→    queryFn: async () => {
+   216→      const r = await fetch('/api/equipment')
+   217→      if (!r.ok) return []
+   218→      return r.json()
+   219→    },
+   220→  })
+   221→
+   222→  // Fetch client options
+   223→  const { data: clientOptions = [] } = useQuery<ClientOption[]>({
+   224→    queryKey: ['client-options'],
+   225→    queryFn: async () => {
+   226→      const r = await fetch('/api/clients?simple=true')
+   227→      if (!r.ok) return []
+   228→      return r.json()
+   229→    },
+   230→  })
+   231→
+   232→  // Fetch project options
+   233→  const { data: projectOptions = [] } = useQuery<ProjectOption[]>({
+   234→    queryKey: ['project-options'],
+   235→    queryFn: async () => {
+   236→      const r = await fetch('/api/projects/list')
+   237→      if (!r.ok) return []
+   238→      return r.json()
+   239→    },
+   240→  })
+   241→
+   242→  // Filter contracts by search
+   243→  const filteredContracts = useMemo(() => {
+   244→    if (!searchQuery) return contracts
+   245→    const q = searchQuery.toLowerCase()
+   246→    return contracts.filter(c =>
+   247→      c.contractNo.toLowerCase().includes(q) ||
+   248→      c.equipment?.name?.toLowerCase().includes(q) ||
+   249→      c.equipment?.nameAr?.includes(q) ||
+   250→      c.client?.name?.toLowerCase().includes(q) ||
+   251→      c.purchaseOrderNo?.toLowerCase().includes(q)
+   252→    )
+   253→  }, [contracts, searchQuery])
+   254→
+   255→  // KPIs
+   256→  const totalContracts = contracts.length
+   257→  const activeContracts = contracts.filter(c => c.status === 'ACTIVE').length
+   258→  const draftContracts = contracts.filter(c => c.status === 'DRAFT').length
+   259→  const expiredContracts = contracts.filter(c => c.status === 'EXPIRED').length
+   260→
+   261→  // Handlers
+   262→  const handleCreate = () => {
+   263→    setSelectedId(null)
+   264→    setViewMode('create')
+   265→  }
+   266→
+   267→  const handleEdit = (id: string) => {
+   268→    setSelectedId(id)
+   269→    setViewMode('edit')
+   270→  }
+   271→
+   272→  const handleViewDetail = (id: string) => {
+   273→    setSelectedId(id)
+   274→    setViewMode('detail')
+   275→  }
+   276→
+   277→  const handleBack = () => {
+   278→    setSelectedId(null)
+   279→    setViewMode('list')
+   280→  }
+   281→
+   282→  // ============ LIST VIEW ============
+   283→  if (viewMode === 'list') {
+   284→    return (
+   285→      <ModuleLayout
+   286→        title={{ ar: 'عقود التأجير', en: 'Rental Contracts' }}
+   287→        subtitle={{ ar: 'إدارة عقود تأجير المعدات والآليات', en: 'Manage equipment and machinery rental contracts' }}
+   288→        actions={
+   289→          <Button onClick={handleCreate} className="bg-emerald-600 hover:bg-emerald-700 gap-2">
+   290→            <Plus className="size-4" />
+   291→            {t('عقد جديد', 'New Contract', lang)}
+   292→          </Button>
+   293→        }
+   294→      >
+   295→        {/* KPI Cards */}
+   296→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   297→          <Card className="bg-emerald-50 border-emerald-200">
+   298→            <CardContent className="p-4 text-center">
+   299→              <div className="flex items-center justify-center gap-2 mb-1">
+   300→                <FileText className="size-4 text-emerald-600" />
+   301→                <p className="text-xs text-emerald-600">{t('إجمالي العقود', 'Total Contracts', lang)}</p>
+   302→              </div>
+   303→              <p className="text-2xl font-bold text-emerald-700">{formatNumber(totalContracts)}</p>
+   304→            </CardContent>
+   305→          </Card>
+   306→          <Card className="bg-teal-50 border-teal-200">
+   307→            <CardContent className="p-4 text-center">
+   308→              <div className="flex items-center justify-center gap-2 mb-1">
+   309→                <CheckCircle className="size-4 text-teal-600" />
+   310→                <p className="text-xs text-teal-600">{t('عقود فعالة', 'Active', lang)}</p>
+   311→              </div>
+   312→              <p className="text-2xl font-bold text-teal-700">{formatNumber(activeContracts)}</p>
+   313→            </CardContent>
+   314→          </Card>
+   315→          <Card className="bg-yellow-50 border-yellow-200">
+   316→            <CardContent className="p-4 text-center">
+   317→              <div className="flex items-center justify-center gap-2 mb-1">
+   318→                <Edit3 className="size-4 text-yellow-600" />
+   319→                <p className="text-xs text-yellow-600">{t('مسودات', 'Drafts', lang)}</p>
+   320→              </div>
+   321→              <p className="text-2xl font-bold text-yellow-700">{formatNumber(draftContracts)}</p>
+   322→            </CardContent>
+   323→          </Card>
+   324→          <Card className="bg-gray-50 border-gray-200">
+   325→            <CardContent className="p-4 text-center">
+   326→              <div className="flex items-center justify-center gap-2 mb-1">
+   327→                <Clock className="size-4 text-gray-500" />
+   328→                <p className="text-xs text-gray-500">{t('منتهية', 'Expired', lang)}</p>
+   329→              </div>
+   330→              <p className="text-2xl font-bold text-gray-600">{formatNumber(expiredContracts)}</p>
+   331→            </CardContent>
+   332→          </Card>
+   333→        </div>
+   334→
+   335→        {/* Filters */}
+   336→        <div className="flex flex-wrap items-center gap-3">
+   337→          <div className="relative flex-1 min-w-[200px]">
+   338→            <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   339→            <Input
+   340→              value={searchQuery}
+   341→              onChange={e => setSearchQuery(e.target.value)}
+   342→              placeholder={t('بحث برقم العقد، العميل، المعدة...', 'Search by contract no, client, equipment...', lang)}
+   343→              className="pr-9"
+   344→            />
+   345→          </div>
+   346→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   347→            <SelectTrigger className="w-[160px]">
+   348→              <SelectValue placeholder={t('الحالة', 'Status', lang)} />
+   349→            </SelectTrigger>
+   350→            <SelectContent>
+   351→              <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   352→              {Object.entries(contractStatusConfig).map(([k, v]) => (
+   353→                <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+   354→              ))}
+   355→            </SelectContent>
+   356→          </Select>
+   357→          <Button variant="outline" size="icon" onClick={() => refetch()}>
+   358→            <RefreshCw className="size-4" />
+   359→          </Button>
+   360→        </div>
+   361→
+   362→        {/* Contracts Table */}
+   363→        <Card>
+   364→          <CardContent className="p-0">
+   365→            {isLoading ? (
+   366→              <div className="p-4"><TableSkeleton /></div>
+   367→            ) : filteredContracts.length === 0 ? (
+   368→              <div className="p-8 text-center text-muted-foreground">
+   369→                <FileText className="size-12 mx-auto mb-2 opacity-30" />
+   370→                <p>{t('لا توجد عقود تأجير', 'No rental contracts found', lang)}</p>
+   371→              </div>
+   372→            ) : (
+   373→              <div className="overflow-x-auto">
+   374→                <Table>
+   375→                  <TableHeader>
+   376→                    <TableRow>
+   377→                      <TableHead className="text-right">{t('رقم العقد', 'Contract No.', lang)}</TableHead>
+   378→                      <TableHead className="text-right">{t('العميل', 'Client', lang)}</TableHead>
+   379→                      <TableHead className="text-right">{t('المعدة', 'Equipment', lang)}</TableHead>
+   380→                      <TableHead className="text-right">{t('نوع التسعير', 'Pricing', lang)}</TableHead>
+   381→                      <TableHead className="text-right">{t('القيمة', 'Value', lang)}</TableHead>
+   382→                      <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   383→                      <TableHead className="text-right">{t('تاريخ البداية', 'Start Date', lang)}</TableHead>
+   384→                      <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   385→                    </TableRow>
+   386→                  </TableHeader>
+   387→                  <TableBody>
+   388→                    {filteredContracts.map(contract => {
+   389→                      const pricingLabel = pricingTypeOptions.find(p => p.value === contract.pricingType)
+   390→                      const contractValue = contract.pricingType === 'HOURLY' ? contract.referenceRate
+   391→                        : contract.pricingType === 'DAILY' ? contract.dailyRate
+   392→                        : contract.pricingType === 'MONTHLY' ? contract.monthlyRate
+   393→                        : contract.lumpSumAmount
+   394→                      return (
+   395→                        <TableRow key={contract.id} className="cursor-pointer hover:bg-muted/50" onClick={() => handleViewDetail(contract.id)}>
+   396→                          <TableCell className="font-mono font-semibold text-emerald-700">{contract.contractNo}</TableCell>
+   397→                          <TableCell>
+   398→                            <p className="font-medium">{contract.client?.name || '—'}</p>
+   399→                          </TableCell>
+   400→                          <TableCell>
+   401→                            <div>
+   402→                              <p className="font-medium">{contract.equipment?.nameAr || contract.equipment?.name}</p>
+   403→                              <p className="text-xs text-muted-foreground">{contract.equipment?.code}</p>
+   404→                            </div>
+   405→                          </TableCell>
+   406→                          <TableCell>
+   407→                            <Badge variant="outline" className="text-xs">
+   408→                              {pricingLabel ? pricingLabel[lang] : contract.pricingType}
+   409→                            </Badge>
+   410→                          </TableCell>
+   411→                          <TableCell className="font-medium">
+   412→                            <MoneyDisplay value={contractValue} lang={lang} size="sm" bold />
+   413→                          </TableCell>
+   414→                          <TableCell><ContractStatusBadge status={contract.status} lang={lang} /></TableCell>
+   415→                          <TableCell>{formatDate(contract.startDate, lang)}</TableCell>
+   416→                          <TableCell>
+   417→                            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   418→                              <Button variant="ghost" size="icon" className="size-8" onClick={() => handleViewDetail(contract.id)}>
+   419→                                <Eye className="size-4" />
+   420→                              </Button>
+   421→                              {(contract.status === 'DRAFT' || contract.status === 'UNDER_REVIEW') && (
+   422→                                <Button variant="ghost" size="icon" className="size-8" onClick={() => handleEdit(contract.id)}>
+   423→                                  <Edit3 className="size-4" />
+   424→                                </Button>
+   425→                              )}
+   426→                            </div>
+   427→                          </TableCell>
+   428→                        </TableRow>
+   429→                      )
+   430→                    })}
+   431→                  </TableBody>
+   432→                </Table>
+   433→              </div>
+   434→            )}
+   435→          </CardContent>
+   436→        </Card>
+   437→      </ModuleLayout>
+   438→    )
+   439→  }
+   440→
+   441→  // ============ CREATE / EDIT VIEW ============
+   442→  if (viewMode === 'create' || viewMode === 'edit') {
+   443→    return (
+   444→      <ContractFormView
+   445→        mode={viewMode}
+   446→        contractId={selectedId}
+   447→        onBack={handleBack}
+   448→        equipmentOptions={equipmentOptions}
+   449→        clientOptions={clientOptions}
+   450→        projectOptions={projectOptions}
+   451→      />
+   452→    )
+   453→  }
+   454→
+   455→  // ============ DETAIL VIEW ============
+   456→  if (viewMode === 'detail' && selectedId) {
+   457→    return (
+   458→      <ContractDetailView
+   459→        contractId={selectedId}
+   460→        onBack={handleBack}
+   461→        onEdit={() => handleEdit(selectedId)}
+   462→      />
+   463→    )
+   464→  }
+   465→
+   466→  return null
+   467→}
+   468→
+   469→// ============ Contract Form View (6 Sections) ============
+   470→function ContractFormView({
+   471→  mode, contractId, onBack, equipmentOptions, clientOptions, projectOptions,
+   472→}: {
+   473→  mode: 'create' | 'edit'
+   474→  contractId: string | null
+   475→  onBack: () => void
+   476→  equipmentOptions: EquipmentOption[]
+   477→  clientOptions: ClientOption[]
+   478→  projectOptions: ProjectOption[]
+   479→}) {
+   480→  const { lang } = useAppStore()
+   481→  const queryClient = useQueryClient()
+   482→
+   483→  // For edit mode, fetch the contract
+   484→  const { data: editContract, isLoading: editLoading } = useQuery<RentalContract>({
+   485→    queryKey: ['rental-contract', contractId],
+   486→    queryFn: async () => {
+   487→      const r = await fetch(`/api/equipment/rental-contracts/${contractId}`)
+   488→      if (!r.ok) throw new Error()
+   489→      return r.json()
+   490→    },
+   491→    enabled: mode === 'edit' && !!contractId,
+   492→  })
+   493→
+   494→  // ═══════ Form State ═══════
+   495→  // Section 1: Contract Data
+   496→  const [equipmentId, setEquipmentId] = useState('')
+   497→  const [clientId, setClientId] = useState('')
+   498→  const [projectId, setProjectId] = useState('')
+   499→  const [startDate, setStartDate] = useState('')
+   500→  const [endDate, setEndDate] = useState('')
+   501→
+   502→  // Section 2: Work Location
+   503→  const [workCity, setWorkCity] = useState('')
+   504→  const [workLocation, setWorkLocation] = useState('')
+   505→  const [siteSupervisor, setSiteSupervisor] = useState('')
+   506→  const [siteSupervisorPhone, setSiteSupervisorPhone] = useState('')
+   507→
+   508→  // Section 3: Pricing
+   509→  const [pricingType, setPricingType] = useState('HOURLY')
+   510→  const [referenceRate, setReferenceRate] = useState('')
+   511→  const [referenceHours, setReferenceHours] = useState('')
+   512→  const [dailyRate, setDailyRate] = useState('')
+   513→  const [monthlyRate, setMonthlyRate] = useState('')
+   514→  const [lumpSumAmount, setLumpSumAmount] = useState('')
+   515→
+   516→  // Section 4: Additional Costs
+   517→  const [deliveryFeesType, setDeliveryFeesType] = useState('NONE')
+   518→  const [deliveryFees, setDeliveryFees] = useState('')
+   519→  const [deliveryFeesTaxable, setDeliveryFeesTaxable] = useState(true)
+   520→  const [fuelResponsibility, setFuelResponsibility] = useState('ON_CLIENT')
+   521→  const [operationMode, setOperationMode] = useState('WITHOUT_DRIVER')
+   522→  const [insuranceResponsibility, setInsuranceResponsibility] = useState('ON_CLIENT')
+   523→
+   524→  // Section 5: Reference Documents
+   525→  const [purchaseOrderNo, setPurchaseOrderNo] = useState('')
+   526→  const [quotationNo, setQuotationNo] = useState('')
+   527→
+   528→  // Section 6: Terms
+   529→  const [paymentDuration, setPaymentDuration] = useState('')
+   530→  const [additionalTerms, setAdditionalTerms] = useState('')
+   531→  const [notes, setNotes] = useState('')
+   532→
+   533→  // Populate form for edit mode
+   534→  useEffect(() => {
+   535→    /* eslint-disable react-hooks/set-state-in-effect -- Legitimate: populate form fields from API data on load */
+   536→    if (mode === 'edit' && editContract) {
+   537→      const c = editContract
+   538→      setEquipmentId(c.equipmentId)
+   539→      setClientId(c.clientId)
+   540→      setProjectId(c.projectId || '')
+   541→      setStartDate(c.startDate ? new Date(c.startDate).toISOString().split('T')[0] : '')
+   542→      setEndDate(c.endDate ? new Date(c.endDate).toISOString().split('T')[0] : '')
+   543→      setWorkCity(c.workCity || '')
+   544→      setWorkLocation(c.workLocation || '')
+   545→      setSiteSupervisor(c.siteSupervisor || '')
+   546→      setSiteSupervisorPhone(c.siteSupervisorPhone || '')
+   547→      setPricingType(c.pricingType || 'HOURLY')
+   548→      setReferenceRate(String(c.referenceRate || ''))
+   549→      setReferenceHours(String(c.referenceHours || ''))
+   550→      setDailyRate(String(c.dailyRate || ''))
+   551→      setMonthlyRate(String(c.monthlyRate || ''))
+   552→      setLumpSumAmount(String(c.lumpSumAmount || ''))
+   553→      setDeliveryFeesType(c.deliveryFeesType || 'NONE')
+   554→      setDeliveryFees(String(c.deliveryFees || ''))
+   555→      setDeliveryFeesTaxable(c.deliveryFeesTaxable !== false)
+   556→      setFuelResponsibility(c.fuelResponsibility || 'ON_CLIENT')
+   557→      setOperationMode(c.operationMode || 'WITHOUT_DRIVER')
+   558→      setInsuranceResponsibility(c.insuranceResponsibility || 'ON_CLIENT')
+   559→      setPurchaseOrderNo(c.purchaseOrderNo || '')
+   560→      setQuotationNo(c.quotationNo || '')
+   561→      setPaymentDuration(c.paymentDuration || '')
+   562→      setAdditionalTerms(c.additionalTerms || '')
+   563→      setNotes(c.notes || '')
+   564→    }
+   565→  }, [mode, editContract])
+   566→
+   567→  // Auto-calculate hourly rate
+   568→  const refRate = parseFloat(referenceRate) || 0
+   569→  const refHours = parseFloat(referenceHours) || 0
+   570→  const calculatedHourlyRate = (pricingType === 'HOURLY' && refHours > 0) ? refRate / refHours : 0
+   571→
+   572→  // Create mutation
+   573→  const createMutation = useMutation({
+   574→    mutationFn: (data: Record<string, unknown>) =>
+   575→      fetch('/api/equipment/rental-contracts', {
+   576→        method: 'POST',
+   577→        headers: { 'Content-Type': 'application/json' },
+   578→        body: JSON.stringify(data),
+   579→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   580→    onSuccess: () => {
+   581→      queryClient.invalidateQueries({ queryKey: ['rental-contracts'] })
+   582→      queryClient.invalidateQueries({ queryKey: ['equipment'] })
+   583→      onBack()
+   584→    },
+   585→  })
+   586→
+   587→  // Update mutation
+   588→  const updateMutation = useMutation({
+   589→    mutationFn: (data: Record<string, unknown> & { id: string }) =>
+   590→      fetch(`/api/equipment/rental-contracts/${data.id}`, {
+   591→        method: 'PATCH',
+   592→        headers: { 'Content-Type': 'application/json' },
+   593→        body: JSON.stringify(data),
+   594→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   595→    onSuccess: () => {
+   596→      queryClient.invalidateQueries({ queryKey: ['rental-contracts'] })
+   597→      queryClient.invalidateQueries({ queryKey: ['rental-contract', contractId] })
+   598→      queryClient.invalidateQueries({ queryKey: ['equipment'] })
+   599→      onBack()
+   600→    },
+   601→  })
+   602→
+   603→  const handleSubmit = (e: React.FormEvent) => {
+   604→    e.preventDefault()
+   605→    const data: Record<string, unknown> = {
+   606→      equipmentId,
+   607→      clientId,
+   608→      projectId: projectId || null,
+   609→      startDate,
+   610→      endDate: endDate || null,
+   611→      // Pricing
+   612→      pricingType,
+   613→      referenceRate: parseFloat(referenceRate) || 0,
+   614→      referenceHours: parseFloat(referenceHours) || 0,
+   615→      hourlyRate: calculatedHourlyRate,
+   616→      dailyRate: parseFloat(dailyRate) || 0,
+   617→      monthlyRate: parseFloat(monthlyRate) || 0,
+   618→      lumpSumAmount: parseFloat(lumpSumAmount) || 0,
+   619→      // Work Location
+   620→      workCity: workCity || null,
+   621→      workLocation: workLocation || null,
+   622→      siteSupervisor: siteSupervisor || null,
+   623→      siteSupervisorPhone: siteSupervisorPhone || null,
+   624→      // Delivery
+   625→      deliveryFeesType,
+   626→      deliveryFees: parseFloat(deliveryFees) || 0,
+   627→      deliveryFeesTaxable,
+   628→      // Operation
+   629→      operationMode,
+   630→      fuelResponsibility: fuelResponsibility || null,
+   631→      insuranceResponsibility: insuranceResponsibility || null,
+   632→      // Reference Documents
+   633→      purchaseOrderNo: purchaseOrderNo || null,
+   634→      quotationNo: quotationNo || null,
+   635→      // Terms
+   636→      paymentDuration: paymentDuration || null,
+   637→      additionalTerms: additionalTerms || null,
+   638→      notes: notes || null,
+   639→      status: 'DRAFT',
+   640→    }
+   641→
+   642→    if (mode === 'create') {
+   643→      createMutation.mutate(data)
+   644→    } else if (contractId) {
+   645→      updateMutation.mutate({ ...data, id: contractId })
+   646→    }
+   647→  }
+   648→
+   649→  const isSubmitting = createMutation.isPending || updateMutation.isPending
+   650→  const canSubmit = equipmentId && clientId && startDate && (
+   651→    (pricingType === 'HOURLY' && referenceRate && referenceHours) ||
+   652→    (pricingType === 'DAILY' && dailyRate) ||
+   653→    (pricingType === 'MONTHLY' && monthlyRate) ||
+   654→    (pricingType === 'LUMP_SUM' && lumpSumAmount)
+   655→  )
+   656→
+   657→  if (mode === 'edit' && editLoading) {
+   658→    return <div className="p-4"><TableSkeleton rows={6} /></div>
+   659→  }
+   660→
+   661→  return (
+   662→    <ModuleLayout
+   663→      title={{
+   664→        ar: mode === 'create' ? 'عقد تأجير جديد' : 'تعديل عقد التأجير',
+   665→        en: mode === 'create' ? 'New Rental Contract' : 'Edit Rental Contract',
+   666→      }}
+   667→      subtitle={mode === 'edit' && editContract ? { ar: editContract.contractNo, en: editContract.contractNo } : undefined}
+   668→      actions={
+   669→        <Button variant="outline" size="icon" onClick={onBack}>
+   670→          <ArrowRight className="size-4" />
+   671→        </Button>
+   672→      }
+   673→    >
+   674→      <form onSubmit={handleSubmit} className="space-y-6">
+   675→
+   676→        {/* ═══════════════════════════════════════════════════════════
+   677→            القسم الأول: بيانات العقد (Contract Data)
+   678→        ═══════════════════════════════════════════════════════════ */}
+   679→        <Card>
+   680→          <CardHeader className="pb-3">
+   681→            <CardTitle className="flex items-center gap-2 text-emerald-700">
+   682→              <FileText className="size-5" />
+   683→              {t('القسم الأول: بيانات العقد', 'Section 1: Contract Data', lang)}
+   684→            </CardTitle>
+   685→          </CardHeader>
+   686→          <CardContent className="space-y-4">
+   687→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   688→              {/* رقم العقد (read-only, auto-generated) */}
+   689→              <div className="space-y-2">
+   690→                <Label className="text-right block">
+   691→                  {t('رقم العقد', 'Contract No.', lang)}
+   692→                </Label>
+   693→                <Input
+   694→                  value={mode === 'edit' && editContract ? editContract.contractNo : t('تلقائي', 'Auto-generated', lang)}
+   695→                  readOnly
+   696→                  className="bg-muted"
+   697→                />
+   698→              </div>
+   699→
+   700→              {/* العميل */}
+   701→              <div className="space-y-2">
+   702→                <Label className="text-right block">
+   703→                  {t('العميل *', 'Client *', lang)}
+   704→                </Label>
+   705→                <Select value={clientId} onValueChange={setClientId} required>
+   706→                  <SelectTrigger>
+   707→                    <SelectValue placeholder={t('اختر العميل', 'Select client', lang)} />
+   708→                  </SelectTrigger>
+   709→                  <SelectContent>
+   710→                    {clientOptions.map(c => (
+   711→                      <SelectItem key={c.id} value={c.id}>
+   712→                        {c.nameAr || c.name}
+   713→                        <span className="text-muted-foreground text-xs mr-1">({c.code})</span>
+   714→                      </SelectItem>
+   715→                    ))}
+   716→                  </SelectContent>
+   717→                </Select>
+   718→              </div>
+   719→
+   720→              {/* المشروع */}
+   721→              <div className="space-y-2">
+   722→                <Label className="text-right block">
+   723→                  {t('المشروع', 'Project', lang)}
+   724→                  <span className="text-muted-foreground text-xs"> ({t('اختياري', 'optional', lang)})</span>
+   725→                </Label>
+   726→                <Select value={projectId} onValueChange={setProjectId}>
+   727→                  <SelectTrigger>
+   728→                    <SelectValue placeholder={t('اختر المشروع', 'Select project', lang)} />
+   729→                  </SelectTrigger>
+   730→                  <SelectContent>
+   731→                    {projectOptions.map(p => (
+   732→                      <SelectItem key={p.id} value={p.id}>
+   733→                        {p.nameAr || p.name}
+   734→                        <span className="text-muted-foreground text-xs mr-1">({p.code})</span>
+   735→                      </SelectItem>
+   736→                    ))}
+   737→                  </SelectContent>
+   738→                </Select>
+   739→              </div>
+   740→
+   741→              {/* المعدة */}
+   742→              <div className="space-y-2">
+   743→                <Label className="text-right block">
+   744→                  {t('المعدة *', 'Equipment *', lang)}
+   745→                </Label>
+   746→                <Select value={equipmentId} onValueChange={setEquipmentId} required>
+   747→                  <SelectTrigger>
+   748→                    <SelectValue placeholder={t('اختر المعدة', 'Select equipment', lang)} />
+   749→                  </SelectTrigger>
+   750→                  <SelectContent>
+   751→                    {equipmentOptions.map(eq => (
+   752→                      <SelectItem key={eq.id} value={eq.id}>
+   753→                        {eq.nameAr || eq.name}
+   754→                        <span className="text-muted-foreground text-xs mr-1">({eq.code})</span>
+   755→                      </SelectItem>
+   756→                    ))}
+   757→                  </SelectContent>
+   758→                </Select>
+   759→              </div>
+   760→
+   761→              {/* نوع النشاط */}
+   762→              <div className="space-y-2">
+   763→                <Label className="text-right block">
+   764→                  {t('نوع النشاط', 'Activity Type', lang)}
+   765→                </Label>
+   766→                <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
+   767→                  <div className="size-4 rounded border border-primary bg-primary text-primary-foreground flex items-center justify-center">
+   768→                    <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+   769→                  </div>
+   770→                  <span className="text-sm font-medium">{t('تأجير معدات', 'Equipment Rental', lang)}</span>
+   771→                </div>
+   772→              </div>
+   773→
+   774→              {/* تاريخ البداية */}
+   775→              <div className="space-y-2">
+   776→                <Label className="text-right block">
+   777→                  {t('تاريخ البداية *', 'Start Date *', lang)}
+   778→                </Label>
+   779→                <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required />
+   780→              </div>
+   781→
+   782→              {/* تاريخ النهاية */}
+   783→              <div className="space-y-2">
+   784→                <Label className="text-right block">
+   785→                  {t('تاريخ النهاية', 'End Date', lang)}
+   786→                  <span className="text-muted-foreground text-xs"> ({t('اختياري', 'optional', lang)})</span>
+   787→                </Label>
+   788→                <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+   789→              </div>
+   790→            </div>
+   791→          </CardContent>
+   792→        </Card>
+   793→
+   794→        {/* ═══════════════════════════════════════════════════════════
+   795→            القسم الثاني: موقع العمل (Work Location)
+   796→        ═══════════════════════════════════════════════════════════ */}
+   797→        <Card>
+   798→          <CardHeader className="pb-3">
+   799→            <CardTitle className="flex items-center gap-2 text-cyan-700">
+   800→              <MapPin className="size-5" />
+   801→              {t('القسم الثاني: موقع العمل', 'Section 2: Work Location', lang)}
+   802→            </CardTitle>
+   803→          </CardHeader>
+   804→          <CardContent>
+   805→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   806→              <div className="space-y-2">
+   807→                <Label className="text-right block">
+   808→                  {t('مدينة المشروع', 'Project City', lang)}
+   809→                </Label>
+   810→                <Input
+   811→                  value={workCity}
+   812→                  onChange={e => setWorkCity(e.target.value)}
+   813→                  placeholder={t('مثال: الرياض', 'e.g. Riyadh', lang)}
+   814→                />
+   815→              </div>
+   816→              <div className="space-y-2">
+   817→                <Label className="text-right block">
+   818→                  {t('موقع العمل', 'Work Location', lang)}
+   819→                </Label>
+   820→                <Input
+   821→                  value={workLocation}
+   822→                  onChange={e => setWorkLocation(e.target.value)}
+   823→                  placeholder={t('وصف الموقع', 'Location description', lang)}
+   824→                />
+   825→              </div>
+   826→              <div className="space-y-2">
+   827→                <Label className="text-right block flex items-center gap-1">
+   828→                  <User className="size-3.5" />
+   829→                  {t('اسم المسؤول', 'Site Supervisor', lang)}
+   830→                </Label>
+   831→                <Input
+   832→                  value={siteSupervisor}
+   833→                  onChange={e => setSiteSupervisor(e.target.value)}
+   834→                  placeholder={t('اسم المسؤول بالموقع', 'Supervisor name', lang)}
+   835→                />
+   836→              </div>
+   837→              <div className="space-y-2">
+   838→                <Label className="text-right block flex items-center gap-1">
+   839→                  <Phone className="size-3.5" />
+   840→                  {t('رقم الجوال', 'Phone Number', lang)}
+   841→                </Label>
+   842→                <Input
+   843→                  value={siteSupervisorPhone}
+   844→                  onChange={e => setSiteSupervisorPhone(e.target.value)}
+   845→                  placeholder="05XXXXXXXX"
+   846→                  dir="ltr"
+   847→                />
+   848→              </div>
+   849→            </div>
+   850→          </CardContent>
+   851→        </Card>
+   852→
+   853→        {/* ═══════════════════════════════════════════════════════════
+   854→            القسم الثالث: التسعير (Pricing)
+   855→        ═══════════════════════════════════════════════════════════ */}
+   856→        <Card>
+   857→          <CardHeader className="pb-3">
+   858→            <CardTitle className="flex items-center gap-2 text-teal-700">
+   859→              <DollarSign className="size-5" />
+   860→              {t('القسم الثالث: التسعير', 'Section 3: Pricing', lang)}
+   861→            </CardTitle>
+   862→          </CardHeader>
+   863→          <CardContent className="space-y-4">
+   864→            {/* نوع التسعير */}
+   865→            <div className="space-y-2">
+   866→              <Label className="text-right block">
+   867→                {t('نوع التسعير *', 'Pricing Type *', lang)}
+   868→              </Label>
+   869→              <Select value={pricingType} onValueChange={setPricingType}>
+   870→                <SelectTrigger className="w-full sm:w-[280px]">
+   871→                  <SelectValue />
+   872→                </SelectTrigger>
+   873→                <SelectContent>
+   874→                  {pricingTypeOptions.map(opt => (
+   875→                    <SelectItem key={opt.value} value={opt.value}>{opt[lang]}</SelectItem>
+   876→                  ))}
+   877→                </SelectContent>
+   878→              </Select>
+   879→            </div>
+   880→
+   881→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   882→              {/* القيمة الشهرية المرجعية */}
+   883→              <div className="space-y-2">
+   884→                <Label className="text-right block">
+   885→                  {t('القيمة الشهرية المرجعية *', 'Monthly Reference Rate *', lang)}
+   886→                </Label>
+   887→                <Input
+   888→                  type="number"
+   889→                  min="0"
+   890→                  step="0.01"
+   891→                  value={referenceRate}
+   892→                  onChange={e => setReferenceRate(e.target.value)}
+   893→                  dir="ltr"
+   894→                  placeholder={t('مثال: 240,000', 'e.g. 240,000', lang)}
+   895→                  required
+   896→                />
+   897→              </div>
+   898→
+   899→              {/* ساعات التسعير المرجعية - only for HOURLY */}
+   900→              {pricingType === 'HOURLY' && (
+   901→                <div className="space-y-2">
+   902→                  <Label className="text-right block">
+   903→                    {t('ساعات التسعير المرجعية *', 'Reference Hours *', lang)}
+   904→                  </Label>
+   905→                  <Input
+   906→                    type="number"
+   907→                    min="0"
+   908→                    step="0.5"
+   909→                    value={referenceHours}
+   910→                    onChange={e => setReferenceHours(e.target.value)}
+   911→                    dir="ltr"
+   912→                    placeholder={t('مثال: 260', 'e.g. 260', lang)}
+   913→                    required
+   914→                  />
+   915→                </div>
+   916→              )}
+   917→
+   918→              {/* سعر الساعة - auto-calculated, read-only for HOURLY */}
+   919→              {pricingType === 'HOURLY' && (
+   920→                <div className="space-y-2">
+   921→                  <Label className="text-right block">
+   922→                    {t('سعر الساعة (محسوب)', 'Hourly Rate (calculated)', lang)}
+   923→                  </Label>
+   924→                  <Input
+   925→                    value={calculatedHourlyRate > 0 ? calculatedHourlyRate.toFixed(2) : ''}
+   926→                    readOnly
+   927→                    className="bg-emerald-50 border-emerald-200 font-bold text-emerald-700"
+   928→                    dir="ltr"
+   929→                  />
+   930→                </div>
+   931→              )}
+   932→
+   933→              {/* السعر اليومي - for DAILY */}
+   934→              {pricingType === 'DAILY' && (
+   935→                <div className="space-y-2">
+   936→                  <Label className="text-right block">
+   937→                    {t('السعر اليومي *', 'Daily Rate *', lang)}
+   938→                  </Label>
+   939→                  <Input
+   940→                    type="number"
+   941→                    min="0"
+   942→                    step="0.01"
+   943→                    value={dailyRate}
+   944→                    onChange={e => setDailyRate(e.target.value)}
+   945→                    dir="ltr"
+   946→                    placeholder={t('مثال: 2,500', 'e.g. 2,500', lang)}
+   947→                    required
+   948→                  />
+   949→                </div>
+   950→              )}
+   951→
+   952→              {/* السعر الشهري - for MONTHLY */}
+   953→              {pricingType === 'MONTHLY' && (
+   954→                <div className="space-y-2">
+   955→                  <Label className="text-right block">
+   956→                    {t('السعر الشهري *', 'Monthly Rate *', lang)}
+   957→                  </Label>
+   958→                  <Input
+   959→                    type="number"
+   960→                    min="0"
+   961→                    step="0.01"
+   962→                    value={monthlyRate}
+   963→                    onChange={e => setMonthlyRate(e.target.value)}
+   964→                    dir="ltr"
+   965→                    placeholder={t('مثال: 75,000', 'e.g. 75,000', lang)}
+   966→                    required
+   967→                  />
+   968→                </div>
+   969→              )}
+   970→
+   971→              {/* المبلغ المقطوع - for LUMP_SUM */}
+   972→              {pricingType === 'LUMP_SUM' && (
+   973→                <div className="space-y-2">
+   974→                  <Label className="text-right block">
+   975→                    {t('المبلغ المقطوع *', 'Lump Sum Amount *', lang)}
+   976→                  </Label>
+   977→                  <Input
+   978→                    type="number"
+   979→                    min="0"
+   980→                    step="0.01"
+   981→                    value={lumpSumAmount}
+   982→                    onChange={e => setLumpSumAmount(e.target.value)}
+   983→                    dir="ltr"
+   984→                    placeholder={t('مثال: 500,000', 'e.g. 500,000', lang)}
+   985→                    required
+   986→                  />
+   987→                </div>
+   988→              )}
+   989→            </div>
+   990→
+   991→            {/* Hourly Rate Calculation Display */}
+   992→            {pricingType === 'HOURLY' && refRate > 0 && refHours > 0 && (
+   993→              <Card className="bg-emerald-50 border-emerald-200">
+   994→                <CardContent className="p-4">
+   995→                  <div className="flex items-center gap-2 mb-2">
+   996→                    <Info className="size-4 text-emerald-600" />
+   997→                    <span className="text-sm font-semibold text-emerald-700">
+   998→                      {t('حساب سعر الساعة', 'Hourly Rate Calculation', lang)}
+   999→                    </span>
+  1000→                  </div>
+  1001→                  <div className="flex items-center gap-2 text-lg" dir="ltr">
+  1002→                    <span className="font-semibold text-emerald-800">{formatNumber(refRate)}</span>
+  1003→                    <span className="text-emerald-500">÷</span>
+  1004→                    <span className="font-semibold text-emerald-800">{formatNumber(refHours)}</span>
+  1005→                    <span className="text-emerald-500">=</span>
+  1006→                    <span className="font-bold text-emerald-900 text-xl">{calculatedHourlyRate.toFixed(2)}</span>
+  1007→                    <span className="text-emerald-600">{t('﷼', 'SAR', lang)}</span>
+  1008→                  </div>
+  1009→                  <p className="text-xs text-emerald-500 mt-1">
+  1010→                    {t(
+  1011→                      'القيمة الشهرية المرجعية ÷ ساعات التسعير المرجعية = سعر الساعة',
+  1012→                      'Monthly Reference Rate ÷ Reference Hours = Hourly Rate',
+  1013→                      lang
+  1014→                    )}
+  1015→                  </p>
+  1016→                </CardContent>
+  1017→              </Card>
+  1018→            )}
+  1019→          </CardContent>
+  1020→        </Card>
+  1021→
+  1022→        {/* ═══════════════════════════════════════════════════════════
+  1023→            القسم الرابع: التكاليف الإضافية (Additional Costs)
+  1024→        ═══════════════════════════════════════════════════════════ */}
+  1025→        <Card>
+  1026→          <CardHeader className="pb-3">
+  1027→            <CardTitle className="flex items-center gap-2 text-orange-700">
+  1028→              <Truck className="size-5" />
+  1029→              {t('القسم الرابع: التكاليف الإضافية', 'Section 4: Additional Costs', lang)}
+  1030→            </CardTitle>
+  1031→          </CardHeader>
+  1032→          <CardContent className="space-y-4">
+  1033→            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  1034→              {/* رسوم النقل - نوع */}
+  1035→              <div className="space-y-2">
+  1036→                <Label className="text-right block">
+  1037→                  {t('رسوم النقل - نوع', 'Delivery Fees - Type', lang)}
+  1038→                </Label>
+  1039→                <Select value={deliveryFeesType} onValueChange={setDeliveryFeesType}>
+  1040→                  <SelectTrigger>
+  1041→                    <SelectValue />
+  1042→                  </SelectTrigger>
+  1043→                  <SelectContent>
+  1044→                    {deliveryFeesTypeOptions.map(opt => (
+  1045→                      <SelectItem key={opt.value} value={opt.value}>{opt[lang]}</SelectItem>
+  1046→                    ))}
+  1047→                  </SelectContent>
+  1048→                </Select>
+  1049→              </div>
+  1050→
+  1051→              {/* رسوم النقل - مبلغ */}
+  1052→              {deliveryFeesType !== 'NONE' && (
+  1053→                <div className="space-y-2">
+  1054→                  <Label className="text-right block">
+  1055→                    {t('رسوم النقل - مبلغ', 'Delivery Fees - Amount', lang)}
+  1056→                  </Label>
+  1057→                  <Input
+  1058→                    type="number"
+  1059→                    min="0"
+  1060→                    step="0.01"
+  1061→                    value={deliveryFees}
+  1062→                    onChange={e => setDeliveryFees(e.target.value)}
+  1063→                    dir="ltr"
+  1064→                    placeholder="0.00"
+  1065→                  />
+  1066→                </div>
+  1067→              )}
+  1068→
+  1069→              {/* خاضعة لضريبة القيمة المضافة */}
+  1070→              {deliveryFeesType !== 'NONE' && (
+  1071→                <div className="space-y-2">
+  1072→                  <Label className="text-right block">
+  1073→                    {t('ضريبة القيمة المضافة', 'VAT Applicable', lang)}
+  1074→                  </Label>
+  1075→                  <div className="flex items-center gap-2 h-10 px-3 border rounded-md">
+  1076→                    <Checkbox
+  1077→                      id="deliveryFeesTaxable"
+  1078→                      checked={deliveryFeesTaxable}
+  1079→                      onCheckedChange={(checked) => setDeliveryFeesTaxable(checked === true)}
+  1080→                    />
+  1081→                    <label htmlFor="deliveryFeesTaxable" className="text-sm">
+  1082→                      {t('خاضعة لضريبة القيمة المضافة', 'Subject to VAT', lang)}
+  1083→                    </label>
+  1084→                  </div>
+  1085→                </div>
+  1086→              )}
+  1087→            </div>
+  1088→
+  1089→            <Separator />
+  1090→
+  1091→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  1092→              {/* الوقود */}
+  1093→              <div className="space-y-2">
+  1094→                <Label className="text-right block flex items-center gap-1">
+  1095→                  <Fuel className="size-3.5" />
+  1096→                  {t('الوقود', 'Fuel', lang)}
+  1097→                </Label>
+  1098→                <Select value={fuelResponsibility} onValueChange={setFuelResponsibility}>
+  1099→                  <SelectTrigger>
+  1100→                    <SelectValue />
+  1101→                  </SelectTrigger>
+  1102→                  <SelectContent>
+  1103→                    {responsibilityOptions.map(opt => (
+  1104→                      <SelectItem key={opt.value} value={opt.value}>{opt[lang]}</SelectItem>
+  1105→                    ))}
+  1106→                  </SelectContent>
+  1107→                </Select>
+  1108→              </div>
+  1109→
+  1110→              {/* السائق */}
+  1111→              <div className="space-y-2">
+  1112→                <Label className="text-right block flex items-center gap-1">
+  1113→                  <Wrench className="size-3.5" />
+  1114→                  {t('التشغيل', 'Operation', lang)}
+  1115→                </Label>
+  1116→                <Select value={operationMode} onValueChange={setOperationMode}>
+  1117→                  <SelectTrigger>
+  1118→                    <SelectValue />
+  1119→                  </SelectTrigger>
+  1120→                  <SelectContent>
+  1121→                    {operationModeOptions.map(opt => (
+  1122→                      <SelectItem key={opt.value} value={opt.value}>{opt[lang]}</SelectItem>
+  1123→                    ))}
+  1124→                  </SelectContent>
+  1125→                </Select>
+  1126→              </div>
+  1127→
+  1128→              {/* التأمين */}
+  1129→              <div className="space-y-2">
+  1130→                <Label className="text-right block flex items-center gap-1">
+  1131→                  <Shield className="size-3.5" />
+  1132→                  {t('التأمين', 'Insurance', lang)}
+  1133→                </Label>
+  1134→                <Select value={insuranceResponsibility} onValueChange={setInsuranceResponsibility}>
+  1135→                  <SelectTrigger>
+  1136→                    <SelectValue />
+  1137→                  </SelectTrigger>
+  1138→                  <SelectContent>
+  1139→                    {responsibilityOptions.map(opt => (
+  1140→                      <SelectItem key={opt.value} value={opt.value}>{opt[lang]}</SelectItem>
+  1141→                    ))}
+  1142→                  </SelectContent>
+  1143→                </Select>
+  1144→              </div>
+  1145→            </div>
+  1146→          </CardContent>
+  1147→        </Card>
+  1148→
+  1149→        {/* ═══════════════════════════════════════════════════════════
+  1150→            القسم الخامس: المستندات المرجعية (Reference Documents)
+  1151→        ═══════════════════════════════════════════════════════════ */}
+  1152→        <Card>
+  1153→          <CardHeader className="pb-3">
+  1154→            <CardTitle className="flex items-center gap-2 text-violet-700">
+  1155→              <FileText className="size-5" />
+  1156→              {t('القسم الخامس: المستندات المرجعية', 'Section 5: Reference Documents', lang)}
+  1157→            </CardTitle>
+  1158→          </CardHeader>
+  1159→          <CardContent>
+  1160→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  1161→              {/* رقم طلب البيع */}
+  1162→              <div className="space-y-2">
+  1163→                <Label className="text-right block">
+  1164→                  {t('رقم طلب البيع', 'Sales Order No.', lang)}
+  1165→                </Label>
+  1166→                <Input
+  1167→                  value={mode === 'edit' && editContract?.salesOrderNo ? editContract.salesOrderNo : t('تلقائي', 'Auto-generated', lang)}
+  1168→                  readOnly
+  1169→                  className="bg-muted"
+  1170→                />
+  1171→              </div>
+  1172→
+  1173→              {/* رقم طلب شراء العميل */}
+  1174→              <div className="space-y-2">
+  1175→                <Label className="text-right block">
+  1176→                  {t('رقم طلب شراء العميل', 'Client PO No.', lang)}
+  1177→                </Label>
+  1178→                <Input
+  1179→                  value={purchaseOrderNo}
+  1180→                  onChange={e => setPurchaseOrderNo(e.target.value)}
+  1181→                  placeholder={t('رقم طلب الشراء', 'PO number', lang)}
+  1182→                  dir="ltr"
+  1183→                />
+  1184→              </div>
+  1185→
+  1186→              {/* رقم عرض السعر */}
+  1187→              <div className="space-y-2">
+  1188→                <Label className="text-right block">
+  1189→                  {t('رقم عرض السعر', 'Quotation No.', lang)}
+  1190→                </Label>
+  1191→                <Input
+  1192→                  value={quotationNo}
+  1193→                  onChange={e => setQuotationNo(e.target.value)}
+  1194→                  placeholder={t('رقم عرض السعر', 'Quotation number', lang)}
+  1195→                  dir="ltr"
+  1196→                />
+  1197→              </div>
+  1198→            </div>
+  1199→          </CardContent>
+  1200→        </Card>
+  1201→
+  1202→        {/* ═══════════════════════════════════════════════════════════
+  1203→            القسم السادس: الشروط (Terms)
+  1204→        ═══════════════════════════════════════════════════════════ */}
+  1205→        <Card>
+  1206→          <CardHeader className="pb-3">
+  1207→            <CardTitle className="flex items-center gap-2 text-rose-700">
+  1208→              <Calendar className="size-5" />
+  1209→              {t('القسم السادس: الشروط', 'Section 6: Terms', lang)}
+  1210→            </CardTitle>
+  1211→          </CardHeader>
+  1212→          <CardContent className="space-y-4">
+  1213→            <div className="space-y-2">
+  1214→              <Label className="text-right block">
+  1215→                {t('مدة السداد', 'Payment Duration', lang)}
+  1216→              </Label>
+  1217→              <Input
+  1218→                value={paymentDuration}
+  1219→                onChange={e => setPaymentDuration(e.target.value)}
+  1220→                placeholder={t('مثال: 60 يوم', 'e.g. 60 days', lang)}
+  1221→                className="sm:w-[280px]"
+  1222→              />
+  1223→            </div>
+  1224→
+  1225→            <div className="space-y-2">
+  1226→              <Label className="text-right block">
+  1227→                {t('شروط إضافية', 'Additional Terms', lang)}
+  1228→              </Label>
+  1229→              <Textarea
+  1230→                value={additionalTerms}
+  1231→                onChange={e => setAdditionalTerms(e.target.value)}
+  1232→                placeholder={t('أي شروط إضافية للعقد...', 'Any additional contract terms...', lang)}
+  1233→                rows={3}
+  1234→              />
+  1235→            </div>
+  1236→
+  1237→            <div className="space-y-2">
+  1238→              <Label className="text-right block">
+  1239→                {t('ملاحظات', 'Notes', lang)}
+  1240→              </Label>
+  1241→              <Textarea
+  1242→                value={notes}
+  1243→                onChange={e => setNotes(e.target.value)}
+  1244→                placeholder={t('ملاحظات إضافية...', 'Additional notes...', lang)}
+  1245→                rows={2}
+  1246→              />
+  1247→            </div>
+  1248→          </CardContent>
+  1249→        </Card>
+  1250→
+  1251→        {/* Form Actions */}
+  1252→        <div className="flex items-center justify-end gap-3">
+  1253→          <Button type="button" variant="outline" onClick={onBack}>
+  1254→            {t('إلغاء', 'Cancel', lang)}
+  1255→          </Button>
+  1256→          <Button
+  1257→            type="submit"
+  1258→            disabled={isSubmitting || !canSubmit}
+  1259→            className="bg-emerald-600 hover:bg-emerald-700 min-w-[140px]"
+  1260→          >
+  1261→            {isSubmitting
+  1262→              ? t('جاري الحفظ...', 'Saving...', lang)
+  1263→              : mode === 'create'
+  1264→                ? t('إنشاء العقد', 'Create Contract', lang)
+  1265→                : t('حفظ التعديلات', 'Save Changes', lang)
+  1266→            }
+  1267→          </Button>
+  1268→        </div>
+  1269→      </form>
+  1270→    </ModuleLayout>
+  1271→  )
+  1272→}
+  1273→
+  1274→// ============ Contract Detail View ============
+  1275→function ContractDetailView({
+  1276→  contractId, onBack, onEdit,
+  1277→}: {
+  1278→  contractId: string
+  1279→  onBack: () => void
+  1280→  onEdit: () => void
+  1281→}) {
+  1282→  const { lang } = useAppStore()
+  1283→  const queryClient = useQueryClient()
+  1284→
+  1285→  const { data: contract, isLoading, refetch } = useQuery<RentalContract>({
+  1286→    queryKey: ['rental-contract', contractId],
+  1287→    queryFn: async () => {
+  1288→      const r = await fetch(`/api/equipment/rental-contracts/${contractId}`)
+  1289→      if (!r.ok) throw new Error()
+  1290→      return r.json()
+  1291→    },
+  1292→  })
+  1293→
+  1294→  // Status change mutation
+  1295→  const statusMutation = useMutation({
+  1296→    mutationFn: ({ id, status }: { id: string; status: string }) =>
+  1297→      fetch(`/api/equipment/rental-contracts/${id}`, {
+  1298→        method: 'PATCH',
+  1299→        headers: { 'Content-Type': 'application/json' },
+  1300→        body: JSON.stringify({ status }),
+  1301→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+  1302→    onSuccess: () => {
+  1303→      queryClient.invalidateQueries({ queryKey: ['rental-contract', contractId] })
+  1304→      queryClient.invalidateQueries({ queryKey: ['rental-contracts'] })
+  1305→      queryClient.invalidateQueries({ queryKey: ['equipment'] })
+  1306→    },
+  1307→  })
+  1308→
+  1309→  const handleStatusChange = (newStatus: string) => {
+  1310→    if (contract) {
+  1311→      statusMutation.mutate({ id: contract.id, status: newStatus })
+  1312→    }
+  1313→  }
+  1314→
+  1315→  if (isLoading) {
+  1316→    return <div className="p-4"><TableSkeleton rows={6} /></div>
+  1317→  }
+  1318→
+  1319→  if (!contract) {
+  1320→    return (
+  1321→      <div className="p-8 text-center">
+  1322→        <AlertTriangle className="size-12 mx-auto mb-2 text-amber-500" />
+  1323→        <p>{t('العقد غير موجود', 'Contract not found', lang)}</p>
+  1324→        <Button variant="outline" className="mt-4" onClick={onBack}>
+  1325→          <ArrowRight className="size-4 ml-1" />
+  1326→          {t('العودة', 'Go Back', lang)}
+  1327→        </Button>
+  1328→      </div>
+  1329→    )
+  1330→  }
+  1331→
+  1332→  const timesheets = contract.timesheets || []
+  1333→  const totalTimesheetAmount = timesheets.reduce((s, ts) => s + ts.totalAmount, 0)
+  1334→  const totalWorkedHours = timesheets.reduce((s, ts) => s + ts.workedHours, 0)
+  1335→
+  1336→  const pricingLabel = pricingTypeOptions.find(p => p.value === contract.pricingType)
+  1337→  const deliveryLabel = deliveryFeesTypeOptions.find(d => d.value === contract.deliveryFeesType)
+  1338→  const operationLabel = operationModeOptions.find(o => o.value === contract.operationMode)
+  1339→  const fuelLabel = responsibilityOptions.find(f => f.value === contract.fuelResponsibility)
+  1340→  const insuranceLabel = responsibilityOptions.find(i => i.value === contract.insuranceResponsibility)
+  1341→
+  1342→  const contractValue = contract.pricingType === 'HOURLY' ? contract.referenceRate
+  1343→    : contract.pricingType === 'DAILY' ? contract.dailyRate
+  1344→    : contract.pricingType === 'MONTHLY' ? contract.monthlyRate
+  1345→    : contract.lumpSumAmount
+  1346→
+  1347→  return (
+  1348→    <ModuleLayout
+  1349→      title={{ ar: contract.contractNo, en: contract.contractNo }}
+  1350→      subtitle={{
+  1351→        ar: `${contract.equipment?.nameAr || contract.equipment?.name || ''} — ${contract.client?.name || ''}`,
+  1352→        en: `${contract.equipment?.name || ''} — ${contract.client?.name || ''}`,
+  1353→      }}
+  1354→      actions={
+  1355→        <div className="flex items-center gap-2 flex-wrap">
+  1356→          <Button variant="outline" size="icon" onClick={onBack}>
+  1357→            <ArrowRight className="size-4" />
+  1358→          </Button>
+  1359→          <PrintButton type="rental-contract" documentId={contract.id} size="sm" />
+  1360→        </div>
+  1361→      }
+  1362→    >
+  1363→      {/* Status + Actions Bar */}
+  1364→      <div className="flex flex-wrap items-center justify-between gap-3">
+  1365→        <div className="flex items-center gap-3">
+  1366→          <ContractStatusBadge status={contract.status} lang={lang} />
+  1367→          <span className="text-sm text-muted-foreground">
+  1368→            {t('تاريخ الإنشاء:', 'Created:', lang)} {formatDate(contract.createdAt, lang)}
+  1369→          </span>
+  1370→        </div>
+  1371→        <div className="flex items-center gap-2 flex-wrap">
+  1372→          {contract.status === 'DRAFT' && (
+  1373→            <>
+  1374→              <Button
+  1375→                className="bg-blue-600 hover:bg-blue-700 gap-1"
+  1376→                onClick={() => handleStatusChange('UNDER_REVIEW')}
+  1377→                disabled={statusMutation.isPending}
+  1378→              >
+  1379→                <Send className="size-4" />
+  1380→                {t('إرسال للمراجعة', 'Submit for Review', lang)}
+  1381→              </Button>
+  1382→              <Button variant="outline" onClick={onEdit} className="gap-1">
+  1383→                <Edit3 className="size-4" />
+  1384→                {t('تعديل', 'Edit', lang)}
+  1385→              </Button>
+  1386→            </>
+  1387→          )}
+  1388→          {contract.status === 'UNDER_REVIEW' && (
+  1389→            <>
+  1390→              <Button
+  1391→                className="bg-emerald-600 hover:bg-emerald-700 gap-1"
+  1392→                onClick={() => handleStatusChange('ACTIVE')}
+  1393→                disabled={statusMutation.isPending}
+  1394→              >
+  1395→                <CheckCircle className="size-4" />
+  1396→                {t('تفعيل العقد', 'Activate Contract', lang)}
+  1397→              </Button>
+  1398→              <Button variant="outline" onClick={onEdit} className="gap-1">
+  1399→                <Edit3 className="size-4" />
+  1400→                {t('تعديل', 'Edit', lang)}
+  1401→              </Button>
+  1402→            </>
+  1403→          )}
+  1404→          {contract.status === 'ACTIVE' && (
+  1405→            <Button
+  1406→              variant="outline"
+  1407→              className="gap-1 text-amber-600 border-amber-300 hover:bg-amber-50"
+  1408→              onClick={() => handleStatusChange('EXPIRED')}
+  1409→              disabled={statusMutation.isPending}
+  1410→            >
+  1411→              <Clock className="size-4" />
+  1412→              {t('إنهاء العقد', 'Expire Contract', lang)}
+  1413→            </Button>
+  1414→          )}
+  1415→          {contract.status !== 'CANCELLED' && contract.status !== 'EXPIRED' && (
+  1416→            <Button
+  1417→              variant="outline"
+  1418→              className="gap-1 text-red-600 border-red-300 hover:bg-red-50"
+  1419→              onClick={() => handleStatusChange('CANCELLED')}
+  1420→              disabled={statusMutation.isPending}
+  1421→            >
+  1422→              <Ban className="size-4" />
+  1423→              {t('إلغاء', 'Cancel', lang)}
+  1424→            </Button>
+  1425→          )}
+  1426→        </div>
+  1427→      </div>
+  1428→
+  1429→      {/* KPI Summary Cards */}
+  1430→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1431→        <Card className="bg-emerald-50 border-emerald-200">
+  1432→          <CardContent className="p-3 text-center">
+  1433→            <p className="text-xs text-emerald-600">{t('قيمة العقد', 'Contract Value', lang)}</p>
+  1434→            <p className="text-lg font-bold text-emerald-700">
+  1435→              <MoneyDisplay value={contractValue} lang={lang} size="lg" bold />
+  1436→            </p>
+  1437→          </CardContent>
+  1438→        </Card>
+  1439→        <Card className="bg-teal-50 border-teal-200">
+  1440→          <CardContent className="p-3 text-center">
+  1441→            <p className="text-xs text-teal-600">
+  1442→              {pricingTypeOptions.find(p => p.value === contract.pricingType)?.[lang] || contract.pricingType}
+  1443→            </p>
+  1444→            <p className="text-lg font-bold text-teal-700">
+  1445→              {contract.pricingType === 'HOURLY' && <MoneyDisplay value={contract.hourlyRate} lang={lang} size="lg" bold />}
+  1446→              {contract.pricingType === 'DAILY' && <MoneyDisplay value={contract.dailyRate} lang={lang} size="lg" bold />}
+  1447→              {contract.pricingType === 'MONTHLY' && <MoneyDisplay value={contract.monthlyRate} lang={lang} size="lg" bold />}
+  1448→              {contract.pricingType === 'LUMP_SUM' && <MoneyDisplay value={contract.lumpSumAmount} lang={lang} size="lg" bold />}
+  1449→            </p>
+  1450→          </CardContent>
+  1451→        </Card>
+  1452→        <Card className="bg-amber-50 border-amber-200">
+  1453→          <CardContent className="p-3 text-center">
+  1454→            <p className="text-xs text-amber-600">{t('إجمالي التايم شيت', 'Timesheet Total', lang)}</p>
+  1455→            <p className="text-lg font-bold text-amber-700">
+  1456→              <MoneyDisplay value={totalTimesheetAmount} lang={lang} size="lg" bold />
+  1457→            </p>
+  1458→          </CardContent>
+  1459→        </Card>
+  1460→        <Card className="bg-purple-50 border-purple-200">
+  1461→          <CardContent className="p-3 text-center">
+  1462→            <p className="text-xs text-purple-600">{t('ساعات العمل', 'Worked Hours', lang)}</p>
+  1463→            <p className="text-lg font-bold text-purple-700" dir="ltr">{formatNumber(totalWorkedHours)}</p>
+  1464→          </CardContent>
+  1465→        </Card>
+  1466→      </div>
+  1467→
+  1468→      {/* ═══════════ Section 1: بيانات العقد ═══════════ */}
+  1469→      <Card>
+  1470→        <CardHeader className="pb-3">
+  1471→          <CardTitle className="flex items-center gap-2 text-emerald-700 text-base">
+  1472→            <FileText className="size-4" />
+  1473→            {t('بيانات العقد', 'Contract Data', lang)}
+  1474→          </CardTitle>
+  1475→        </CardHeader>
+  1476→        <CardContent>
+  1477→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
+  1478→            <DetailRow label={t('رقم العقد', 'Contract No.', lang)} value={contract.contractNo} mono />
+  1479→            <DetailRow label={t('العميل', 'Client', lang)} value={contract.client?.name || ''} />
+  1480→            <DetailRow label={t('المشروع', 'Project', lang)} value={contract.project?.name || ''} />
+  1481→            <DetailRow label={t('المعدة', 'Equipment', lang)} value={contract.equipment?.nameAr || contract.equipment?.name || ''} />
+  1482→            <DetailRow label={t('كود المعدة', 'Equipment Code', lang)} value={contract.equipment?.code || ''} mono />
+  1483→            <DetailRow label={t('نوع النشاط', 'Activity Type', lang)} value={t('تأجير معدات', 'Equipment Rental', lang)} />
+  1484→            <DetailRow label={t('تاريخ البداية', 'Start Date', lang)} value={formatDate(contract.startDate, lang)} />
+  1485→            <DetailRow label={t('تاريخ النهاية', 'End Date', lang)} value={contract.endDate ? formatDate(contract.endDate, lang) : t('مفتوح', 'Open', lang)} />
+  1486→          </div>
+  1487→        </CardContent>
+  1488→      </Card>
+  1489→
+  1490→      {/* ═══════════ Section 2: موقع العمل ═══════════ */}
+  1491→      <Card>
+  1492→        <CardHeader className="pb-3">
+  1493→          <CardTitle className="flex items-center gap-2 text-cyan-700 text-base">
+  1494→            <MapPin className="size-4" />
+  1495→            {t('موقع العمل', 'Work Location', lang)}
+  1496→          </CardTitle>
+  1497→        </CardHeader>
+  1498→        <CardContent>
+  1499→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+  1500→            <DetailRow label={t('مدينة المشروع', 'Project City', lang)} value={contract.workCity || ''} />
+  1501→            <DetailRow label={t('موقع العمل', 'Work Location', lang)} value={contract.workLocation || ''} />
+  1502→            <DetailRow label={t('اسم المسؤول', 'Site Supervisor', lang)} value={contract.siteSupervisor || ''} />
+  1503→            <DetailRow label={t('رقم الجوال', 'Phone Number', lang)} value={contract.siteSupervisorPhone || ''} dirLtr />
+  1504→          </div>
+  1505→        </CardContent>
+  1506→      </Card>
+  1507→
+  1508→      {/* ═══════════ Section 3: التسعير ═══════════ */}
+  1509→      <Card>
+  1510→        <CardHeader className="pb-3">
+  1511→          <CardTitle className="flex items-center gap-2 text-teal-700 text-base">
+  1512→            <DollarSign className="size-4" />
+  1513→            {t('التسعير', 'Pricing', lang)}
+  1514→          </CardTitle>
+  1515→        </CardHeader>
+  1516→        <CardContent>
+  1517→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
+  1518→            <DetailRow label={t('نوع التسعير', 'Pricing Type', lang)} value={pricingLabel ? pricingLabel[lang] : contract.pricingType} />
+  1519→            <DetailRow label={t('القيمة الشهرية المرجعية', 'Monthly Reference Rate', lang)} value={<MoneyDisplay value={contract.referenceRate} lang={lang} size="sm" bold />} />
+  1520→            {contract.pricingType === 'HOURLY' && (
+  1521→              <>
+  1522→                <DetailRow label={t('ساعات التسعير المرجعية', 'Reference Hours', lang)} value={formatNumber(contract.referenceHours)} dirLtr />
+  1523→                <DetailRow label={t('سعر الساعة', 'Hourly Rate', lang)} value={<MoneyDisplay value={contract.hourlyRate} lang={lang} size="sm" bold />} />
+  1524→              </>
+  1525→            )}
+  1526→            {contract.pricingType === 'DAILY' && (
+  1527→              <DetailRow label={t('السعر اليومي', 'Daily Rate', lang)} value={<MoneyDisplay value={contract.dailyRate} lang={lang} size="sm" bold />} />
+  1528→            )}
+  1529→            {contract.pricingType === 'MONTHLY' && (
+  1530→              <DetailRow label={t('السعر الشهري', 'Monthly Rate', lang)} value={<MoneyDisplay value={contract.monthlyRate} lang={lang} size="sm" bold />} />
+  1531→            )}
+  1532→            {contract.pricingType === 'LUMP_SUM' && (
+  1533→              <DetailRow label={t('المبلغ المقطوع', 'Lump Sum', lang)} value={<MoneyDisplay value={contract.lumpSumAmount} lang={lang} size="sm" bold />} />
+  1534→            )}
+  1535→          </div>
+  1536→        </CardContent>
+  1537→      </Card>
+  1538→
+  1539→      {/* ═══════════ Section 4: التكاليف الإضافية ═══════════ */}
+  1540→      <Card>
+  1541→        <CardHeader className="pb-3">
+  1542→          <CardTitle className="flex items-center gap-2 text-orange-700 text-base">
+  1543→            <Truck className="size-4" />
+  1544→            {t('التكاليف الإضافية', 'Additional Costs', lang)}
+  1545→          </CardTitle>
+  1546→        </CardHeader>
+  1547→        <CardContent>
+  1548→          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
+  1549→            <DetailRow label={t('رسوم النقل', 'Delivery Fees Type', lang)} value={deliveryLabel ? deliveryLabel[lang] : contract.deliveryFeesType} />
+  1550→            {contract.deliveryFeesType !== 'NONE' && (
+  1551→              <>
+  1552→                <DetailRow label={t('مبلغ النقل', 'Delivery Amount', lang)} value={<MoneyDisplay value={contract.deliveryFees} lang={lang} size="sm" bold />} />
+  1553→                <DetailRow label={t('ضريبة القيمة المضافة', 'VAT Applicable', lang)} value={contract.deliveryFeesTaxable ? t('نعم', 'Yes', lang) : t('لا', 'No', lang)} />
+  1554→              </>
+  1555→            )}
+  1556→            <DetailRow label={t('الوقود', 'Fuel', lang)} value={fuelLabel ? fuelLabel[lang] : contract.fuelResponsibility || ''} />
+  1557→            <DetailRow label={t('التشغيل', 'Operation', lang)} value={operationLabel ? operationLabel[lang] : contract.operationMode} />
+  1558→            <DetailRow label={t('التأمين', 'Insurance', lang)} value={insuranceLabel ? insuranceLabel[lang] : contract.insuranceResponsibility || ''} />
+  1559→          </div>
+  1560→        </CardContent>
+  1561→      </Card>
+  1562→
+  1563→      {/* ═══════════ Section 5: المستندات المرجعية ═══════════ */}
+  1564→      <Card>
+  1565→        <CardHeader className="pb-3">
+  1566→          <CardTitle className="flex items-center gap-2 text-violet-700 text-base">
+  1567→            <FileText className="size-4" />
+  1568→            {t('المستندات المرجعية', 'Reference Documents', lang)}
+  1569→          </CardTitle>
+  1570→        </CardHeader>
+  1571→        <CardContent>
+  1572→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-6">
+  1573→            <DetailRow label={t('رقم طلب البيع', 'Sales Order No.', lang)} value={contract.salesOrderNo || ''} mono />
+  1574→            <DetailRow label={t('رقم طلب شراء العميل', 'Client PO No.', lang)} value={contract.purchaseOrderNo || ''} mono dirLtr />
+  1575→            <DetailRow label={t('رقم عرض السعر', 'Quotation No.', lang)} value={contract.quotationNo || ''} mono dirLtr />
+  1576→          </div>
+  1577→        </CardContent>
+  1578→      </Card>
+  1579→
+  1580→      {/* ═══════════ Section 6: الشروط ═══════════ */}
+  1581→      <Card>
+  1582→        <CardHeader className="pb-3">
+  1583→          <CardTitle className="flex items-center gap-2 text-rose-700 text-base">
+  1584→            <Calendar className="size-4" />
+  1585→            {t('الشروط', 'Terms', lang)}
+  1586→          </CardTitle>
+  1587→        </CardHeader>
+  1588→        <CardContent>
+  1589→          <div className="space-y-3">
+  1590→            <DetailRow label={t('مدة السداد', 'Payment Duration', lang)} value={contract.paymentDuration || ''} />
+  1591→            {contract.additionalTerms && (
+  1592→              <div>
+  1593→                <p className="text-sm text-muted-foreground mb-1">{t('شروط إضافية', 'Additional Terms', lang)}</p>
+  1594→                <p className="text-sm bg-muted p-3 rounded-md whitespace-pre-wrap">{contract.additionalTerms}</p>
+  1595→              </div>
+  1596→            )}
+  1597→            {contract.notes && (
+  1598→              <div>
+  1599→                <p className="text-sm text-muted-foreground mb-1">{t('ملاحظات', 'Notes', lang)}</p>
+  1600→                <p className="text-sm bg-muted p-3 rounded-md whitespace-pre-wrap">{contract.notes}</p>
+  1601→              </div>
+  1602→            )}
+  1603→            {!contract.additionalTerms && !contract.notes && (
+  1604→              <p className="text-sm text-muted-foreground">{t('لا توجد شروط أو ملاحظات', 'No terms or notes', lang)}</p>
+  1605→            )}
+  1606→          </div>
+  1607→        </CardContent>
+  1608→      </Card>
+  1609→
+  1610→      {/* ═══════════ Timesheets Table ═══════════ */}
+  1611→      {timesheets.length > 0 && (
+  1612→        <Card>
+  1613→          <CardHeader className="pb-3">
+  1614→            <CardTitle className="flex items-center gap-2 text-base">
+  1615→              <Clock className="size-4" />
+  1616→              {t('ساعات التشغيل', 'Timesheets', lang)}
+  1617→              <Badge variant="secondary" className="mr-2">{timesheets.length}</Badge>
+  1618→            </CardTitle>
+  1619→          </CardHeader>
+  1620→          <CardContent className="p-0">
+  1621→            <div className="overflow-x-auto max-h-96 overflow-y-auto">
+  1622→              <Table>
+  1623→                <TableHeader>
+  1624→                  <TableRow>
+  1625→                    <TableHead className="text-right">{t('الشهر', 'Month', lang)}</TableHead>
+  1626→                    <TableHead className="text-right">{t('السنة', 'Year', lang)}</TableHead>
+  1627→                    <TableHead className="text-right">{t('ساعات العمل', 'Hours', lang)}</TableHead>
+  1628→                    <TableHead className="text-right">{t('سعر الساعة', 'Rate', lang)}</TableHead>
+  1629→                    <TableHead className="text-right">{t('المجموع الفرعي', 'Subtotal', lang)}</TableHead>
+  1630→                    <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+  1631→                    <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+  1632→                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+  1633→                  </TableRow>
+  1634→                </TableHeader>
+  1635→                <TableBody>
+  1636→                  {timesheets.map(ts => (
+  1637→                    <TableRow key={ts.id}>
+  1638→                      <TableCell>{monthNames[ts.month - 1]?.[lang] || ts.month}</TableCell>
+  1639→                      <TableCell dir="ltr">{ts.year}</TableCell>
+  1640→                      <TableCell dir="ltr">{formatNumber(ts.workedHours)}</TableCell>
+  1641→                      <TableCell><MoneyDisplay value={ts.hourlyRate} lang={lang} size="sm" /></TableCell>
+  1642→                      <TableCell><MoneyDisplay value={ts.subtotal} lang={lang} size="sm" /></TableCell>
+  1643→                      <TableCell><MoneyDisplay value={ts.vatAmount} lang={lang} size="sm" /></TableCell>
+  1644→                      <TableCell className="font-medium"><MoneyDisplay value={ts.totalAmount} lang={lang} size="sm" bold /></TableCell>
+  1645→                      <TableCell><TimesheetStatusBadge status={ts.status} lang={lang} /></TableCell>
+  1646→                    </TableRow>
+  1647→                  ))}
+  1648→                </TableBody>
+  1649→              </Table>
+  1650→            </div>
+  1651→            {/* Timesheet Totals */}
+  1652→            <div className="flex items-center justify-between p-4 border-t bg-muted/50">
+  1653→              <span className="text-sm font-medium">{t('الإجمالي', 'Total', lang)}</span>
+  1654→              <div className="flex items-center gap-4">
+  1655→                <span className="text-sm text-muted-foreground">
+  1656→                  {t('ساعات', 'Hours', lang)}: <span className="font-medium" dir="ltr">{formatNumber(totalWorkedHours)}</span>
+  1657→                </span>
+  1658→                <span className="text-sm font-bold">
+  1659→                  <MoneyDisplay value={totalTimesheetAmount} lang={lang} size="md" bold />
+  1660→                </span>
+  1661→              </div>
+  1662→            </div>
+  1663→          </CardContent>
+  1664→        </Card>
+  1665→      )}
+  1666→    </ModuleLayout>
+  1667→  )
+  1668→}
+  1669→

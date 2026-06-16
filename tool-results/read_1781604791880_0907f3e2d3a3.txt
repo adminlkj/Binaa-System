@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo, useCallback } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  BookOpen, RefreshCw, FileText, ChevronLeft, Eye, TreePine,
+     7→  ArrowUpDown, Calculator, Scale, Database, PlusCircle,
+     8→  Lock, Shield, ChevronDown, ChevronRight, X, Info,
+     9→  TrendingUp, BarChart3, PieChart, Building2, Truck,
+    10→  CreditCard, Users, Package, Clock, AlertTriangle,
+    11→  Wallet, Landmark, FileSpreadsheet, CircleDollarSign,
+    12→  CalendarCheck, Wrench, Banknote, FolderClosed, CheckCircle2,
+    13→  Printer, Download, Search, Link2, Pencil, FileSearch, ArrowRightLeft,
+    14→  Settings, List,
+    15→} from 'lucide-react'
+    16→import { Card, CardContent } from '@/components/ui/card'
+    17→import { Button } from '@/components/ui/button'
+    18→import { Input } from '@/components/ui/input'
+    19→import { Badge } from '@/components/ui/badge'
+    20→import {
+    21→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    22→} from '@/components/ui/table'
+    23→import {
+    24→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    25→} from '@/components/ui/select'
+    26→import { Label } from '@/components/ui/label'
+    27→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    28→import { Separator } from '@/components/ui/separator'
+    29→import {
+    30→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    31→} from '@/components/ui/dialog'
+    32→import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+    33→import { MoneyDisplay } from '@/components/ui/money-display'
+    34→import { ModuleLayout } from '@/components/shared/module-layout'
+    35→import { PrintButton } from '@/components/shared/print-button'
+    36→
+    37→// ============ Types ============
+    38→interface Account {
+    39→  id: string; code: string; name: string; nameAr: string | null
+    40→  type: string; parentId: string | null; isActive: boolean
+    41→  activityType: string | null; isSystem: boolean; allowPosting: boolean
+    42→  level: number; description: string | null; descriptionAr: string | null
+    43→  parent: { id: string; code: string; name: string; nameAr: string | null } | null
+    44→  children: { id: string; code: string; name: string; nameAr: string | null }[]
+    45→  _count: { journalLines: number }
+    46→  balance: number
+    47→  normalBalance: string
+    48→  entryCount: number
+    49→  lastTransactionDate: string | null
+    50→  childrenCount: number
+    51→}
+    52→
+    53→interface JournalLine {
+    54→  id: string; accountId: string; debit: number; credit: number
+    55→  description: string | null; costCenterId: string | null
+    56→  account: { id: string; code: string; name: string; nameAr: string | null }
+    57→  costCenter: { id: string; code: string; name: string } | null
+    58→}
+    59→
+    60→interface JournalEntry {
+    61→  id: string; entryNo: string; date: string; description: string | null
+    62→  status: string; sourceType: string | null; sourceId: string | null
+    63→  createdAt: string
+    64→  lines: JournalLine[]
+    65→  totalDebit: number; totalCredit: number
+    66→}
+    67→
+    68→interface StatementLine {
+    69→  id: string; entryNo: string; date: string; description: string | null
+    70→  lineDescription: string | null; debit: number; credit: number; balance: number; status: string
+    71→}
+    72→
+    73→interface TrialBalanceItem {
+    74→  account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+    75→  totalDebit: number; totalCredit: number; netDebit: number; netCredit: number
+    76→}
+    77→
+    78→interface RoleMappingItem {
+    79→  role: string
+    80→  labelAr: string
+    81→  labelEn: string
+    82→  description: string
+    83→  defaultCodes: string[]
+    84→  accounts: { id: string; code: string; name: string; nameAr: string | null }[]
+    85→  primaryAccount: { id: string; code: string; name: string; nameAr: string | null } | null
+    86→}
+    87→
+    88→interface AccountStatementData {
+    89→  account: { id: string; code: string; name: string; nameAr: string | null; type: string; accountRole: string | null; roleLabel: string | null }
+    90→  dateFrom: string | null
+    91→  dateTo: string | null
+    92→  openingBalance: number
+    93→  lines: { date: string; entryNo: string; description: string; debit: number; credit: number; balance: number }[]
+    94→  totalDebit: number
+    95→  totalCredit: number
+    96→  closingBalance: number
+    97→}
+    98→
+    99→// ============ Helpers ============
+   100→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+   101→
+   102→// ============ Type Config ============
+   103→const typeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   104→  ASSET: { label: { ar: 'أصول', en: 'Asset' }, color: 'text-sky-700', bg: 'bg-sky-100' },
+   105→  LIABILITY: { label: { ar: 'التزامات', en: 'Liability' }, color: 'text-orange-700', bg: 'bg-orange-100' },
+   106→  EQUITY: { label: { ar: 'حقوق ملكية', en: 'Equity' }, color: 'text-purple-700', bg: 'bg-purple-100' },
+   107→  REVENUE: { label: { ar: 'إيرادات', en: 'Revenue' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   108→  EXPENSE: { label: { ar: 'مصروفات', en: 'Expense' }, color: 'text-rose-700', bg: 'bg-rose-100' },
+   109→}
+   110→
+   111→function TypeBadge({ type, lang }: { type: string; lang: 'ar' | 'en' }) {
+   112→  const cfg = typeConfig[type] || typeConfig.ASSET
+   113→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   114→}
+   115→
+   116→const activityConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string; dot: string }> = {
+   117→  CONSTRUCTION: { label: { ar: 'مشاريع', en: 'Construction' }, color: 'text-blue-700', bg: 'bg-blue-100', dot: 'bg-blue-500' },
+   118→  EQUIPMENT_RENTAL: { label: { ar: 'تأجير', en: 'Rental' }, color: 'text-orange-700', bg: 'bg-orange-100', dot: 'bg-orange-500' },
+   119→  BOTH: { label: { ar: 'مشترك', en: 'Both' }, color: 'text-gray-700', bg: 'bg-gray-100', dot: 'bg-gray-500' },
+   120→}
+   121→
+   122→function ActivityBadge({ activityType, lang }: { activityType: string | null; lang: 'ar' | 'en' }) {
+   123→  const at = activityType || 'BOTH'
+   124→  const cfg = activityConfig[at]
+   125→  if (!cfg) return null
+   126→  return (
+   127→    <Badge className={`${cfg.bg} ${cfg.color} border-0 text-xs gap-1`}>
+   128→      <span className={`size-1.5 rounded-full ${cfg.dot}`} />
+   129→      {cfg.label[lang]}
+   130→    </Badge>
+   131→  )
+   132→}
+   133→
+   134→const jeStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   135→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+   136→  POSTED: { label: { ar: 'مرحّل', en: 'Posted' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   137→  CANCELLED: { label: { ar: 'ملغي', en: 'Cancelled' }, color: 'text-rose-700', bg: 'bg-rose-100' },
+   138→}
+   139→
+   140→function JEStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   141→  const cfg = jeStatusConfig[status] || jeStatusConfig.DRAFT
+   142→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   143→}
+   144→
+   145→const sourceTypeLabels: Record<string, { ar: string; en: string }> = {
+   146→  SALES_INVOICE: { ar: 'فاتورة مبيعات', en: 'Sales Invoice' },
+   147→  PURCHASE_INVOICE: { ar: 'فاتورة مشتريات', en: 'Purchase Invoice' },
+   148→  PROGRESS_CLAIM: { ar: 'مستخلص', en: 'Progress Claim' },
+   149→  EXPENSE: { ar: 'مصروف', en: 'Expense' },
+   150→  CLIENT_PAYMENT: { ar: 'تحصيل عميل', en: 'Client Payment' },
+   151→  SUPPLIER_PAYMENT: { ar: 'دفع مورد', en: 'Supplier Payment' },
+   152→  EMPLOYEE_ADVANCE: { ar: 'سلفة موظف', en: 'Employee Advance' },
+   153→  RENTAL_INVOICE: { ar: 'فاتورة تأجير', en: 'Rental Invoice' },
+   154→  SALARY: { ar: 'رواتب', en: 'Salary' },
+   155→  GOSI: { ar: 'تأمينات اجتماعية', en: 'GOSI' },
+   156→  DEPRECIATION: { ar: 'إهلاك', en: 'Depreciation' },
+   157→  PERIOD_CLOSING: { ar: 'إقفال فترة', en: 'Period Closing' },
+   158→  ASSET_ACQUISITION: { ar: 'اقتناء أصل', en: 'Asset Acquisition' },
+   159→  PROVISION: { ar: 'مخصص', en: 'Provision' },
+   160→}
+   161→
+   162→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   163→  return (
+   164→    <div className="space-y-2">
+   165→      {Array.from({ length: rows }).map((_, i) => (
+   166→        <div key={i} className="flex gap-4 p-3">
+   167→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   168→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+   169→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   170→        </div>
+   171→      ))}
+   172→    </div>
+   173→  )
+   174→}
+   175→
+   176→function SectionTitle({ icon: Icon, title, lang }: { icon: React.ElementType; title: { ar: string; en: string }; lang: 'ar' | 'en' }) {
+   177→  return (
+   178→    <div className="flex items-center gap-2 mb-3">
+   179→      <Icon className="size-5 text-emerald-600" />
+   180→      <h3 className="text-lg font-bold">{title[lang]}</h3>
+   181→    </div>
+   182→  )
+   183→}
+   184→
+   185→function SummaryCard({ title, value, icon: Icon, color = 'emerald', lang, isMoney = true }: {
+   186→  title: string; value: number; icon: React.ElementType; color?: string; lang: 'ar' | 'en'; isMoney?: boolean
+   187→}) {
+   188→  const colors: Record<string, string> = {
+   189→    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+   190→    rose: 'bg-rose-50 border-rose-200 text-rose-700',
+   191→    sky: 'bg-sky-50 border-sky-200 text-sky-700',
+   192→    amber: 'bg-amber-50 border-amber-200 text-amber-700',
+   193→    purple: 'bg-purple-50 border-purple-200 text-purple-700',
+   194→    orange: 'bg-orange-50 border-orange-200 text-orange-700',
+   195→    teal: 'bg-teal-50 border-teal-200 text-teal-700',
+   196→  }
+   197→  return (
+   198→    <Card className={`${colors[color] || colors.emerald} border`}>
+   199→      <CardContent className="p-4 text-center">
+   200→        <div className="flex items-center justify-center gap-2 mb-1">
+   201→          <Icon className="size-4" />
+   202→          <p className="text-xs font-medium">{title}</p>
+   203→        </div>
+   204→        {isMoney ? (
+   205→          <MoneyDisplay value={value} lang={lang} bold className="text-lg" />
+   206→        ) : (
+   207→          <p className="text-lg font-bold">{formatNumber(value)}</p>
+   208→        )}
+   209→      </CardContent>
+   210→    </Card>
+   211→  )
+   212→}
+   213→
+   214→// ============ Account Detail Dialog ============
+   215→function AccountDetailDialog({ account, open, onClose }: {
+   216→  account: Account | null; open: boolean; onClose: () => void
+   217→}) {
+   218→  const { lang } = useAppStore()
+   219→  if (!account) return null
+   220→  return (
+   221→    <Dialog open={open} onOpenChange={onClose}>
+   222→      <DialogContent className="max-w-lg">
+   223→        <DialogHeader>
+   224→          <DialogTitle className="flex items-center gap-2">
+   225→            <span className="font-mono">{account.code}</span>
+   226→            <span>-</span>
+   227→            <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
+   228→          </DialogTitle>
+   229→        </DialogHeader>
+   230→        <div className="space-y-4">
+   231→          <div className="grid grid-cols-2 gap-3">
+   232→            <div><p className="text-xs text-muted-foreground">{t('الاسم بالإنجليزي', 'English Name', lang)}</p><p className="font-medium">{account.name}</p></div>
+   233→            <div><p className="text-xs text-muted-foreground">{t('الاسم بالعربي', 'Arabic Name', lang)}</p><p className="font-medium">{account.nameAr || '—'}</p></div>
+   234→          </div>
+   235→          <Separator />
+   236→          <div className="flex flex-wrap gap-2">
+   237→            <TypeBadge type={account.type} lang={lang} />
+   238→            <ActivityBadge activityType={account.activityType} lang={lang} />
+   239→            {account.isSystem && <Badge className="bg-amber-100 text-amber-700 border-0 gap-1"><Shield className="size-3" />{t('حساب نظامي', 'System', lang)}</Badge>}
+   240→            {!account.allowPosting && <Badge className="bg-red-100 text-red-700 border-0 gap-1"><Lock className="size-3" />{t('رأسي', 'Header', lang)}</Badge>}
+   241→            {account.allowPosting && <Badge className="bg-emerald-100 text-emerald-700 border-0 gap-1">{t('تفصيلي', 'Posting', lang)}</Badge>}
+   242→          </div>
+   243→          <div className="grid grid-cols-2 gap-3">
+   244→            <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">{t('الرصيد الحالي', 'Current Balance', lang)}</p><MoneyDisplay value={account.balance} lang={lang} bold className={account.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></CardContent></Card>
+   245→            <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">{t('عدد القيود', 'Journal Lines', lang)}</p><p className="text-lg font-bold">{formatNumber(account._count.journalLines)}</p></CardContent></Card>
+   246→          </div>
+   247→        </div>
+   248→      </DialogContent>
+   249→    </Dialog>
+   250→  )
+   251→}
+   252→
+   253→// ============ Account Statement Dialog ============
+   254→function AccountStatementDialog({ account, open, onClose }: {
+   255→  account: Account | null; open: boolean; onClose: () => void
+   256→}) {
+   257→  const { lang } = useAppStore()
+   258→  const [dateFrom, setDateFrom] = useState('')
+   259→  const [dateTo, setDateTo] = useState('')
+   260→
+   261→  const { data: statementData, isLoading, isError, refetch } = useQuery<AccountStatementData | null>({
+   262→    queryKey: ['account-statement-detail', account?.id, dateFrom, dateTo],
+   263→    queryFn: async () => {
+   264→      if (!account) return null
+   265→      const params = new URLSearchParams({ accountId: account.id })
+   266→      if (dateFrom) params.set('dateFrom', dateFrom)
+   267→      if (dateTo) params.set('dateTo', dateTo)
+   268→      const res = await fetch(`/api/accounts/statement?${params}`)
+   269→      if (!res.ok) throw new Error()
+   270→      return res.json()
+   271→    },
+   272→    enabled: !!account && open,
+   273→  })
+   274→
+   275→  // Reset dates when account changes
+   276→  React.useEffect(() => {
+   277→    if (account) {
+   278→      setDateFrom('')
+   279→      setDateTo('')
+   280→    }
+   281→  }, [account?.id])
+   282→
+   283→  if (!account) return null
+   284→
+   285→  const statement = statementData as AccountStatementData | null
+   286→
+   287→  return (
+   288→    <Dialog open={open} onOpenChange={onClose}>
+   289→      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+   290→        <DialogHeader>
+   291→          <DialogTitle className="flex items-center gap-2">
+   292→            <FileSearch className="size-5 text-emerald-600" />
+   293→            <span>{t('كشف حساب', 'Account Statement', lang)}</span>
+   294→            <span className="font-mono">{account.code}</span>
+   295→            <span>-</span>
+   296→            <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
+   297→          </DialogTitle>
+   298→        </DialogHeader>
+   299→
+   300→        <div className="space-y-4 flex-1 overflow-hidden">
+   301→          {/* Date Filters */}
+   302→          <div className="flex flex-wrap gap-3 items-end">
+   303→            <div className="space-y-1">
+   304→              <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
+   305→              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" />
+   306→            </div>
+   307→            <div className="space-y-1">
+   308→              <Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label>
+   309→              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
+   310→            </div>
+   311→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1">
+   312→              <RefreshCw className="size-3.5" />
+   313→              {t('تحديث', 'Refresh', lang)}
+   314→            </Button>
+   315→          </div>
+   316→
+   317→          {isLoading ? (
+   318→            <TableSkeleton />
+   319→          ) : isError ? (
+   320→            <div className="flex flex-col items-center gap-3 py-10">
+   321→              <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+   322→              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+   323→            </div>
+   324→          ) : statement ? (
+   325→            <>
+   326→              {/* Summary Cards */}
+   327→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   328→                <Card className="bg-sky-50 border-sky-200">
+   329→                  <CardContent className="p-3 text-center">
+   330→                    <p className="text-xs text-sky-600">{t('الرصيد الافتتاحي', 'Opening Balance', lang)}</p>
+   331→                    <MoneyDisplay value={statement.openingBalance} lang={lang} bold className={statement.openingBalance >= 0 ? 'text-sky-700' : 'text-rose-700'} />
+   332→                  </CardContent>
+   333→                </Card>
+   334→                <Card className="bg-emerald-50 border-emerald-200">
+   335→                  <CardContent className="p-3 text-center">
+   336→                    <p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p>
+   337→                    <MoneyDisplay value={statement.totalDebit} lang={lang} bold className="text-emerald-700" />
+   338→                  </CardContent>
+   339→                </Card>
+   340→                <Card className="bg-rose-50 border-rose-200">
+   341→                  <CardContent className="p-3 text-center">
+   342→                    <p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p>
+   343→                    <MoneyDisplay value={statement.totalCredit} lang={lang} bold className="text-rose-700" />
+   344→                  </CardContent>
+   345→                </Card>
+   346→                <Card className="bg-purple-50 border-purple-200">
+   347→                  <CardContent className="p-3 text-center">
+   348→                    <p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p>
+   349→                    <MoneyDisplay value={statement.closingBalance} lang={lang} bold className={statement.closingBalance >= 0 ? 'text-purple-700' : 'text-rose-700'} />
+   350→                  </CardContent>
+   351→                </Card>
+   352→              </div>
+   353→
+   354→              {/* Statement Lines Table */}
+   355→              <Card className="flex-1 overflow-hidden">
+   356→                <CardContent className="p-0">
+   357→                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+   358→                    <Table>
+   359→                      <TableHeader>
+   360→                        <TableRow>
+   361→                          <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   362→                          <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+   363→                          <TableHead className="text-right">{t('البيان', 'Description', lang)}</TableHead>
+   364→                          <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   365→                          <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   366→                          <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+   367→                        </TableRow>
+   368→                      </TableHeader>
+   369→                      <TableBody>
+   370→                        {statement.lines.length === 0 ? (
+   371→                          <TableRow>
+   372→                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+   373→                              {t('لا توجد حركات', 'No transactions found', lang)}
+   374→                            </TableCell>
+   375→                          </TableRow>
+   376→                        ) : (
+   377→                          statement.lines.map((line, idx) => (
+   378→                            <TableRow key={idx}>
+   379→                              <TableCell>{formatDate(line.date, lang)}</TableCell>
+   380→                              <TableCell className="font-mono">{line.entryNo}</TableCell>
+   381→                              <TableCell>{line.description || '—'}</TableCell>
+   382→                              <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+   383→                              <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+   384→                              <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" bold className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
+   385→                            </TableRow>
+   386→                          ))
+   387→                        )}
+   388→                        {statement.lines.length > 0 && (
+   389→                          <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+   390→                            <TableCell colSpan={3}>{t('الإجمالي', 'Total', lang)}</TableCell>
+   391→                            <TableCell><MoneyDisplay value={statement.totalDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+   392→                            <TableCell><MoneyDisplay value={statement.totalCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+   393→                            <TableCell><MoneyDisplay value={statement.closingBalance} lang={lang} size="sm" bold className={statement.closingBalance >= 0 ? 'text-emerald-800' : 'text-rose-800'} /></TableCell>
+   394→                          </TableRow>
+   395→                        )}
+   396→                      </TableBody>
+   397→                    </Table>
+   398→                  </div>
+   399→                </CardContent>
+   400→              </Card>
+   401→            </>
+   402→          ) : null}
+   403→        </div>
+   404→      </DialogContent>
+   405→    </Dialog>
+   406→  )
+   407→}
+   408→
+   409→// ============ Account Transactions Dialog ============
+   410→interface AccountTransactionEntry {
+   411→  id: string; entryNo: string; date: string; description: string | null
+   412→  status: string; sourceType: string | null; debit: number; credit: number
+   413→}
+   414→
+   415→function AccountTransactionsDialog({ account, open, onClose }: {
+   416→  account: Account | null; open: boolean; onClose: () => void
+   417→}) {
+   418→  const { lang } = useAppStore()
+   419→
+   420→  const { data, isLoading, isError, refetch } = useQuery<{
+   421→    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+   422→    entries: AccountTransactionEntry[]
+   423→    totalLines: number
+   424→  } | null>({
+   425→    queryKey: ['account-transactions', account?.id],
+   426→    queryFn: async () => {
+   427→      if (!account) return null
+   428→      const res = await fetch(`/api/journal-entries/by-account?accountId=${account.id}`)
+   429→      if (!res.ok) throw new Error()
+   430→      return res.json()
+   431→    },
+   432→    enabled: !!account && open,
+   433→  })
+   434→
+   435→  if (!account) return null
+   436→
+   437→  const entries = data?.entries || []
+   438→  const totalDebit = entries.reduce((s, e) => s + e.debit, 0)
+   439→  const totalCredit = entries.reduce((s, e) => s + e.credit, 0)
+   440→
+   441→  return (
+   442→    <Dialog open={open} onOpenChange={onClose}>
+   443→      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+   444→        <DialogHeader>
+   445→          <DialogTitle className="flex items-center gap-2">
+   446→            <List className="size-5 text-emerald-600" />
+   447→            <span>{t('حركات الحساب', 'Account Transactions', lang)}</span>
+   448→            <span className="font-mono">{account.code}</span>
+   449→            <span>-</span>
+   450→            <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
+   451→          </DialogTitle>
+   452→        </DialogHeader>
+   453→
+   454→        <div className="space-y-4 flex-1 overflow-hidden">
+   455→          {isLoading ? (
+   456→            <TableSkeleton />
+   457→          ) : isError ? (
+   458→            <div className="flex flex-col items-center gap-3 py-10">
+   459→              <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+   460→              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+   461→            </div>
+   462→          ) : (
+   463→            <>
+   464→              {/* Summary Cards */}
+   465→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   466→                <Card className="bg-emerald-50 border-emerald-200">
+   467→                  <CardContent className="p-3 text-center">
+   468→                    <p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p>
+   469→                    <MoneyDisplay value={totalDebit} lang={lang} bold className="text-emerald-700" />
+   470→                  </CardContent>
+   471→                </Card>
+   472→                <Card className="bg-rose-50 border-rose-200">
+   473→                  <CardContent className="p-3 text-center">
+   474→                    <p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p>
+   475→                    <MoneyDisplay value={totalCredit} lang={lang} bold className="text-rose-700" />
+   476→                  </CardContent>
+   477→                </Card>
+   478→                <Card className="bg-sky-50 border-sky-200">
+   479→                  <CardContent className="p-3 text-center">
+   480→                    <p className="text-xs text-sky-600">{t('عدد القيود', 'Entry Count', lang)}</p>
+   481→                    <p className="text-lg font-bold text-sky-700">{formatNumber(entries.length)}</p>
+   482→                  </CardContent>
+   483→                </Card>
+   484→                <Card className="bg-purple-50 border-purple-200">
+   485→                  <CardContent className="p-3 text-center">
+   486→                    <p className="text-xs text-purple-600">{t('عدد البنود', 'Line Count', lang)}</p>
+   487→                    <p className="text-lg font-bold text-purple-700">{formatNumber(data?.totalLines || 0)}</p>
+   488→                  </CardContent>
+   489→                </Card>
+   490→              </div>
+   491→
+   492→              {/* Entries Table */}
+   493→              <Card className="flex-1 overflow-hidden">
+   494→                <CardContent className="p-0">
+   495→                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+   496→                    <Table>
+   497→                      <TableHeader>
+   498→                        <TableRow>
+   499→                          <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+   500→                          <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   501→                          <TableHead className="text-right">{t('البيان', 'Description', lang)}</TableHead>
+   502→                          <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   503→                          <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   504→                          <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   505→                        </TableRow>
+   506→                      </TableHeader>
+   507→                      <TableBody>
+   508→                        {entries.length === 0 ? (
+   509→                          <TableRow>
+   510→                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+   511→                              {t('لا توجد حركات', 'No transactions found', lang)}
+   512→                            </TableCell>
+   513→                          </TableRow>
+   514→                        ) : (
+   515→                          entries.map((entry) => (
+   516→                            <TableRow key={entry.id}>
+   517→                              <TableCell className="font-mono">{entry.entryNo}</TableCell>
+   518→                              <TableCell>{formatDate(entry.date, lang)}</TableCell>
+   519→                              <TableCell>{entry.description || '—'}</TableCell>
+   520→                              <TableCell>{entry.debit > 0 ? <MoneyDisplay value={entry.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+   521→                              <TableCell>{entry.credit > 0 ? <MoneyDisplay value={entry.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+   522→                              <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
+   523→                            </TableRow>
+   524→                          ))
+   525→                        )}
+   526→                        {entries.length > 0 && (
+   527→                          <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+   528→                            <TableCell colSpan={3}>{t('الإجمالي', 'Total', lang)}</TableCell>
+   529→                            <TableCell><MoneyDisplay value={totalDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+   530→                            <TableCell><MoneyDisplay value={totalCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+   531→                            <TableCell />
+   532→                          </TableRow>
+   533→                        )}
+   534→                      </TableBody>
+   535→                    </Table>
+   536→                  </div>
+   537→                </CardContent>
+   538→              </Card>
+   539→            </>
+   540→          )}
+   541→        </div>
+   542→      </DialogContent>
+   543→    </Dialog>
+   544→  )
+   545→}
+   546→
+   547→// ============ Journal Entry Detail ============
+   548→function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; onBack: () => void; accounts: Account[] }) {
+   549→  const { lang } = useAppStore()
+   550→  const [detailTab, setDetailTab] = useState('lines')
+   551→
+   552→  // Compute account impact data for the أثر الحسابات tab
+   553→  const accountImpactData = useMemo(() => {
+   554→    // Get unique accounts in this JE
+   555→    const uniqueAccounts = new Map<string, { code: string; name: string; nameAr: string | null; totalDebit: number; totalCredit: number }>()
+   556→    for (const line of entry.lines) {
+   557→      const existing = uniqueAccounts.get(line.accountId)
+   558→      if (existing) {
+   559→        existing.totalDebit += line.debit
+   560→        existing.totalCredit += line.credit
+   561→      } else {
+   562→        uniqueAccounts.set(line.accountId, {
+   563→          code: line.account.code,
+   564→          name: line.account.name,
+   565→          nameAr: line.account.nameAr,
+   566→          totalDebit: line.debit,
+   567→          totalCredit: line.credit,
+   568→        })
+   569→      }
+   570→    }
+   571→
+   572→    // For each unique account, compute before/after balance
+   573→    const impactItems: {
+   574→      accountId: string; code: string; name: string; nameAr: string | null
+   575→      beforeBalance: number; movementDebit: number; movementCredit: number; afterBalance: number
+   576→    }[] = []
+   577→
+   578→    for (const [accountId, info] of uniqueAccounts) {
+   579→      const accountData = accounts.find(a => a.id === accountId)
+   580→      const currentBalance = accountData?.balance || 0
+   581→      const normalBalance = accountData?.normalBalance || 'DEBIT'
+   582→      const isPosted = entry.status === 'POSTED'
+   583→
+   584→      // Net movement effect on this account
+   585→      // For DEBIT-normal accounts: balance increases with debit, decreases with credit
+   586→      // For CREDIT-normal accounts: balance increases with credit, decreases with debit
+   587→      const netMovement = normalBalance === 'DEBIT'
+   588→        ? info.totalDebit - info.totalCredit
+   589→        : info.totalCredit - info.totalDebit
+   590→
+   591→      let beforeBalance: number
+   592→      let afterBalance: number
+   593→
+   594→      if (isPosted) {
+   595→        // Current balance includes this JE's effect
+   596→        beforeBalance = currentBalance - netMovement
+   597→        afterBalance = currentBalance
+   598→      } else {
+   599→        // Current balance does NOT include this JE's effect (DRAFT)
+   600→        beforeBalance = currentBalance
+   601→        afterBalance = currentBalance + netMovement
+   602→      }
+   603→
+   604→      impactItems.push({
+   605→        accountId,
+   606→        code: info.code,
+   607→        name: info.name,
+   608→        nameAr: info.nameAr,
+   609→        beforeBalance,
+   610→        movementDebit: info.totalDebit,
+   611→        movementCredit: info.totalCredit,
+   612→        afterBalance,
+   613→      })
+   614→    }
+   615→
+   616→    return impactItems.sort((a, b) => a.code.localeCompare(b.code))
+   617→  }, [entry, accounts])
+   618→
+   619→  return (
+   620→    <div className="space-y-4">
+   621→      <div className="flex items-center gap-3">
+   622→        <Button variant="outline" size="icon" onClick={onBack}><ChevronLeft className="size-4" /></Button>
+   623→        <div>
+   624→          <h2 className="text-xl font-bold">{entry.entryNo}</h2>
+   625→          <p className="text-sm text-muted-foreground">{entry.description || ''}</p>
+   626→        </div>
+   627→        <div className="mr-auto flex items-center gap-2">
+   628→          <JEStatusBadge status={entry.status} lang={lang} />
+   629→          {entry.sourceType && <Badge variant="outline" className="bg-gray-50">{sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType}</Badge>}
+   630→        </div>
+   631→      </div>
+   632→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   633→        <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-gray-600">{t('التاريخ', 'Date', lang)}</p><p className="font-semibold">{formatDate(entry.date, lang)}</p></CardContent></Card>
+   634→        <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('مدين', 'Debit', lang)}</p><MoneyDisplay value={entry.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+   635→        <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={entry.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+   636→        <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-gray-600">{t('عدد البنود', 'Lines', lang)}</p><p className="font-semibold">{formatNumber(entry.lines.length)}</p></CardContent></Card>
+   637→      </div>
+   638→
+   639→      {/* Sub-tabs for Lines and Account Impact */}
+   640→      <Tabs value={detailTab} onValueChange={setDetailTab}>
+   641→        <TabsList>
+   642→          <TabsTrigger value="lines" className="gap-1 text-xs">
+   643→            <FileText className="size-3.5" />
+   644→            {t('بنود القيد', 'Entry Lines', lang)}
+   645→          </TabsTrigger>
+   646→          <TabsTrigger value="impact" className="gap-1 text-xs">
+   647→            <ArrowRightLeft className="size-3.5" />
+   648→            {t('أثر الحسابات', 'Account Impact', lang)}
+   649→          </TabsTrigger>
+   650→        </TabsList>
+   651→
+   652→        <TabsContent value="lines">
+   653→          <Card>
+   654→            <CardContent className="p-0">
+   655→              <div className="overflow-x-auto">
+   656→                <Table>
+   657→                  <TableHeader>
+   658→                    <TableRow>
+   659→                      <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+   660→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   661→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   662→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   663→                    </TableRow>
+   664→                  </TableHeader>
+   665→                  <TableBody>
+   666→                    {entry.lines.map(line => (
+   667→                      <TableRow key={line.id}>
+   668→                        <TableCell className="font-medium">{line.account.code} - {lang === 'ar' && line.account.nameAr ? line.account.nameAr : line.account.name}</TableCell>
+   669→                        <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+   670→                        <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+   671→                        <TableCell className="text-muted-foreground">{line.description || '—'}</TableCell>
+   672→                      </TableRow>
+   673→                    ))}
+   674→                  </TableBody>
+   675→                </Table>
+   676→              </div>
+   677→            </CardContent>
+   678→          </Card>
+   679→        </TabsContent>
+   680→
+   681→        <TabsContent value="impact">
+   682→          <Card>
+   683→            <CardContent className="p-0">
+   684→              <div className="overflow-x-auto">
+   685→                <Table>
+   686→                  <TableHeader>
+   687→                    <TableRow>
+   688→                      <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+   689→                      <TableHead className="text-right">{t('رصيد قبل العملية', 'Before Balance', lang)}</TableHead>
+   690→                      <TableHead className="text-right">{t('الحركة مدين', 'Movement Debit', lang)}</TableHead>
+   691→                      <TableHead className="text-right">{t('الحركة دائن', 'Movement Credit', lang)}</TableHead>
+   692→                      <TableHead className="text-right">{t('رصيد بعد العملية', 'After Balance', lang)}</TableHead>
+   693→                    </TableRow>
+   694→                  </TableHeader>
+   695→                  <TableBody>
+   696→                    {accountImpactData.map(item => (
+   697→                      <TableRow key={item.accountId}>
+   698→                        <TableCell className="font-medium">
+   699→                          <span className="font-mono">{item.code}</span>
+   700→                          <span className="mx-1">-</span>
+   701→                          <span>{lang === 'ar' && item.nameAr ? item.nameAr : item.name}</span>
+   702→                        </TableCell>
+   703→                        <TableCell>
+   704→                          <MoneyDisplay value={item.beforeBalance} lang={lang} size="sm" className={item.beforeBalance >= 0 ? 'text-gray-700' : 'text-rose-700'} />
+   705→                        </TableCell>
+   706→                        <TableCell>
+   707→                          {item.movementDebit > 0 ? <MoneyDisplay value={item.movementDebit} lang={lang} size="sm" className="text-emerald-700" /> : '—'}
+   708→                        </TableCell>
+   709→                        <TableCell>
+   710→                          {item.movementCredit > 0 ? <MoneyDisplay value={item.movementCredit} lang={lang} size="sm" className="text-rose-700" /> : '—'}
+   711→                        </TableCell>
+   712→                        <TableCell>
+   713→                          <MoneyDisplay value={item.afterBalance} lang={lang} size="sm" bold className={item.afterBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
+   714→                        </TableCell>
+   715→                      </TableRow>
+   716→                    ))}
+   717→                  </TableBody>
+   718→                </Table>
+   719→              </div>
+   720→            </CardContent>
+   721→          </Card>
+   722→        </TabsContent>
+   723→      </Tabs>
+   724→    </div>
+   725→  )
+   726→}
+   727→
+   728→// ============ Tab 1: Chart of Accounts ============
+   729→function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize, isInitializing, onViewLedger }: {
+   730→  accounts: Account[]; isLoading: boolean; onInitialize: () => void; onReInitialize: () => void; isInitializing: boolean
+   731→  onViewLedger: (accountCode: string) => void
+   732→}) {
+   733→  const { lang } = useAppStore()
+   734→  const [activityFilter, setActivityFilter] = useState<string>('all')
+   735→  const [typeFilter, setTypeFilter] = useState<string>('all')
+   736→  const [searchTerm, setSearchTerm] = useState('')
+   737→  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+   738→    const initial = new Set<string>()
+   739→    accounts.forEach(a => { if (!a.parentId || a.level === 0) initial.add(a.id) })
+   740→    return initial
+   741→  })
+   742→  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
+   743→  const [detailOpen, setDetailOpen] = useState(false)
+   744→  const [statementAccount, setStatementAccount] = useState<Account | null>(null)
+   745→  const [statementOpen, setStatementOpen] = useState(false)
+   746→  const [transactionsAccount, setTransactionsAccount] = useState<Account | null>(null)
+   747→  const [transactionsOpen, setTransactionsOpen] = useState(false)
+   748→
+   749→  const allParentIds = useMemo(() => {
+   750→    const ids = new Set<string>()
+   751→    accounts.forEach(a => { if (a.children && a.children.length > 0) ids.add(a.id) })
+   752→    return ids
+   753→  }, [accounts])
+   754→
+   755→  const rootAccounts = useMemo(() => {
+   756→    return accounts.filter(a => !a.parentId).sort((a, b) => a.code.localeCompare(b.code))
+   757→  }, [accounts])
+   758→
+   759→  const childMap = useMemo(() => {
+   760→    const map = new Map<string, Account[]>()
+   761→    accounts.forEach(a => { if (a.parentId) { const siblings = map.get(a.parentId) || []; siblings.push(a); map.set(a.parentId, siblings) } })
+   762→    map.forEach((children) => children.sort((a, b) => a.code.localeCompare(b.code)))
+   763→    return map
+   764→  }, [accounts])
+   765→
+   766→  const filteredAccounts = useMemo(() => {
+   767→    let filtered = accounts
+   768→    if (activityFilter !== 'all') {
+   769→      if (activityFilter === 'BOTH') filtered = filtered.filter(a => a.activityType === 'BOTH' || !a.activityType)
+   770→      else filtered = filtered.filter(a => a.activityType === activityFilter)
+   771→    }
+   772→    if (typeFilter !== 'all') filtered = filtered.filter(a => a.type === typeFilter)
+   773→    if (searchTerm) {
+   774→      const term = searchTerm.toLowerCase()
+   775→      filtered = filtered.filter(a => a.code.toLowerCase().includes(term) || a.name.toLowerCase().includes(term) || (a.nameAr && a.nameAr.toLowerCase().includes(term)))
+   776→    }
+   777→    return filtered
+   778→  }, [accounts, activityFilter, typeFilter, searchTerm])
+   779→
+   780→  const flatAccounts = useMemo(() => {
+   781→    function flatten(roots: Account[], level: number): (Account & { displayLevel: number })[] {
+   782→      const result: (Account & { displayLevel: number })[] = []
+   783→      for (const root of roots) {
+   784→        if (!filteredAccounts.find(a => a.id === root.id)) continue
+   785→        result.push({ ...root, displayLevel: level })
+   786→        const children = childMap.get(root.id) || []
+   787→        if (children.length > 0 && expandedIds.has(root.id)) result.push(...flatten(children, level + 1))
+   788→      }
+   789→      return result
+   790→    }
+   791→    return flatten(rootAccounts, 0)
+   792→  }, [rootAccounts, filteredAccounts, childMap, expandedIds])
+   793→
+   794→  const toggleExpand = useCallback((id: string) => {
+   795→    setExpandedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
+   796→  }, [])
+   797→
+   798→  const typeSummary = useMemo(() => { const s: Record<string, number> = {}; accounts.forEach(a => { s[a.type] = (s[a.type] || 0) + 1 }); return s }, [accounts])
+   799→
+   800→  if (isLoading) return <TableSkeleton />
+   801→  if (accounts.length === 0) {
+   802→    return (
+   803→      <Card className="border-emerald-200 bg-emerald-50">
+   804→        <CardContent className="p-6 flex flex-col items-center gap-4 text-center">
+   805→          <Database className="size-12 text-emerald-500" />
+   806→          <div>
+   807→            <h3 className="text-lg font-semibold text-emerald-800">{t('لا توجد حسابات', 'No Accounts Found', lang)}</h3>
+   808→            <p className="text-sm text-emerald-600 mt-1">{t('قم بتهيئة دليل الحسابات الافتراضي', 'Initialize the default chart of accounts', lang)}</p>
+   809→          </div>
+   810→          <Button onClick={onInitialize} disabled={isInitializing} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+   811→            {isInitializing ? <RefreshCw className="size-4 animate-spin" /> : <PlusCircle className="size-4" />}
+   812→            {isInitializing ? t('جاري التهيئة...', 'Initializing...', lang) : t('تهيئة دليل الحسابات', 'Initialize Chart of Accounts', lang)}
+   813→          </Button>
+   814→        </CardContent>
+   815→      </Card>
+   816→    )
+   817→  }
+   818→
+   819→  return (
+   820→    <div className="space-y-4">
+   821→      {/* Summary */}
+   822→      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+   823→        {Object.entries(typeSummary).map(([type, count]) => {
+   824→          const cfg = typeConfig[type]
+   825→          if (!cfg) return null
+   826→          return <Card key={type} className={`${cfg.bg} border-0`}><CardContent className="p-3 text-center"><p className={`text-xs ${cfg.color}`}>{cfg.label[lang]}</p><p className={`text-lg font-bold ${cfg.color}`}>{count}</p></CardContent></Card>
+   827→        })}
+   828→      </div>
+   829→
+   830→      {/* Filters */}
+   831→      <Card className="bg-gray-50/50">
+   832→        <CardContent className="p-4">
+   833→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+   834→            <div className="space-y-1 flex-1 min-w-[120px]">
+   835→              <Label className="text-xs">{t('النشاط', 'Activity', lang)}</Label>
+   836→              <Select value={activityFilter} onValueChange={setActivityFilter}>
+   837→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   838→                <SelectContent>
+   839→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   840→                  <SelectItem value="CONSTRUCTION">{t('مشاريع', 'Construction', lang)}</SelectItem>
+   841→                  <SelectItem value="EQUIPMENT_RENTAL">{t('تأجير', 'Rental', lang)}</SelectItem>
+   842→                  <SelectItem value="BOTH">{t('مشترك', 'Both', lang)}</SelectItem>
+   843→                </SelectContent>
+   844→              </Select>
+   845→            </div>
+   846→            <div className="space-y-1 flex-1 min-w-[120px]">
+   847→              <Label className="text-xs">{t('النوع', 'Type', lang)}</Label>
+   848→              <Select value={typeFilter} onValueChange={setTypeFilter}>
+   849→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   850→                <SelectContent>
+   851→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   852→                  <SelectItem value="ASSET">{t('أصول', 'Asset', lang)}</SelectItem>
+   853→                  <SelectItem value="LIABILITY">{t('التزامات', 'Liability', lang)}</SelectItem>
+   854→                  <SelectItem value="EQUITY">{t('حقوق ملكية', 'Equity', lang)}</SelectItem>
+   855→                  <SelectItem value="REVENUE">{t('إيرادات', 'Revenue', lang)}</SelectItem>
+   856→                  <SelectItem value="EXPENSE">{t('مصروفات', 'Expense', lang)}</SelectItem>
+   857→                </SelectContent>
+   858→              </Select>
+   859→            </div>
+   860→            <div className="space-y-1 flex-1 min-w-[180px]">
+   861→              <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+   862→              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث بالكود أو الاسم...', 'Search by code or name...', lang)} className="h-9" />
+   863→            </div>
+   864→            <div className="flex gap-1">
+   865→              <Button variant="outline" size="sm" onClick={() => setExpandedIds(new Set(allParentIds))} className="text-xs gap-1 h-9"><ChevronDown className="size-3" />{t('توسيع', 'Expand', lang)}</Button>
+   866→              <Button variant="outline" size="sm" onClick={() => setExpandedIds(new Set())} className="text-xs gap-1 h-9"><ChevronRight className="size-3" />{t('تقليص', 'Collapse', lang)}</Button>
+   867→            </div>
+   868→            <Button variant="outline" size="sm" onClick={onReInitialize} disabled={isInitializing} className="gap-2 text-xs h-9">
+   869→              {isInitializing ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+   870→              {t('تحديث', 'Re-initialize', lang)}
+   871→            </Button>
+   872→          </div>
+   873→        </CardContent>
+   874→      </Card>
+   875→
+   876→      {/* Table */}
+   877→      <Card>
+   878→        <CardContent className="p-0">
+   879→          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+   880→            <Table>
+   881→              <TableHeader>
+   882→                <TableRow>
+   883→                  <TableHead className="text-right min-w-[120px]">{t('الكود', 'Code', lang)}</TableHead>
+   884→                  <TableHead className="text-right min-w-[200px]">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
+   885→                  <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+   886→                  <TableHead className="text-right">{t('النشاط', 'Activity', lang)}</TableHead>
+   887→                  <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+   888→                  <TableHead className="text-right">{t('القيود', 'Entries', lang)}</TableHead>
+   889→                  <TableHead className="text-right min-w-[200px]">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   890→                </TableRow>
+   891→              </TableHeader>
+   892→              <TableBody>
+   893→                {flatAccounts.map(a => {
+   894→                  const hasChildren = childMap.has(a.id) && (childMap.get(a.id)?.length || 0) > 0
+   895→                  const isExpanded = expandedIds.has(a.id)
+   896→                  return (
+   897→                    <TableRow key={a.id} className={`cursor-pointer hover:bg-emerald-50/30 ${a.displayLevel === 0 ? 'bg-gray-50/50 font-semibold' : ''} ${a.isSystem ? 'bg-amber-50/30' : ''}`}
+   898→                      onClick={() => { setSelectedAccount(a); setDetailOpen(true) }}>
+   899→                      <TableCell>
+   900→                        <div className="flex items-center" style={{ paddingLeft: `${a.displayLevel * 24}px` }}>
+   901→                          {hasChildren && <button onClick={(e) => { e.stopPropagation(); toggleExpand(a.id) }} className="mr-1 p-0.5 hover:bg-gray-200 rounded">{isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}</button>}
+   902→                          {!hasChildren && a.displayLevel > 0 && <span className="text-gray-300 mr-1 ml-1 text-xs">└</span>}
+   903→                          <span className="font-mono text-sm">{a.code}</span>
+   904→                        </div>
+   905→                      </TableCell>
+   906→                      <TableCell>
+   907→                        <span className={a.displayLevel === 0 ? 'font-bold' : ''}>
+   908→                          {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+   909→                        </span>
+   910→                      </TableCell>
+   911→                      <TableCell><TypeBadge type={a.type} lang={lang} /></TableCell>
+   912→                      <TableCell><ActivityBadge activityType={a.activityType} lang={lang} /></TableCell>
+   913→                      <TableCell><MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
+   914→                      <TableCell className="text-center">{formatNumber(a.entryCount)}</TableCell>
+   915→                      <TableCell>
+   916→                        <div className="flex gap-1">
+   917→                          <Button
+   918→                            variant="ghost"
+   919→                            size="sm"
+   920→                            className="h-7 gap-1 text-xs"
+   921→                            onClick={(e) => {
+   922→                              e.stopPropagation()
+   923→                              setStatementAccount(a)
+   924→                              setStatementOpen(true)
+   925→                            }}
+   926→                          >
+   927→                            <FileSearch className="size-3.5" />
+   928→                            {t('كشف', 'Stmt', lang)}
+   929→                          </Button>
+   930→                          <Button
+   931→                            variant="ghost"
+   932→                            size="sm"
+   933→                            className="h-7 gap-1 text-xs text-sky-700 hover:text-sky-800 hover:bg-sky-50"
+   934→                            onClick={(e) => {
+   935→                              e.stopPropagation()
+   936→                              onViewLedger(a.code)
+   937→                            }}
+   938→                          >
+   939→                            <BookOpen className="size-3.5" />
+   940→                            {t('أستاذ', 'Ledger', lang)}
+   941→                          </Button>
+   942→                          <Button
+   943→                            variant="ghost"
+   944→                            size="sm"
+   945→                            className="h-7 gap-1 text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50"
+   946→                            onClick={(e) => {
+   947→                              e.stopPropagation()
+   948→                              setTransactionsAccount(a)
+   949→                              setTransactionsOpen(true)
+   950→                            }}
+   951→                          >
+   952→                            <List className="size-3.5" />
+   953→                            {t('حركات', 'Txns', lang)}
+   954→                          </Button>
+   955→                        </div>
+   956→                      </TableCell>
+   957→                    </TableRow>
+   958→                  )
+   959→                })}
+   960→              </TableBody>
+   961→            </Table>
+   962→          </div>
+   963→        </CardContent>
+   964→      </Card>
+   965→
+   966→      <AccountDetailDialog account={selectedAccount} open={detailOpen} onClose={() => setDetailOpen(false)} />
+   967→      <AccountStatementDialog account={statementAccount} open={statementOpen} onClose={() => setStatementOpen(false)} />
+   968→      <AccountTransactionsDialog account={transactionsAccount} open={transactionsOpen} onClose={() => setTransactionsOpen(false)} />
+   969→    </div>
+   970→  )
+   971→}
+   972→
+   973→// ============ Tab 2: Journal Entries ============
+   974→function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
+   975→  entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void; accounts: Account[]
+   976→}) {
+   977→  const { lang } = useAppStore()
+   978→  const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
+   979→  const [statusFilter, setStatusFilter] = useState('all')
+   980→  const [sourceFilter, setSourceFilter] = useState('all')
+   981→  const [searchTerm, setSearchTerm] = useState('')
+   982→
+   983→  const filtered = useMemo(() => {
+   984→    let f = entries
+   985→    if (statusFilter !== 'all') f = f.filter(e => e.status === statusFilter)
+   986→    if (sourceFilter !== 'all') f = f.filter(e => e.sourceType === sourceFilter)
+   987→    if (searchTerm) {
+   988→      const term = searchTerm.toLowerCase()
+   989→      f = f.filter(e => e.entryNo.toLowerCase().includes(term) || (e.description || '').toLowerCase().includes(term))
+   990→    }
+   991→    return f
+   992→  }, [entries, statusFilter, sourceFilter, searchTerm])
+   993→
+   994→  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} accounts={accounts} />
+   995→  if (isLoading) return <TableSkeleton />
+   996→  if (isError) return <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+   997→
+   998→  return (
+   999→    <div className="space-y-4">
+  1000→      {/* Filters */}
+  1001→      <Card className="bg-gray-50/50">
+  1002→        <CardContent className="p-4">
+  1003→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1004→            <div className="space-y-1 flex-1 min-w-[120px]">
+  1005→              <Label className="text-xs">{t('الحالة', 'Status', lang)}</Label>
+  1006→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1007→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1008→                <SelectContent>
+  1009→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+  1010→                  <SelectItem value="POSTED">{t('مرحّل', 'Posted', lang)}</SelectItem>
+  1011→                  <SelectItem value="DRAFT">{t('مسودة', 'Draft', lang)}</SelectItem>
+  1012→                  <SelectItem value="CANCELLED">{t('ملغي', 'Cancelled', lang)}</SelectItem>
+  1013→                </SelectContent>
+  1014→              </Select>
+  1015→            </div>
+  1016→            <div className="space-y-1 flex-1 min-w-[150px]">
+  1017→              <Label className="text-xs">{t('المصدر', 'Source', lang)}</Label>
+  1018→              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+  1019→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  1020→                <SelectContent>
+  1021→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+  1022→                  {Object.entries(sourceTypeLabels).map(([key, label]) => (
+  1023→                    <SelectItem key={key} value={key}>{label[lang]}</SelectItem>
+  1024→                  ))}
+  1025→                </SelectContent>
+  1026→              </Select>
+  1027→            </div>
+  1028→            <div className="space-y-1 flex-1 min-w-[180px]">
+  1029→              <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+  1030→              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث برقم القيد أو الوصف...', 'Search by entry no or description...', lang)} className="h-9" />
+  1031→            </div>
+  1032→          </div>
+  1033→        </CardContent>
+  1034→      </Card>
+  1035→
+  1036→      {filtered.length === 0 ? (
+  1037→        <div className="flex flex-col items-center gap-3 py-10"><FileText className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد قيود', 'No journal entries found', lang)}</p></div>
+  1038→      ) : (
+  1039→        <Card>
+  1040→          <CardContent className="p-0">
+  1041→            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+  1042→              <Table>
+  1043→                <TableHeader>
+  1044→                  <TableRow>
+  1045→                    <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+  1046→                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1047→                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1048→                    <TableHead className="text-right">{t('المصدر', 'Source', lang)}</TableHead>
+  1049→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1050→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1051→                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+  1052→                  </TableRow>
+  1053→                </TableHeader>
+  1054→                <TableBody>
+  1055→                  {filtered.map(entry => (
+  1056→                    <TableRow key={entry.id} className="cursor-pointer hover:bg-emerald-50/30" onClick={() => setSelectedEntry(entry)}>
+  1057→                      <TableCell className="font-mono font-medium">{entry.entryNo}</TableCell>
+  1058→                      <TableCell>{formatDate(entry.date, lang)}</TableCell>
+  1059→                      <TableCell className="max-w-[200px] truncate">{entry.description || '—'}</TableCell>
+  1060→                      <TableCell>{entry.sourceType ? <Badge variant="outline" className="text-xs">{sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType}</Badge> : '—'}</TableCell>
+  1061→                      <TableCell><MoneyDisplay value={entry.totalDebit} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+  1062→                      <TableCell><MoneyDisplay value={entry.totalCredit} lang={lang} size="sm" className="text-rose-700" /></TableCell>
+  1063→                      <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
+  1064→                    </TableRow>
+  1065→                  ))}
+  1066→                </TableBody>
+  1067→              </Table>
+  1068→            </div>
+  1069→          </CardContent>
+  1070→        </Card>
+  1071→      )}
+  1072→    </div>
+  1073→  )
+  1074→}
+  1075→
+  1076→// ============ Tab 3: General Ledger ============
+  1077→function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; preselectedCode?: string }) {
+  1078→  const { lang } = useAppStore()
+  1079→  const postingAccounts = useMemo(() => accounts.filter(a => a.allowPosting).sort((a, b) => a.code.localeCompare(b.code)), [accounts])
+  1080→  const [selectedCode, setSelectedCode] = useState(preselectedCode || '')
+  1081→  const [dateFrom, setDateFrom] = useState('')
+  1082→  const [dateTo, setDateTo] = useState('')
+  1083→
+  1084→  // Sync with preselectedCode from parent
+  1085→  React.useEffect(() => {
+  1086→    if (preselectedCode) {
+  1087→      setSelectedCode(preselectedCode)
+  1088→    }
+  1089→  }, [preselectedCode])
+  1090→
+  1091→  const { data: ledgerData, isLoading, isError, refetch } = useQuery<{
+  1092→    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+  1093→    lines: StatementLine[]
+  1094→    totalDebit: number; totalCredit: number; closingBalance: number
+  1095→  } | null>({
+  1096→    queryKey: ['general-ledger', selectedCode, dateFrom, dateTo],
+  1097→    queryFn: async () => {
+  1098→      if (!selectedCode) return null
+  1099→      const params = new URLSearchParams({ accountCode: selectedCode })
+  1100→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1101→      if (dateTo) params.set('dateTo', dateTo)
+  1102→      const res = await fetch(`/api/general-ledger?${params}`)
+  1103→      if (!res.ok) throw new Error()
+  1104→      return res.json()
+  1105→    },
+  1106→    enabled: !!selectedCode,
+  1107→  })
+  1108→
+  1109→  return (
+  1110→    <div className="space-y-4">
+  1111→      <Card className="bg-gray-50/50">
+  1112→        <CardContent className="p-4">
+  1113→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1114→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1115→              <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
+  1116→              <Select value={selectedCode} onValueChange={setSelectedCode}>
+  1117→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} /></SelectTrigger>
+  1118→                <SelectContent>
+  1119→                  {postingAccounts.map(a => (
+  1120→                    <SelectItem key={a.id} value={a.code}>{a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}</SelectItem>
+  1121→                  ))}
+  1122→                </SelectContent>
+  1123→              </Select>
+  1124→            </div>
+  1125→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1126→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1127→            {selectedCode && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>}
+  1128→          </div>
+  1129→        </CardContent>
+  1130→      </Card>
+  1131→
+  1132→      {!selectedCode ? (
+  1133→        <div className="flex flex-col items-center gap-3 py-10"><BookOpen className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر حساباً لعرض حركته', 'Select an account to view its ledger', lang)}</p></div>
+  1134→      ) : isLoading ? <TableSkeleton /> : isError ? (
+  1135→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+  1136→      ) : ledgerData ? (
+  1137→        <>
+  1138→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1139→            <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('الحساب', 'Account', lang)}</p><p className="font-bold font-mono">{ledgerData.account.code}</p></CardContent></Card>
+  1140→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('مدين', 'Debit', lang)}</p><MoneyDisplay value={ledgerData.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+  1141→            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={ledgerData.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+  1142→            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p><MoneyDisplay value={ledgerData.closingBalance} lang={lang} bold className="text-purple-700" /></CardContent></Card>
+  1143→          </div>
+  1144→          <Card>
+  1145→            <CardContent className="p-0">
+  1146→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1147→                <Table>
+  1148→                  <TableHeader>
+  1149→                    <TableRow>
+  1150→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1151→                      <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+  1152→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1153→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1154→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1155→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1156→                    </TableRow>
+  1157→                  </TableHeader>
+  1158→                  <TableBody>
+  1159→                    {ledgerData.lines.map((line, idx) => (
+  1160→                      <TableRow key={idx}>
+  1161→                        <TableCell>{formatDate(line.date, lang)}</TableCell>
+  1162→                        <TableCell className="font-mono">{line.entryNo}</TableCell>
+  1163→                        <TableCell>{line.description || line.lineDescription || '—'}</TableCell>
+  1164→                        <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1165→                        <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1166→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} bold /></TableCell>
+  1167→                      </TableRow>
+  1168→                    ))}
+  1169→                  </TableBody>
+  1170→                </Table>
+  1171→              </div>
+  1172→            </CardContent>
+  1173→          </Card>
+  1174→        </>
+  1175→      ) : null}
+  1176→    </div>
+  1177→  )
+  1178→}
+  1179→
+  1180→// ============ Tab 4: Trial Balance ============
+  1181→function TrialBalanceTab() {
+  1182→  const { lang } = useAppStore()
+  1183→  const [dateFrom, setDateFrom] = useState('')
+  1184→  const [dateTo, setDateTo] = useState('')
+  1185→
+  1186→  const { data: trialData, isLoading, isError, refetch } = useQuery<TrialBalanceItem[]>({
+  1187→    queryKey: ['trial-balance', dateFrom, dateTo],
+  1188→    queryFn: async () => {
+  1189→      const params = new URLSearchParams()
+  1190→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1191→      if (dateTo) params.set('dateTo', dateTo)
+  1192→      const res = await fetch(`/api/trial-balance?${params}`)
+  1193→      if (!res.ok) throw new Error()
+  1194→      const data = await res.json()
+  1195→      return Array.isArray(data) ? data : (data.items || [])
+  1196→    },
+  1197→  })
+  1198→
+  1199→  const safeData = trialData || []
+  1200→  const totals = useMemo(() => ({
+  1201→    netDebit: safeData.reduce((s, i) => s + i.netDebit, 0),
+  1202→    netCredit: safeData.reduce((s, i) => s + i.netCredit, 0),
+  1203→  }), [safeData])
+  1204→
+  1205→  return (
+  1206→    <div className="space-y-4">
+  1207→      <Card className="bg-gray-50/50">
+  1208→        <CardContent className="p-4">
+  1209→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1210→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1211→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1212→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>
+  1213→            <div className="mr-auto">
+  1214→              <Badge className={Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-rose-100 text-rose-700 border-0'}>
+  1215→                {Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? t('✓ متوازن', '✓ Balanced', lang) : t('✗ غير متوازن', '✗ Unbalanced', lang)}
+  1216→              </Badge>
+  1217→            </div>
+  1218→          </div>
+  1219→        </CardContent>
+  1220→      </Card>
+  1221→
+  1222→      {isLoading ? <TableSkeleton /> : isError ? (
+  1223→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p></div>
+  1224→      ) : safeData.length === 0 ? (
+  1225→        <div className="flex flex-col items-center gap-3 py-10"><Scale className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أرصدة', 'No balances found', lang)}</p></div>
+  1226→      ) : (
+  1227→        <Card>
+  1228→          <CardContent className="p-0">
+  1229→            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+  1230→              <Table>
+  1231→                <TableHeader>
+  1232→                  <TableRow>
+  1233→                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+  1234→                    <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+  1235→                    <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+  1236→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1237→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1238→                  </TableRow>
+  1239→                </TableHeader>
+  1240→                <TableBody>
+  1241→                  {safeData.map((item, idx) => (
+  1242→                    <TableRow key={idx}>
+  1243→                      <TableCell className="font-mono text-sm">{item.account.code}</TableCell>
+  1244→                      <TableCell className="font-medium">{lang === 'ar' && item.account.nameAr ? item.account.nameAr : item.account.name}</TableCell>
+  1245→                      <TableCell><TypeBadge type={item.account.type} lang={lang} /></TableCell>
+  1246→                      <TableCell>{item.netDebit > 0 ? <MoneyDisplay value={item.netDebit} lang={lang} size="sm" className="text-emerald-700" bold /> : '—'}</TableCell>
+  1247→                      <TableCell>{item.netCredit > 0 ? <MoneyDisplay value={item.netCredit} lang={lang} size="sm" className="text-rose-700" bold /> : '—'}</TableCell>
+  1248→                    </TableRow>
+  1249→                  ))}
+  1250→                  <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+  1251→                    <TableCell colSpan={3} className="text-lg">{t('الإجمالي', 'Total', lang)}</TableCell>
+  1252→                    <TableCell><MoneyDisplay value={totals.netDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+  1253→                    <TableCell><MoneyDisplay value={totals.netCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+  1254→                  </TableRow>
+  1255→                </TableBody>
+  1256→              </Table>
+  1257→            </div>
+  1258→          </CardContent>
+  1259→        </Card>
+  1260→      )}
+  1261→    </div>
+  1262→  )
+  1263→}
+  1264→
+  1265→// ============ Tab 5: Income Statement ============
+  1266→function IncomeStatementTab() {
+  1267→  const { lang } = useAppStore()
+  1268→  const [dateFrom, setDateFrom] = useState('')
+  1269→  const [dateTo, setDateTo] = useState('')
+  1270→
+  1271→  const { data, isLoading, isError, refetch } = useQuery({
+  1272→    queryKey: ['financial-reports', 'income-statement', dateFrom, dateTo],
+  1273→    queryFn: async () => {
+  1274→      const params = new URLSearchParams({ type: 'income-statement' })
+  1275→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1276→      if (dateTo) params.set('dateTo', dateTo)
+  1277→      const res = await fetch(`/api/financial-reports?${params}`)
+  1278→      if (!res.ok) throw new Error()
+  1279→      return res.json()
+  1280→    },
+  1281→  })
+  1282→
+  1283→  const report = data as Record<string, unknown> | undefined
+  1284→  const revenues = (report?.revenues as Record<string, number>) || {}
+  1285→  const projectCosts = (report?.projectCosts as Record<string, number>) || {}
+  1286→  const rentalCosts = (report?.rentalCosts as Record<string, number>) || {}
+  1287→  const operatingExpenses = (report?.operatingExpenses as Record<string, number>) || {}
+  1288→  const grossProfit = (report?.grossProfit as number) || 0
+  1289→  const netProfit = (report?.netProfit as number) || 0
+  1290→  const totalRevenue = (report?.totalRevenue as number) || 0
+  1291→  const totalProjectCosts = (report?.totalProjectCosts as number) || 0
+  1292→  const totalRentalCosts = (report?.totalRentalCosts as number) || 0
+  1293→  const totalOperatingExpenses = (report?.totalOperatingExpenses as number) || 0
+  1294→
+  1295→  return (
+  1296→    <div className="space-y-4">
+  1297→      <Card className="bg-gray-50/50">
+  1298→        <CardContent className="p-4">
+  1299→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1300→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1301→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1302→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض التقرير', 'Generate', lang)}</Button>
+  1303→          </div>
+  1304→        </CardContent>
+  1305→      </Card>
+  1306→
+  1307→      {isLoading ? <TableSkeleton /> : isError ? (
+  1308→        <div className="text-center py-10 text-rose-600">{t('حدث خطأ', 'Error', lang)}</div>
+  1309→      ) : data ? (
+  1310→        <>
+  1311→          {/* Summary Cards */}
+  1312→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1313→            <SummaryCard title={t('إجمالي الإيرادات', 'Total Revenue', lang)} value={totalRevenue} icon={TrendingUp} color="emerald" lang={lang} />
+  1314→            <SummaryCard title={t('تكاليف المشاريع', 'Project Costs', lang)} value={totalProjectCosts + totalRentalCosts} icon={Building2} color="rose" lang={lang} />
+  1315→            <SummaryCard title={t('مجمل الربح', 'Gross Profit', lang)} value={grossProfit} icon={BarChart3} color={grossProfit >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1316→            <SummaryCard title={t('صافي الربح', 'Net Profit', lang)} value={netProfit} icon={CircleDollarSign} color={netProfit >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1317→          </div>
+  1318→
+  1319→          {/* Revenue Section */}
+  1320→          <Card>
+  1321→            <CardContent className="p-4">
+  1322→              <SectionTitle icon={TrendingUp} title={{ ar: 'الإيرادات', en: 'Revenue' }} lang={lang} />
+  1323→              <Table>
+  1324→                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
+  1325→                <TableBody>
+  1326→                  {Object.entries(revenues).map(([key, val]) => (
+  1327→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-emerald-700" /></TableCell></TableRow>
+  1328→                  ))}
+  1329→                  <TableRow className="font-bold bg-emerald-50"><TableCell>{t('إجمالي الإيرادات', 'Total Revenue', lang)}</TableCell><TableCell><MoneyDisplay value={totalRevenue} lang={lang} bold className="text-emerald-700" /></TableCell></TableRow>
+  1330→                </TableBody>
+  1331→              </Table>
+  1332→            </CardContent>
+  1333→          </Card>
+  1334→
+  1335→          {/* Costs Section */}
+  1336→          <Card>
+  1337→            <CardContent className="p-4">
+  1338→              <SectionTitle icon={Building2} title={{ ar: 'تكاليف المشاريع والتأجير', en: 'Project & Rental Costs' }} lang={lang} />
+  1339→              <Table>
+  1340→                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
+  1341→                <TableBody>
+  1342→                  {Object.entries(projectCosts).map(([key, val]) => (
+  1343→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-rose-700" /></TableCell></TableRow>
+  1344→                  ))}
+  1345→                  {Object.entries(rentalCosts).map(([key, val]) => (
+  1346→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-rose-700" /></TableCell></TableRow>
+  1347→                  ))}
+  1348→                  <TableRow className="font-bold bg-rose-50"><TableCell>{t('إجمالي التكاليف', 'Total Costs', lang)}</TableCell><TableCell><MoneyDisplay value={totalProjectCosts + totalRentalCosts} lang={lang} bold className="text-rose-700" /></TableCell></TableRow>
+  1349→                </TableBody>
+  1350→              </Table>
+  1351→            </CardContent>
+  1352→          </Card>
+  1353→
+  1354→          {/* Operating Expenses */}
+  1355→          <Card>
+  1356→            <CardContent className="p-4">
+  1357→              <SectionTitle icon={Calculator} title={{ ar: 'المصاريف الإدارية والتشغيلية', en: 'Operating Expenses' }} lang={lang} />
+  1358→              <Table>
+  1359→                <TableHeader><TableRow><TableHead className="text-right">{t('البند', 'Item', lang)}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead></TableRow></TableHeader>
+  1360→                <TableBody>
+  1361→                  {Object.entries(operatingExpenses).map(([key, val]) => (
+  1362→                    <TableRow key={key}><TableCell>{key}</TableCell><TableCell><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-orange-700" /></TableCell></TableRow>
+  1363→                  ))}
+  1364→                  <TableRow className="font-bold bg-orange-50"><TableCell>{t('إجمالي المصاريف', 'Total Operating', lang)}</TableCell><TableCell><MoneyDisplay value={totalOperatingExpenses} lang={lang} bold className="text-orange-700" /></TableCell></TableRow>
+  1365→                </TableBody>
+  1366→              </Table>
+  1367→            </CardContent>
+  1368→          </Card>
+  1369→
+  1370→          {/* Net Profit */}
+  1371→          <Card className={`border-2 ${netProfit >= 0 ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}>
+  1372→            <CardContent className="p-6 text-center">
+  1373→              <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-emerald-800' : 'text-rose-800'}`}>
+  1374→                {t('صافي الربح', 'Net Profit', lang)}: <MoneyDisplay value={netProfit} lang={lang} bold className="text-3xl" />
+  1375→              </p>
+  1376→              {totalRevenue > 0 && (
+  1377→                <p className={`text-sm mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+  1378→                  {t('هامش الربح', 'Profit Margin', lang)}: {((netProfit / totalRevenue) * 100).toFixed(1)}%
+  1379→                </p>
+  1380→              )}
+  1381→            </CardContent>
+  1382→          </Card>
+  1383→        </>
+  1384→      ) : (
+  1385→        <div className="flex flex-col items-center gap-3 py-10"><BarChart3 className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد الفترة ثم اضغط عرض التقرير', 'Select period and click Generate', lang)}</p></div>
+  1386→      )}
+  1387→    </div>
+  1388→  )
+  1389→}
+  1390→
+  1391→// ============ Tab 6: Balance Sheet ============
+  1392→function BalanceSheetTab() {
+  1393→  const { lang } = useAppStore()
+  1394→  const [dateTo, setDateTo] = useState('')
+  1395→
+  1396→  const { data, isLoading, isError, refetch } = useQuery({
+  1397→    queryKey: ['financial-reports', 'balance-sheet', dateTo],
+  1398→    queryFn: async () => {
+  1399→      const params = new URLSearchParams({ type: 'balance-sheet' })
+  1400→      if (dateTo) params.set('dateTo', dateTo)
+  1401→      const res = await fetch(`/api/financial-reports?${params}`)
+  1402→      if (!res.ok) throw new Error()
+  1403→      return res.json()
+  1404→    },
+  1405→  })
+  1406→
+  1407→  const report = data as Record<string, unknown> | undefined
+  1408→  const currentAssets = (report?.currentAssets as Record<string, number>) || {}
+  1409→  const nonCurrentAssets = (report?.nonCurrentAssets as Record<string, number>) || {}
+  1410→  const currentLiabilities = (report?.currentLiabilities as Record<string, number>) || {}
+  1411→  const nonCurrentLiabilities = (report?.nonCurrentLiabilities as Record<string, number>) || {}
+  1412→  const equity = (report?.equity as Record<string, number>) || {}
+  1413→  const totalAssets = (report?.totalAssets as number) || 0
+  1414→  const totalLiabilities = (report?.totalLiabilities as number) || 0
+  1415→  const totalEquity = (report?.totalEquity as number) || 0
+  1416→  const isBalanced = (report?.isBalanced as boolean) || false
+  1417→
+  1418→  return (
+  1419→    <div className="space-y-4">
+  1420→      <Card className="bg-gray-50/50">
+  1421→        <CardContent className="p-4">
+  1422→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1423→            <div className="space-y-1"><Label className="text-xs">{t('حتى تاريخ', 'As of Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1424→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'Generate', lang)}</Button>
+  1425→          </div>
+  1426→        </CardContent>
+  1427→      </Card>
+  1428→
+  1429→      {isLoading ? <TableSkeleton /> : data ? (
+  1430→        <>
+  1431→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1432→            <SummaryCard title={t('إجمالي الأصول', 'Total Assets', lang)} value={totalAssets} icon={Wallet} color="sky" lang={lang} />
+  1433→            <SummaryCard title={t('إجمالي الخصوم', 'Total Liabilities', lang)} value={totalLiabilities} icon={CreditCard} color="orange" lang={lang} />
+  1434→            <SummaryCard title={t('حقوق الملكية', 'Equity', lang)} value={totalEquity} icon={Banknote} color="purple" lang={lang} />
+  1435→            <Card className={`${isBalanced ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'} border`}>
+  1436→              <CardContent className="p-4 text-center">
+  1437→                <p className="text-xs font-medium">{t('التحقق', 'Verification', lang)}</p>
+  1438→                <p className={`text-lg font-bold ${isBalanced ? 'text-emerald-700' : 'text-rose-700'}`}>
+  1439→                  {isBalanced ? t('✓ متوازنة', '✓ Balanced', lang) : t('✗ غير متوازنة', '✗ Unbalanced', lang)}
+  1440→                </p>
+  1441→              </CardContent>
+  1442→            </Card>
+  1443→          </div>
+  1444→
+  1445→          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  1446→            {/* Assets Column */}
+  1447→            <div className="space-y-4">
+  1448→              <Card>
+  1449→                <CardContent className="p-4">
+  1450→                  <SectionTitle icon={Wallet} title={{ ar: 'الأصول المتداولة', en: 'Current Assets' }} lang={lang} />
+  1451→                  <Table>
+  1452→                    <TableBody>
+  1453→                      {Object.entries(currentAssets).map(([key, val]) => (
+  1454→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-sky-700" /></TableCell></TableRow>
+  1455→                      ))}
+  1456→                    </TableBody>
+  1457→                  </Table>
+  1458→                </CardContent>
+  1459→              </Card>
+  1460→              <Card>
+  1461→                <CardContent className="p-4">
+  1462→                  <SectionTitle icon={Wallet} title={{ ar: 'الأصول غير المتداولة', en: 'Non-Current Assets' }} lang={lang} />
+  1463→                  <Table>
+  1464→                    <TableBody>
+  1465→                      {Object.entries(nonCurrentAssets).map(([key, val]) => (
+  1466→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-sky-700" /></TableCell></TableRow>
+  1467→                      ))}
+  1468→                    </TableBody>
+  1469→                  </Table>
+  1470→                </CardContent>
+  1471→              </Card>
+  1472→              <Card className="bg-sky-50 border-sky-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-sky-800">{t('إجمالي الأصول', 'Total Assets', lang)}: <MoneyDisplay value={totalAssets} lang={lang} bold /></p></CardContent></Card>
+  1473→            </div>
+  1474→
+  1475→            {/* Liabilities & Equity Column */}
+  1476→            <div className="space-y-4">
+  1477→              <Card>
+  1478→                <CardContent className="p-4">
+  1479→                  <SectionTitle icon={CreditCard} title={{ ar: 'الخصوم المتداولة', en: 'Current Liabilities' }} lang={lang} />
+  1480→                  <Table>
+  1481→                    <TableBody>
+  1482→                      {Object.entries(currentLiabilities).map(([key, val]) => (
+  1483→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-orange-700" /></TableCell></TableRow>
+  1484→                      ))}
+  1485→                    </TableBody>
+  1486→                  </Table>
+  1487→                </CardContent>
+  1488→              </Card>
+  1489→              <Card>
+  1490→                <CardContent className="p-4">
+  1491→                  <SectionTitle icon={Banknote} title={{ ar: 'حقوق الملكية', en: 'Equity' }} lang={lang} />
+  1492→                  <Table>
+  1493→                    <TableBody>
+  1494→                      {Object.entries(equity).map(([key, val]) => (
+  1495→                        <TableRow key={key}><TableCell>{key}</TableCell><TableCell className="text-left"><MoneyDisplay value={val as number} lang={lang} size="sm" className="text-purple-700" /></TableCell></TableRow>
+  1496→                      ))}
+  1497→                    </TableBody>
+  1498→                  </Table>
+  1499→                </CardContent>
+  1500→              </Card>
+  1501→              <Card className="bg-purple-50 border-purple-200"><CardContent className="p-4 text-center"><p className="text-lg font-bold text-purple-800">{t('إجمالي الخصوم + حقوق الملكية', 'Total Liabilities + Equity', lang)}: <MoneyDisplay value={totalLiabilities + totalEquity} lang={lang} bold /></p></CardContent></Card>
+  1502→            </div>
+  1503→          </div>
+  1504→        </>
+  1505→      ) : (
+  1506→        <div className="flex flex-col items-center gap-3 py-10"><Scale className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد التاريخ ثم اضغط عرض', 'Select date and click Generate', lang)}</p></div>
+  1507→      )}
+  1508→    </div>
+  1509→  )
+  1510→}
+  1511→
+  1512→// ============ Tab 7: Cash Flow ============
+  1513→function CashFlowTab() {
+  1514→  const { lang } = useAppStore()
+  1515→  const [dateFrom, setDateFrom] = useState('')
+  1516→  const [dateTo, setDateTo] = useState('')
+  1517→
+  1518→  const { data, isLoading, refetch } = useQuery({
+  1519→    queryKey: ['financial-reports', 'cash-flow', dateFrom, dateTo],
+  1520→    queryFn: async () => {
+  1521→      const params = new URLSearchParams({ type: 'cash-flow' })
+  1522→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1523→      if (dateTo) params.set('dateTo', dateTo)
+  1524→      const res = await fetch(`/api/financial-reports?${params}`)
+  1525→      if (!res.ok) throw new Error()
+  1526→      return res.json()
+  1527→    },
+  1528→  })
+  1529→
+  1530→  const report = data as Record<string, unknown> | undefined
+  1531→  const operatingCF = (report?.operatingCashFlow as number) || 0
+  1532→  const investingCF = (report?.investingCashFlow as number) || 0
+  1533→  const financingCF = (report?.financingCashFlow as number) || 0
+  1534→  const netChange = (report?.netChangeInCash as number) || 0
+  1535→  const openingCash = (report?.openingCashBalance as number) || 0
+  1536→  const closingCash = (report?.closingCashBalance as number) || 0
+  1537→
+  1538→  return (
+  1539→    <div className="space-y-4">
+  1540→      <Card className="bg-gray-50/50">
+  1541→        <CardContent className="p-4">
+  1542→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1543→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1544→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1545→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'Generate', lang)}</Button>
+  1546→          </div>
+  1547→        </CardContent>
+  1548→      </Card>
+  1549→
+  1550→      {isLoading ? <TableSkeleton /> : data ? (
+  1551→        <>
+  1552→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1553→            <SummaryCard title={t('تدفقات التشغيل', 'Operating CF', lang)} value={operatingCF} icon={Settings} color={operatingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1554→            <SummaryCard title={t('تدفقات الاستثمار', 'Investing CF', lang)} value={investingCF} icon={Building2} color={investingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1555→            <SummaryCard title={t('تدفقات التمويل', 'Financing CF', lang)} value={financingCF} icon={Banknote} color={financingCF >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1556→          </div>
+  1557→
+  1558→          <Card>
+  1559→            <CardContent className="p-4">
+  1560→              <Table>
+  1561→                <TableBody>
+  1562→                  <TableRow><TableCell className="font-semibold">{t('صافي الربح', 'Net Profit', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.netProfit as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
+  1563→                  <TableRow><TableCell>{t('+ تعديلات غير نقدية', '+ Non-cash adjustments', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.nonCashAdjustments as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
+  1564→                  <TableRow><TableCell>{t('+ تغيرات رأس المال العامل', '+ Working capital changes', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={(report?.workingCapitalChanges as number) || 0} lang={lang} size="sm" /></TableCell></TableRow>
+  1565→                  <TableRow className="bg-emerald-50 font-bold"><TableCell>{t('= تدفقات التشغيل', '= Operating Cash Flow', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={operatingCF} lang={lang} bold className={operatingCF >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell></TableRow>
+  1566→                  <TableRow><TableCell>{t('تدفقات الاستثمار', 'Investing Activities', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={investingCF} lang={lang} size="sm" /></TableCell></TableRow>
+  1567→                  <TableRow><TableCell>{t('تدفقات التمويل', 'Financing Activities', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={financingCF} lang={lang} size="sm" /></TableCell></TableRow>
+  1568→                  <TableRow className="bg-sky-50 font-bold"><TableCell>{t('صافي التغير في النقد', 'Net Change in Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={netChange} lang={lang} bold className="text-sky-700" /></TableCell></TableRow>
+  1569→                  <TableRow><TableCell>{t('رصيد النقد أول الفترة', 'Opening Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={openingCash} lang={lang} size="sm" /></TableCell></TableRow>
+  1570→                  <TableRow className="bg-purple-50 font-bold border-t-2"><TableCell>{t('رصيد النقد آخر الفترة', 'Closing Cash', lang)}</TableCell><TableCell className="text-left"><MoneyDisplay value={closingCash} lang={lang} bold className="text-purple-700" /></TableCell></TableRow>
+  1571→                </TableBody>
+  1572→              </Table>
+  1573→            </CardContent>
+  1574→          </Card>
+  1575→        </>
+  1576→      ) : (
+  1577→        <div className="flex flex-col items-center gap-3 py-10"><Landmark className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('حدد الفترة ثم اضغط عرض', 'Select period and click Generate', lang)}</p></div>
+  1578→      )}
+  1579→    </div>
+  1580→  )
+  1581→}
+  1582→
+  1583→// ============ Tab 8: Cost Centers ============
+  1584→function CostCentersTab() {
+  1585→  const { lang } = useAppStore()
+  1586→  const { data, isLoading, refetch } = useQuery({
+  1587→    queryKey: ['cost-centers'],
+  1588→    queryFn: async () => { const res = await fetch('/api/cost-centers'); if (!res.ok) throw new Error(); return res.json() },
+  1589→  })
+  1590→
+  1591→  const costCenters = (Array.isArray(data) ? data : (data?.costCenters || [])) as Record<string, unknown>[]
+  1592→
+  1593→  return (
+  1594→    <div className="space-y-4">
+  1595→      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1596→        <SummaryCard title={t('عدد المراكز', 'Total Centers', lang)} value={costCenters.length} icon={FolderClosed} color="teal" lang={lang} isMoney={false} />
+  1597→      </div>
+  1598→
+  1599→      {isLoading ? <TableSkeleton /> : costCenters.length === 0 ? (
+  1600→        <div className="flex flex-col items-center gap-3 py-10"><FolderClosed className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد مراكز تكلفة', 'No cost centers found', lang)}</p></div>
+  1601→      ) : (
+  1602→        <Card>
+  1603→          <CardContent className="p-0">
+  1604→            <div className="overflow-x-auto">
+  1605→              <Table>
+  1606→                <TableHeader>
+  1607→                  <TableRow>
+  1608→                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+  1609→                    <TableHead className="text-right">{t('الاسم', 'Name', lang)}</TableHead>
+  1610→                    <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+  1611→                  </TableRow>
+  1612→                </TableHeader>
+  1613→                <TableBody>
+  1614→                  {costCenters.map((cc, idx) => (
+  1615→                    <TableRow key={idx}>
+  1616→                      <TableCell className="font-mono">{String(cc.code || '')}</TableCell>
+  1617→                      <TableCell className="font-medium">{String(cc.name || '')}</TableCell>
+  1618→                      <TableCell>{cc.project ? String((cc.project as Record<string, unknown>).name || '') : '—'}</TableCell>
+  1619→                    </TableRow>
+  1620→                  ))}
+  1621→                </TableBody>
+  1622→              </Table>
+  1623→            </div>
+  1624→          </CardContent>
+  1625→        </Card>
+  1626→      )}
+  1627→    </div>
+  1628→  )
+  1629→}
+  1630→
+  1631→// ============ Tab 9: Customer Statement ============
+  1632→function CustomerStatementTab() {
+  1633→  const { lang } = useAppStore()
+  1634→  const [selectedClient, setSelectedClient] = useState('')
+  1635→  const [dateFrom, setDateFrom] = useState('')
+  1636→  const [dateTo, setDateTo] = useState('')
+  1637→
+  1638→  const { data: clients } = useQuery({
+  1639→    queryKey: ['clients-simple'],
+  1640→    queryFn: async () => { const res = await fetch('/api/clients?simple=true&active=true'); if (!res.ok) throw new Error(); return res.json() },
+  1641→  })
+  1642→
+  1643→  const clientList = (Array.isArray(clients) ? clients : []) as { id: string; name: string; code: string }[]
+  1644→
+  1645→  const { data: statementData, isLoading, refetch } = useQuery({
+  1646→    queryKey: ['account-statement', 'customer', selectedClient, dateFrom, dateTo],
+  1647→    queryFn: async () => {
+  1648→      if (!selectedClient) return null
+  1649→      const params = new URLSearchParams({ entityType: 'customer', entityId: selectedClient })
+  1650→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1651→      if (dateTo) params.set('dateTo', dateTo)
+  1652→      const res = await fetch(`/api/account-statement?${params}`)
+  1653→      if (!res.ok) throw new Error()
+  1654→      return res.json()
+  1655→    },
+  1656→    enabled: !!selectedClient,
+  1657→  })
+  1658→
+  1659→  const statement = statementData as Record<string, unknown> | null
+  1660→
+  1661→  return (
+  1662→    <div className="space-y-4">
+  1663→      <Card className="bg-gray-50/50">
+  1664→        <CardContent className="p-4">
+  1665→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1666→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1667→              <Label className="text-xs">{t('العميل', 'Client', lang)}</Label>
+  1668→              <Select value={selectedClient} onValueChange={setSelectedClient}>
+  1669→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر العميل...', 'Select client...', lang)} /></SelectTrigger>
+  1670→                <SelectContent>
+  1671→                  {clientList.map(c => <SelectItem key={c.id} value={c.id}>{c.code} - {c.name}</SelectItem>)}
+  1672→                </SelectContent>
+  1673→              </Select>
+  1674→            </div>
+  1675→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1676→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1677→            {selectedClient && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1678→          </div>
+  1679→        </CardContent>
+  1680→      </Card>
+  1681→
+  1682→      {!selectedClient ? (
+  1683→        <div className="flex flex-col items-center gap-3 py-10"><Users className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر عميلاً لعرض كشف حسابه', 'Select a client to view statement', lang)}</p></div>
+  1684→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1685→        <>
+  1686→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1687→            <SummaryCard title={t('الرصيد الافتتاحي', 'Opening Balance', lang)} value={(statement.openingBalance as number) || 0} icon={Wallet} color="sky" lang={lang} />
+  1688→            <SummaryCard title={t('الرصيد الختامي', 'Closing Balance', lang)} value={(statement.closingBalance as number) || 0} icon={CircleDollarSign} color={((statement.closingBalance as number) || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1689→            <SummaryCard title={t('إجمالي الفواتير', 'Total Invoices', lang)} value={((statement.summary as Record<string, number>)?.totalRevenues) || 0} icon={FileText} color="emerald" lang={lang} />
+  1690→          </div>
+  1691→          <Card>
+  1692→            <CardContent className="p-0">
+  1693→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1694→                <Table>
+  1695→                  <TableHeader>
+  1696→                    <TableRow>
+  1697→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1698→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1699→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1700→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1701→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1702→                    </TableRow>
+  1703→                  </TableHeader>
+  1704→                  <TableBody>
+  1705→                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
+  1706→                      <TableRow key={idx}>
+  1707→                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
+  1708→                        <TableCell>{String(line.description || '')}</TableCell>
+  1709→                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1710→                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1711→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance as number} lang={lang} size="sm" bold /></TableCell>
+  1712→                      </TableRow>
+  1713→                    ))}
+  1714→                  </TableBody>
+  1715→                </Table>
+  1716→              </div>
+  1717→            </CardContent>
+  1718→          </Card>
+  1719→        </>
+  1720→      ) : null}
+  1721→    </div>
+  1722→  )
+  1723→}
+  1724→
+  1725→// ============ Tab 10: Vendor Statement ============
+  1726→function VendorStatementTab() {
+  1727→  const { lang } = useAppStore()
+  1728→  const [selectedSupplier, setSelectedSupplier] = useState('')
+  1729→  const [dateFrom, setDateFrom] = useState('')
+  1730→  const [dateTo, setDateTo] = useState('')
+  1731→
+  1732→  const { data: suppliers } = useQuery({
+  1733→    queryKey: ['suppliers-simple'],
+  1734→    queryFn: async () => { const res = await fetch('/api/suppliers'); if (!res.ok) throw new Error(); return res.json() },
+  1735→  })
+  1736→
+  1737→  const supplierList = (Array.isArray(suppliers) ? suppliers : (suppliers?.suppliers || [])) as { id: string; name: string; code: string }[]
+  1738→
+  1739→  const { data: statementData, isLoading, refetch } = useQuery({
+  1740→    queryKey: ['account-statement', 'vendor', selectedSupplier, dateFrom, dateTo],
+  1741→    queryFn: async () => {
+  1742→      if (!selectedSupplier) return null
+  1743→      const params = new URLSearchParams({ entityType: 'vendor', entityId: selectedSupplier })
+  1744→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1745→      if (dateTo) params.set('dateTo', dateTo)
+  1746→      const res = await fetch(`/api/account-statement?${params}`)
+  1747→      if (!res.ok) throw new Error()
+  1748→      return res.json()
+  1749→    },
+  1750→    enabled: !!selectedSupplier,
+  1751→  })
+  1752→
+  1753→  const statement = statementData as Record<string, unknown> | null
+  1754→
+  1755→  return (
+  1756→    <div className="space-y-4">
+  1757→      <Card className="bg-gray-50/50">
+  1758→        <CardContent className="p-4">
+  1759→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1760→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1761→              <Label className="text-xs">{t('المورد', 'Supplier', lang)}</Label>
+  1762→              <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
+  1763→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المورد...', 'Select supplier...', lang)} /></SelectTrigger>
+  1764→                <SelectContent>
+  1765→                  {supplierList.map(s => <SelectItem key={s.id} value={s.id}>{s.code} - {s.name}</SelectItem>)}
+  1766→                </SelectContent>
+  1767→              </Select>
+  1768→            </div>
+  1769→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1770→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1771→            {selectedSupplier && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1772→          </div>
+  1773→        </CardContent>
+  1774→      </Card>
+  1775→
+  1776→      {!selectedSupplier ? (
+  1777→        <div className="flex flex-col items-center gap-3 py-10"><Package className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر مورداً لعرض كشف حسابه', 'Select a supplier to view statement', lang)}</p></div>
+  1778→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1779→        <>
+  1780→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1781→            <SummaryCard title={t('الرصيد الافتتاحي', 'Opening Balance', lang)} value={(statement.openingBalance as number) || 0} icon={Wallet} color="sky" lang={lang} />
+  1782→            <SummaryCard title={t('الرصيد الختامي', 'Closing Balance', lang)} value={(statement.closingBalance as number) || 0} icon={CircleDollarSign} color={((statement.closingBalance as number) || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1783→            <SummaryCard title={t('إجمالي الفواتير', 'Total Invoices', lang)} value={((statement.summary as Record<string, number>)?.totalRevenues) || 0} icon={FileText} color="rose" lang={lang} />
+  1784→          </div>
+  1785→          <Card>
+  1786→            <CardContent className="p-0">
+  1787→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1788→                <Table>
+  1789→                  <TableHeader>
+  1790→                    <TableRow>
+  1791→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1792→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1793→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1794→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1795→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1796→                    </TableRow>
+  1797→                  </TableHeader>
+  1798→                  <TableBody>
+  1799→                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
+  1800→                      <TableRow key={idx}>
+  1801→                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
+  1802→                        <TableCell>{String(line.description || '')}</TableCell>
+  1803→                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1804→                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1805→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance as number} lang={lang} size="sm" bold /></TableCell>
+  1806→                      </TableRow>
+  1807→                    ))}
+  1808→                  </TableBody>
+  1809→                </Table>
+  1810→              </div>
+  1811→            </CardContent>
+  1812→          </Card>
+  1813→        </>
+  1814→      ) : null}
+  1815→    </div>
+  1816→  )
+  1817→}
+  1818→
+  1819→// ============ Tab 11: Project Profitability ============
+  1820→function ProjectProfitabilityTab() {
+  1821→  const { lang } = useAppStore()
+  1822→  const [selectedProject, setSelectedProject] = useState('')
+  1823→  const [dateFrom, setDateFrom] = useState('')
+  1824→  const [dateTo, setDateTo] = useState('')
+  1825→
+  1826→  const { data: projects } = useQuery({
+  1827→    queryKey: ['projects-list'],
+  1828→    queryFn: async () => { const res = await fetch('/api/projects/list'); if (!res.ok) throw new Error(); return res.json() },
+  1829→  })
+  1830→
+  1831→  const projectList = (Array.isArray(projects) ? projects : []) as { id: string; name: string; code: string }[]
+  1832→
+  1833→  const { data: statementData, isLoading, refetch } = useQuery({
+  1834→    queryKey: ['account-statement', 'project', selectedProject, dateFrom, dateTo],
+  1835→    queryFn: async () => {
+  1836→      if (!selectedProject) return null
+  1837→      const params = new URLSearchParams({ entityType: 'project', entityId: selectedProject })
+  1838→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1839→      if (dateTo) params.set('dateTo', dateTo)
+  1840→      const res = await fetch(`/api/account-statement?${params}`)
+  1841→      if (!res.ok) throw new Error()
+  1842→      return res.json()
+  1843→    },
+  1844→    enabled: !!selectedProject,
+  1845→  })
+  1846→
+  1847→  const statement = statementData as Record<string, unknown> | null
+  1848→  const summary = (statement?.summary as Record<string, number>) || {}
+  1849→
+  1850→  return (
+  1851→    <div className="space-y-4">
+  1852→      <Card className="bg-gray-50/50">
+  1853→        <CardContent className="p-4">
+  1854→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1855→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1856→              <Label className="text-xs">{t('المشروع', 'Project', lang)}</Label>
+  1857→              <Select value={selectedProject} onValueChange={setSelectedProject}>
+  1858→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المشروع...', 'Select project...', lang)} /></SelectTrigger>
+  1859→                <SelectContent>
+  1860→                  {projectList.map(p => <SelectItem key={p.id} value={p.id}>{p.code} - {p.name}</SelectItem>)}
+  1861→                </SelectContent>
+  1862→              </Select>
+  1863→            </div>
+  1864→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1865→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1866→            {selectedProject && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1867→          </div>
+  1868→        </CardContent>
+  1869→      </Card>
+  1870→
+  1871→      {!selectedProject ? (
+  1872→        <div className="flex flex-col items-center gap-3 py-10"><Building2 className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر مشروعاً لعرض ربحيته', 'Select a project to view profitability', lang)}</p></div>
+  1873→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1874→        <>
+  1875→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1876→            <SummaryCard title={t('الإيرادات', 'Revenue', lang)} value={summary.totalRevenues || 0} icon={TrendingUp} color="emerald" lang={lang} />
+  1877→            <SummaryCard title={t('التكاليف', 'Costs', lang)} value={summary.totalCosts || 0} icon={Building2} color="rose" lang={lang} />
+  1878→            <SummaryCard title={t('الربح', 'Profit', lang)} value={summary.profit || 0} icon={CircleDollarSign} color={(summary.profit || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1879→            <Card className="bg-teal-50 border-teal-200 border">
+  1880→              <CardContent className="p-4 text-center">
+  1881→                <div className="flex items-center justify-center gap-2 mb-1"><BarChart3 className="size-4 text-teal-600" /><p className="text-xs font-medium text-teal-600">{t('هامش الربح', 'Profit Margin', lang)}</p></div>
+  1882→                <p className="text-lg font-bold text-teal-700">{(summary.profitMargin || 0).toFixed(1)}%</p>
+  1883→              </CardContent>
+  1884→            </Card>
+  1885→          </div>
+  1886→          <Card>
+  1887→            <CardContent className="p-0">
+  1888→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1889→                <Table>
+  1890→                  <TableHeader>
+  1891→                    <TableRow>
+  1892→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1893→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1894→                      <TableHead className="text-right">{t('الفئة', 'Category', lang)}</TableHead>
+  1895→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1896→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1897→                    </TableRow>
+  1898→                  </TableHeader>
+  1899→                  <TableBody>
+  1900→                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
+  1901→                      <TableRow key={idx}>
+  1902→                        <TableCell>{formatDate(String(line.date || ''), lang)}</TableCell>
+  1903→                        <TableCell>{String(line.description || '')}</TableCell>
+  1904→                        <TableCell><Badge variant="outline" className="text-xs">{String(line.category || '')}</Badge></TableCell>
+  1905→                        <TableCell>{(line.debit as number) > 0 ? <MoneyDisplay value={line.debit as number} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  1906→                        <TableCell>{(line.credit as number) > 0 ? <MoneyDisplay value={line.credit as number} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  1907→                      </TableRow>
+  1908→                    ))}
+  1909→                  </TableBody>
+  1910→                </Table>
+  1911→              </div>
+  1912→            </CardContent>
+  1913→          </Card>
+  1914→        </>
+  1915→      ) : null}
+  1916→    </div>
+  1917→  )
+  1918→}
+  1919→
+  1920→// ============ Tab 12: Equipment Profitability ============
+  1921→function EquipmentProfitabilityTab() {
+  1922→  const { lang } = useAppStore()
+  1923→  const [selectedEquipment, setSelectedEquipment] = useState('')
+  1924→  const [dateFrom, setDateFrom] = useState('')
+  1925→  const [dateTo, setDateTo] = useState('')
+  1926→
+  1927→  const { data: equipmentList } = useQuery({
+  1928→    queryKey: ['equipment-list'],
+  1929→    queryFn: async () => { const res = await fetch('/api/equipment'); if (!res.ok) throw new Error(); return res.json() },
+  1930→  })
+  1931→
+  1932→  const equipList = (Array.isArray(equipmentList) ? equipmentList : (equipmentList?.equipment || [])) as { id: string; name: string; code: string }[]
+  1933→
+  1934→  const { data: statementData, isLoading, refetch } = useQuery({
+  1935→    queryKey: ['account-statement', 'equipment', selectedEquipment, dateFrom, dateTo],
+  1936→    queryFn: async () => {
+  1937→      if (!selectedEquipment) return null
+  1938→      const params = new URLSearchParams({ entityType: 'equipment', entityId: selectedEquipment })
+  1939→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1940→      if (dateTo) params.set('dateTo', dateTo)
+  1941→      const res = await fetch(`/api/account-statement?${params}`)
+  1942→      if (!res.ok) throw new Error()
+  1943→      return res.json()
+  1944→    },
+  1945→    enabled: !!selectedEquipment,
+  1946→  })
+  1947→
+  1948→  const statement = statementData as Record<string, unknown> | null
+  1949→  const summary = (statement?.summary as Record<string, number>) || {}
+  1950→
+  1951→  return (
+  1952→    <div className="space-y-4">
+  1953→      <Card className="bg-gray-50/50">
+  1954→        <CardContent className="p-4">
+  1955→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1956→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1957→              <Label className="text-xs">{t('المعدة', 'Equipment', lang)}</Label>
+  1958→              <Select value={selectedEquipment} onValueChange={setSelectedEquipment}>
+  1959→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر المعدة...', 'Select equipment...', lang)} /></SelectTrigger>
+  1960→                <SelectContent>
+  1961→                  {equipList.map(e => <SelectItem key={e.id} value={e.id}>{e.code} - {e.name}</SelectItem>)}
+  1962→                </SelectContent>
+  1963→              </Select>
+  1964→            </div>
+  1965→            <div className="space-y-1"><Label className="text-xs">{t('من', 'From', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+  1966→            <div className="space-y-1"><Label className="text-xs">{t('إلى', 'To', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+  1967→            {selectedEquipment && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('عرض', 'View', lang)}</Button>}
+  1968→          </div>
+  1969→        </CardContent>
+  1970→      </Card>
+  1971→
+  1972→      {!selectedEquipment ? (
+  1973→        <div className="flex flex-col items-center gap-3 py-10"><Truck className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر معدة لعرض ربحيتها', 'Select equipment to view profitability', lang)}</p></div>
+  1974→      ) : isLoading ? <TableSkeleton /> : statement ? (
+  1975→        <>
+  1976→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1977→            <SummaryCard title={t('إيرادات التأجير', 'Rental Revenue', lang)} value={summary.totalRevenues || 0} icon={TrendingUp} color="emerald" lang={lang} />
+  1978→            <SummaryCard title={t('تكاليف التشغيل', 'Operating Costs', lang)} value={summary.totalCosts || 0} icon={Wrench} color="rose" lang={lang} />
+  1979→            <SummaryCard title={t('صافي الربح', 'Net Profit', lang)} value={summary.profit || 0} icon={CircleDollarSign} color={(summary.profit || 0) >= 0 ? 'emerald' : 'rose'} lang={lang} />
+  1980→            <Card className="bg-cyan-50 border-cyan-200 border">
+  1981→              <CardContent className="p-4 text-center">
+  1982→                <div className="flex items-center justify-center gap-2 mb-1"><BarChart3 className="size-4 text-cyan-600" /><p className="text-xs font-medium text-cyan-600">{t('هامش الربح', 'Profit Margin', lang)}</p></div>
+  1983→                <p className="text-lg font-bold text-cyan-700">{(summary.profitMargin || 0).toFixed(1)}%</p>
+  1984→              </CardContent>
+  1985→            </Card>
+  1986→          </div>
+  1987→          <Card>
+  1988→            <CardContent className="p-0">
+  1989→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1990→                <Table>
+  1991→                  <TableHeader>
+  1992→                    <TableRow>
+  1993→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1994→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1995→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1996→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1997→                    </TableRow>
+  1998→                  </TableHeader>
+  1999→                  <TableBody>
+  2000→                    {((statement.lines as Record<string, unknown>[]) || []).map((line, idx) => (
+
+[showing lines 1-2000 of 2691; use offset=2001 with limit to continue reading]

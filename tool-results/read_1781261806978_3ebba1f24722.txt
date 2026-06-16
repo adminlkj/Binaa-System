@@ -1,0 +1,496 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Package, Plus, Search, RefreshCw, AlertTriangle, Tag, Wrench,
+     7→  Warehouse as WarehouseIcon, Building2,
+     8→} from 'lucide-react'
+     9→import { Card, CardContent } from '@/components/ui/card'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import {
+    14→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    15→} from '@/components/ui/table'
+    16→import {
+    17→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    18→} from '@/components/ui/dialog'
+    19→import {
+    20→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    21→} from '@/components/ui/select'
+    22→import { Label } from '@/components/ui/label'
+    23→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    24→import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+    25→import { MoneyDisplay } from '@/components/ui/money-display'
+    26→import { ModuleLayout } from '@/components/shared/module-layout'
+    27→import { PrintButton } from '@/components/shared/print-button'
+    28→
+    29→// ============ Types ============
+    30→interface Branch { id: string; code: string; name: string }
+    31→interface Warehouse { id: string; code: string; name: string; branchId: string; isActive: boolean; branch: Branch }
+    32→
+    33→interface InventoryItem {
+    34→  id: string; code: string; name: string; nameAr: string | null
+    35→  itemType: string; unit: string
+    36→  purchasePrice: number; sellingPrice: number
+    37→  quantity: number; minQuantity: number; warehouseId: string
+    38→  category: string | null; isActive: boolean
+    39→  warehouse: Warehouse
+    40→}
+    41→
+    42→// ============ Category & Type Config ============
+    43→const categoryOptions = [
+    44→  { value: 'مواد بناء', label: { ar: 'مواد بناء', en: 'Building Materials' } },
+    45→  { value: 'حديد', label: { ar: 'حديد', en: 'Steel' } },
+    46→  { value: 'إسمنت', label: { ar: 'إسمنت', en: 'Cement' } },
+    47→  { value: 'أخشاب', label: { ar: 'أخشاب', en: 'Wood' } },
+    48→  { value: 'دهانات', label: { ar: 'دهانات', en: 'Paints' } },
+    49→  { value: 'سباكة', label: { ar: 'سباكة', en: 'Plumbing' } },
+    50→  { value: 'كهرباء', label: { ar: 'كهرباء', en: 'Electrical' } },
+    51→  { value: 'أدوات', label: { ar: 'أدوات', en: 'Tools' } },
+    52→  { value: 'خدمات', label: { ar: 'خدمات', en: 'Services' } },
+    53→  { value: 'أخرى', label: { ar: 'أخرى', en: 'Other' } },
+    54→]
+    55→
+    56→const itemTypeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+    57→  PRODUCT: { label: { ar: 'منتج', en: 'Product' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+    58→  SERVICE: { label: { ar: 'خدمة', en: 'Service' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+    59→}
+    60→
+    61→function ItemTypeBadge({ itemType, lang }: { itemType: string; lang: 'ar' | 'en' }) {
+    62→  const cfg = itemTypeConfig[itemType] || itemTypeConfig.PRODUCT
+    63→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+    64→}
+    65→
+    66→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    67→
+    68→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    69→  return (
+    70→    <div className="space-y-2">
+    71→      {Array.from({ length: rows }).map((_, i) => (
+    72→        <div key={i} className="flex gap-4 p-3">
+    73→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+    74→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+    75→          <div className="h-5 w-16 animate-pulse rounded bg-gray-200" />
+    76→        </div>
+    77→      ))}
+    78→    </div>
+    79→  )
+    80→}
+    81→
+    82→// ============ New Inventory Item Dialog ============
+    83→function NewInventoryDialog({ open, onOpenChange, warehouses }: {
+    84→  open: boolean; onOpenChange: (v: boolean) => void; warehouses: Warehouse[]
+    85→}) {
+    86→  const { lang } = useAppStore()
+    87→  const queryClient = useQueryClient()
+    88→  const [name, setName] = useState('')
+    89→  const [nameAr, setNameAr] = useState('')
+    90→  const [itemType, setItemType] = useState('PRODUCT')
+    91→  const [unit, setUnit] = useState('')
+    92→  const [purchasePrice, setPurchasePrice] = useState('')
+    93→  const [sellingPrice, setSellingPrice] = useState('')
+    94→  const [quantity, setQuantity] = useState('')
+    95→  const [minQuantity, setMinQuantity] = useState('')
+    96→  const [warehouseId, setWarehouseId] = useState('')
+    97→  const [category, setCategory] = useState('')
+    98→
+    99→  React.useEffect(() => {
+   100→    if (open) {
+   101→      setName(''); setNameAr(''); setItemType('PRODUCT'); setUnit('')
+   102→      setPurchasePrice(''); setSellingPrice(''); setQuantity('')
+   103→      setMinQuantity(''); setWarehouseId(''); setCategory('')
+   104→    }
+   105→  }, [open])
+   106→
+   107→  const createMutation = useMutation({
+   108→    mutationFn: (data: Record<string, unknown>) =>
+   109→      fetch('/api/inventory', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   110→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   111→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); onOpenChange(false) },
+   112→  })
+   113→
+   114→  const handleSubmit = (e: React.FormEvent) => {
+   115→    e.preventDefault()
+   116→    createMutation.mutate({ name, nameAr, itemType, unit, purchasePrice, sellingPrice, quantity, minQuantity, warehouseId, category: category || null })
+   117→  }
+   118→
+   119→  const isService = itemType === 'SERVICE'
+   120→
+   121→  return (
+   122→    <Dialog open={open} onOpenChange={onOpenChange}>
+   123→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   124→        <DialogHeader>
+   125→          <DialogTitle>{t('صنف مخزون جديد', 'New Inventory Item', lang)}</DialogTitle>
+   126→          <DialogDescription>{t('إضافة صنف جديد (منتج أو خدمة)', 'Add new item (product or service)', lang)}</DialogDescription>
+   127→        </DialogHeader>
+   128→        <form onSubmit={handleSubmit} className="space-y-4">
+   129→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   130→            <div className="space-y-2"><Label>{t('الاسم *', 'Name *', lang)}</Label><Input value={name} onChange={e => setName(e.target.value)} placeholder={t('اسم الصنف', 'Item name', lang)} required /></div>
+   131→            <div className="space-y-2"><Label>{t('الاسم بالعربي', 'Arabic Name', lang)}</Label><Input value={nameAr} onChange={e => setNameAr(e.target.value)} placeholder={t('الاسم بالعربية', 'Arabic name', lang)} /></div>
+   132→            <div className="space-y-2">
+   133→              <Label>{t('النوع *', 'Type *', lang)}</Label>
+   134→              <Select value={itemType} onValueChange={setItemType}>
+   135→                <SelectTrigger><SelectValue /></SelectTrigger>
+   136→                <SelectContent>
+   137→                  {Object.entries(itemTypeConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>)}
+   138→                </SelectContent>
+   139→              </Select>
+   140→            </div>
+   141→            <div className="space-y-2">
+   142→              <Label>{t('الوحدة *', 'Unit *', lang)}</Label>
+   143→              <Select value={unit} onValueChange={setUnit}>
+   144→                <SelectTrigger><SelectValue placeholder={t('اختر الوحدة', 'Select unit', lang)} /></SelectTrigger>
+   145→                <SelectContent>
+   146→                  {['قطعة', 'كجم', 'طن', 'متر', 'متر مربع', 'لتر', 'كرتون', 'باكت', 'خدمة', 'ساعة', 'يوم'].map(u => <SelectItem key={u} value={u}>{u}</SelectItem>)}
+   147→                </SelectContent>
+   148→              </Select>
+   149→            </div>
+   150→            <div className="space-y-2">
+   151→              <Label>{t('الفئة', 'Category', lang)}</Label>
+   152→              <Select value={category} onValueChange={setCategory}>
+   153→                <SelectTrigger><SelectValue placeholder={t('اختر الفئة', 'Select category', lang)} /></SelectTrigger>
+   154→                <SelectContent>
+   155→                  {categoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c.label[lang]}</SelectItem>)}
+   156→                </SelectContent>
+   157→              </Select>
+   158→            </div>
+   159→            <div className="space-y-2">
+   160→              <Label>{t('المستودع *', 'Warehouse *', lang)}</Label>
+   161→              <Select value={warehouseId} onValueChange={setWarehouseId}>
+   162→                <SelectTrigger><SelectValue placeholder={t('اختر المستودع', 'Select warehouse', lang)} /></SelectTrigger>
+   163→                <SelectContent>
+   164→                  {warehouses.map(w => <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>)}
+   165→                </SelectContent>
+   166→              </Select>
+   167→            </div>
+   168→            <div className="space-y-2"><Label>{t('سعر الشراء', 'Purchase Price', lang)}</Label><Input type="number" min="0" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   169→            <div className="space-y-2"><Label>{t('سعر البيع', 'Selling Price', lang)}</Label><Input type="number" min="0" step="0.01" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   170→            {!isService && (<>
+   171→              <div className="space-y-2"><Label>{t('الكمية', 'Quantity', lang)}</Label><Input type="number" min="0" step="0.01" value={quantity} onChange={e => setQuantity(e.target.value)} dir="ltr" placeholder="0" /></div>
+   172→              <div className="space-y-2"><Label>{t('الحد الأدنى', 'Min Quantity', lang)}</Label><Input type="number" min="0" step="0.01" value={minQuantity} onChange={e => setMinQuantity(e.target.value)} dir="ltr" placeholder="0" /></div>
+   173→            </>)}
+   174→          </div>
+   175→          <DialogFooter>
+   176→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+   177→            <Button type="submit" disabled={createMutation.isPending || !name || !unit || !warehouseId} className="bg-emerald-600 hover:bg-emerald-700">
+   178→              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إضافة', 'Add', lang)}
+   179→            </Button>
+   180→          </DialogFooter>
+   181→        </form>
+   182→      </DialogContent>
+   183→    </Dialog>
+   184→  )
+   185→}
+   186→
+   187→// ============ New Warehouse Dialog ============
+   188→function NewWarehouseDialog({ open, onOpenChange, branches }: {
+   189→  open: boolean; onOpenChange: (v: boolean) => void; branches: Branch[]
+   190→}) {
+   191→  const { lang } = useAppStore()
+   192→  const queryClient = useQueryClient()
+   193→  const [name, setName] = useState('')
+   194→  const [branchId, setBranchId] = useState('')
+   195→
+   196→  React.useEffect(() => { if (open) { setName(''); setBranchId('') } }, [open])
+   197→
+   198→  const createMutation = useMutation({
+   199→    mutationFn: (data: { name: string; branchId: string }) =>
+   200→      fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   201→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   202→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['warehouses'] }); onOpenChange(false) },
+   203→  })
+   204→
+   205→  const handleSubmit = (e: React.FormEvent) => {
+   206→    e.preventDefault()
+   207→    createMutation.mutate({ name, branchId })
+   208→  }
+   209→
+   210→  return (
+   211→    <Dialog open={open} onOpenChange={onOpenChange}>
+   212→      <DialogContent className="max-w-md">
+   213→        <DialogHeader>
+   214→          <DialogTitle>{t('مستودع جديد', 'New Warehouse', lang)}</DialogTitle>
+   215→          <DialogDescription>{t('إضافة مستودع جديد', 'Add a new warehouse', lang)}</DialogDescription>
+   216→        </DialogHeader>
+   217→        <form onSubmit={handleSubmit} className="space-y-4">
+   218→          <div className="space-y-2">
+   219→            <Label>{t('اسم المستودع *', 'Warehouse Name *', lang)}</Label>
+   220→            <Input value={name} onChange={e => setName(e.target.value)} placeholder={t('اسم المستودع', 'Warehouse name', lang)} required />
+   221→          </div>
+   222→          <div className="space-y-2">
+   223→            <Label>{t('الفرع *', 'Branch *', lang)}</Label>
+   224→            <Select value={branchId} onValueChange={setBranchId}>
+   225→              <SelectTrigger><SelectValue placeholder={t('اختر الفرع', 'Select branch', lang)} /></SelectTrigger>
+   226→              <SelectContent>
+   227→                {branches.map(b => <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>)}
+   228→              </SelectContent>
+   229→            </Select>
+   230→          </div>
+   231→          <DialogFooter>
+   232→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+   233→            <Button type="submit" disabled={createMutation.isPending || !name || !branchId} className="bg-emerald-600 hover:bg-emerald-700">
+   234→              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إضافة', 'Add', lang)}
+   235→            </Button>
+   236→          </DialogFooter>
+   237→        </form>
+   238→      </DialogContent>
+   239→    </Dialog>
+   240→  )
+   241→}
+   242→
+   243→// ============ Items Tab ============
+   244→function ItemsTab({ items, warehouses, isLoading, isError, refetch }: {
+   245→  items: InventoryItem[]; warehouses: Warehouse[]
+   246→  isLoading: boolean; isError: boolean; refetch: () => void
+   247→}) {
+   248→  const { lang } = useAppStore()
+   249→  const [search, setSearch] = useState('')
+   250→  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+   251→  const [typeFilter, setTypeFilter] = useState<string>('all')
+   252→  const [dialogOpen, setDialogOpen] = useState(false)
+   253→
+   254→  const filtered = items.filter(item => {
+   255→    const matchCategory = categoryFilter === 'all' || item.category === categoryFilter
+   256→    const matchType = typeFilter === 'all' || item.itemType === typeFilter
+   257→    const matchSearch = !search || item.name.toLowerCase().includes(search.toLowerCase()) || item.code.toLowerCase().includes(search.toLowerCase())
+   258→    return matchCategory && matchType && matchSearch
+   259→  })
+   260→
+   261→  const productItems = items.filter(i => i.itemType === 'PRODUCT')
+   262→  const lowStockItems = productItems.filter(i => i.quantity <= i.minQuantity)
+   263→  const stockValue = productItems.reduce((s, i) => s + (i.quantity * i.purchasePrice), 0)
+   264→
+   265→  return (
+   266→    <div className="space-y-4">
+   267→      {/* Summary Cards */}
+   268→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   269→        <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-4 flex items-center gap-3">
+   270→          <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center"><Package className="size-5 text-emerald-600" /></div>
+   271→          <div><p className="text-sm text-emerald-600">{t('إجمالي الأصناف', 'Total Items', lang)}</p><p className="text-xl font-bold text-emerald-700">{formatNumber(items.length)}</p></div>
+   272→        </CardContent></Card>
+   273→        <Card className="bg-teal-50 border-teal-200"><CardContent className="p-4 flex items-center gap-3">
+   274→          <div className="size-10 rounded-full bg-teal-100 flex items-center justify-center"><Tag className="size-5 text-teal-600" /></div>
+   275→          <div><p className="text-sm text-teal-600">{t('قيمة المخزون', 'Stock Value', lang)}</p><MoneyDisplay value={stockValue} lang={lang} size="sm" bold className="text-teal-700" /></div>
+   276→        </CardContent></Card>
+   277→        <Card className="bg-amber-50 border-amber-200"><CardContent className="p-4 flex items-center gap-3">
+   278→          <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center"><AlertTriangle className="size-5 text-amber-600" /></div>
+   279→          <div><p className="text-sm text-amber-600">{t('أصناف منخفضة', 'Low Stock', lang)}</p><p className="text-xl font-bold text-amber-700">{formatNumber(lowStockItems.length)}</p></div>
+   280→        </CardContent></Card>
+   281→        <Card className="bg-purple-50 border-purple-200"><CardContent className="p-4 flex items-center gap-3">
+   282→          <div className="size-10 rounded-full bg-purple-100 flex items-center justify-center"><Wrench className="size-5 text-purple-600" /></div>
+   283→          <div><p className="text-sm text-purple-600">{t('خدمات', 'Services', lang)}</p><p className="text-xl font-bold text-purple-700">{formatNumber(items.filter(i => i.itemType === 'SERVICE').length)}</p></div>
+   284→        </CardContent></Card>
+   285→      </div>
+   286→
+   287→      {/* Low Stock Alert */}
+   288→      {lowStockItems.length > 0 && (
+   289→        <Card className="bg-amber-50 border-amber-300">
+   290→          <CardContent className="p-4">
+   291→            <div className="flex items-center gap-2 mb-2"><AlertTriangle className="size-5 text-amber-600" /><span className="font-semibold text-amber-700">{t(`تنبيه: ${lowStockItems.length} أصناف تحت الحد الأدنى`, `Alert: ${lowStockItems.length} items below minimum`, lang)}</span></div>
+   292→            <div className="flex flex-wrap gap-2">
+   293→              {lowStockItems.map(i => <Badge key={i.id} variant="outline" className="bg-amber-100 text-amber-700">{i.name} ({formatNumber(i.quantity)} / {formatNumber(i.minQuantity)})</Badge>)}
+   294→            </div>
+   295→          </CardContent>
+   296→        </Card>
+   297→      )}
+   298→
+   299→      {/* Filters */}
+   300→      <Card><CardContent className="p-4">
+   301→        <div className="flex flex-col sm:flex-row gap-3">
+   302→          <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث بالاسم أو الكود...', 'Search by name or code...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+   303→          <Select value={typeFilter} onValueChange={setTypeFilter}>
+   304→            <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t('كل الأنواع', 'All Types', lang)} /></SelectTrigger>
+   305→            <SelectContent>
+   306→              <SelectItem value="all">{t('كل الأنواع', 'All Types', lang)}</SelectItem>
+   307→              {Object.entries(itemTypeConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>)}
+   308→            </SelectContent>
+   309→          </Select>
+   310→          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   311→            <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={t('كل الفئات', 'All Categories', lang)} /></SelectTrigger>
+   312→            <SelectContent>
+   313→              <SelectItem value="all">{t('كل الفئات', 'All Categories', lang)}</SelectItem>
+   314→              {categoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c.label[lang]}</SelectItem>)}
+   315→            </SelectContent>
+   316→          </Select>
+   317→        </div>
+   318→      </CardContent></Card>
+   319→
+   320→      {/* Table */}
+   321→      <Card><CardContent className="p-0">
+   322→        {isLoading ? (<div className="p-6"><TableSkeleton /></div>) : isError ? (
+   323→          <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+   324→        ) : filtered.length === 0 ? (
+   325→          <div className="flex flex-col items-center gap-3 py-10"><Package className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أصناف', 'No items found', lang)}</p>
+   326→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4 mr-1" />{t('إضافة صنف', 'Add Item', lang)}</Button></div>
+   327→        ) : (
+   328→          <div className="overflow-x-auto">
+   329→            <Table>
+   330→              <TableHeader><TableRow>
+   331→                <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+   332→                <TableHead className="text-right">{t('الاسم', 'Name', lang)}</TableHead>
+   333→                <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+   334→                <TableHead className="text-right">{t('الوحدة', 'Unit', lang)}</TableHead>
+   335→                <TableHead className="text-right">{t('سعر الشراء', 'Purchase', lang)}</TableHead>
+   336→                <TableHead className="text-right">{t('سعر البيع', 'Selling', lang)}</TableHead>
+   337→                <TableHead className="text-right">{t('الكمية', 'Qty', lang)}</TableHead>
+   338→                <TableHead className="text-right">{t('الحد الأدنى', 'Min', lang)}</TableHead>
+   339→                <TableHead className="text-right">{t('المستودع', 'Warehouse', lang)}</TableHead>
+   340→              </TableRow></TableHeader>
+   341→              <TableBody>
+   342→                {filtered.map(item => {
+   343→                  const isLow = item.itemType === 'PRODUCT' && item.quantity <= item.minQuantity
+   344→                  return (
+   345→                    <TableRow key={item.id} className={isLow ? 'bg-amber-50' : ''}>
+   346→                      <TableCell className="font-mono text-sm">{item.code}</TableCell>
+   347→                      <TableCell className="font-medium">{item.name}{isLow && <AlertTriangle className="size-3.5 inline mr-1 text-amber-500" />}</TableCell>
+   348→                      <TableCell><ItemTypeBadge itemType={item.itemType} lang={lang} /></TableCell>
+   349→                      <TableCell>{item.unit}</TableCell>
+   350→                      <TableCell><MoneyDisplay value={item.purchasePrice} lang={lang} size="sm" className="text-teal-700" /></TableCell>
+   351→                      <TableCell><MoneyDisplay value={item.sellingPrice} lang={lang} size="sm" className="text-purple-700" /></TableCell>
+   352→                      <TableCell className={isLow ? 'font-bold text-amber-700' : ''}>{formatNumber(item.quantity)}</TableCell>
+   353→                      <TableCell>{formatNumber(item.minQuantity)}</TableCell>
+   354→                      <TableCell className="text-muted-foreground">{item.warehouse.name}</TableCell>
+   355→                    </TableRow>
+   356→                  )
+   357→                })}
+   358→              </TableBody>
+   359→            </Table>
+   360→          </div>
+   361→        )}
+   362→      </CardContent></Card>
+   363→
+   364→      <NewInventoryDialog open={dialogOpen} onOpenChange={setDialogOpen} warehouses={warehouses} />
+   365→    </div>
+   366→  )
+   367→}
+   368→
+   369→// ============ Warehouses Tab ============
+   370→function WarehousesTab({ warehouses, branches, isLoading }: {
+   371→  warehouses: Warehouse[]; branches: Branch[]; isLoading: boolean
+   372→}) {
+   373→  const { lang } = useAppStore()
+   374→  const [dialogOpen, setDialogOpen] = useState(false)
+   375→
+   376→  return (
+   377→    <div className="space-y-4">
+   378→      <div className="flex justify-end">
+   379→        <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+   380→          <Plus className="size-4" />{t('مستودع جديد', 'New Warehouse', lang)}
+   381→        </Button>
+   382→      </div>
+   383→
+   384→      {isLoading ? (<TableSkeleton />) : warehouses.length === 0 ? (
+   385→        <div className="flex flex-col items-center gap-3 py-10"><WarehouseIcon className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد مستودعات', 'No warehouses found', lang)}</p></div>
+   386→      ) : (
+   387→        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   388→          {warehouses.map(w => (
+   389→            <Card key={w.id} className="hover:shadow-md transition-shadow">
+   390→              <CardContent className="p-4">
+   391→                <div className="flex items-center gap-3">
+   392→                  <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center"><WarehouseIcon className="size-5 text-emerald-600" /></div>
+   393→                  <div className="flex-1">
+   394→                    <h3 className="font-semibold">{w.name}</h3>
+   395→                    <p className="text-sm text-muted-foreground">{w.code} • {w.branch.name}</p>
+   396→                  </div>
+   397→                  <Badge variant="outline" className={w.isActive ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-gray-100 text-gray-500 border-gray-200'}>
+   398→                    {w.isActive ? t('نشط', 'Active', lang) : t('غير نشط', 'Inactive', lang)}
+   399→                  </Badge>
+   400→                </div>
+   401→              </CardContent>
+   402→            </Card>
+   403→          ))}
+   404→        </div>
+   405→      )}
+   406→
+   407→      <NewWarehouseDialog open={dialogOpen} onOpenChange={setDialogOpen} branches={branches} />
+   408→    </div>
+   409→  )
+   410→}
+   411→
+   412→// ============ Main Inventory Module ============
+   413→export function InventoryModule() {
+   414→  const { lang } = useAppStore()
+   415→  const [activeTab, setActiveTab] = useState('items')
+   416→
+   417→  const { data: items = [], isLoading: loadingItems, isError: itemsError, refetch: refetchItems } = useQuery<InventoryItem[]>({
+   418→    queryKey: ['inventory'],
+   419→    queryFn: async () => { const res = await fetch('/api/inventory'); if (!res.ok) throw new Error(); return res.json() },
+   420→  })
+   421→
+   422→  const { data: warehouses = [], isLoading: loadingWarehouses } = useQuery<Warehouse[]>({
+   423→    queryKey: ['warehouses'],
+   424→    queryFn: async () => { const res = await fetch('/api/warehouses'); if (!res.ok) return []; return res.json() },
+   425→  })
+   426→
+   427→  const { data: branches = [] } = useQuery<Branch[]>({
+   428→    queryKey: ['branches'],
+   429→    queryFn: async () => { const res = await fetch('/api/branches'); if (!res.ok) return []; return res.json() },
+   430→  })
+   431→
+   432→  // Print data for inventory
+   433→  const printData = useMemo(() => {
+   434→    const productItems = items.filter(i => i.itemType === 'PRODUCT')
+   435→    const stockValue = productItems.reduce((s, i) => s + ((i.quantity ?? 0) * (i.purchasePrice ?? 0)), 0)
+   436→    return {
+   437→      columns: [
+   438→        { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+   439→        { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+   440→        { key: 'type', label: lang === 'ar' ? 'النوع' : 'Type' },
+   441→        { key: 'purchasePrice', label: lang === 'ar' ? 'سعر الشراء' : 'Purchase Price', align: 'amount' as const },
+   442→        { key: 'sellingPrice', label: lang === 'ar' ? 'سعر البيع' : 'Selling Price', align: 'amount' as const },
+   443→        { key: 'quantity', label: lang === 'ar' ? 'الكمية' : 'Quantity' },
+   444→        { key: 'warehouse', label: lang === 'ar' ? 'المستودع' : 'Warehouse' },
+   445→      ],
+   446→      rows: items.map(item => ({
+   447→        code: item.code,
+   448→        name: item.name,
+   449→        type: itemTypeConfig[item.itemType]?.label[lang] || item.itemType,
+   450→        purchasePrice: item.purchasePrice,
+   451→        sellingPrice: item.sellingPrice,
+   452→        quantity: item.quantity,
+   453→        warehouse: item.warehouse?.name || '',
+   454→      })),
+   455→      infoItems: [
+   456→        { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   457→        { label: lang === 'ar' ? 'إجمالي الأصناف' : 'Total Items', value: String(items.length) },
+   458→        { label: lang === 'ar' ? 'قيمة المخزون' : 'Stock Value', value: formatNumber(stockValue) },
+   459→      ],
+   460→    }
+   461→  }, [items, lang])
+   462→
+   463→  return (
+   464→    <ModuleLayout
+   465→      title={{ ar: 'المخزون', en: 'Inventory' }}
+   466→      subtitle={{ ar: 'إدارة المنتجات والخدمات والمستودعات', en: 'Manage products, services & warehouses' }}
+   467→      actions={
+   468→        <div className="flex items-center gap-2">
+   469→          <PrintButton type="generic-table" data={printData} size="icon" />
+   470→          <Button variant="outline" size="icon" onClick={() => refetchItems()} title={t('تحديث', 'Refresh', lang)}><RefreshCw className="size-4" /></Button>
+   471→          {activeTab === 'items' && (
+   472→            <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => {/* dialog handled in ItemsTab */}}>
+   473→              <Plus className="size-4" />{t('صنف جديد', 'New Item', lang)}
+   474→            </Button>
+   475→          )}
+   476→        </div>
+   477→      }
+   478→    >
+   479→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   480→        <TabsList className="grid grid-cols-2 w-full max-w-md">
+   481→          <TabsTrigger value="items" className="gap-1"><Package className="size-3.5" />{t('الأصناف', 'Items', lang)}</TabsTrigger>
+   482→          <TabsTrigger value="warehouses" className="gap-1"><WarehouseIcon className="size-3.5" />{t('المخازن', 'Warehouses', lang)}</TabsTrigger>
+   483→        </TabsList>
+   484→
+   485→        <TabsContent value="items">
+   486→          <ItemsTab items={items} warehouses={warehouses} isLoading={loadingItems} isError={itemsError} refetch={refetchItems} />
+   487→        </TabsContent>
+   488→
+   489→        <TabsContent value="warehouses">
+   490→          <WarehousesTab warehouses={warehouses} branches={branches} isLoading={loadingWarehouses} />
+   491→        </TabsContent>
+   492→      </Tabs>
+   493→    </ModuleLayout>
+   494→  )
+   495→}
+   496→

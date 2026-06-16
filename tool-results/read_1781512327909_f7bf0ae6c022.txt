@@ -1,0 +1,529 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  Clock, Plus, Search, Trash2, RefreshCw,
+     7→     7→  Download, Users, CalendarDays,
+     8→     8→} from 'lucide-react'
+     9→     9→import { toast } from 'sonner'
+    10→    10→import { Card, CardContent } from '@/components/ui/card'
+    11→    11→import { Button } from '@/components/ui/button'
+    12→    12→import { Input } from '@/components/ui/input'
+    13→    13→import { Badge } from '@/components/ui/badge'
+    14→    14→import { Checkbox } from '@/components/ui/checkbox'
+    15→    15→import {
+    16→    16→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    17→    17→} from '@/components/ui/table'
+    18→    18→import {
+    19→    19→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    20→    20→} from '@/components/ui/dialog'
+    21→    21→import {
+    22→    22→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    23→    23→} from '@/components/ui/select'
+    24→    24→import { Label } from '@/components/ui/label'
+    25→    25→import { ModuleLayout } from '@/components/shared/module-layout'
+    26→    26→import { PrintButton } from '@/components/shared/print-button'
+    27→    27→import { useAppStore, formatDate } from '@/stores/app-store'
+    28→    28→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    29→    29→
+    30→    30→// ============ Types ============
+    31→    31→interface Employee { id: string; code: string; name: string; nameAr: string | null }
+    32→    32→
+    33→    33→interface AttendanceRecord {
+    34→    34→  id: string; employeeId: string; date: string
+    35→    35→  checkIn: string | null; checkOut: string | null
+    36→    36→  workHours: number; overtimeHours: number
+    37→    37→  employee: Employee
+    38→    38→}
+    39→    39→
+    40→    40→interface AttendanceFormData {
+    41→    41→  employeeId: string; date: string; checkIn: string; checkOut: string; overtimeHours: string
+    42→    42→}
+    43→    43→
+    44→    44→const defaultForm: AttendanceFormData = {
+    45→    45→  employeeId: '', date: '', checkIn: '', checkOut: '', overtimeHours: '0',
+    46→    46→}
+    47→    47→
+    48→    48→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    49→    49→
+    50→    50→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    51→    51→  return (<div className="space-y-2">{Array.from({ length: rows }).map((_, i) => (
+    52→    52→    <div key={i} className="flex gap-4 p-3"><div className="h-5 w-20 animate-pulse rounded bg-gray-200" /><div className="h-5 w-40 animate-pulse rounded bg-gray-200" /><div className="h-5 w-28 animate-pulse rounded bg-gray-200" /></div>
+    53→    53→  ))}</div>)
+    54→    54→}
+    55→    55→
+    56→    56→// ============ Attendance Form Dialog ============
+    57→    57→function AttendanceFormDialog({ open, onOpenChange, employees }: {
+    58→    58→  open: boolean; onOpenChange: (open: boolean) => void; employees: Employee[]
+    59→    59→}) {
+    60→    60→  const queryClient = useQueryClient()
+    61→    61→  const [form, setForm] = useState<AttendanceFormData>(defaultForm)
+    62→    62→  const { lang } = useAppStore()
+    63→    63→
+    64→    64→  // Calculate work hours and auto-overtime from checkIn/checkOut
+    65→    65→  const calculatedWorkHours = React.useMemo(() => {
+    66→    66→    if (!form.checkIn || !form.checkOut) return null
+    67→    67→    const [inH, inM] = form.checkIn.split(':').map(Number)
+    68→    68→    const [outH, outM] = form.checkOut.split(':').map(Number)
+    69→    69→    if (isNaN(inH) || isNaN(outH)) return null
+    70→    70→    const inMin = inH * 60 + (inM || 0)
+    71→    71→    const outMin = outH * 60 + (outM || 0)
+    72→    72→    const diff = outMin - inMin
+    73→    73→    if (diff <= 0) return null
+    74→    74→    return Math.round((diff / 60) * 100) / 100
+    75→    75→  }, [form.checkIn, form.checkOut])
+    76→    76→
+    77→    77→  // Auto-calculate overtime (hours beyond 8)
+    78→    78→  const autoOvertime = React.useMemo(() => {
+    79→    79→    if (calculatedWorkHours === null) return 0
+    80→    80→    return Math.max(0, Math.round((calculatedWorkHours - 8) * 100) / 100)
+    81→    81→  }, [calculatedWorkHours])
+    82→    82→
+    83→    83→  React.useEffect(() => {
+    84→    84→    if (open) setForm(defaultForm)
+    85→    85→  }, [open])
+    86→    86→
+    87→    87→  const createMutation = useMutation({
+    88→    88→    mutationFn: (data: Record<string, unknown>) => fetch('/api/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    89→    89→    onSuccess: () => {
+    90→    90→      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+    91→    91→      onOpenChange(false)
+    92→    92→      toast.success(t('تم تسجيل الحضور', 'Attendance recorded', lang))
+    93→    93→    },
+    94→    94→  })
+    95→    95→
+    96→    96→  const handleSubmit = (e: React.FormEvent) => {
+    97→    97→    e.preventDefault()
+    98→    98→    createMutation.mutate({
+    99→    99→      ...form,
+   100→   100→      overtimeHours: form.overtimeHours ? parseFloat(form.overtimeHours) : autoOvertime,
+   101→   101→      checkIn: form.checkIn || null,
+   102→   102→      checkOut: form.checkOut || null,
+   103→   103→    })
+   104→   104→  }
+   105→   105→
+   106→   106→  return (
+   107→   107→    <Dialog open={open} onOpenChange={onOpenChange}>
+   108→   108→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   109→   109→        <DialogHeader>
+   110→   110→          <DialogTitle>{t('تسجيل حضور', 'Record Attendance', lang)}</DialogTitle>
+   111→   111→          <DialogDescription>{t('تسجيل حضور وانصراف موظف', 'Record employee attendance', lang)}</DialogDescription>
+   112→   112→        </DialogHeader>
+   113→   113→        <form onSubmit={handleSubmit} className="space-y-4">
+   114→   114→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   115→   115→            <div className="space-y-2 sm:col-span-2">
+   116→   116→              <Label>{t('الموظف *', 'Employee *', lang)}</Label>
+   117→   117→              <Select value={form.employeeId} onValueChange={v => setForm(f => ({ ...f, employeeId: v }))}>
+   118→   118→                <SelectTrigger><SelectValue placeholder={t('اختر الموظف', 'Select employee', lang)} /></SelectTrigger>
+   119→   119→                <SelectContent>
+   120→   120→                  {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name} ({e.code})</SelectItem>)}
+   121→   121→                </SelectContent>
+   122→   122→              </Select>
+   123→   123→            </div>
+   124→   124→            <div className="space-y-2"><Label>{t('التاريخ *', 'Date *', lang)}</Label><Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></div>
+   125→   125→            <div className="space-y-2"><Label>{t('وقت الحضور', 'Check In', lang)}</Label><Input type="time" value={form.checkIn} onChange={e => setForm(f => ({ ...f, checkIn: e.target.value }))} /></div>
+   126→   126→            <div className="space-y-2"><Label>{t('وقت الانصراف', 'Check Out', lang)}</Label><Input type="time" value={form.checkOut} onChange={e => setForm(f => ({ ...f, checkOut: e.target.value }))} /></div>
+   127→   127→            <div className="space-y-2">
+   128→   128→              <Label>{t('ساعات إضافية', 'Overtime Hours', lang)}</Label>
+   129→   129→              <Input
+   130→   130→                type="number" min="0" step="0.5"
+   131→   131→                value={form.overtimeHours || (autoOvertime > 0 ? String(autoOvertime) : '0')}
+   132→   132→                onChange={e => setForm(f => ({ ...f, overtimeHours: e.target.value }))}
+   133→   133→                dir="ltr"
+   134→   134→              />
+   135→   135→              {autoOvertime > 0 && <p className="text-xs text-amber-600">{t('محسوب تلقائياً', 'Auto-calculated', lang)}: {autoOvertime} {t('ساعة', 'hrs', lang)}</p>}
+   136→   136→            </div>
+   137→   137→          </div>
+   138→   138→
+   139→   139→          {calculatedWorkHours !== null && (
+   140→   140→            <Card className="bg-emerald-50 border-emerald-200">
+   141→   141→              <CardContent className="p-3">
+   142→   142→                <div className="flex justify-between text-sm">
+   143→   143→                  <p className="text-emerald-600">{t('ساعات العمل المحسوبة', 'Calculated Work Hours', lang)}: <span className="font-bold text-emerald-700">{calculatedWorkHours} {t('ساعة', 'hrs', lang)}</span></p>
+   144→   144→                  {autoOvertime > 0 && (
+   145→   145→                    <p className="text-amber-600">{t('إضافي', 'Overtime', lang)}: <span className="font-bold text-amber-700">{autoOvertime} {t('ساعة', 'hrs', lang)}</span></p>
+   146→   146→                  )}
+   147→   147→                </div>
+   148→   148→              </CardContent>
+   149→   149→            </Card>
+   150→   150→          )}
+   151→   151→
+   152→   152→          <DialogFooter>
+   153→   153→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+   154→   154→            <Button type="submit" disabled={createMutation.isPending || !form.employeeId || !form.date} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...', lang) : t('تسجيل', 'Record', lang)}</Button>
+   155→   155→          </DialogFooter>
+   156→   156→        </form>
+   157→   157→      </DialogContent>
+   158→   158→    </Dialog>
+   159→   159→  )
+   160→   160→}
+   161→   161→
+   162→   162→// ============ Bulk Attendance Dialog ============
+   163→   163→function BulkAttendanceDialog({ open, onOpenChange, employees }: {
+   164→   164→  open: boolean; onOpenChange: (open: boolean) => void; employees: Employee[]
+   165→   165→}) {
+   166→   166→  const queryClient = useQueryClient()
+   167→   167→  const { lang } = useAppStore()
+   168→   168→  const [date, setDate] = useState('')
+   169→   169→  const [checkIn, setCheckIn] = useState('08:00')
+   170→   170→  const [checkOut, setCheckOut] = useState('17:00')
+   171→   171→  const [selectedIds, setSelectedIds] = useState<string[]>([])
+   172→   172→
+   173→   173→  React.useEffect(() => {
+   174→   174→    if (open) {
+   175→   175→      setDate('')
+   176→   176→      setCheckIn('08:00')
+   177→   177→      setCheckOut('17:00')
+   178→   178→      setSelectedIds([])
+   179→   179→    }
+   180→   180→  }, [open])
+   181→   181→
+   182→   182→  const toggleEmployee = (id: string) => {
+   183→   183→    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id])
+   184→   184→  }
+   185→   185→
+   186→   186→  const selectAll = () => {
+   187→   187→    setSelectedIds(employees.map(e => e.id))
+   188→   188→  }
+   189→   189→
+   190→   190→  const selectNone = () => {
+   191→   191→    setSelectedIds([])
+   192→   192→  }
+   193→   193→
+   194→   194→  // Calculate work hours from check-in/check-out
+   195→   195→  const calculatedHours = React.useMemo(() => {
+   196→   196→    if (!checkIn || !checkOut) return 0
+   197→   197→    const [inH, inM] = checkIn.split(':').map(Number)
+   198→   198→    const [outH, outM] = checkOut.split(':').map(Number)
+   199→   199→    if (isNaN(inH) || isNaN(outH)) return 0
+   200→   200→    const diff = (outH * 60 + (outM || 0)) - (inH * 60 + (inM || 0))
+   201→   201→    return diff > 0 ? Math.round((diff / 60) * 100) / 100 : 0
+   202→   202→  }, [checkIn, checkOut])
+   203→   203→
+   204→   204→  const autoOvertime = Math.max(0, calculatedHours - 8)
+   205→   205→
+   206→   206→  const bulkMutation = useMutation({
+   207→   207→    mutationFn: async () => {
+   208→   208→      const results = await Promise.allSettled(
+   209→   209→        selectedIds.map(employeeId =>
+   210→   210→          fetch('/api/attendance', {
+   211→   211→            method: 'POST',
+   212→   212→            headers: { 'Content-Type': 'application/json' },
+   213→   213→            body: JSON.stringify({
+   214→   214→              employeeId,
+   215→   215→              date,
+   216→   216→              checkIn,
+   217→   217→              checkOut,
+   218→   218→              overtimeHours: autoOvertime,
+   219→   219→            }),
+   220→   220→          }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+   221→   221→        )
+   222→   222→      )
+   223→   223→      return results
+   224→   224→    },
+   225→   225→    onSuccess: () => {
+   226→   226→      queryClient.invalidateQueries({ queryKey: ['attendance'] })
+   227→   227→      onOpenChange(false)
+   228→   228→      toast.success(t('تم تسجيل الحضور الجماعي', 'Bulk attendance recorded', lang))
+   229→   229→    },
+   230→   230→  })
+   231→   231→
+   232→   232→  const handleSubmit = (e: React.FormEvent) => {
+   233→   233→    e.preventDefault()
+   234→   234→    if (!date || selectedIds.length === 0) return
+   235→   235→    bulkMutation.mutate()
+   236→   236→  }
+   237→   237→
+   238→   238→  return (
+   239→   239→    <Dialog open={open} onOpenChange={onOpenChange}>
+   240→   240→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   241→   241→        <DialogHeader>
+   242→   242→          <DialogTitle>{t('تسجيل حضور جماعي', 'Bulk Attendance', lang)}</DialogTitle>
+   243→   243→          <DialogDescription>{t('تسجيل حضور لعدة موظفين في نفس اليوم', 'Record attendance for multiple employees on the same day', lang)}</DialogDescription>
+   244→   244→        </DialogHeader>
+   245→   245→        <form onSubmit={handleSubmit} className="space-y-4">
+   246→   246→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   247→   247→            <div className="space-y-2"><Label>{t('التاريخ *', 'Date *', lang)}</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+   248→   248→            <div className="space-y-2"><Label>{t('وقت الحضور', 'Check In', lang)}</Label><Input type="time" value={checkIn} onChange={e => setCheckIn(e.target.value)} /></div>
+   249→   249→            <div className="space-y-2"><Label>{t('وقت الانصراف', 'Check Out', lang)}</Label><Input type="time" value={checkOut} onChange={e => setCheckOut(e.target.value)} /></div>
+   250→   250→          </div>
+   251→   251→
+   252→   252→          {calculatedHours > 0 && (
+   253→   253→            <Card className="bg-emerald-50 border-emerald-200">
+   254→   254→              <CardContent className="p-3 flex justify-between text-sm">
+   255→   255→                <p className="text-emerald-600">{t('ساعات العمل', 'Work Hours', lang)}: <span className="font-bold">{calculatedHours}</span></p>
+   256→   256→                {autoOvertime > 0 && <p className="text-amber-600">{t('إضافي', 'Overtime', lang)}: <span className="font-bold">{autoOvertime}</span></p>}
+   257→   257→              </CardContent>
+   258→   258→            </Card>
+   259→   259→          )}
+   260→   260→
+   261→   261→          <div className="space-y-2">
+   262→   262→            <div className="flex items-center justify-between">
+   263→   263→              <h4 className="font-semibold text-sm text-emerald-700">
+   264→   264→                {t('اختر الموظفين', 'Select Employees', lang)} ({selectedIds.length}/{employees.length})
+   265→   265→              </h4>
+   266→   266→              <div className="flex gap-2">
+   267→   267→                <Button type="button" variant="ghost" size="sm" onClick={selectAll}>{t('تحديد الكل', 'Select All', lang)}</Button>
+   268→   268→                <Button type="button" variant="ghost" size="sm" onClick={selectNone}>{t('إلغاء التحديد', 'Deselect All', lang)}</Button>
+   269→   269→              </div>
+   270→   270→            </div>
+   271→   271→            <div className="max-h-48 overflow-y-auto border rounded-lg p-2 space-y-1">
+   272→   272→              {employees.map(emp => (
+   273→   273→                <label key={emp.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-gray-50 cursor-pointer">
+   274→   274→                  <Checkbox
+   275→   275→                    checked={selectedIds.includes(emp.id)}
+   276→   276→                    onCheckedChange={() => toggleEmployee(emp.id)}
+   277→   277→                  />
+   278→   278→                  <span className="text-sm">{emp.name} <span className="text-muted-foreground">({emp.code})</span></span>
+   279→   279→                </label>
+   280→   280→              ))}
+   281→   281→            </div>
+   282→   282→          </div>
+   283→   283→
+   284→   284→          <DialogFooter>
+   285→   285→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+   286→   286→            <Button type="submit" disabled={bulkMutation.isPending || !date || selectedIds.length === 0} className="bg-emerald-600 hover:bg-emerald-700">
+   287→   287→              {bulkMutation.isPending ? t('جاري التسجيل...', 'Recording...', lang) : t('تسجيل حضور', 'Record Attendance', lang)}
+   288→   288→            </Button>
+   289→   289→          </DialogFooter>
+   290→   290→        </form>
+   291→   291→      </DialogContent>
+   292→   292→    </Dialog>
+   293→   293→  )
+   294→   294→}
+   295→   295→
+   296→   296→// ============ Main Attendance Module ============
+   297→   297→export function AttendanceModule() {
+   298→   298→  const queryClient = useQueryClient()
+   299→   299→  const { lang } = useAppStore()
+   300→   300→  const [search, setSearch] = useState('')
+   301→   301→  const [dialogOpen, setDialogOpen] = useState(false)
+   302→   302→  const [bulkDialogOpen, setBulkDialogOpen] = useState(false)
+   303→   303→  const [filterMonth, setFilterMonth] = useState('')
+   304→   304→  const [filterYear, setFilterYear] = useState('')
+   305→   305→
+   306→   306→  const monthNames = [
+   307→   307→    { ar: 'يناير', en: 'January' }, { ar: 'فبراير', en: 'February' }, { ar: 'مارس', en: 'March' },
+   308→   308→    { ar: 'أبريل', en: 'April' }, { ar: 'مايو', en: 'May' }, { ar: 'يونيو', en: 'June' },
+   309→   309→    { ar: 'يوليو', en: 'July' }, { ar: 'أغسطس', en: 'August' }, { ar: 'سبتمبر', en: 'September' },
+   310→   310→    { ar: 'أكتوبر', en: 'October' }, { ar: 'نوفمبر', en: 'November' }, { ar: 'ديسمبر', en: 'December' },
+   311→   311→  ]
+   312→   312→
+   313→   313→  const queryParams = new URLSearchParams()
+   314→   314→  if (filterMonth && filterYear) {
+   315→   315→    const m = parseInt(filterMonth)
+   316→   316→    const y = parseInt(filterYear)
+   317→   317→    queryParams.set('dateFrom', `${y}-${String(m).padStart(2, '0')}-01`)
+   318→   318→    const nextMonth = m === 12 ? 1 : m + 1
+   319→   319→    const nextYear = m === 12 ? y + 1 : y
+   320→   320→    queryParams.set('dateTo', `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`)
+   321→   321→  }
+   322→   322→
+   323→   323→  const { data: records = [], isLoading, isError, refetch } = useQuery<AttendanceRecord[]>({
+   324→   324→    queryKey: ['attendance', filterMonth, filterYear],
+   325→   325→    queryFn: async () => {
+   326→   326→      const qs = queryParams.toString()
+   327→   327→      const res = await fetch(`/api/attendance${qs ? `?${qs}` : ''}`)
+   328→   328→      if (!res.ok) throw new Error()
+   329→   329→      return res.json()
+   330→   330→    },
+   331→   331→  })
+   332→   332→
+   333→   333→  const { data: employees = [] } = useQuery<Employee[]>({
+   334→   334→    queryKey: ['employees-list'],
+   335→   335→    queryFn: async () => { const res = await fetch('/api/employees?activeOnly=true'); if (!res.ok) return []; return res.json() },
+   336→   336→  })
+   337→   337→
+   338→   338→  const deleteMutation = useMutation({
+   339→   339→    mutationFn: (id: string) => fetch(`/api/attendance/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   340→   340→    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attendance'] }),
+   341→   341→  })
+   342→   342→
+   343→   343→  const filtered = records.filter(r => {
+   344→   344→    if (!search) return true
+   345→   345→    const s = search.toLowerCase()
+   346→   346→    return r.employee.name.toLowerCase().includes(s) || r.employee.code.toLowerCase().includes(s)
+   347→   347→  })
+   348→   348→
+   349→   349→  // Monthly summary by employee
+   350→   350→  const employeeSummary = React.useMemo(() => {
+   351→   351→    const summary: Record<string, { employee: Employee; totalWorkHours: number; totalOvertime: number; days: number }> = {}
+   352→   352→    filtered.forEach(r => {
+   353→   353→      if (!summary[r.employeeId]) {
+   354→   354→        summary[r.employeeId] = { employee: r.employee, totalWorkHours: 0, totalOvertime: 0, days: 0 }
+   355→   355→      }
+   356→   356→      summary[r.employeeId].totalWorkHours += r.workHours
+   357→   357→      summary[r.employeeId].totalOvertime += r.overtimeHours
+   358→   358→      summary[r.employeeId].days += 1
+   359→   359→    })
+   360→   360→    return Object.values(summary)
+   361→   361→  }, [filtered])
+   362→   362→
+   363→   363→  const printData = useMemo(() => ({
+   364→   364→    columns: [
+   365→   365→      { key: 'employeeName', label: lang === 'ar' ? 'الموظف' : 'Employee' },
+   366→   366→      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+   367→   367→      { key: 'checkIn', label: lang === 'ar' ? 'الحضور' : 'Check In' },
+   368→   368→      { key: 'checkOut', label: lang === 'ar' ? 'الانصراف' : 'Check Out' },
+   369→   369→      { key: 'workHours', label: lang === 'ar' ? 'ساعات العمل' : 'Work Hours' },
+   370→   370→      { key: 'overtimeHours', label: lang === 'ar' ? 'ساعات إضافية' : 'Overtime' },
+   371→   371→    ],
+   372→   372→    rows: filtered.map(r => ({
+   373→   373→      employeeName: r.employee.name,
+   374→   374→      date: r.date,
+   375→   375→      checkIn: r.checkIn || '—',
+   376→   376→      checkOut: r.checkOut || '—',
+   377→   377→      workHours: r.workHours,
+   378→   378→      overtimeHours: r.overtimeHours,
+   379→   379→    })),
+   380→   380→    infoItems: [
+   381→   381→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   382→   382→      { label: lang === 'ar' ? 'عدد السجلات' : 'Records', value: String(filtered.length) },
+   383→   383→    ],
+   384→   384→  }), [filtered, lang])
+   385→   385→
+   386→   386→  const handleExport = () => {
+   387→   387→    const columns: CSVColumn[] = [
+   388→   388→      { key: 'employeeName', label: t('الموظف', 'Employee', lang) },
+   389→   389→      { key: 'date', label: t('التاريخ', 'Date', lang) },
+   390→   390→      { key: 'checkIn', label: t('الحضور', 'Check In', lang) },
+   391→   391→      { key: 'checkOut', label: t('الانصراف', 'Check Out', lang) },
+   392→   392→      { key: 'workHours', label: t('ساعات العمل', 'Work Hours', lang) },
+   393→   393→      { key: 'overtimeHours', label: t('ساعات إضافية', 'Overtime', lang) },
+   394→   394→    ]
+   395→   395→    exportToCSV(filtered.map(r => ({
+   396→   396→      employeeName: r.employee.name, date: r.date,
+   397→   397→      checkIn: r.checkIn || '', checkOut: r.checkOut || '',
+   398→   398→      workHours: r.workHours, overtimeHours: r.overtimeHours,
+   399→   399→    })), `attendance-${new Date().toISOString().slice(0, 10)}`, columns)
+   400→   400→  }
+   401→   401→
+   402→   402→  return (
+   403→   403→    <ModuleLayout
+   404→   404→      title={{ ar: 'الحضور والانصراف', en: 'Attendance' }}
+   405→   405→      subtitle={{ ar: 'تسجيل ومتابعة حضور الموظفين', en: 'Record and track employee attendance' }}
+   406→   406→      actions={
+   407→   407→        <div className="flex items-center gap-2">
+   408→   408→          <PrintButton type="attendance-report" data={printData} size="icon" />
+   409→   409→          <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
+   410→   410→          <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+   411→   411→          <Button variant="outline" className="gap-2" onClick={() => setBulkDialogOpen(true)}>
+   412→   412→            <Users className="size-4" />{t('تسجيل جماعي', 'Bulk Entry', lang)}
+   413→   413→          </Button>
+   414→   414→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('تسجيل حضور', 'Record Attendance', lang)}</Button>
+   415→   415→        </div>
+   416→   416→      }
+   417→   417→    >
+   418→   418→      {/* Monthly Summary by Employee */}
+   419→   419→      {employeeSummary.length > 0 && (
+   420→   420→        <Card>
+   421→   421→          <Card className="border-0 shadow-none">
+   422→   422→            <CardContent className="p-0">
+   423→   423→              <div className="p-4">
+   424→   424→                <h3 className="text-sm font-semibold text-emerald-700 mb-3 flex items-center gap-2">
+   425→   425→                  <CalendarDays className="size-4" />
+   426→   426→                  {t('ملخص الشهر حسب الموظف', 'Monthly Summary by Employee', lang)}
+   427→   427→                </h3>
+   428→   428→              </div>
+   429→   429→              <div className="overflow-x-auto">
+   430→   430→                <Table>
+   431→   431→                  <TableHeader><TableRow>
+   432→   432→                    <TableHead className="text-right">{t('الموظف', 'Employee', lang)}</TableHead>
+   433→   433→                    <TableHead className="text-right">{t('أيام الحضور', 'Days', lang)}</TableHead>
+   434→   434→                    <TableHead className="text-right">{t('ساعات العمل', 'Work Hours', lang)}</TableHead>
+   435→   435→                    <TableHead className="text-right">{t('ساعات إضافية', 'Overtime', lang)}</TableHead>
+   436→   436→                  </TableRow></TableHeader>
+   437→   437→                  <TableBody>
+   438→   438→                    {employeeSummary.map(s => (
+   439→   439→                      <TableRow key={s.employee.id}>
+   440→   440→                        <TableCell className="font-medium">{s.employee.name}</TableCell>
+   441→   441→                        <TableCell><Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200">{s.days}</Badge></TableCell>
+   442→   442→                        <TableCell><Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">{(s.totalWorkHours ?? 0).toFixed(1)} {t('ساعة', 'hrs', lang)}</Badge></TableCell>
+   443→   443→                        <TableCell><Badge variant="outline" className={(s.totalOvertime ?? 0) > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-50'}>{(s.totalOvertime ?? 0) > 0 ? `${(s.totalOvertime ?? 0).toFixed(1)} ${t('ساعة', 'hrs', lang)}` : '—'}</Badge></TableCell>
+   444→   444→                      </TableRow>
+   445→   445→                    ))}
+   446→   446→                  </TableBody>
+   447→   447→                </Table>
+   448→   448→              </div>
+   449→   449→            </CardContent>
+   450→   450→          </Card>
+   451→   451→        </Card>
+   452→   452→      )}
+   453→   453→
+   454→   454→      {/* Search & Filter */}
+   455→   455→      <Card><CardContent className="p-4">
+   456→   456→        <div className="flex flex-col sm:flex-row gap-3">
+   457→   457→          <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+   458→   458→          <Select value={filterMonth || 'ALL'} onValueChange={v => setFilterMonth(v === 'ALL' ? '' : v)}>
+   459→   459→            <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder={t('كل الأشهر', 'All Months', lang)} /></SelectTrigger>
+   460→   460→            <SelectContent>
+   461→   461→              <SelectItem value="ALL">{t('كل الأشهر', 'All Months', lang)}</SelectItem>
+   462→   462→              {monthNames.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m[lang]}</SelectItem>)}
+   463→   463→            </SelectContent>
+   464→   464→          </Select>
+   465→   465→          <Select value={filterYear || 'ALL'} onValueChange={v => setFilterYear(v === 'ALL' ? '' : v)}>
+   466→   466→            <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder={t('السنة', 'Year', lang)} /></SelectTrigger>
+   467→   467→            <SelectContent>
+   468→   468→              <SelectItem value="ALL">{t('كل السنوات', 'All Years', lang)}</SelectItem>
+   469→   469→              {[2024, 2025, 2026].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+   470→   470→            </SelectContent>
+   471→   471→          </Select>
+   472→   472→        </div>
+   473→   473→      </CardContent></Card>
+   474→   474→
+   475→   475→      {/* Table */}
+   476→   476→      <Card><CardContent className="p-0">
+   477→   477→        {isLoading ? (<div className="p-6"><TableSkeleton /></div>) : isError ? (
+   478→   478→          <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+   479→   479→        ) : filtered.length === 0 ? (
+   480→   480→          <div className="flex flex-col items-center gap-3 py-10"><Clock className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد سجلات حضور', 'No attendance records', lang)}</p>
+   481→   481→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4 mr-1" />{t('تسجيل حضور', 'Record Attendance', lang)}</Button></div>
+   482→   482→        ) : (
+   483→   483→          <div className="overflow-x-auto">
+   484→   484→            <Table>
+   485→   485→              <TableHeader><TableRow>
+   486→   486→                <TableHead className="text-right">{t('الموظف', 'Employee', lang)}</TableHead>
+   487→   487→                <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   488→   488→                <TableHead className="text-right">{t('الحضور', 'Check In', lang)}</TableHead>
+   489→   489→                <TableHead className="text-right">{t('الانصراف', 'Check Out', lang)}</TableHead>
+   490→   490→                <TableHead className="text-right">{t('ساعات العمل', 'Work Hours', lang)}</TableHead>
+   491→   491→                <TableHead className="text-right">{t('ساعات إضافية', 'Overtime', lang)}</TableHead>
+   492→   492→                <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   493→   493→              </TableRow></TableHeader>
+   494→   494→              <TableBody>
+   495→   495→                {filtered.map(r => (
+   496→   496→                  <TableRow key={r.id}>
+   497→   497→                    <TableCell className="font-medium">{r.employee.name}</TableCell>
+   498→   498→                    <TableCell>{formatDate(r.date, lang)}</TableCell>
+   499→   499→                    <TableCell dir="ltr" className="text-right">{r.checkIn || '—'}</TableCell>
+   500→   500→                    <TableCell dir="ltr" className="text-right">{r.checkOut || '—'}</TableCell>
+   501→   501→                    <TableCell>
+   502→   502→                      <Badge variant="outline" className={r.workHours > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-gray-50'}>
+   503→   503→                        {r.workHours > 0 ? `${r.workHours} ${t('ساعة', 'hrs', lang)}` : '—'}
+   504→   504→                      </Badge>
+   505→   505→                    </TableCell>
+   506→   506→                    <TableCell>
+   507→   507→                      <Badge variant="outline" className={r.overtimeHours > 0 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-gray-50'}>
+   508→   508→                        {r.overtimeHours > 0 ? `${r.overtimeHours} ${t('ساعة', 'hrs', lang)}` : '—'}
+   509→   509→                      </Badge>
+   510→   510→                    </TableCell>
+   511→   511→                    <TableCell>
+   512→   512→                      <div className="flex items-center gap-1">
+   513→   513→                        <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من حذف السجل؟', 'Are you sure you want to delete this record?', lang))) deleteMutation.mutate(r.id) }}><Trash2 className="size-4" /></Button>
+   514→   514→                      </div>
+   515→   515→                    </TableCell>
+   516→   516→                  </TableRow>
+   517→   517→                ))}
+   518→   518→              </TableBody>
+   519→   519→            </Table>
+   520→   520→          </div>
+   521→   521→        )}
+   522→   522→      </CardContent></Card>
+   523→   523→
+   524→   524→      <AttendanceFormDialog open={dialogOpen} onOpenChange={setDialogOpen} employees={employees} />
+   525→   525→      <BulkAttendanceDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen} employees={employees} />
+   526→   526→    </ModuleLayout>
+   527→   527→  )
+   528→   528→}
+   529→   529→

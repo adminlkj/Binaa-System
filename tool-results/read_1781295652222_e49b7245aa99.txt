@@ -1,0 +1,683 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
+     7→  Download, AlertCircle, CheckCircle, BookOpen, Link2, X, Trash2,
+     8→} from 'lucide-react'
+     9→import { toast } from 'sonner'
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→} from '@/components/ui/table'
+    17→import {
+    18→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    19→} from '@/components/ui/select'
+    20→import { Label } from '@/components/ui/label'
+    21→import { Textarea } from '@/components/ui/textarea'
+    22→import { Separator } from '@/components/ui/separator'
+    23→import { MoneyDisplay } from '@/components/ui/money-display'
+    24→import { ModuleLayout } from '@/components/shared/module-layout'
+    25→import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+    26→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    27→import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
+    28→import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+    29→import { PrintButton } from '@/components/shared/print-button'
+    30→
+    31→// ============ Types ============
+    32→type ViewState =
+    33→  | { type: 'list' }
+    34→  | { type: 'create' }
+    35→  | { type: 'detail'; id: string }
+    36→
+    37→interface GROption {
+    38→  id: string; receiptNo: string; supplierId: string; purchaseOrderId: string; projectId: string | null; status: string
+    39→  supplier: { id: string; name: string; code: string }
+    40→  purchaseOrder: { id: string; orderNo: string }
+    41→  project: { id: string; name: string; code: string } | null
+    42→  items: { description: string; quantityReceived: number; unitPrice: number; totalPrice: number; destination: string | null }[]
+    43→}
+    44→
+    45→interface InvoiceItem {
+    46→  id: string; description: string; quantity: number; unitPrice: number; totalPrice: number
+    47→}
+    48→
+    49→interface SupplierInvoice {
+    50→  id: string; invoiceNo: string; supplierId: string; purchaseOrderId: string | null
+    51→  goodsReceiptId: string | null; projectId: string | null
+    52→  date: string; dueDate: string; supplierInvoiceNo: string | null
+    53→  supplierInvoiceDate: string | null; attachmentPath: string | null
+    54→  subtotal: number; vatRate: number; vatAmount: number; totalAmount: number
+    55→  paidAmount: number; status: string; journalEntryId: string | null; notes: string | null
+    56→  supplier: { id: string; name: string; code: string }
+    57→  purchaseOrder: { id: string; orderNo: string; status: string } | null
+    58→  goodsReceipt: { id: string; receiptNo: string; status: string } | null
+    59→  project: { id: string; name: string; code: string; projectType?: string } | null
+    60→  items: InvoiceItem[]
+    61→}
+    62→
+    63→// ============ Constants ============
+    64→const invoiceStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+    65→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-yellow-700', bg: 'bg-yellow-100' },
+    66→  SENT: { label: { ar: 'مرسلة', en: 'Sent' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+    67→  PARTIALLY_PAID: { label: { ar: 'مدفوعة جزئياً', en: 'Partially Paid' }, color: 'text-orange-700', bg: 'bg-orange-100' },
+    68→  PAID: { label: { ar: 'مدفوعة', en: 'Paid' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+    69→  CANCELLED: { label: { ar: 'ملغية', en: 'Cancelled' }, color: 'text-red-700', bg: 'bg-red-100' },
+    70→}
+    71→
+    72→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    73→
+    74→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    75→  return (<div className="space-y-2">{Array.from({ length: rows }).map((_, i) => (
+    76→    <div key={i} className="flex gap-4 p-3"><div className="h-5 w-24 animate-pulse rounded bg-gray-200" /><div className="h-5 w-40 animate-pulse rounded bg-gray-200" /><div className="h-5 w-28 animate-pulse rounded bg-gray-200" /></div>
+    77→  ))}</div>)
+    78→}
+    79→
+    80→// ============ Create View ============
+    81→function InvoiceCreateView({ onBack }: { onBack: () => void }) {
+    82→  const { lang } = useAppStore()
+    83→  const queryClient = useQueryClient()
+    84→
+    85→  const [goodsReceiptId, setGoodsReceiptId] = useState('')
+    86→  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+    87→  const [dueDate, setDueDate] = useState('')
+    88→  const [supplierInvoiceNo, setSupplierInvoiceNo] = useState('')
+    89→  const [supplierInvoiceDate, setSupplierInvoiceDate] = useState('')
+    90→  const [attachmentPath, setAttachmentPath] = useState('')
+    91→  const [notes, setNotes] = useState('')
+    92→
+    93→  const { data: goodsReceipts = [] } = useQuery<GROption[]>({
+    94→    queryKey: ['goods-receipts-for-invoice'],
+    95→    queryFn: async () => {
+    96→      const res = await fetch('/api/goods-receipt')
+    97→      if (!res.ok) return []
+    98→      const all: GROption[] = await res.json()
+    99→      return all.filter(gr => gr.status !== 'CANCELLED')
+   100→    },
+   101→  })
+   102→
+   103→  const selectedGR = goodsReceiptId ? goodsReceipts.find(gr => gr.id === goodsReceiptId) : null
+   104→
+   105→  const subtotal = useMemo(() => {
+   106→    if (!selectedGR) return 0
+   107→    return selectedGR.items.reduce((s, i) => s + i.totalPrice, 0)
+   108→  }, [selectedGR])
+   109→
+   110→  const vatRate = 0.15
+   111→  const vatAmount = subtotal * vatRate
+   112→  const totalAmount = subtotal + vatAmount
+   113→
+   114→  const createMutation = useMutation({
+   115→    mutationFn: (data: Record<string, unknown>) =>
+   116→      fetch('/api/supplier-invoices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => {
+   117→        if (!r.ok) return r.json().then(err => { throw new Error(err.error || 'Failed') })
+   118→        return r.json()
+   119→      }),
+   120→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); queryClient.invalidateQueries({ queryKey: ['goods-receipt'] }); toast.success(t('تم إنشاء الفاتورة بنجاح', 'Invoice created successfully', lang)); onBack() },
+   121→    onError: (err) => toast.error(err.message || t('فشل في إنشاء الفاتورة', 'Failed to create invoice', lang)),
+   122→  })
+   123→
+   124→  const handleSubmit = (e: React.FormEvent) => {
+   125→    e.preventDefault()
+   126→    createMutation.mutate({
+   127→      goodsReceiptId,
+   128→      date,
+   129→      dueDate,
+   130→      supplierInvoiceNo: supplierInvoiceNo || null,
+   131→      supplierInvoiceDate: supplierInvoiceDate || null,
+   132→      attachmentPath: attachmentPath || null,
+   133→      notes: notes || null,
+   134→    })
+   135→  }
+   136→
+   137→  return (
+   138→    <div className="space-y-6">
+   139→      <div className="flex items-center gap-3">
+   140→        <Button variant="outline" size="icon" onClick={onBack}><ArrowRight className="size-4" /></Button>
+   141→        <div>
+   142→          <h1 className="text-2xl font-bold text-gray-900">{t('فاتورة مورد جديدة', 'New Supplier Invoice', lang)}</h1>
+   143→          <p className="text-sm text-muted-foreground">{t('إنشاء فاتورة من إيصال استلام', 'Create invoice from goods receipt', lang)}</p>
+   144→        </div>
+   145→      </div>
+   146→
+   147→      <form onSubmit={handleSubmit} className="space-y-6">
+   148→        <Card className="border-emerald-200 bg-emerald-50/50">
+   149→          <CardHeader>
+   150→            <CardTitle className="text-lg flex items-center gap-2">
+   151→              <Link2 className="size-4 text-emerald-600" />
+   152→              {t('اختر إيصال الاستلام (مطلوب)', 'Select Goods Receipt (Required)', lang)}
+   153→            </CardTitle>
+   154→          </CardHeader>
+   155→          <CardContent className="space-y-4">
+   156→            <div className="space-y-2">
+   157→              <Label className="font-medium">{t('إيصال الاستلام *', 'Goods Receipt *', lang)}</Label>
+   158→              <Select value={goodsReceiptId} onValueChange={setGoodsReceiptId}>
+   159→                <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر إيصال استلام', 'Select goods receipt', lang)} /></SelectTrigger>
+   160→                <SelectContent>
+   161→                  {goodsReceipts.map(gr => (
+   162→                    <SelectItem key={gr.id} value={gr.id}>{gr.receiptNo} - {gr.supplier.name}</SelectItem>
+   163→                  ))}
+   164→                </SelectContent>
+   165→              </Select>
+   166→            </div>
+   167→
+   168→            {selectedGR && (
+   169→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   170→                <div className="bg-white rounded-lg p-3 border">
+   171→                  <p className="text-xs text-gray-600">{t('المورد', 'Supplier', lang)}</p>
+   172→                  <p className="text-sm font-medium">{selectedGR.supplier.name}</p>
+   173→                </div>
+   174→                <div className="bg-white rounded-lg p-3 border">
+   175→                  <p className="text-xs text-gray-600">{t('أمر الشراء', 'PO', lang)}</p>
+   176→                  <p className="text-sm font-medium">{selectedGR.purchaseOrder?.orderNo || '—'}</p>
+   177→                </div>
+   178→                <div className="bg-white rounded-lg p-3 border">
+   179→                  <p className="text-xs text-gray-600">{t('المشروع', 'Project', lang)}</p>
+   180→                  <p className="text-sm font-medium">{selectedGR.project?.name || '—'}</p>
+   181→                </div>
+   182→              </div>
+   183→            )}
+   184→
+   185→            {selectedGR && (
+   186→              <div className="overflow-x-auto">
+   187→                <Table>
+   188→                  <TableHeader><TableRow>
+   189→                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   190→                    <TableHead className="text-right">{t('الكمية', 'Qty', lang)}</TableHead>
+   191→                    <TableHead className="text-right">{t('سعر الوحدة', 'Unit Price', lang)}</TableHead>
+   192→                    <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   193→                    <TableHead className="text-right">{t('الوجهة', 'Destination', lang)}</TableHead>
+   194→                  </TableRow></TableHeader>
+   195→                  <TableBody>
+   196→                    {selectedGR.items.map((item, idx) => (
+   197→                      <TableRow key={idx}>
+   198→                        <TableCell>{item.description}</TableCell>
+   199→                        <TableCell>{formatNumber(item.quantityReceived)}</TableCell>
+   200→                        <TableCell><MoneyDisplay value={item.unitPrice} mode="system" lang={lang} size="sm" /></TableCell>
+   201→                        <TableCell className="font-semibold"><MoneyDisplay value={item.totalPrice} mode="system" lang={lang} bold size="sm" /></TableCell>
+   202→                        <TableCell>
+   203→                          <Badge className={item.destination === 'INVENTORY' ? 'bg-teal-100 text-teal-700 border-0' : 'bg-blue-100 text-blue-700 border-0'}>
+   204→                            {item.destination === 'INVENTORY' ? t('مخزون', 'Inventory', lang) : t('مشروع', 'Project', lang)}
+   205→                          </Badge>
+   206→                        </TableCell>
+   207→                      </TableRow>
+   208→                    ))}
+   209→                  </TableBody>
+   210→                </Table>
+   211→              </div>
+   212→            )}
+   213→          </CardContent>
+   214→        </Card>
+   215→
+   216→        <Card>
+   217→          <CardHeader><CardTitle className="text-lg">{t('معلومات الفاتورة', 'Invoice Information', lang)}</CardTitle></CardHeader>
+   218→          <CardContent className="space-y-4">
+   219→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   220→              <div className="space-y-2">
+   221→                <Label>{t('رقم فاتورة المورد', 'Supplier Invoice No', lang)}</Label>
+   222→                <Input value={supplierInvoiceNo} onChange={e => setSupplierInvoiceNo(e.target.value)} placeholder={t('رقم الفاتورة من المورد', 'Invoice number from supplier', lang)} />
+   223→              </div>
+   224→              <div className="space-y-2">
+   225→                <Label>{t('تاريخ فاتورة المورد', 'Supplier Invoice Date', lang)}</Label>
+   226→                <Input type="date" value={supplierInvoiceDate} onChange={e => setSupplierInvoiceDate(e.target.value)} />
+   227→              </div>
+   228→              <div className="space-y-2">
+   229→                <Label>{t('تاريخ الفاتورة *', 'Invoice Date *', lang)}</Label>
+   230→                <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   231→              </div>
+   232→              <div className="space-y-2">
+   233→                <Label>{t('تاريخ الاستحقاق *', 'Due Date *', lang)}</Label>
+   234→                <Input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required />
+   235→              </div>
+   236→              <div className="sm:col-span-2 space-y-2">
+   237→                <Label>{t('المرفقات', 'Attachment', lang)}</Label>
+   238→                <Input value={attachmentPath} onChange={e => setAttachmentPath(e.target.value)} placeholder={t('رابط المرفق', 'Attachment URL', lang)} />
+   239→              </div>
+   240→            </div>
+   241→          </CardContent>
+   242→        </Card>
+   243→
+   244→        {selectedGR && (
+   245→          <Card className="bg-gray-50 border-dashed">
+   246→            <CardContent className="p-4 space-y-2">
+   247→              <p className="text-xs text-muted-foreground mb-2">{t('يتم حساب المبالغ تلقائياً من إيصال الاستلام', 'Amounts are auto-calculated from goods receipt', lang)}</p>
+   248→              <div className="flex justify-between text-sm">
+   249→                <span>{t('المجموع قبل الضريبة', 'Subtotal', lang)}</span>
+   250→                <span className="font-medium"><MoneyDisplay value={subtotal} mode="system" lang={lang} size="sm" /></span>
+   251→              </div>
+   252→              <div className="flex justify-between text-sm">
+   253→                <span>{t('ضريبة القيمة المضافة (15%)', 'VAT (15%)', lang)}</span>
+   254→                <span className="font-medium"><MoneyDisplay value={vatAmount} mode="system" lang={lang} size="sm" /></span>
+   255→              </div>
+   256→              <Separator />
+   257→              <div className="flex justify-between text-lg font-bold">
+   258→                <span>{t('الإجمالي', 'Total', lang)}</span>
+   259→                <span className="text-emerald-700"><MoneyDisplay value={totalAmount} mode="system" lang={lang} bold size="lg" /></span>
+   260→              </div>
+   261→            </CardContent>
+   262→          </Card>
+   263→        )}
+   264→
+   265→        <Card>
+   266→          <CardHeader><CardTitle className="text-lg">{t('ملاحظات', 'Notes', lang)}</CardTitle></CardHeader>
+   267→          <CardContent><Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات إضافية', 'Additional notes', lang)} rows={3} /></CardContent>
+   268→        </Card>
+   269→
+   270→        <div className="flex justify-end gap-3">
+   271→          <Button type="button" variant="outline" onClick={onBack}>{t('إلغاء', 'Cancel', lang)}</Button>
+   272→          <Button type="submit" disabled={createMutation.isPending || !goodsReceiptId || !date || !dueDate} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+   273→            {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إنشاء الفاتورة', 'Create Invoice', lang)}
+   274→          </Button>
+   275→        </div>
+   276→      </form>
+   277→    </div>
+   278→  )
+   279→}
+   280→
+   281→// ============ Detail View ============
+   282→function InvoiceDetailView({ id, onBack }: { id: string; onBack: () => void }) {
+   283→  const { lang } = useAppStore()
+   284→  const queryClient = useQueryClient()
+   285→
+   286→  const { data: invoice, isLoading, isError } = useQuery<SupplierInvoice>({
+   287→    queryKey: ['supplier-invoices', id],
+   288→    queryFn: async () => {
+   289→      const res = await fetch(`/api/supplier-invoices/${id}`)
+   290→      if (!res.ok) throw new Error()
+   291→      return res.json()
+   292→    },
+   293→    enabled: !!id,
+   294→  })
+   295→
+   296→  const approveMutation = useMutation({
+   297→    mutationFn: () => fetch(`/api/supplier-invoices/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'SENT' }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   298→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices', id] }); queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم اعتماد الفاتورة وإنشاء القيد المحاسبي', 'Invoice approved and accounting entry created', lang)) },
+   299→    onError: () => toast.error(t('فشل في اعتماد الفاتورة', 'Failed to approve invoice', lang)),
+   300→  })
+   301→
+   302→  const deleteMutation = useMutation({
+   303→    mutationFn: () => fetch(`/api/supplier-invoices/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   304→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم الحذف', 'Deleted', lang)); onBack() },
+   305→    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
+   306→  })
+   307→
+   308→  if (isLoading) return <div className="p-6"><TableSkeleton /></div>
+   309→  if (isError || !invoice) return (
+   310→    <div className="flex flex-col items-center gap-3 py-10">
+   311→      <p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p>
+   312→      <Button variant="outline" onClick={onBack}>{t('رجوع', 'Go Back', lang)}</Button>
+   313→    </div>
+   314→  )
+   315→
+   316→  const cfg = invoiceStatusConfig[invoice.status] || invoiceStatusConfig.DRAFT
+   317→  const balance = invoice.totalAmount - invoice.paidAmount
+   318→
+   319→  return (
+   320→    <div className="space-y-6">
+   321→      <div className="flex items-center gap-3">
+   322→        <Button variant="outline" size="icon" onClick={onBack}><ArrowRight className="size-4" /></Button>
+   323→        <div className="flex-1">
+   324→          <div className="flex items-center gap-3 flex-wrap">
+   325→            <h2 className="text-xl font-bold">{t('فاتورة مورد', 'Supplier Invoice', lang)} {invoice.invoiceNo}</h2>
+   326→            <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   327→            {invoice.journalEntryId && (
+   328→              <Badge className="bg-purple-100 text-purple-700 border-0 gap-1"><BookOpen className="size-3" />{t('قيد محاسبي', 'Accounting Entry', lang)}</Badge>
+   329→            )}
+   330→          </div>
+   331→          <p className="text-sm text-muted-foreground">{invoice.supplier.name}</p>
+   332→        </div>
+   333→        {invoice.status === 'DRAFT' && (
+   334→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>
+   335→            <CheckCircle className="size-4" /> {t('اعتماد وإنشاء قيد', 'Approve & Post', lang)}
+   336→          </Button>
+   337→        )}
+   338→        {invoice.status === 'DRAFT' && (
+   339→          <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={() => { if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate() }}><Trash2 className="size-4" /></Button>
+   340→        )}
+   341→      </div>
+   342→
+   343→      {/* Accounting entry reference */}
+   344→      {invoice.journalEntryId && (
+   345→        <Card className="bg-purple-50 border-purple-200">
+   346→          <CardContent className="p-3 flex items-center gap-2">
+   347→            <BookOpen className="size-4 text-purple-600" />
+   348→            <span className="text-sm text-purple-700">{t('تم إنشاء قيد محاسبي تلقائي', 'Auto accounting entry created', lang)}</span>
+   349→            <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">{invoice.journalEntryId.slice(0, 8)}...</Badge>
+   350→          </CardContent>
+   351→        </Card>
+   352→      )}
+   353→
+   354→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   355→        <Card><CardContent className="p-3">
+   356→          <p className="text-xs text-muted-foreground">{t('المورد', 'Supplier', lang)}</p>
+   357→          <p className="text-sm font-medium truncate">{invoice.supplier.name}</p>
+   358→        </CardContent></Card>
+   359→        <Card><CardContent className="p-3">
+   360→          <p className="text-xs text-muted-foreground">{t('أمر الشراء', 'PO', lang)}</p>
+   361→          <div className="flex items-center gap-1">
+   362→            <Link2 className="size-3 text-blue-500" />
+   363→            <p className="text-sm font-medium">{invoice.purchaseOrder?.orderNo || '—'}</p>
+   364→          </div>
+   365→        </CardContent></Card>
+   366→        <Card><CardContent className="p-3">
+   367→          <p className="text-xs text-muted-foreground">{t('إيصال الاستلام', 'GR', lang)}</p>
+   368→          <div className="flex items-center gap-1">
+   369→            <Link2 className="size-3 text-teal-500" />
+   370→            <p className="text-sm font-medium">{invoice.goodsReceipt?.receiptNo || '—'}</p>
+   371→          </div>
+   372→        </CardContent></Card>
+   373→        <Card><CardContent className="p-3">
+   374→          <p className="text-xs text-muted-foreground">{t('رقم فاتورة المورد', 'Supplier Inv No', lang)}</p>
+   375→          <p className="text-sm font-medium">{invoice.supplierInvoiceNo || '—'}</p>
+   376→        </CardContent></Card>
+   377→      </div>
+   378→
+   379→      {/* Financial Summary */}
+   380→      <div className="grid grid-cols-3 gap-3">
+   381→        <Card className="bg-emerald-50 border-emerald-200">
+   382→          <CardContent className="p-3 text-center">
+   383→            <p className="text-xs text-emerald-600">{t('الإجمالي', 'Total', lang)}</p>
+   384→            <MoneyDisplay value={invoice.totalAmount} mode="system" lang={lang} bold size="lg" className="text-emerald-700" />
+   385→          </CardContent>
+   386→        </Card>
+   387→        <Card className="bg-teal-50 border-teal-200">
+   388→          <CardContent className="p-3 text-center">
+   389→            <p className="text-xs text-teal-600">{t('المدفوع', 'Paid', lang)}</p>
+   390→            <MoneyDisplay value={invoice.paidAmount} mode="system" lang={lang} bold size="lg" className="text-teal-700" />
+   391→          </CardContent>
+   392→        </Card>
+   393→        <Card className={balance > 0 ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}>
+   394→          <CardContent className="p-3 text-center">
+   395→            <p className={`text-xs ${balance > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>{t('المتبقي', 'Balance', lang)}</p>
+   396→            <MoneyDisplay value={balance} mode="system" lang={lang} bold size="lg" className={balance > 0 ? 'text-amber-700' : 'text-emerald-700'} />
+   397→          </CardContent>
+   398→        </Card>
+   399→      </div>
+   400→
+   401→      {/* Items */}
+   402→      <Card>
+   403→        <CardHeader><CardTitle className="text-lg">{t('بنود الفاتورة', 'Invoice Items', lang)}</CardTitle></CardHeader>
+   404→        <CardContent className="px-0 pb-2">
+   405→          <div className="overflow-x-auto">
+   406→            <Table>
+   407→              <TableHeader><TableRow>
+   408→                <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   409→                <TableHead className="text-right">{t('الكمية', 'Qty', lang)}</TableHead>
+   410→                <TableHead className="text-right">{t('سعر الوحدة', 'Unit Price', lang)}</TableHead>
+   411→                <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   412→              </TableRow></TableHeader>
+   413→              <TableBody>
+   414→                {invoice.items.map(item => (
+   415→                  <TableRow key={item.id}>
+   416→                    <TableCell>{item.description}</TableCell>
+   417→                    <TableCell>{formatNumber(item.quantity)}</TableCell>
+   418→                    <TableCell><MoneyDisplay value={item.unitPrice} mode="system" lang={lang} size="sm" /></TableCell>
+   419→                    <TableCell className="font-semibold"><MoneyDisplay value={item.totalPrice} mode="system" lang={lang} bold size="sm" /></TableCell>
+   420→                  </TableRow>
+   421→                ))}
+   422→                <TableRow className="bg-gray-50">
+   423→                  <TableCell colSpan={3} className="text-left font-medium">{t('المجموع قبل الضريبة', 'Subtotal', lang)}</TableCell>
+   424→                  <TableCell className="font-semibold"><MoneyDisplay value={invoice.subtotal} mode="system" lang={lang} size="sm" /></TableCell>
+   425→                </TableRow>
+   426→                <TableRow className="bg-gray-50">
+   427→                  <TableCell colSpan={3} className="text-left font-medium">{t('ضريبة القيمة المضافة', 'VAT', lang)} ({((invoice.vatRate ?? 0) * 100).toFixed(0)}%)</TableCell>
+   428→                  <TableCell className="font-semibold"><MoneyDisplay value={invoice.vatAmount} mode="system" lang={lang} size="sm" /></TableCell>
+   429→                </TableRow>
+   430→                <TableRow className="bg-emerald-50">
+   431→                  <TableCell colSpan={3} className="text-left font-bold text-emerald-700">{t('الإجمالي', 'Total', lang)}</TableCell>
+   432→                  <TableCell className="font-bold text-emerald-700"><MoneyDisplay value={invoice.totalAmount} mode="system" lang={lang} bold size="md" /></TableCell>
+   433→                </TableRow>
+   434→              </TableBody>
+   435→            </Table>
+   436→          </div>
+   437→        </CardContent>
+   438→      </Card>
+   439→
+   440→      {invoice.notes && (
+   441→        <Card>
+   442→          <CardHeader><CardTitle className="text-lg">{t('ملاحظات', 'Notes', lang)}</CardTitle></CardHeader>
+   443→          <CardContent><p className="text-sm text-gray-700 whitespace-pre-wrap">{invoice.notes}</p></CardContent>
+   444→        </Card>
+   445→      )}
+   446→    </div>
+   447→  )
+   448→}
+   449→
+   450→// ============ Main Module ============
+   451→export function SupplierInvoicesModule() {
+   452→  const { lang } = useAppStore()
+   453→  const queryClient = useQueryClient()
+   454→  const [search, setSearch] = useState('')
+   455→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   456→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+   457→
+   458→  const { data: invoices = [], isLoading, isError, refetch } = useQuery<SupplierInvoice[]>({
+   459→    queryKey: ['supplier-invoices'],
+   460→    queryFn: async () => {
+   461→      const res = await fetch('/api/supplier-invoices')
+   462→      if (!res.ok) throw new Error()
+   463→      return res.json()
+   464→    },
+   465→  })
+   466→
+   467→  const deleteMutation = useMutation({
+   468→    mutationFn: (id: string) => fetch(`/api/supplier-invoices/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   469→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['supplier-invoices'] }); toast.success(t('تم الحذف', 'Deleted', lang)) },
+   470→    onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
+   471→  })
+   472→
+   473→  const totalAmount = invoices.reduce((s, i) => s + i.totalAmount, 0)
+   474→  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+   475→  const paidCount = invoices.filter(i => i.status === 'PAID').length
+   476→
+   477→  const filtered = invoices.filter(i => {
+   478→    const matchSearch = !search || i.invoiceNo.toLowerCase().includes(search.toLowerCase()) || i.supplier.name.toLowerCase().includes(search.toLowerCase())
+   479→    const matchStatus = statusFilter === 'all' || i.status === statusFilter
+   480→    return matchSearch && matchStatus
+   481→  })
+   482→
+   483→  // Print data for header-level print button
+   484→  const printData = {
+   485→    columns: [
+   486→      { key: 'invoiceNo', label: t('رقم الفاتورة', 'Invoice No', lang) },
+   487→      { key: 'supplierName', label: t('المورد', 'Supplier', lang) },
+   488→      { key: 'date', label: t('التاريخ', 'Date', lang) },
+   489→      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), align: 'amount' as const },
+   490→      { key: 'paidAmount', label: t('المدفوع', 'Paid', lang), align: 'amount' as const },
+   491→      { key: 'status', label: t('الحالة', 'Status', lang) },
+   492→    ],
+   493→    rows: filtered.map(i => ({
+   494→      invoiceNo: i.invoiceNo,
+   495→      supplierName: i.supplier.name,
+   496→      date: formatDate(i.date, lang),
+   497→      totalAmount: i.totalAmount,
+   498→      paidAmount: i.paidAmount,
+   499→      status: i.status,
+   500→    })),
+   501→    infoItems: [
+   502→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   503→      { label: lang === 'ar' ? 'إجمالي الفواتير' : 'Total Invoices', value: String(totalAmount) },
+   504→    ],
+   505→    totals: [
+   506→      { label: lang === 'ar' ? 'إجمالي الفواتير' : 'Total Invoices', value: totalAmount, isGrand: true },
+   507→    ],
+   508→  }
+   509→
+   510→  const handleExport = () => {
+   511→    const columns: CSVColumn[] = [
+   512→      { key: 'invoiceNo', label: t('رقم الفاتورة', 'Invoice No', lang) },
+   513→      { key: 'supplierName', label: t('المورد', 'Supplier', lang) },
+   514→      { key: 'poNumber', label: t('أمر الشراء', 'PO', lang) },
+   515→      { key: 'grNumber', label: t('إيصال الاستلام', 'GR', lang) },
+   516→      { key: 'date', label: t('التاريخ', 'Date', lang) },
+   517→      { key: 'subtotal', label: t('المجموع الفرعي', 'Subtotal', lang), format: (v) => (Number(v) || 0).toFixed(4) },
+   518→      { key: 'vatAmount', label: t('الضريبة', 'VAT', lang), format: (v) => (Number(v) || 0).toFixed(4) },
+   519→      { key: 'totalAmount', label: t('الإجمالي', 'Total', lang), format: (v) => (Number(v) || 0).toFixed(4) },
+   520→      { key: 'status', label: t('الحالة', 'Status', lang) },
+   521→    ]
+   522→    exportToCSV(filtered.map(i => ({
+   523→      invoiceNo: i.invoiceNo, supplierName: i.supplier.name,
+   524→      poNumber: i.purchaseOrder?.orderNo || '', grNumber: i.goodsReceipt?.receiptNo || '',
+   525→      date: formatDate(i.date, lang), subtotal: i.subtotal, vatAmount: i.vatAmount,
+   526→      totalAmount: i.totalAmount, status: i.status,
+   527→    })), `supplier-invoices-${new Date().toISOString().slice(0, 10)}`, columns)
+   528→  }
+   529→
+   530→  if (viewState.type === 'create') return <InvoiceCreateView onBack={() => setViewState({ type: 'list' })} />
+   531→  if (viewState.type === 'detail') return <InvoiceDetailView id={viewState.id} onBack={() => setViewState({ type: 'list' })} />
+   532→
+   533→  return (
+   534→    <ModuleLayout
+   535→      title={{ ar: 'فواتير الموردين', en: 'Supplier Invoices' }}
+   536→      subtitle={{ ar: 'إدارة فواتير الموردين ومتابعة السداد', en: 'Manage supplier invoices and payment tracking' }}
+   537→      actions={
+   538→        <div className="flex items-center gap-2">
+   539→          <PrintButton type="generic-table" data={printData} size="icon" />
+   540→          <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
+   541→          <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+   542→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   543→            <Plus className="size-4" /> {t('فاتورة جديدة', 'New Invoice', lang)}
+   544→          </Button>
+   545→        </div>
+   546→      }
+   547→    >
+   548→      {/* Summary Cards */}
+   549→      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+   550→        <Card className="bg-emerald-50 border-emerald-200">
+   551→          <CardContent className="p-4 flex items-center gap-3">
+   552→            <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center"><FileText className="size-5 text-emerald-600" /></div>
+   553→            <div>
+   554→              <p className="text-sm text-emerald-600">{t('إجمالي الفواتير', 'Total Invoices', lang)}</p>
+   555→              <MoneyDisplay value={totalAmount} mode="system" lang={lang} bold size="lg" className="text-emerald-700" />
+   556→            </div>
+   557→          </CardContent>
+   558→        </Card>
+   559→        <Card className="bg-teal-50 border-teal-200">
+   560→          <CardContent className="p-4 flex items-center gap-3">
+   561→            <div className="size-10 rounded-full bg-teal-100 flex items-center justify-center"><CheckCircle className="size-5 text-teal-600" /></div>
+   562→            <div>
+   563→              <p className="text-sm text-teal-600">{t('المدفوع', 'Paid', lang)}</p>
+   564→              <MoneyDisplay value={totalPaid} mode="system" lang={lang} bold size="lg" className="text-teal-700" />
+   565→            </div>
+   566→          </CardContent>
+   567→        </Card>
+   568→        <Card className="bg-amber-50 border-amber-200">
+   569→          <CardContent className="p-4 flex items-center gap-3">
+   570→            <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center"><AlertCircle className="size-5 text-amber-600" /></div>
+   571→            <div>
+   572→              <p className="text-sm text-amber-600">{t('المتبقي', 'Outstanding', lang)}</p>
+   573→              <MoneyDisplay value={totalAmount - totalPaid} mode="system" lang={lang} bold size="lg" className="text-amber-700" />
+   574→            </div>
+   575→          </CardContent>
+   576→        </Card>
+   577→        <Card className="bg-blue-50 border-blue-200">
+   578→          <CardContent className="p-4 flex items-center gap-3">
+   579→            <div className="size-10 rounded-full bg-blue-100 flex items-center justify-center"><CheckCircle className="size-5 text-blue-600" /></div>
+   580→            <div>
+   581→              <p className="text-sm text-blue-600">{t('فواتير مدفوعة', 'Paid Invoices', lang)}</p>
+   582→              <p className="text-xl font-bold text-blue-700">{formatNumber(paidCount)}</p>
+   583→            </div>
+   584→          </CardContent>
+   585→        </Card>
+   586→      </div>
+   587→
+   588→      <Card><CardContent className="p-4">
+   589→        <div className="flex flex-col sm:flex-row gap-3">
+   590→          <div className="relative flex-1">
+   591→            <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   592→            <Input placeholder={t('بحث بالرقم أو اسم المورد...', 'Search by number or supplier...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   593→          </div>
+   594→          <Select value={statusFilter} onValueChange={setStatusFilter}>
+   595→            <SelectTrigger className="w-full sm:w-48"><SelectValue placeholder={t('كل الحالات', 'All Statuses', lang)} /></SelectTrigger>
+   596→            <SelectContent>
+   597→              <SelectItem value="all">{t('كل الحالات', 'All Statuses', lang)}</SelectItem>
+   598→              {Object.entries(invoiceStatusConfig).map(([k, v]) => <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>)}
+   599→            </SelectContent>
+   600→          </Select>
+   601→        </div>
+   602→      </CardContent></Card>
+   603→
+   604→      <Card><CardContent className="p-0">
+   605→        {isLoading ? (
+   606→          <div className="p-6"><TableSkeleton /></div>
+   607→        ) : isError ? (
+   608→          <div className="flex flex-col items-center gap-3 py-10">
+   609→            <AlertCircle className="size-12 text-rose-300" />
+   610→            <p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p>
+   611→            <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+   612→          </div>
+   613→        ) : filtered.length === 0 ? (
+   614→          <div className="flex flex-col items-center gap-3 py-10">
+   615→            <FileText className="size-12 text-gray-300" />
+   616→            <p className="text-muted-foreground">{t('لا توجد فواتير', 'No invoices found', lang)}</p>
+   617→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   618→              <Plus className="size-4 mr-1" /> {t('إنشاء فاتورة', 'Create Invoice', lang)}
+   619→            </Button>
+   620→          </div>
+   621→        ) : (
+   622→          <div className="overflow-x-auto">
+   623→            <Table>
+   624→              <TableHeader><TableRow>
+   625→                <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No', lang)}</TableHead>
+   626→                <TableHead className="text-right">{t('المورد', 'Supplier', lang)}</TableHead>
+   627→                <TableHead className="text-right">{t('أمر الشراء', 'PO', lang)}</TableHead>
+   628→                <TableHead className="text-right">{t('إيصال الاستلام', 'GR', lang)}</TableHead>
+   629→                <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
+   630→                <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   631→                <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   632→                <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   633→                <TableHead className="text-right">{t('القيد المحاسبي', 'Accounting', lang)}</TableHead>
+   634→                <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   635→              </TableRow></TableHeader>
+   636→              <TableBody>
+   637→                {filtered.map(i => {
+   638→                  const cfg = invoiceStatusConfig[i.status] || invoiceStatusConfig.DRAFT
+   639→                  return (
+   640→                    <TableRow key={i.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', id: i.id })}>
+   641→                      <TableCell className="font-mono font-medium">{i.invoiceNo}</TableCell>
+   642→                      <TableCell>{i.supplier.name}</TableCell>
+   643→                      <TableCell><Badge className="bg-blue-50 text-blue-700 border-0 text-xs gap-1"><Link2 className="size-3" />{i.purchaseOrder?.orderNo || '—'}</Badge></TableCell>
+   644→                      <TableCell><Badge className="bg-teal-50 text-teal-700 border-0 text-xs gap-1"><Link2 className="size-3" />{i.goodsReceipt?.receiptNo || '—'}</Badge></TableCell>
+   645→                      <TableCell>
+   646→                        <div className="flex items-center gap-1">
+   647→                          {i.project?.name || '—'}
+   648→                          {i.project?.projectType && <ProjectTypeBadge projectType={i.project.projectType} lang={lang} />}
+   649→                        </div>
+   650→                      </TableCell>
+   651→                      <TableCell>{formatDate(i.date, lang)}</TableCell>
+   652→                      <TableCell className="font-semibold"><MoneyDisplay value={i.totalAmount} mode="system" lang={lang} bold size="sm" /></TableCell>
+   653→                      <TableCell>
+   654→                        <div className="flex items-center gap-1">
+   655→                          <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   656→                          {i.journalEntryId && <BookOpen className="size-3 text-purple-500" />}
+   657→                        </div>
+   658→                      </TableCell>
+   659→                      <TableCell>
+   660→                        <AccountingEntryDisplay journalEntryId={i.journalEntryId} lang={lang} />
+   661→                      </TableCell>
+   662→                      <TableCell>
+   663→                        <div className="flex items-center gap-1">
+   664→                          <Button variant="ghost" size="icon" className="size-8" onClick={e => { e.stopPropagation(); setViewState({ type: 'detail', id: i.id }) }} title={t('عرض', 'View', lang)}>
+   665→                            <Eye className="size-4" />
+   666→                          </Button>
+   667→                          {i.status === 'DRAFT' && (
+   668→                            <Button variant="ghost" size="icon" className="size-8 text-rose-600" onClick={e => { e.stopPropagation(); if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate(i.id) }}><Trash2 className="size-4" /></Button>
+   669→                          )}
+   670→                        </div>
+   671→                      </TableCell>
+   672→                    </TableRow>
+   673→                  )
+   674→                })}
+   675→              </TableBody>
+   676→            </Table>
+   677→          </div>
+   678→        )}
+   679→      </CardContent></Card>
+   680→    </ModuleLayout>
+   681→  )
+   682→}
+   683→

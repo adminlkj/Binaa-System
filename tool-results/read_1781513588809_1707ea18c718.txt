@@ -1,0 +1,665 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Banknote, Plus, Search, Trash2, RefreshCw, CheckCircle,
+     7→  Download, BookOpen, Calculator, Eye, ChevronDown, ChevronUp,
+     8→} from 'lucide-react'
+     9→import { toast } from 'sonner'
+    10→import { Card, CardContent } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→} from '@/components/ui/table'
+    17→import {
+    18→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    19→} from '@/components/ui/dialog'
+    20→import {
+    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→} from '@/components/ui/select'
+    23→import { Label } from '@/components/ui/label'
+    24→import { MoneyDisplay } from '@/components/ui/money-display'
+    25→import { ModuleLayout } from '@/components/shared/module-layout'
+    26→import { PrintButton } from '@/components/shared/print-button'
+    27→import { useAppStore } from '@/stores/app-store'
+    28→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    29→
+    30→// ============ Types ============
+    31→interface Employee { id: string; code: string; name: string; nameAr: string | null; basicSalary: number }
+    32→
+    33→interface SalaryRecord {
+    34→  id: string; employeeId: string; month: number; year: number
+    35→  basicSalary: number; housingAllowance: number; transportAllowance: number
+    36→  otherAllowances: number; overtimeAmount: number
+    37→  deductions: number; advanceDeduction: number; absenceDeduction: number; gosiDeduction: number
+    38→  netSalary: number; status: string
+    39→  journalEntryId: string | null; projectCostCreated?: boolean
+    40→  employee: Employee
+    41→}
+    42→
+    43→interface AutoCalcResult {
+    44→  employeeId: string; month: number; year: number
+    45→  basicSalary: number; housingAllowance: number; transportAllowance: number
+    46→  otherAllowances: number; overtimeAmount: number; deductions: number
+    47→  netSalary: number; attendanceDays: number; totalWorkHours: number
+    48→  totalOvertimeHours: number; contractId: string
+    49→}
+    50→
+    51→interface SalaryFormData {
+    52→  employeeId: string; month: string; year: string
+    53→  basicSalary: string; housingAllowance: string; transportAllowance: string
+    54→  otherAllowances: string; overtimeAmount: string; deductions: string
+    55→  advanceDeduction: string; absenceDeduction: string; gosiDeduction: string
+    56→}
+    57→
+    58→const defaultForm: SalaryFormData = {
+    59→  employeeId: '', month: '', year: '',
+    60→  basicSalary: '0', housingAllowance: '0', transportAllowance: '0',
+    61→  otherAllowances: '0', overtimeAmount: '0', deductions: '0',
+    62→  advanceDeduction: '0', absenceDeduction: '0', gosiDeduction: '0',
+    63→}
+    64→
+    65→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    66→
+    67→const statusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+    68→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-yellow-700', bg: 'bg-yellow-100' },
+    69→  APPROVED: { label: { ar: 'معتمد', en: 'Approved' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+    70→  PAID: { label: { ar: 'مدفوع', en: 'Paid' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+    71→}
+    72→
+    73→function SalaryStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+    74→  const cfg = statusConfig[status] || statusConfig.DRAFT
+    75→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+    76→}
+    77→
+    78→const monthNames = [
+    79→  { ar: 'يناير', en: 'January' }, { ar: 'فبراير', en: 'February' }, { ar: 'مارس', en: 'March' },
+    80→  { ar: 'أبريل', en: 'April' }, { ar: 'مايو', en: 'May' }, { ar: 'يونيو', en: 'June' },
+    81→  { ar: 'يوليو', en: 'July' }, { ar: 'أغسطس', en: 'August' }, { ar: 'سبتمبر', en: 'September' },
+    82→  { ar: 'أكتوبر', en: 'October' }, { ar: 'نوفمبر', en: 'November' }, { ar: 'ديسمبر', en: 'December' },
+    83→]
+    84→
+    85→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+    86→  return (<div className="space-y-2">{Array.from({ length: rows }).map((_, i) => (
+    87→    <div key={i} className="flex gap-4 p-3"><div className="h-5 w-20 animate-pulse rounded bg-gray-200" /><div className="h-5 w-40 animate-pulse rounded bg-gray-200" /><div className="h-5 w-28 animate-pulse rounded bg-gray-200" /></div>
+    88→  ))}</div>)
+    89→}
+    90→
+    91→// ============ Salary Form Dialog ============
+    92→function SalaryFormDialog({ open, onOpenChange, employees }: {
+    93→  open: boolean; onOpenChange: (open: boolean) => void; employees: Employee[]
+    94→}) {
+    95→  const queryClient = useQueryClient()
+    96→  const [form, setForm] = useState<SalaryFormData>(defaultForm)
+    97→  const [autoCalcResult, setAutoCalcResult] = useState<AutoCalcResult | null>(null)
+    98→  const { lang } = useAppStore()
+    99→
+   100→  React.useEffect(() => {
+   101→    if (open) {
+   102→      setForm(defaultForm)
+   103→      setAutoCalcResult(null)
+   104→    }
+   105→  }, [open])
+   106→
+   107→  // Auto-calculate mutation
+   108→  const autoCalcMutation = useMutation({
+   109→    mutationFn: (data: { employeeId: string; month: number; year: number }) =>
+   110→      fetch('/api/salaries/auto-calculate', {
+   111→        method: 'POST',
+   112→        headers: { 'Content-Type': 'application/json' },
+   113→        body: JSON.stringify(data),
+   114→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }) as Promise<AutoCalcResult>,
+   115→    onSuccess: (data) => {
+   116→      setAutoCalcResult(data)
+   117→      setForm(f => ({
+   118→        ...f,
+   119→        basicSalary: String(data.basicSalary),
+   120→        housingAllowance: String(data.housingAllowance),
+   121→        transportAllowance: String(data.transportAllowance),
+   122→        otherAllowances: String(data.otherAllowances),
+   123→        overtimeAmount: String(data.overtimeAmount),
+   124→        deductions: String(data.deductions),
+   125→      }))
+   126→      toast.success(t('تم حساب الراتب تلقائياً', 'Salary auto-calculated', lang))
+   127→    },
+   128→    onError: () => {
+   129→      toast.error(t('فشل في حساب الراتب تلقائياً', 'Failed to auto-calculate salary', lang))
+   130→    },
+   131→  })
+   132→
+   133→  const handleAutoCalculate = () => {
+   134→    if (form.employeeId && form.month && form.year) {
+   135→      autoCalcMutation.mutate({
+   136→        employeeId: form.employeeId,
+   137→        month: parseInt(form.month),
+   138→        year: parseInt(form.year),
+   139→      })
+   140→    }
+   141→  }
+   142→
+   143→  const totalAllowances = (parseFloat(form.housingAllowance) || 0) + (parseFloat(form.transportAllowance) || 0) + (parseFloat(form.otherAllowances) || 0)
+   144→  const totalDeductions = (parseFloat(form.deductions) || 0) + (parseFloat(form.advanceDeduction) || 0) + (parseFloat(form.absenceDeduction) || 0) + (parseFloat(form.gosiDeduction) || 0)
+   145→  const netSalary = (parseFloat(form.basicSalary) || 0) + totalAllowances + (parseFloat(form.overtimeAmount) || 0) - totalDeductions
+   146→
+   147→  const createMutation = useMutation({
+   148→    mutationFn: (data: Record<string, unknown>) => fetch('/api/salaries', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   149→    onSuccess: (data: SalaryRecord) => {
+   150→      queryClient.invalidateQueries({ queryKey: ['salaries'] })
+   151→      onOpenChange(false)
+   152→      if (data.projectCostCreated) {
+   153→        toast.success(t('تم إنشاء كشف الراتب وإضافة التكلفة للمشروع', 'Salary created and cost added to project', lang))
+   154→      } else {
+   155→        toast.success(t('تم إنشاء كشف الراتب', 'Salary record created', lang))
+   156→      }
+   157→    },
+   158→  })
+   159→
+   160→  const handleSubmit = (e: React.FormEvent) => {
+   161→    e.preventDefault()
+   162→    createMutation.mutate({
+   163→      employeeId: form.employeeId,
+   164→      month: parseInt(form.month),
+   165→      year: parseInt(form.year),
+   166→      basicSalary: parseFloat(form.basicSalary) || 0,
+   167→      housingAllowance: parseFloat(form.housingAllowance) || 0,
+   168→      transportAllowance: parseFloat(form.transportAllowance) || 0,
+   169→      otherAllowances: parseFloat(form.otherAllowances) || 0,
+   170→      overtimeAmount: parseFloat(form.overtimeAmount) || 0,
+   171→      deductions: parseFloat(form.deductions) || 0,
+   172→      advanceDeduction: parseFloat(form.advanceDeduction) || 0,
+   173→      absenceDeduction: parseFloat(form.absenceDeduction) || 0,
+   174→      gosiDeduction: parseFloat(form.gosiDeduction) || 0,
+   175→      status: 'DRAFT',
+   176→    })
+   177→  }
+   178→
+   179→  return (
+   180→    <Dialog open={open} onOpenChange={onOpenChange}>
+   181→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   182→        <DialogHeader>
+   183→          <DialogTitle>{t('إعداد راتب', 'Prepare Salary', lang)}</DialogTitle>
+   184→          <DialogDescription>{t('إعداد كشف راتب للموظف', 'Prepare salary statement for employee', lang)}</DialogDescription>
+   185→        </DialogHeader>
+   186→        <form onSubmit={handleSubmit} className="space-y-4">
+   187→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   188→            <div className="space-y-2 sm:col-span-3">
+   189→              <Label>{t('الموظف *', 'Employee *', lang)}</Label>
+   190→              <Select value={form.employeeId} onValueChange={v => setForm(f => ({ ...f, employeeId: v }))}>
+   191→                <SelectTrigger><SelectValue placeholder={t('اختر الموظف', 'Select employee', lang)} /></SelectTrigger>
+   192→                <SelectContent>
+   193→                  {employees.map(e => <SelectItem key={e.id} value={e.id}>{e.name} ({e.code})</SelectItem>)}
+   194→                </SelectContent>
+   195→              </Select>
+   196→            </div>
+   197→            <div className="space-y-2">
+   198→              <Label>{t('الشهر *', 'Month *', lang)}</Label>
+   199→              <Select value={form.month} onValueChange={v => setForm(f => ({ ...f, month: v }))}>
+   200→                <SelectTrigger><SelectValue placeholder={t('اختر الشهر', 'Select month', lang)} /></SelectTrigger>
+   201→                <SelectContent>
+   202→                  {monthNames.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m[lang]}</SelectItem>)}
+   203→                </SelectContent>
+   204→              </Select>
+   205→            </div>
+   206→            <div className="space-y-2">
+   207→              <Label>{t('السنة *', 'Year *', lang)}</Label>
+   208→              <Input type="number" min="2020" max="2050" value={form.year} onChange={e => setForm(f => ({ ...f, year: e.target.value }))} dir="ltr" required placeholder="2025" />
+   209→            </div>
+   210→            <div className="space-y-2 flex items-end">
+   211→              <Button
+   212→                type="button"
+   213→                variant="outline"
+   214→                className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 w-full"
+   215→                disabled={!form.employeeId || !form.month || !form.year || autoCalcMutation.isPending}
+   216→                onClick={handleAutoCalculate}
+   217→              >
+   218→                <Calculator className="size-4" />
+   219→                {autoCalcMutation.isPending ? t('جاري الحساب...', 'Calculating...', lang) : t('حساب تلقائي', 'Auto-Calculate', lang)}
+   220→              </Button>
+   221→            </div>
+   222→          </div>
+   223→
+   224→          {/* Auto-calc result summary */}
+   225→          {autoCalcResult && (
+   226→            <Card className="bg-blue-50 border-blue-200">
+   227→              <CardContent className="p-3">
+   228→                <p className="text-xs font-semibold text-blue-700 mb-1">{t('ملخص الحساب التلقائي', 'Auto-Calc Summary', lang)}</p>
+   229→                <div className="grid grid-cols-3 gap-2 text-xs">
+   230→                  <div><span className="text-blue-600">{t('أيام الحضور', 'Attendance Days', lang)}:</span> <span className="font-medium">{autoCalcResult.attendanceDays}</span></div>
+   231→                  <div><span className="text-blue-600">{t('ساعات العمل', 'Work Hours', lang)}:</span> <span className="font-medium">{autoCalcResult.totalWorkHours}</span></div>
+   232→                  <div><span className="text-blue-600">{t('ساعات إضافية', 'Overtime', lang)}:</span> <span className="font-medium">{autoCalcResult.totalOvertimeHours}</span></div>
+   233→                </div>
+   234→              </CardContent>
+   235→            </Card>
+   236→          )}
+   237→
+   238→          <div className="space-y-2">
+   239→            <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">
+   240→              {t('تفاصيل الراتب', 'Salary Details', lang)}
+   241→            </h4>
+   242→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   243→              <div className="space-y-2"><Label>{t('الراتب الأساسي', 'Basic Salary', lang)}</Label><Input type="number" min="0" step="0.01" value={form.basicSalary} onChange={e => setForm(f => ({ ...f, basicSalary: e.target.value }))} dir="ltr" /></div>
+   244→              <div className="space-y-2"><Label>{t('بدل السكن', 'Housing Allowance', lang)}</Label><Input type="number" min="0" step="0.01" value={form.housingAllowance} onChange={e => setForm(f => ({ ...f, housingAllowance: e.target.value }))} dir="ltr" /></div>
+   245→              <div className="space-y-2"><Label>{t('بدل النقل', 'Transport Allowance', lang)}</Label><Input type="number" min="0" step="0.01" value={form.transportAllowance} onChange={e => setForm(f => ({ ...f, transportAllowance: e.target.value }))} dir="ltr" /></div>
+   246→              <div className="space-y-2"><Label>{t('بدلات أخرى', 'Other Allowances', lang)}</Label><Input type="number" min="0" step="0.01" value={form.otherAllowances} onChange={e => setForm(f => ({ ...f, otherAllowances: e.target.value }))} dir="ltr" /></div>
+   247→              <div className="space-y-2"><Label>{t('مبلغ الوقت الإضافي', 'Overtime Amount', lang)}</Label><Input type="number" min="0" step="0.01" value={form.overtimeAmount} onChange={e => setForm(f => ({ ...f, overtimeAmount: e.target.value }))} dir="ltr" /></div>
+   248→              <div className="space-y-2"><Label>{t('خصومات أخرى', 'Other Deductions', lang)}</Label><Input type="number" min="0" step="0.01" value={form.deductions} onChange={e => setForm(f => ({ ...f, deductions: e.target.value }))} dir="ltr" /></div>
+   249→            </div>
+   250→          </div>
+   251→
+   252→          {/* Deduction Breakdown Section */}
+   253→          <div className="space-y-2">
+   254→            <h4 className="font-semibold text-sm text-rose-700 border-b border-rose-200 pb-1">
+   255→              {t('تفاصيل الخصومات', 'Deduction Breakdown', lang)}
+   256→            </h4>
+   257→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   258→              <div className="space-y-2"><Label>{t('خصم السلف', 'Advance Deduction', lang)}</Label><Input type="number" min="0" step="0.01" value={form.advanceDeduction} onChange={e => setForm(f => ({ ...f, advanceDeduction: e.target.value }))} dir="ltr" /></div>
+   259→              <div className="space-y-2"><Label>{t('خصم الغياب', 'Absence Deduction', lang)}</Label><Input type="number" min="0" step="0.01" value={form.absenceDeduction} onChange={e => setForm(f => ({ ...f, absenceDeduction: e.target.value }))} dir="ltr" /></div>
+   260→              <div className="space-y-2"><Label>{t('خصم التأمينات', 'GOSI Deduction', lang)}</Label><Input type="number" min="0" step="0.01" value={form.gosiDeduction} onChange={e => setForm(f => ({ ...f, gosiDeduction: e.target.value }))} dir="ltr" /></div>
+   261→            </div>
+   262→          </div>
+   263→
+   264→          <Card className="bg-emerald-50 border-emerald-200">
+   265→            <CardContent className="p-3">
+   266→              <p className="text-sm text-emerald-600">{t('صافي الراتب', 'Net Salary', lang)}: <span className="font-bold text-emerald-700"><MoneyDisplay value={netSalary} lang={lang} size="md" inline bold /></span></p>
+   267→              <p className="text-xs text-emerald-500 mt-1">{t('الأساسي + البدلات + الإضافي - الخصومات', 'Basic + Allowances + Overtime - Deductions', lang)}</p>
+   268→            </CardContent>
+   269→          </Card>
+   270→
+   271→          <DialogFooter>
+   272→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+   273→            <Button type="submit" disabled={createMutation.isPending || !form.employeeId || !form.month || !form.year} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...', lang) : t('إنشاء كشف راتب', 'Create Salary', lang)}</Button>
+   274→          </DialogFooter>
+   275→        </form>
+   276→      </DialogContent>
+   277→    </Dialog>
+   278→  )
+   279→}
+   280→
+   281→// ============ Salary Detail Dialog (expanded view with deduction breakdown) ============
+   282→function SalaryDetailDialog({ open, onOpenChange, salary }: {
+   283→  open: boolean; onOpenChange: (open: boolean) => void; salary: SalaryRecord | null
+   284→}) {
+   285→  const { lang } = useAppStore()
+   286→
+   287→  if (!salary) return null
+   288→
+   289→  const totalAllowances = salary.housingAllowance + salary.transportAllowance + salary.otherAllowances
+   290→  const totalDeductions = salary.deductions + salary.advanceDeduction + salary.absenceDeduction + salary.gosiDeduction
+   291→
+   292→  return (
+   293→    <Dialog open={open} onOpenChange={onOpenChange}>
+   294→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   295→        <DialogHeader>
+   296→          <DialogTitle>{t('تفاصيل الراتب', 'Salary Details', lang)}</DialogTitle>
+   297→          <DialogDescription>
+   298→            {salary.employee.name} - {monthNames[salary.month - 1]?.[lang] || salary.month} / {salary.year}
+   299→          </DialogDescription>
+   300→        </DialogHeader>
+   301→
+   302→        <div className="space-y-4">
+   303→          {/* Entitlements */}
+   304→          <div className="space-y-2">
+   305→            <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">
+   306→              {t('الاستحقاقات', 'Entitlements', lang)}
+   307→            </h4>
+   308→            <div className="space-y-1 text-sm">
+   309→              <div className="flex justify-between"><span className="text-muted-foreground">{t('الراتب الأساسي', 'Basic Salary', lang)}</span><MoneyDisplay value={salary.basicSalary} lang={lang} size="sm" /></div>
+   310→              <div className="flex justify-between"><span className="text-muted-foreground">{t('بدل السكن', 'Housing Allowance', lang)}</span><MoneyDisplay value={salary.housingAllowance} lang={lang} size="sm" /></div>
+   311→              <div className="flex justify-between"><span className="text-muted-foreground">{t('بدل النقل', 'Transport Allowance', lang)}</span><MoneyDisplay value={salary.transportAllowance} lang={lang} size="sm" /></div>
+   312→              <div className="flex justify-between"><span className="text-muted-foreground">{t('بدلات أخرى', 'Other Allowances', lang)}</span><MoneyDisplay value={salary.otherAllowances} lang={lang} size="sm" /></div>
+   313→              <div className="flex justify-between"><span className="text-muted-foreground">{t('الوقت الإضافي', 'Overtime', lang)}</span><MoneyDisplay value={salary.overtimeAmount} lang={lang} size="sm" /></div>
+   314→              <div className="flex justify-between font-semibold border-t pt-1 mt-1"><span className="text-emerald-700">{t('إجمالي الاستحقاقات', 'Total Entitlements', lang)}</span><MoneyDisplay value={salary.basicSalary + totalAllowances + salary.overtimeAmount} lang={lang} size="sm" bold /></div>
+   315→            </div>
+   316→          </div>
+   317→
+   318→          {/* Deductions Breakdown */}
+   319→          <div className="space-y-2">
+   320→            <h4 className="font-semibold text-sm text-rose-700 border-b border-rose-200 pb-1">
+   321→              {t('تفاصيل الخصومات', 'Deduction Breakdown', lang)}
+   322→            </h4>
+   323→            <div className="space-y-1 text-sm">
+   324→              <div className="flex justify-between">
+   325→                <span className="text-muted-foreground">{t('خصم السلف', 'Advance Deduction', lang)}</span>
+   326→                <span className={salary.advanceDeduction > 0 ? 'text-rose-600' : ''}>
+   327→                  <MoneyDisplay value={salary.advanceDeduction} lang={lang} size="sm" />
+   328→                </span>
+   329→              </div>
+   330→              <div className="flex justify-between">
+   331→                <span className="text-muted-foreground">{t('خصم الغياب', 'Absence Deduction', lang)}</span>
+   332→                <span className={salary.absenceDeduction > 0 ? 'text-rose-600' : ''}>
+   333→                  <MoneyDisplay value={salary.absenceDeduction} lang={lang} size="sm" />
+   334→                </span>
+   335→              </div>
+   336→              <div className="flex justify-between">
+   337→                <span className="text-muted-foreground">{t('خصم التأمينات', 'GOSI Deduction', lang)}</span>
+   338→                <span className={salary.gosiDeduction > 0 ? 'text-rose-600' : ''}>
+   339→                  <MoneyDisplay value={salary.gosiDeduction} lang={lang} size="sm" />
+   340→                </span>
+   341→              </div>
+   342→              <div className="flex justify-between">
+   343→                <span className="text-muted-foreground">{t('خصومات أخرى', 'Other Deductions', lang)}</span>
+   344→                <span className={salary.deductions > 0 ? 'text-rose-600' : ''}>
+   345→                  <MoneyDisplay value={salary.deductions} lang={lang} size="sm" />
+   346→                </span>
+   347→              </div>
+   348→              <div className="flex justify-between font-semibold border-t pt-1 mt-1"><span className="text-rose-700">{t('إجمالي الخصومات', 'Total Deductions', lang)}</span><span className="text-rose-700"><MoneyDisplay value={totalDeductions} lang={lang} size="sm" bold /></span></div>
+   349→            </div>
+   350→          </div>
+   351→
+   352→          {/* Net Salary */}
+   353→          <Card className="bg-emerald-50 border-emerald-200">
+   354→            <CardContent className="p-4">
+   355→              <div className="flex justify-between items-center">
+   356→                <span className="font-semibold text-emerald-700">{t('صافي الراتب', 'Net Salary', lang)}</span>
+   357→                <MoneyDisplay value={salary.netSalary} lang={lang} size="lg" bold />
+   358→              </div>
+   359→            </CardContent>
+   360→          </Card>
+   361→        </div>
+   362→
+   363→        <DialogFooter>
+   364→          <Button variant="outline" onClick={() => onOpenChange(false)}>{t('إغلاق', 'Close', lang)}</Button>
+   365→        </DialogFooter>
+   366→      </DialogContent>
+   367→    </Dialog>
+   368→  )
+   369→}
+   370→
+   371→// ============ Main Salaries Module ============
+   372→export function SalariesModule() {
+   373→  const queryClient = useQueryClient()
+   374→  const { lang } = useAppStore()
+   375→  const [search, setSearch] = useState('')
+   376→  const [dialogOpen, setDialogOpen] = useState(false)
+   377→  const [detailDialogOpen, setDetailDialogOpen] = useState(false)
+   378→  const [selectedSalary, setSelectedSalary] = useState<SalaryRecord | null>(null)
+   379→  const [filterMonth, setFilterMonth] = useState('')
+   380→  const [filterYear, setFilterYear] = useState('')
+   381→
+   382→  const queryParams = new URLSearchParams()
+   383→  if (filterMonth) queryParams.set('month', filterMonth)
+   384→  if (filterYear) queryParams.set('year', filterYear)
+   385→
+   386→  const { data: salaries = [], isLoading, isError, refetch } = useQuery<SalaryRecord[]>({
+   387→    queryKey: ['salaries', filterMonth, filterYear],
+   388→    queryFn: async () => {
+   389→      const res = await fetch(`/api/salaries?${queryParams.toString()}`)
+   390→      if (!res.ok) throw new Error()
+   391→      return res.json()
+   392→    },
+   393→  })
+   394→
+   395→  const { data: employees = [] } = useQuery<Employee[]>({
+   396→    queryKey: ['employees-list'],
+   397→    queryFn: async () => { const res = await fetch('/api/employees?active=true'); if (!res.ok) return []; return res.json() },
+   398→  })
+   399→
+   400→  const approveMutation = useMutation({
+   401→    mutationFn: ({ id, status }: { id: string; status: string }) => fetch(`/api/salaries/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   402→    onSuccess: () => {
+   403→      queryClient.invalidateQueries({ queryKey: ['salaries'] })
+   404→      toast.success(t('تم تحديث حالة الراتب', 'Salary status updated', lang))
+   405→    },
+   406→  })
+   407→
+   408→  const deleteMutation = useMutation({
+   409→    mutationFn: (id: string) => fetch(`/api/salaries/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   410→    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['salaries'] }),
+   411→  })
+   412→
+   413→  const filtered = salaries.filter(s => {
+   414→    if (!search) return true
+   415→    const sl = search.toLowerCase()
+   416→    return s.employee.name.toLowerCase().includes(sl) || s.employee.code.toLowerCase().includes(sl)
+   417→  })
+   418→
+   419→  // Summary
+   420→  const totalNetSalary = filtered.reduce((sum, s) => sum + s.netSalary, 0)
+   421→  const totalOvertime = filtered.reduce((sum, s) => sum + s.overtimeAmount, 0)
+   422→  const totalDeductions = filtered.reduce((sum, s) => sum + s.deductions + s.advanceDeduction + s.absenceDeduction + s.gosiDeduction, 0)
+   423→  const totalBasic = filtered.reduce((sum, s) => sum + s.basicSalary, 0)
+   424→  const totalAdvanceDeduction = filtered.reduce((sum, s) => sum + s.advanceDeduction, 0)
+   425→  const totalAbsenceDeduction = filtered.reduce((sum, s) => sum + s.absenceDeduction, 0)
+   426→  const totalGosiDeduction = filtered.reduce((sum, s) => sum + s.gosiDeduction, 0)
+   427→
+   428→  const printData = useMemo(() => ({
+   429→    columns: [
+   430→      { key: 'employeeName', label: lang === 'ar' ? 'الموظف' : 'Employee' },
+   431→      { key: 'monthYear', label: lang === 'ar' ? 'الشهر/السنة' : 'Month/Year' },
+   432→      { key: 'basicSalary', label: lang === 'ar' ? 'الأساسي' : 'Basic' },
+   433→      { key: 'allowances', label: lang === 'ar' ? 'البدلات' : 'Allowances' },
+   434→      { key: 'overtimeAmount', label: lang === 'ar' ? 'الإضافي' : 'Overtime' },
+   435→      { key: 'advanceDeduction', label: lang === 'ar' ? 'خصم السلف' : 'Advance Ded.' },
+   436→      { key: 'absenceDeduction', label: lang === 'ar' ? 'خصم الغياب' : 'Absence Ded.' },
+   437→      { key: 'gosiDeduction', label: lang === 'ar' ? 'خصم التأمينات' : 'GOSI Ded.' },
+   438→      { key: 'otherDeductions', label: lang === 'ar' ? 'خصومات أخرى' : 'Other Ded.' },
+   439→      { key: 'netSalary', label: lang === 'ar' ? 'الصافي' : 'Net' },
+   440→      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+   441→    ],
+   442→    rows: filtered.map(s => ({
+   443→      employeeName: s.employee.name,
+   444→      monthYear: `${monthNames[s.month - 1]?.[lang] || s.month}/${s.year}`,
+   445→      basicSalary: s.basicSalary,
+   446→      allowances: s.housingAllowance + s.transportAllowance + s.otherAllowances,
+   447→      overtimeAmount: s.overtimeAmount,
+   448→      advanceDeduction: s.advanceDeduction,
+   449→      absenceDeduction: s.absenceDeduction,
+   450→      gosiDeduction: s.gosiDeduction,
+   451→      otherDeductions: s.deductions,
+   452→      netSalary: s.netSalary,
+   453→      status: s.status,
+   454→    })),
+   455→    infoItems: [
+   456→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   457→      { label: lang === 'ar' ? 'إجمالي الرواتب الصافية' : 'Total Net Salaries', value: String(totalNetSalary) },
+   458→    ],
+   459→  }), [filtered, lang, totalNetSalary])
+   460→
+   461→  const handleExport = () => {
+   462→    const columns: CSVColumn[] = [
+   463→      { key: 'employeeName', label: t('الموظف', 'Employee', lang) },
+   464→      { key: 'monthYear', label: t('الشهر/السنة', 'Month/Year', lang) },
+   465→      { key: 'basicSalary', label: t('الراتب الأساسي', 'Basic', lang) },
+   466→      { key: 'housingAllowance', label: t('بدل السكن', 'Housing', lang) },
+   467→      { key: 'transportAllowance', label: t('بدل النقل', 'Transport', lang) },
+   468→      { key: 'otherAllowances', label: t('بدلات أخرى', 'Other', lang) },
+   469→      { key: 'overtimeAmount', label: t('الإضافي', 'Overtime', lang) },
+   470→      { key: 'advanceDeduction', label: t('خصم السلف', 'Advance Ded.', lang) },
+   471→      { key: 'absenceDeduction', label: t('خصم الغياب', 'Absence Ded.', lang) },
+   472→      { key: 'gosiDeduction', label: t('خصم التأمينات', 'GOSI Ded.', lang) },
+   473→      { key: 'otherDeductions', label: t('خصومات أخرى', 'Other Ded.', lang) },
+   474→      { key: 'netSalary', label: t('صافي الراتب', 'Net Salary', lang) },
+   475→      { key: 'status', label: t('الحالة', 'Status', lang) },
+   476→    ]
+   477→    exportToCSV(filtered.map(s => ({
+   478→      employeeName: s.employee.name,
+   479→      monthYear: `${monthNames[s.month - 1]?.[lang] || s.month}/${s.year}`,
+   480→      basicSalary: s.basicSalary, housingAllowance: s.housingAllowance,
+   481→      transportAllowance: s.transportAllowance, otherAllowances: s.otherAllowances,
+   482→      overtimeAmount: s.overtimeAmount, advanceDeduction: s.advanceDeduction,
+   483→      absenceDeduction: s.absenceDeduction, gosiDeduction: s.gosiDeduction,
+   484→      otherDeductions: s.deductions,
+   485→      netSalary: s.netSalary, status: s.status,
+   486→    })), `salaries-${new Date().toISOString().slice(0, 10)}`, columns)
+   487→  }
+   488→
+   489→  return (
+   490→    <ModuleLayout
+   491→      title={{ ar: 'الرواتب', en: 'Salaries' }}
+   492→      subtitle={{ ar: 'إدارة الرواتب والمستحقات', en: 'Manage salaries and compensation' }}
+   493→      actions={
+   494→        <div className="flex items-center gap-2">
+   495→          <PrintButton type="salary-slip" data={printData} size="icon" />
+   496→          <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
+   497→          <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+   498→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4" />{t('إعداد راتب', 'Prepare Salary', lang)}</Button>
+   499→        </div>
+   500→      }
+   501→    >
+   502→      {/* Summary Cards */}
+   503→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   504→        <Card className="bg-emerald-50 border-emerald-200">
+   505→          <CardContent className="p-3 text-center">
+   506→            <p className="text-xs text-emerald-600">{t('إجمالي الرواتب الصافية', 'Total Net Salaries', lang)}</p>
+   507→            <MoneyDisplay value={totalNetSalary} lang={lang} size="lg" bold />
+   508→          </CardContent>
+   509→        </Card>
+   510→        <Card className="bg-teal-50 border-teal-200">
+   511→          <CardContent className="p-3 text-center">
+   512→            <p className="text-xs text-teal-600">{t('إجمالي الرواتب الأساسية', 'Total Basic', lang)}</p>
+   513→            <MoneyDisplay value={totalBasic} lang={lang} size="lg" bold />
+   514→          </CardContent>
+   515→        </Card>
+   516→        <Card className="bg-amber-50 border-amber-200">
+   517→          <CardContent className="p-3 text-center">
+   518→            <p className="text-xs text-amber-600">{t('إجمالي الإضافي', 'Total Overtime', lang)}</p>
+   519→            <MoneyDisplay value={totalOvertime} lang={lang} size="lg" bold />
+   520→          </CardContent>
+   521→        </Card>
+   522→        <Card className="bg-rose-50 border-rose-200">
+   523→          <CardContent className="p-3 text-center">
+   524→            <p className="text-xs text-rose-600">{t('إجمالي الخصومات', 'Total Deductions', lang)}</p>
+   525→            <MoneyDisplay value={totalDeductions} lang={lang} size="lg" bold />
+   526→          </CardContent>
+   527→        </Card>
+   528→      </div>
+   529→
+   530→      {/* Deduction Breakdown Mini-Cards */}
+   531→      {(totalAdvanceDeduction > 0 || totalAbsenceDeduction > 0 || totalGosiDeduction > 0) && (
+   532→        <div className="grid grid-cols-3 gap-3">
+   533→          {totalAdvanceDeduction > 0 && (
+   534→            <Card className="bg-orange-50 border-orange-200">
+   535→              <CardContent className="p-3 text-center">
+   536→                <p className="text-xs text-orange-600">{t('خصم السلف', 'Advance Deduction', lang)}</p>
+   537→                <MoneyDisplay value={totalAdvanceDeduction} lang={lang} size="md" bold />
+   538→              </CardContent>
+   539→            </Card>
+   540→          )}
+   541→          {totalAbsenceDeduction > 0 && (
+   542→            <Card className="bg-red-50 border-red-200">
+   543→              <CardContent className="p-3 text-center">
+   544→                <p className="text-xs text-red-600">{t('خصم الغياب', 'Absence Deduction', lang)}</p>
+   545→                <MoneyDisplay value={totalAbsenceDeduction} lang={lang} size="md" bold />
+   546→              </CardContent>
+   547→            </Card>
+   548→          )}
+   549→          {totalGosiDeduction > 0 && (
+   550→            <Card className="bg-violet-50 border-violet-200">
+   551→              <CardContent className="p-3 text-center">
+   552→                <p className="text-xs text-violet-600">{t('خصم التأمينات', 'GOSI Deduction', lang)}</p>
+   553→                <MoneyDisplay value={totalGosiDeduction} lang={lang} size="md" bold />
+   554→              </CardContent>
+   555→            </Card>
+   556→          )}
+   557→        </div>
+   558→      )}
+   559→
+   560→      {/* Search & Filters */}
+   561→      <Card><CardContent className="p-4">
+   562→        <div className="flex flex-col sm:flex-row gap-3">
+   563→          <div className="relative flex-1"><Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" /><Input placeholder={t('بحث باسم الموظف...', 'Search by employee name...', lang)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" /></div>
+   564→          <Select value={filterMonth || 'ALL'} onValueChange={v => setFilterMonth(v === 'ALL' ? '' : v)}>
+   565→            <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder={t('كل الأشهر', 'All Months', lang)} /></SelectTrigger>
+   566→            <SelectContent>
+   567→              <SelectItem value="ALL">{t('كل الأشهر', 'All Months', lang)}</SelectItem>
+   568→              {monthNames.map((m, i) => <SelectItem key={i + 1} value={String(i + 1)}>{m[lang]}</SelectItem>)}
+   569→            </SelectContent>
+   570→          </Select>
+   571→          <Select value={filterYear || 'ALL'} onValueChange={v => setFilterYear(v === 'ALL' ? '' : v)}>
+   572→            <SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder={t('كل السنوات', 'All Years', lang)} /></SelectTrigger>
+   573→            <SelectContent>
+   574→              <SelectItem value="ALL">{t('كل السنوات', 'All Years', lang)}</SelectItem>
+   575→              {[2024, 2025, 2026].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+   576→            </SelectContent>
+   577→          </Select>
+   578→        </div>
+   579→      </CardContent></Card>
+   580→
+   581→      {/* Table */}
+   582→      <Card><CardContent className="p-0">
+   583→        {isLoading ? (<div className="p-6"><TableSkeleton /></div>) : isError ? (
+   584→          <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+   585→        ) : filtered.length === 0 ? (
+   586→          <div className="flex flex-col items-center gap-3 py-10"><Banknote className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد كشوف رواتب', 'No salary records', lang)}</p>
+   587→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}><Plus className="size-4 mr-1" />{t('إعداد راتب', 'Prepare Salary', lang)}</Button></div>
+   588→        ) : (
+   589→          <div className="overflow-x-auto">
+   590→            <Table>
+   591→              <TableHeader><TableRow>
+   592→                <TableHead className="text-right">{t('الموظف', 'Employee', lang)}</TableHead>
+   593→                <TableHead className="text-right">{t('الشهر/السنة', 'Month/Year', lang)}</TableHead>
+   594→                <TableHead className="text-right">{t('الأساسي', 'Basic', lang)}</TableHead>
+   595→                <TableHead className="text-right">{t('البدلات', 'Allow.', lang)}</TableHead>
+   596→                <TableHead className="text-right">{t('الإضافي', 'OT', lang)}</TableHead>
+   597→                <TableHead className="text-right">{t('الخصومات', 'Ded.', lang)}</TableHead>
+   598→                <TableHead className="text-right">{t('الصافي', 'Net', lang)}</TableHead>
+   599→                <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   600→                <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   601→              </TableRow></TableHeader>
+   602→              <TableBody>
+   603→                {filtered.map(s => {
+   604→                  const totalAllow = s.housingAllowance + s.transportAllowance + s.otherAllowances
+   605→                  const totalDed = s.deductions + s.advanceDeduction + s.absenceDeduction + s.gosiDeduction
+   606→                  const hasDeductionBreakdown = s.advanceDeduction > 0 || s.absenceDeduction > 0 || s.gosiDeduction > 0
+   607→                  return (
+   608→                    <TableRow key={s.id}>
+   609→                      <TableCell className="font-medium">{s.employee.name}</TableCell>
+   610→                      <TableCell>{monthNames[s.month - 1]?.[lang] || s.month} / {s.year}</TableCell>
+   611→                      <TableCell><MoneyDisplay value={s.basicSalary} lang={lang} size="sm" /></TableCell>
+   612→                      <TableCell><MoneyDisplay value={totalAllow} lang={lang} size="sm" /></TableCell>
+   613→                      <TableCell><MoneyDisplay value={s.overtimeAmount} lang={lang} size="sm" /></TableCell>
+   614→                      <TableCell>
+   615→                        <div className="flex items-center gap-1">
+   616→                          <MoneyDisplay value={totalDed} lang={lang} size="sm" />
+   617→                          {hasDeductionBreakdown && (
+   618→                            <Button
+   619→                              variant="ghost"
+   620→                              size="icon"
+   621→                              className="size-5 text-rose-500 hover:text-rose-700"
+   622→                              onClick={() => { setSelectedSalary(s); setDetailDialogOpen(true) }}
+   623→                              title={t('تفاصيل الخصومات', 'Deduction Details', lang)}
+   624→                            >
+   625→                              <Eye className="size-3" />
+   626→                            </Button>
+   627→                          )}
+   628→                        </div>
+   629→                      </TableCell>
+   630→                      <TableCell><MoneyDisplay value={s.netSalary} lang={lang} size="sm" bold /></TableCell>
+   631→                      <TableCell>
+   632→                        <div className="flex items-center gap-1">
+   633→                          <SalaryStatusBadge status={s.status} lang={lang} />
+   634→                          {s.journalEntryId && <span title={t('قييد محاسبي', 'Accounting Entry', lang)}><BookOpen className="size-3 text-purple-600" /></span>}
+   635→                          {s.projectCostCreated && <span title={t('تكلفة مشروع', 'Project Cost', lang)}><Eye className="size-3 text-emerald-600" /></span>}
+   636→                        </div>
+   637→                      </TableCell>
+   638→                      <TableCell>
+   639→                        <div className="flex items-center gap-1">
+   640→                          {s.status === 'DRAFT' && (
+   641→                            <Button variant="ghost" size="icon" className="size-8 text-emerald-600 hover:text-emerald-700" onClick={() => { if (confirm(t('هل تريد اعتماد كشف الراتب؟ سيتم إنشاء قيد محاسبي.', 'Approve this salary? An accounting entry will be created.', lang))) approveMutation.mutate({ id: s.id, status: 'APPROVED' }) }} title={t('اعتماد', 'Approve', lang)}><CheckCircle className="size-4" /></Button>
+   642→                          )}
+   643→                          {s.status === 'APPROVED' && (
+   644→                            <Button variant="ghost" size="icon" className="size-8 text-blue-600 hover:text-blue-700" onClick={() => approveMutation.mutate({ id: s.id, status: 'PAID' })} title={t('تسجيل الدفع', 'Mark as Paid', lang)}><Banknote className="size-4" /></Button>
+   645→                          )}
+   646→                          {s.status === 'DRAFT' && (
+   647→                            <Button variant="ghost" size="icon" className="size-8 text-rose-600 hover:text-rose-700" onClick={() => { if (confirm(t('هل أنت متأكد من الحذف؟', 'Are you sure?', lang))) deleteMutation.mutate(s.id) }}><Trash2 className="size-4" /></Button>
+   648→                          )}
+   649→                        </div>
+   650→                      </TableCell>
+   651→                    </TableRow>
+   652→                  )
+   653→                })}
+   654→              </TableBody>
+   655→            </Table>
+   656→          </div>
+   657→        )}
+   658→      </CardContent></Card>
+   659→
+   660→      <SalaryFormDialog open={dialogOpen} onOpenChange={setDialogOpen} employees={employees} />
+   661→      <SalaryDetailDialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen} salary={selectedSalary} />
+   662→    </ModuleLayout>
+   663→  )
+   664→}
+   665→

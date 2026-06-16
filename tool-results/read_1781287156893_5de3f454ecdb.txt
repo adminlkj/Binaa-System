@@ -1,0 +1,1647 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Landmark, Building, CreditCard,
+     7→  BookOpen, List, BookCopy,
+     8→  ArrowDownToLine, ArrowUpFromLine,
+     9→  Building2, TrendingDown,
+    10→  Percent, PieChart, Banknote,
+    11→  RefreshCw, ChevronDown,
+    12→  PlusCircle, TreePine, Calculator,
+    13→  ArrowUpDown, Wallet, ArrowDown, ArrowUp,
+    14→  FileText, AlertCircle, CheckCircle2,
+    15→} from 'lucide-react'
+    16→import {
+    17→  useAppStore,
+    18→  type SubModuleKey,
+    19→  type Lang,
+    20→  formatSAR,
+    21→  formatAmount,
+    22→  formatNumber,
+    23→  formatDate,
+    24→  commonText,
+    25→} from '@/stores/app-store'
+    26→import { SectionLayout } from '@/components/sections/section-layout'
+    27→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    28→import { Badge } from '@/components/ui/badge'
+    29→import { Button } from '@/components/ui/button'
+    30→import { Input } from '@/components/ui/input'
+    31→import { Label } from '@/components/ui/label'
+    32→import { Skeleton } from '@/components/ui/skeleton'
+    33→import { Separator } from '@/components/ui/separator'
+    34→import {
+    35→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    36→} from '@/components/ui/table'
+    37→import {
+    38→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    39→} from '@/components/ui/select'
+    40→import {
+    41→  Dialog, DialogContent, DialogDescription, DialogFooter,
+    42→  DialogHeader, DialogTitle, DialogTrigger,
+    43→} from '@/components/ui/dialog'
+    44→import {
+    45→  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+    46→} from '@/components/ui/accordion'
+    47→import { VATModule } from '@/components/modules/vat'
+    48→import { MoneyDisplay } from '@/components/ui/money-display'
+    49→
+    50→// ============ Bilingual Helper ============
+    51→function t(ar: string, en: string, lang: Lang) {
+    52→  return lang === 'ar' ? ar : en
+    53→}
+    54→
+    55→// ============ Tab Definitions ============
+    56→
+    57→const financeTabs: { key: SubModuleKey; icon: React.ElementType }[] = [
+    58→  { key: 'treasury', icon: Landmark },
+    59→  { key: 'banks', icon: Building },
+    60→  { key: 'checks', icon: CreditCard },
+    61→  { key: 'journal-entries', icon: BookOpen },
+    62→  { key: 'chart-of-accounts', icon: List },
+    63→  { key: 'general-ledger', icon: BookCopy },
+    64→  { key: 'receivables', icon: ArrowDownToLine },
+    65→  { key: 'payables', icon: ArrowUpFromLine },
+    66→  { key: 'fixed-assets', icon: Building2 },
+    67→  { key: 'depreciation', icon: TrendingDown },
+    68→  { key: 'vat', icon: Percent },
+    69→  { key: 'budgets', icon: PieChart },
+    70→  { key: 'cash-flow', icon: Banknote },
+    71→]
+    72→
+    73→// ============ Types ============
+    74→
+    75→interface FinancialSummary {
+    76→  totalAssets: number
+    77→  totalLiabilities: number
+    78→  totalEquity: number
+    79→  totalRevenue: number
+    80→  totalExpenses: number
+    81→  netIncome: number
+    82→  arBalance: number
+    83→  apBalance: number
+    84→  cashBalance: number
+    85→  cashBreakdown: { treasury: number; bank: number; pettyCash: number }
+    86→  vatReceivable: number
+    87→  vatPayable: number
+    88→  vatNet: number
+    89→  ratios: { currentRatio: number; profitMargin: number; returnOnAssets: number }
+    90→  accountingEquation: { assets: number; liabilitiesAndEquity: number; isBalanced: boolean }
+    91→  breakdown: Record<string, { code: string; name: string; nameAr: string | null; balance: number }[]>
+    92→}
+    93→
+    94→interface Account {
+    95→  id: string
+    96→  code: string
+    97→  name: string
+    98→  nameAr: string | null
+    99→  type: string
+   100→  parentId: string | null
+   101→  isActive: boolean
+   102→  balance: number
+   103→  normalBalance: string
+   104→  parent: { id: string; code: string; name: string; nameAr: string | null } | null
+   105→  children: (Account & { childBalanceTotal?: number; totalBalance?: number })[]
+   106→  _count: { journalLines: number }
+   107→  childBalanceTotal?: number
+   108→  totalBalance?: number
+   109→}
+   110→
+   111→interface JournalLine {
+   112→  id: string
+   113→  accountId: string
+   114→  debit: number
+   115→  credit: number
+   116→  description: string | null
+   117→  account: { id: string; code: string; name: string; nameAr: string | null }
+   118→}
+   119→
+   120→interface JournalEntry {
+   121→  id: string
+   122→  entryNo: string
+   123→  date: string
+   124→  description: string | null
+   125→  status: string
+   126→  createdAt: string
+   127→  lines: JournalLine[]
+   128→  totalDebit: number
+   129→  totalCredit: number
+   130→}
+   131→
+   132→interface LedgerEntry {
+   133→  id: string
+   134→  entryNo: string
+   135→  date: string
+   136→  description: string | null
+   137→  lineDescription: string | null
+   138→  debit: number
+   139→  credit: number
+   140→  balance: number
+   141→  status: string
+   142→}
+   143→
+   144→// ============ Status & Type Configs ============
+   145→
+   146→const typeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string; border: string }> = {
+   147→  ASSET: { label: { ar: 'أصول', en: 'Asset' }, color: 'text-sky-700', bg: 'bg-sky-50', border: 'border-sky-200' },
+   148→  LIABILITY: { label: { ar: 'التزامات', en: 'Liability' }, color: 'text-rose-700', bg: 'bg-rose-50', border: 'border-rose-200' },
+   149→  EQUITY: { label: { ar: 'حقوق ملكية', en: 'Equity' }, color: 'text-purple-700', bg: 'bg-purple-50', border: 'border-purple-200' },
+   150→  REVENUE: { label: { ar: 'إيرادات', en: 'Revenue' }, color: 'text-emerald-700', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+   151→  EXPENSE: { label: { ar: 'مصروفات', en: 'Expense' }, color: 'text-amber-700', bg: 'bg-amber-50', border: 'border-amber-200' },
+   152→}
+   153→
+   154→function TypeBadge({ type, lang }: { type: string; lang: Lang }) {
+   155→  const cfg = typeConfig[type] || typeConfig.ASSET
+   156→  return <Badge className={`${cfg.bg} ${cfg.color} border-0 text-xs`}>{cfg.label[lang]}</Badge>
+   157→}
+   158→
+   159→const jeStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   160→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+   161→  POSTED: { label: { ar: 'مرحّل', en: 'Posted' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   162→  CANCELLED: { label: { ar: 'ملغي', en: 'Cancelled' }, color: 'text-rose-700', bg: 'bg-rose-100' },
+   163→}
+   164→
+   165→function JEStatusBadge({ status, lang }: { status: string; lang: Lang }) {
+   166→  const cfg = jeStatusConfig[status] || jeStatusConfig.DRAFT
+   167→  return <Badge className={`${cfg.bg} ${cfg.color} border-0 text-xs`}>{cfg.label[lang]}</Badge>
+   168→}
+   169→
+   170→// ============ Shared Skeletons ============
+   171→
+   172→function CardSkeleton() {
+   173→  return (
+   174→    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   175→      {[1, 2, 3].map(i => (
+   176→        <Card key={i}>
+   177→          <CardContent className="p-5 space-y-3">
+   178→            <Skeleton className="h-4 w-24" />
+   179→            <Skeleton className="h-8 w-32" />
+   180→          </CardContent>
+   181→        </Card>
+   182→      ))}
+   183→    </div>
+   184→  )
+   185→}
+   186→
+   187→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   188→  return (
+   189→    <div className="space-y-2">
+   190→      {Array.from({ length: rows }).map((_, i) => (
+   191→        <div key={i} className="flex gap-4 p-3">
+   192→          <Skeleton className="h-5 w-20" />
+   193→          <Skeleton className="h-5 w-32" />
+   194→          <Skeleton className="h-5 w-24" />
+   195→          <Skeleton className="h-5 w-16" />
+   196→        </div>
+   197→      ))}
+   198→    </div>
+   199→  )
+   200→}
+   201→
+   202→// ============ Placeholder Component ============
+   203→
+   204→function TabPlaceholder({
+   205→  icon: Icon,
+   206→  title,
+   207→  description,
+   208→  lang,
+   209→}: {
+   210→  icon: React.ElementType
+   211→  title: { ar: string; en: string }
+   212→  description: { ar: string; en: string }
+   213→  lang: Lang
+   214→}) {
+   215→  return (
+   216→    <Card className="border-dashed border-2 border-gray-200 bg-gray-50/50">
+   217→      <CardContent className="flex flex-col items-center gap-4 py-16">
+   218→        <div className="flex size-16 items-center justify-center rounded-2xl bg-gray-100">
+   219→          <Icon className="size-8 text-gray-400" />
+   220→        </div>
+   221→        <div className="text-center space-y-2">
+   222→          <h3 className="text-lg font-semibold text-gray-700">{title[lang]}</h3>
+   223→          <p className="text-sm text-muted-foreground max-w-md">{description[lang]}</p>
+   224→        </div>
+   225→        <Badge variant="outline" className="text-gray-500 border-gray-300">
+   226→          {lang === 'ar' ? 'قريباً' : 'Coming Soon'}
+   227→        </Badge>
+   228→      </CardContent>
+   229→    </Card>
+   230→  )
+   231→}
+   232→
+   233→const placeholderData: Record<string, {
+   234→  title: { ar: string; en: string }
+   235→  description: { ar: string; en: string }
+   236→}> = {
+   237→  'banks': {
+   238→    title: { ar: 'البنوك', en: 'Banks' },
+   239→    description: {
+   240→      ar: 'إدارة الحسابات البنكية، كشوف الحسابات، والتحويلات البنكية',
+   241→      en: 'Manage bank accounts, bank statements, and bank transfers',
+   242→    },
+   243→  },
+   244→  'checks': {
+   245→    title: { ar: 'الشيكات', en: 'Checks' },
+   246→    description: {
+   247→      ar: 'إدارة الشيكات الواردة والصادرة، تتبع حالات الصرف والتحصيل',
+   248→      en: 'Manage incoming and outgoing checks, track payment and collection statuses',
+   249→    },
+   250→  },
+   251→  'fixed-assets': {
+   252→    title: { ar: 'الأصول الثابتة', en: 'Fixed Assets' },
+   253→    description: {
+   254→      ar: 'تسجيل ومتابعة الأصول الثابتة، مواقعها، حالتها، وتاريخ الاقتناء',
+   255→      en: 'Record and track fixed assets, their locations, conditions, and acquisition history',
+   256→    },
+   257→  },
+   258→  'depreciation': {
+   259→    title: { ar: 'الإهلاك', en: 'Depreciation' },
+   260→    description: {
+   261→      ar: 'حساب وتسجيل الإهلاك الدوري للأصول الثابتة بطرق الإهلاك المختلفة',
+   262→      en: 'Calculate and record periodic depreciation of fixed assets using various methods',
+   263→    },
+   264→  },
+   265→  'budgets': {
+   266→    title: { ar: 'الموازنات', en: 'Budgets' },
+   267→    description: {
+   268→      ar: 'إعداد ومتابعة الموازنات التقديرية، مقارنة الفعلي بالمخطط، وتحليل الانحرافات',
+   269→      en: 'Prepare and track budgets, compare actual vs planned, and analyze variances',
+   270→    },
+   271→  },
+   272→  'cash-flow': {
+   273→    title: { ar: 'التدفق النقدي', en: 'Cash Flow' },
+   274→    description: {
+   275→      ar: 'تحليل ومتابعة التدفقات النقدية الداخلة والخارجة، وتوقعات السيولة',
+   276→      en: 'Analyze and track cash inflows and outflows, and liquidity forecasts',
+   277→    },
+   278→  },
+   279→}
+   280→
+   281→
+   282→// ============================================================================
+   283→// 1. TREASURY MODULE (الخزينة)
+   284→// ============================================================================
+   285→
+   286→function TreasuryModule() {
+   287→  const { lang } = useAppStore()
+   288→
+   289→  const { data: summary, isLoading, isError, refetch } = useQuery<FinancialSummary>({
+   290→    queryKey: ['financial-summary'],
+   291→    queryFn: async () => {
+   292→      const res = await fetch('/api/financial-summary')
+   293→      if (!res.ok) throw new Error()
+   294→      return res.json()
+   295→    },
+   296→  })
+   297→
+   298→  const { data: recentEntries } = useQuery<{ entries: JournalEntry[] }>({
+   299→    queryKey: ['journal-entries-recent'],
+   300→    queryFn: async () => {
+   301→      const res = await fetch('/api/journal-entries?pageSize=10')
+   302→      if (!res.ok) throw new Error()
+   303→      return res.json()
+   304→    },
+   305→  })
+   306→
+   307→  if (isLoading) return <CardSkeleton />
+   308→
+   309→  if (isError) {
+   310→    return (
+   311→      <div className="flex flex-col items-center gap-3 py-10">
+   312→        <AlertCircle className="size-12 text-rose-300" />
+   313→        <p className="text-rose-600">{t('حدث خطأ في تحميل البيانات', 'Error loading data', lang)}</p>
+   314→        <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   315→      </div>
+   316→    )
+   317→  }
+   318→
+   319→  const cash = summary?.cashBreakdown || { treasury: 0, bank: 0, pettyCash: 0 }
+   320→  const totalCash = summary?.cashBalance || 0
+   321→
+   322→  return (
+   323→    <div className="space-y-6">
+   324→      {/* Cash Balance Cards */}
+   325→      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+   326→        <Card className="bg-gradient-to-br from-emerald-50 to-white border-emerald-200">
+   327→          <CardContent className="p-5">
+   328→            <div className="flex items-center gap-3 mb-3">
+   329→              <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center">
+   330→                <Wallet className="size-5 text-emerald-600" />
+   331→              </div>
+   332→              <p className="text-sm font-medium text-emerald-700">
+   333→                {t('إجمالي النقدية', 'Total Cash', lang)}
+   334→              </p>
+   335→            </div>
+   336→            <MoneyDisplay value={totalCash} lang={lang} size="xl" bold className="text-emerald-800" />
+   337→          </CardContent>
+   338→        </Card>
+   339→
+   340→        <Card className="border-sky-200">
+   341→          <CardContent className="p-5">
+   342→            <div className="flex items-center gap-3 mb-3">
+   343→              <div className="size-10 rounded-full bg-sky-100 flex items-center justify-center">
+   344→                <Landmark className="size-5 text-sky-600" />
+   345→              </div>
+   346→              <p className="text-sm font-medium text-sky-700">
+   347→                {t('الخزينة', 'Treasury', lang)}
+   348→              </p>
+   349→            </div>
+   350→            <MoneyDisplay value={cash.treasury} lang={lang} size="lg" bold className="text-sky-800" />
+   351→            <p className="text-xs text-muted-foreground mt-1">1110</p>
+   352→          </CardContent>
+   353→        </Card>
+   354→
+   355→        <Card className="border-violet-200">
+   356→          <CardContent className="p-5">
+   357→            <div className="flex items-center gap-3 mb-3">
+   358→              <div className="size-10 rounded-full bg-violet-100 flex items-center justify-center">
+   359→                <Building className="size-5 text-violet-600" />
+   360→              </div>
+   361→              <p className="text-sm font-medium text-violet-700">
+   362→                {t('البنوك', 'Banks', lang)}
+   363→              </p>
+   364→            </div>
+   365→            <MoneyDisplay value={cash.bank} lang={lang} size="lg" bold className="text-violet-800" />
+   366→            <p className="text-xs text-muted-foreground mt-1">1120</p>
+   367→          </CardContent>
+   368→        </Card>
+   369→
+   370→        <Card className="border-amber-200">
+   371→          <CardContent className="p-5">
+   372→            <div className="flex items-center gap-3 mb-3">
+   373→              <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center">
+   374→                <Banknote className="size-5 text-amber-600" />
+   375→              </div>
+   376→              <p className="text-sm font-medium text-amber-700">
+   377→                {t('الصندوق النثري', 'Petty Cash', lang)}
+   378→              </p>
+   379→            </div>
+   380→            <MoneyDisplay value={cash.pettyCash} lang={lang} size="lg" bold className="text-amber-800" />
+   381→            <p className="text-xs text-muted-foreground mt-1">1130</p>
+   382→          </CardContent>
+   383→        </Card>
+   384→      </div>
+   385→
+   386→      {/* Quick Financial Overview */}
+   387→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   388→        <Card className="bg-emerald-50/50 border-emerald-200">
+   389→          <CardContent className="p-4 flex items-center gap-3">
+   390→            <ArrowDown className="size-5 text-emerald-600" />
+   391→            <div>
+   392→              <p className="text-xs text-emerald-600">{t('الذمم المدينة', 'Receivables', lang)}</p>
+   393→              <MoneyDisplay value={summary?.arBalance || 0} lang={lang} size="lg" bold className="text-emerald-800" />
+   394→            </div>
+   395→          </CardContent>
+   396→        </Card>
+   397→        <Card className="bg-rose-50/50 border-rose-200">
+   398→          <CardContent className="p-4 flex items-center gap-3">
+   399→            <ArrowUp className="size-5 text-rose-600" />
+   400→            <div>
+   401→              <p className="text-xs text-rose-600">{t('الذمم الدائنة', 'Payables', lang)}</p>
+   402→              <MoneyDisplay value={summary?.apBalance || 0} lang={lang} size="lg" bold className="text-rose-800" />
+   403→            </div>
+   404→          </CardContent>
+   405→        </Card>
+   406→        <Card className={`${(summary?.vatNet || 0) >= 0 ? 'bg-amber-50/50 border-amber-200' : 'bg-teal-50/50 border-teal-200'}`}>
+   407→          <CardContent className="p-4 flex items-center gap-3">
+   408→            <Percent className={`size-5 ${(summary?.vatNet || 0) >= 0 ? 'text-amber-600' : 'text-teal-600'}`} />
+   409→            <div>
+   410→              <p className={`text-xs ${(summary?.vatNet || 0) >= 0 ? 'text-amber-600' : 'text-teal-600'}`}>
+   411→                {t('صافي الضريبة', 'Net VAT', lang)}
+   412→              </p>
+   413→              <MoneyDisplay
+   414→                value={summary?.vatNet || 0}
+   415→                lang={lang}
+   416→                size="lg"
+   417→                bold
+   418→                className={(summary?.vatNet || 0) >= 0 ? 'text-amber-800' : 'text-teal-800'}
+   419→              />
+   420→            </div>
+   421→          </CardContent>
+   422→        </Card>
+   423→      </div>
+   424→
+   425→      {/* Recent Transactions */}
+   426→      <Card>
+   427→        <CardHeader className="pb-3">
+   428→          <div className="flex items-center justify-between">
+   429→            <CardTitle className="text-base flex items-center gap-2">
+   430→              <FileText className="size-4 text-emerald-600" />
+   431→              {t('أحدث القيود المحاسبية', 'Recent Journal Entries', lang)}
+   432→            </CardTitle>
+   433→            <Button variant="ghost" size="icon" className="size-8" onClick={() => refetch()}>
+   434→              <RefreshCw className="size-4" />
+   435→            </Button>
+   436→          </div>
+   437→        </CardHeader>
+   438→        <CardContent className="p-0">
+   439→          {recentEntries?.entries?.length === 0 ? (
+   440→            <div className="flex flex-col items-center gap-2 py-8">
+   441→              <FileText className="size-10 text-gray-300" />
+   442→              <p className="text-sm text-muted-foreground">{t('لا توجد قيود', 'No entries', lang)}</p>
+   443→            </div>
+   444→          ) : (
+   445→            <div className="overflow-x-auto max-h-80 overflow-y-auto">
+   446→              <Table>
+   447→                <TableHeader>
+   448→                  <TableRow>
+   449→                    <TableHead className="text-right text-xs">{t('رقم القيد', 'Entry No.', lang)}</TableHead>
+   450→                    <TableHead className="text-right text-xs">{t('التاريخ', 'Date', lang)}</TableHead>
+   451→                    <TableHead className="text-right text-xs">{t('الوصف', 'Description', lang)}</TableHead>
+   452→                    <TableHead className="text-right text-xs">{t('الحالة', 'Status', lang)}</TableHead>
+   453→                    <TableHead className="text-right text-xs">{t('مدين', 'Debit', lang)}</TableHead>
+   454→                    <TableHead className="text-right text-xs">{t('دائن', 'Credit', lang)}</TableHead>
+   455→                  </TableRow>
+   456→                </TableHeader>
+   457→                <TableBody>
+   458→                  {recentEntries?.entries?.map(e => (
+   459→                    <TableRow key={e.id}>
+   460→                      <TableCell className="font-mono text-xs">{e.entryNo}</TableCell>
+   461→                      <TableCell className="text-xs">{formatDate(e.date, lang)}</TableCell>
+   462→                      <TableCell className="text-xs max-w-[180px] truncate">{e.description || '—'}</TableCell>
+   463→                      <TableCell><JEStatusBadge status={e.status} lang={lang} /></TableCell>
+   464→                      <TableCell>
+   465→                        <MoneyDisplay value={e.totalDebit} lang={lang} size="xs" className="text-emerald-700" />
+   466→                      </TableCell>
+   467→                      <TableCell>
+   468→                        <MoneyDisplay value={e.totalCredit} lang={lang} size="xs" className="text-rose-700" />
+   469→                      </TableCell>
+   470→                    </TableRow>
+   471→                  ))}
+   472→                </TableBody>
+   473→              </Table>
+   474→            </div>
+   475→          )}
+   476→        </CardContent>
+   477→      </Card>
+   478→
+   479→      {/* Financial Ratios */}
+   480→      <Card>
+   481→        <CardHeader className="pb-3">
+   482→          <CardTitle className="text-base flex items-center gap-2">
+   483→            <Calculator className="size-4 text-emerald-600" />
+   484→            {t('المؤشرات المالية', 'Financial Ratios', lang)}
+   485→          </CardTitle>
+   486→        </CardHeader>
+   487→        <CardContent>
+   488→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   489→            <div className="text-center p-3 rounded-lg bg-gray-50">
+   490→              <p className="text-xs text-muted-foreground mb-1">{t('نسبة التداول', 'Current Ratio', lang)}</p>
+   491→              <p className="text-2xl font-bold text-gray-900">{(summary?.ratios?.currentRatio || 0).toFixed(2)}</p>
+   492→            </div>
+   493→            <div className="text-center p-3 rounded-lg bg-gray-50">
+   494→              <p className="text-xs text-muted-foreground mb-1">{t('هامش الربح', 'Profit Margin', lang)}</p>
+   495→              <p className={`text-2xl font-bold ${(summary?.ratios?.profitMargin || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+   496→                {(summary?.ratios?.profitMargin || 0).toFixed(1)}%
+   497→              </p>
+   498→            </div>
+   499→            <div className="text-center p-3 rounded-lg bg-gray-50">
+   500→              <p className="text-xs text-muted-foreground mb-1">{t('العائد على الأصول', 'Return on Assets', lang)}</p>
+   501→              <p className={`text-2xl font-bold ${(summary?.ratios?.returnOnAssets || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+   502→                {(summary?.ratios?.returnOnAssets || 0).toFixed(1)}%
+   503→              </p>
+   504→            </div>
+   505→          </div>
+   506→        </CardContent>
+   507→      </Card>
+   508→    </div>
+   509→  )
+   510→}
+   511→
+   512→
+   513→// ============================================================================
+   514→// 2. JOURNAL ENTRIES MODULE (القيود)
+   515→// ============================================================================
+   516→
+   517→function JournalEntriesModule() {
+   518→  const { lang } = useAppStore()
+   519→  const queryClient = useQueryClient()
+   520→
+   521→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   522→  const [dateFrom, setDateFrom] = useState('')
+   523→  const [dateTo, setDateTo] = useState('')
+   524→  const [page, setPage] = useState(1)
+   525→  const [expandedEntry, setExpandedEntry] = useState<string | null>(null)
+   526→  const pageSize = 20
+   527→
+   528→  // Build query params
+   529→  const queryParams = new URLSearchParams()
+   530→  queryParams.set('page', String(page))
+   531→  queryParams.set('pageSize', String(pageSize))
+   532→  if (statusFilter !== 'all') queryParams.set('status', statusFilter)
+   533→  if (dateFrom) queryParams.set('startDate', dateFrom)
+   534→  if (dateTo) queryParams.set('endDate', dateTo)
+   535→
+   536→  const { data, isLoading, isError, refetch } = useQuery<{
+   537→    entries: JournalEntry[]
+   538→    pagination: { page: number; pageSize: number; total: number; totalPages: number }
+   539→  }>({
+   540→    queryKey: ['journal-entries', statusFilter, dateFrom, dateTo, page],
+   541→    queryFn: async () => {
+   542→      const res = await fetch(`/api/journal-entries?${queryParams.toString()}`)
+   543→      if (!res.ok) throw new Error()
+   544→      return res.json()
+   545→    },
+   546→  })
+   547→
+   548→  const entries = data?.entries || []
+   549→  const pagination = data?.pagination
+   550→
+   551→  return (
+   552→    <div className="space-y-4">
+   553→      {/* Filters */}
+   554→      <Card className="bg-gray-50/50">
+   555→        <CardContent className="p-4">
+   556→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+   557→            <div className="space-y-1 flex-1 min-w-[140px]">
+   558→              <Label className="text-xs">{t('الحالة', 'Status', lang)}</Label>
+   559→              <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
+   560→                <SelectTrigger className="h-9">
+   561→                  <SelectValue />
+   562→                </SelectTrigger>
+   563→                <SelectContent>
+   564→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   565→                  <SelectItem value="DRAFT">{t('مسودة', 'Draft', lang)}</SelectItem>
+   566→                  <SelectItem value="POSTED">{t('مرحّل', 'Posted', lang)}</SelectItem>
+   567→                  <SelectItem value="CANCELLED">{t('ملغي', 'Cancelled', lang)}</SelectItem>
+   568→                </SelectContent>
+   569→              </Select>
+   570→            </div>
+   571→            <div className="space-y-1 flex-1 min-w-[140px]">
+   572→              <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
+   573→              <Input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1) }} className="h-9" />
+   574→            </div>
+   575→            <div className="space-y-1 flex-1 min-w-[140px]">
+   576→              <Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label>
+   577→              <Input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1) }} className="h-9" />
+   578→            </div>
+   579→            {(statusFilter !== 'all' || dateFrom || dateTo) && (
+   580→              <Button
+   581→                variant="ghost"
+   582→                size="sm"
+   583→                className="text-rose-600"
+   584→                onClick={() => { setStatusFilter('all'); setDateFrom(''); setDateTo(''); setPage(1) }}
+   585→              >
+   586→                {t('مسح الفلاتر', 'Clear Filters', lang)}
+   587→              </Button>
+   588→            )}
+   589→            <Button variant="outline" size="icon" className="size-9" onClick={() => refetch()}>
+   590→              <RefreshCw className="size-4" />
+   591→            </Button>
+   592→          </div>
+   593→        </CardContent>
+   594→      </Card>
+   595→
+   596→      {/* Notice */}
+   597→      <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 rounded-lg p-3 border border-amber-200">
+   598→        <Calculator className="size-4 shrink-0" />
+   599→        <span>
+   600→          {lang === 'ar'
+   601→            ? 'القيود المحاسبية تنشأ تلقائياً من العمليات (فواتير، مستخلصات، مشتريات، مصروفات، سداد ضريبة، قبض، دفع)'
+   602→            : 'Journal entries are automatically generated from operations (invoices, claims, purchases, expenses, tax, receipts, payments)'}
+   603→        </span>
+   604→      </div>
+   605→
+   606→      {/* Table */}
+   607→      {isLoading ? (
+   608→        <TableSkeleton rows={8} />
+   609→      ) : isError ? (
+   610→        <div className="flex flex-col items-center gap-3 py-10">
+   611→          <AlertCircle className="size-12 text-rose-300" />
+   612→          <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+   613→          <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   614→        </div>
+   615→      ) : entries.length === 0 ? (
+   616→        <div className="flex flex-col items-center gap-3 py-10">
+   617→          <FileText className="size-12 text-gray-300" />
+   618→          <p className="text-muted-foreground">{t('لا توجد قيود', 'No entries found', lang)}</p>
+   619→        </div>
+   620→      ) : (
+   621→        <Card>
+   622→          <CardContent className="p-0">
+   623→            <div className="overflow-x-auto">
+   624→              <Table>
+   625→                <TableHeader>
+   626→                  <TableRow>
+   627→                    <TableHead className="text-right w-8"></TableHead>
+   628→                    <TableHead className="text-right">{t('رقم القيد', 'Entry No.', lang)}</TableHead>
+   629→                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   630→                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   631→                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   632→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   633→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   634→                  </TableRow>
+   635→                </TableHeader>
+   636→                <TableBody>
+   637→                  {entries.map(e => (
+   638→                    <React.Fragment key={e.id}>
+   639→                      <TableRow
+   640→                        className="cursor-pointer hover:bg-emerald-50/50"
+   641→                        onClick={() => setExpandedEntry(expandedEntry === e.id ? null : e.id)}
+   642→                      >
+   643→                        <TableCell>
+   644→                          <ChevronDown className={`size-4 text-muted-foreground transition-transform ${expandedEntry === e.id ? 'rotate-180' : ''}`} />
+   645→                        </TableCell>
+   646→                        <TableCell className="font-mono text-sm">{e.entryNo}</TableCell>
+   647→                        <TableCell className="text-sm">{formatDate(e.date, lang)}</TableCell>
+   648→                        <TableCell className="text-sm max-w-[200px] truncate">{e.description || '—'}</TableCell>
+   649→                        <TableCell><JEStatusBadge status={e.status} lang={lang} /></TableCell>
+   650→                        <TableCell>
+   651→                          <MoneyDisplay value={e.totalDebit} lang={lang} size="sm" className="text-emerald-700" />
+   652→                        </TableCell>
+   653→                        <TableCell>
+   654→                          <MoneyDisplay value={e.totalCredit} lang={lang} size="sm" className="text-rose-700" />
+   655→                        </TableCell>
+   656→                      </TableRow>
+   657→                      {/* Expanded Lines */}
+   658→                      {expandedEntry === e.id && (
+   659→                        <TableRow className="bg-gray-50/50">
+   660→                          <TableCell colSpan={7} className="p-0">
+   661→                            <div className="p-4 border-t border-b border-gray-200">
+   662→                              <Table>
+   663→                                <TableHeader>
+   664→                                  <TableRow>
+   665→                                    <TableHead className="text-right text-xs">{t('الحساب', 'Account', lang)}</TableHead>
+   666→                                    <TableHead className="text-right text-xs">{t('مدين', 'Debit', lang)}</TableHead>
+   667→                                    <TableHead className="text-right text-xs">{t('دائن', 'Credit', lang)}</TableHead>
+   668→                                    <TableHead className="text-right text-xs">{t('الوصف', 'Description', lang)}</TableHead>
+   669→                                  </TableRow>
+   670→                                </TableHeader>
+   671→                                <TableBody>
+   672→                                  {e.lines.map(line => (
+   673→                                    <TableRow key={line.id}>
+   674→                                      <TableCell className="text-xs font-medium">
+   675→                                        {line.account.code} - {lang === 'ar' && line.account.nameAr ? line.account.nameAr : line.account.name}
+   676→                                      </TableCell>
+   677→                                      <TableCell className="text-xs">
+   678→                                        {line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="xs" className="text-emerald-700" /> : '—'}
+   679→                                      </TableCell>
+   680→                                      <TableCell className="text-xs">
+   681→                                        {line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="xs" className="text-rose-700" /> : '—'}
+   682→                                      </TableCell>
+   683→                                      <TableCell className="text-xs text-muted-foreground">{line.description || '—'}</TableCell>
+   684→                                    </TableRow>
+   685→                                  ))}
+   686→                                </TableBody>
+   687→                              </Table>
+   688→                            </div>
+   689→                          </TableCell>
+   690→                        </TableRow>
+   691→                      )}
+   692→                    </React.Fragment>
+   693→                  ))}
+   694→                </TableBody>
+   695→              </Table>
+   696→            </div>
+   697→          </CardContent>
+   698→        </Card>
+   699→      )}
+   700→
+   701→      {/* Pagination */}
+   702→      {pagination && pagination.totalPages > 1 && (
+   703→        <div className="flex items-center justify-between text-sm text-muted-foreground">
+   704→          <span>
+   705→            {t('عرض', 'Showing', lang)} {((pagination.page - 1) * pagination.pageSize) + 1} - {Math.min(pagination.page * pagination.pageSize, pagination.total)} {t('من', 'of', lang)} {pagination.total}
+   706→          </span>
+   707→          <div className="flex gap-2">
+   708→            <Button
+   709→              variant="outline"
+   710→              size="sm"
+   711→              disabled={pagination.page <= 1}
+   712→              onClick={() => setPage(p => p - 1)}
+   713→            >
+   714→              {t('السابق', 'Previous', lang)}
+   715→            </Button>
+   716→            <span className="flex items-center px-2">
+   717→              {pagination.page} / {pagination.totalPages}
+   718→            </span>
+   719→            <Button
+   720→              variant="outline"
+   721→              size="sm"
+   722→              disabled={pagination.page >= pagination.totalPages}
+   723→              onClick={() => setPage(p => p + 1)}
+   724→            >
+   725→              {t('التالي', 'Next', lang)}
+   726→            </Button>
+   727→          </div>
+   728→        </div>
+   729→      )}
+   730→    </div>
+   731→  )
+   732→}
+   733→
+   734→
+   735→// ============================================================================
+   736→// 3. CHART OF ACCOUNTS MODULE (دليل الحسابات)
+   737→// ============================================================================
+   738→
+   739→function ChartOfAccountsModule() {
+   740→  const { lang } = useAppStore()
+   741→  const queryClient = useQueryClient()
+   742→  const [addDialogOpen, setAddDialogOpen] = useState(false)
+   743→
+   744→  // New account form state
+   745→  const [newAccount, setNewAccount] = useState({
+   746→    code: '',
+   747→    name: '',
+   748→    nameAr: '',
+   749→    type: 'ASSET',
+   750→    parentId: '',
+   751→  })
+   752→
+   753→  const { data, isLoading, isError, refetch } = useQuery<{
+   754→    accounts: Account[]
+   755→    tree: Account[]
+   756→    total: number
+   757→  }>({
+   758→    queryKey: ['accounts-tree'],
+   759→    queryFn: async () => {
+   760→      const res = await fetch('/api/accounts')
+   761→      if (!res.ok) throw new Error()
+   762→      return res.json()
+   763→    },
+   764→  })
+   765→
+   766→  const initializeMutation = useMutation({
+   767→    mutationFn: async () => {
+   768→      const res = await fetch('/api/accounts/initialize', { method: 'POST' })
+   769→      if (!res.ok) throw new Error()
+   770→      return res.json()
+   771→    },
+   772→    onSuccess: () => {
+   773→      queryClient.invalidateQueries({ queryKey: ['accounts-tree'] })
+   774→    },
+   775→  })
+   776→
+   777→  const createAccountMutation = useMutation({
+   778→    mutationFn: async (data: typeof newAccount) => {
+   779→      const res = await fetch('/api/accounts', {
+   780→        method: 'POST',
+   781→        headers: { 'Content-Type': 'application/json' },
+   782→        body: JSON.stringify({
+   783→          ...data,
+   784→          parentId: data.parentId || undefined,
+   785→        }),
+   786→      })
+   787→      if (!res.ok) {
+   788→        const err = await res.json()
+   789→        throw new Error(err.error || 'Failed')
+   790→      }
+   791→      return res.json()
+   792→    },
+   793→    onSuccess: () => {
+   794→      queryClient.invalidateQueries({ queryKey: ['accounts-tree'] })
+   795→      setAddDialogOpen(false)
+   796→      setNewAccount({ code: '', name: '', nameAr: '', type: 'ASSET', parentId: '' })
+   797→    },
+   798→  })
+   799→
+   800→  const accounts = data?.accounts || []
+   801→  const tree = data?.tree || []
+   802→
+   803→  // Type summary
+   804→  const typeSummary = useMemo(() => {
+   805→    const summary: Record<string, number> = {}
+   806→    accounts.forEach(a => {
+   807→      summary[a.type] = (summary[a.type] || 0) + 1
+   808→    })
+   809→    return summary
+   810→  }, [accounts])
+   811→
+   812→  // Flatten tree for rendering
+   813→  const flattenTree = (nodes: Account[], depth: number): (Account & { _depth: number })[] => {
+   814→    const result: (Account & { _depth: number })[] = []
+   815→    for (const node of nodes) {
+   816→      result.push({ ...node, _depth: depth })
+   817→      if (node.children && node.children.length > 0) {
+   818→        result.push(...flattenTree(
+   819→          node.children.sort((a, b) => a.code.localeCompare(b.code)),
+   820→          depth + 1
+   821→        ))
+   822→      }
+   823→    }
+   824→    return result
+   825→  }
+   826→
+   827→  const flatAccounts = flattenTree(tree.sort((a, b) => a.code.localeCompare(b.code)), 0)
+   828→
+   829→  // Render account row recursively
+   830→  const renderAccountNode = (account: Account & { _depth: number }) => {
+   831→    const cfg = typeConfig[account.type] || typeConfig.ASSET
+   832→    const isParent = account.children && account.children.length > 0
+   833→    const indent = account._depth * 24
+   834→
+   835→    return (
+   836→      <div key={account.id}>
+   837→        <div
+   838→          className={`flex items-center gap-3 py-2.5 px-4 hover:bg-gray-50/80 border-b border-gray-100 transition-colors ${account._depth === 0 ? 'bg-gray-50/50 font-semibold' : ''}`}
+   839→          style={{ paddingRight: lang === 'ar' ? `${indent + 16}px` : undefined, paddingLeft: lang === 'ar' ? undefined : `${indent + 16}px` }}
+   840→        >
+   841→          {isParent && (
+   842→            <span className="text-gray-300 text-xs">└</span>
+   843→          )}
+   844→          <span className="font-mono text-sm text-gray-600 min-w-[48px]">{account.code}</span>
+   845→          <span className="flex-1 text-sm">
+   846→            {lang === 'ar' && account.nameAr ? account.nameAr : account.name}
+   847→            {lang === 'ar' && account.nameAr && (
+   848→              <span className="text-muted-foreground text-xs mr-1">({account.name})</span>
+   849→            )}
+   850→          </span>
+   851→          <TypeBadge type={account.type} lang={lang} />
+   852→          <span className="text-xs text-muted-foreground min-w-[40px] text-center">
+   853→            {formatNumber(account._count?.journalLines || 0)}
+   854→          </span>
+   855→          <span className={`text-sm font-medium min-w-[120px] text-left ${account.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`} dir="ltr">
+   856→            {formatAmount(account.balance)}
+   857→          </span>
+   858→        </div>
+   859→      </div>
+   860→    )
+   861→  }
+   862→
+   863→  return (
+   864→    <div className="space-y-4">
+   865→      {/* Header Actions */}
+   866→      <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+   867→        {/* Type Summary */}
+   868→        <div className="flex flex-wrap gap-2">
+   869→          {Object.entries(typeSummary).map(([type, count]) => {
+   870→            const cfg = typeConfig[type]
+   871→            if (!cfg) return null
+   872→            return (
+   873→              <Badge key={type} className={`${cfg.bg} ${cfg.color} border ${cfg.border} gap-1`}>
+   874→                {cfg.label[lang]}: {count}
+   875→              </Badge>
+   876→            )
+   877→          })}
+   878→        </div>
+   879→        <div className="flex gap-2">
+   880→          <Button
+   881→            variant="outline"
+   882→            size="sm"
+   883→            className="gap-1.5"
+   884→            onClick={() => initializeMutation.mutate()}
+   885→            disabled={initializeMutation.isPending}
+   886→          >
+   887→            {initializeMutation.isPending ? (
+   888→              <RefreshCw className="size-4 animate-spin" />
+   889→            ) : (
+   890→              <TreePine className="size-4" />
+   891→            )}
+   892→            {t('تهيئة دليل الحسابات', 'Initialize Chart', lang)}
+   893→          </Button>
+   894→          <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+   895→            <DialogTrigger asChild>
+   896→              <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700">
+   897→                <PlusCircle className="size-4" />
+   898→                {t('إضافة حساب', 'Add Account', lang)}
+   899→              </Button>
+   900→            </DialogTrigger>
+   901→            <DialogContent>
+   902→              <DialogHeader>
+   903→                <DialogTitle>{t('إضافة حساب جديد', 'Add New Account', lang)}</DialogTitle>
+   904→                <DialogDescription>
+   905→                  {t('أدخل بيانات الحساب الجديد', 'Enter the new account details', lang)}
+   906→                </DialogDescription>
+   907→              </DialogHeader>
+   908→              <div className="space-y-4 py-2">
+   909→                <div className="grid grid-cols-2 gap-3">
+   910→                  <div className="space-y-1">
+   911→                    <Label className="text-xs">{t('الكود', 'Code', lang)}</Label>
+   912→                    <Input
+   913→                      value={newAccount.code}
+   914→                      onChange={e => setNewAccount(p => ({ ...p, code: e.target.value }))}
+   915→                      placeholder={t('تلقائي', 'Auto', lang)}
+   916→                      className="h-9"
+   917→                    />
+   918→                  </div>
+   919→                  <div className="space-y-1">
+   920→                    <Label className="text-xs">{t('النوع', 'Type', lang)}</Label>
+   921→                    <Select value={newAccount.type} onValueChange={v => setNewAccount(p => ({ ...p, type: v }))}>
+   922→                      <SelectTrigger className="h-9">
+   923→                        <SelectValue />
+   924→                      </SelectTrigger>
+   925→                      <SelectContent>
+   926→                        <SelectItem value="ASSET">{t('أصول', 'Asset', lang)}</SelectItem>
+   927→                        <SelectItem value="LIABILITY">{t('التزامات', 'Liability', lang)}</SelectItem>
+   928→                        <SelectItem value="EQUITY">{t('حقوق ملكية', 'Equity', lang)}</SelectItem>
+   929→                        <SelectItem value="REVENUE">{t('إيرادات', 'Revenue', lang)}</SelectItem>
+   930→                        <SelectItem value="EXPENSE">{t('مصروفات', 'Expense', lang)}</SelectItem>
+   931→                      </SelectContent>
+   932→                    </Select>
+   933→                  </div>
+   934→                </div>
+   935→                <div className="space-y-1">
+   936→                  <Label className="text-xs">{t('اسم الحساب (إنجليزي)', 'Account Name (English)', lang)}</Label>
+   937→                  <Input
+   938→                    value={newAccount.name}
+   939→                    onChange={e => setNewAccount(p => ({ ...p, name: e.target.value }))}
+   940→                    placeholder="Account Name"
+   941→                    className="h-9"
+   942→                  />
+   943→                </div>
+   944→                <div className="space-y-1">
+   945→                  <Label className="text-xs">{t('اسم الحساب (عربي)', 'Account Name (Arabic)', lang)}</Label>
+   946→                  <Input
+   947→                    value={newAccount.nameAr}
+   948→                    onChange={e => setNewAccount(p => ({ ...p, nameAr: e.target.value }))}
+   949→                    placeholder="اسم الحساب"
+   950→                    className="h-9"
+   951→                    dir="rtl"
+   952→                  />
+   953→                </div>
+   954→                <div className="space-y-1">
+   955→                  <Label className="text-xs">{t('الحساب الأب', 'Parent Account', lang)}</Label>
+   956→                  <Select value={newAccount.parentId} onValueChange={v => setNewAccount(p => ({ ...p, parentId: v }))}>
+   957→                    <SelectTrigger className="h-9">
+   958→                      <SelectValue placeholder={t('بدون (حساب رئيسي)', 'None (Root)', lang)} />
+   959→                    </SelectTrigger>
+   960→                    <SelectContent>
+   961→                      {accounts.filter(a => !a.parentId).sort((a, b) => a.code.localeCompare(b.code)).map(a => (
+   962→                        <SelectItem key={a.id} value={a.id}>
+   963→                          {a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+   964→                        </SelectItem>
+   965→                      ))}
+   966→                    </SelectContent>
+   967→                  </Select>
+   968→                </div>
+   969→                {createAccountMutation.isError && (
+   970→                  <p className="text-sm text-rose-600">{t('فشل في إنشاء الحساب', 'Failed to create account', lang)}</p>
+   971→                )}
+   972→              </div>
+   973→              <DialogFooter>
+   974→                <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+   975→                  {commonText.cancel[lang]}
+   976→                </Button>
+   977→                <Button
+   978→                  className="bg-emerald-600 hover:bg-emerald-700"
+   979→                  onClick={() => createAccountMutation.mutate(newAccount)}
+   980→                  disabled={!newAccount.name || createAccountMutation.isPending}
+   981→                >
+   982→                  {createAccountMutation.isPending ? (
+   983→                    <RefreshCw className="size-4 animate-spin" />
+   984→                  ) : null}
+   985→                  {commonText.save[lang]}
+   986→                </Button>
+   987→              </DialogFooter>
+   988→            </DialogContent>
+   989→          </Dialog>
+   990→        </div>
+   991→      </div>
+   992→
+   993→      {/* Account Tree Table */}
+   994→      {isLoading ? (
+   995→        <TableSkeleton rows={10} />
+   996→      ) : isError ? (
+   997→        <div className="flex flex-col items-center gap-3 py-10">
+   998→          <AlertCircle className="size-12 text-rose-300" />
+   999→          <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+  1000→          <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+  1001→        </div>
+  1002→      ) : flatAccounts.length === 0 ? (
+  1003→        <div className="flex flex-col items-center gap-3 py-10">
+  1004→          <TreePine className="size-12 text-gray-300" />
+  1005→          <p className="text-muted-foreground">{t('لا توجد حسابات - اضغط تهيئة', 'No accounts - Click Initialize', lang)}</p>
+  1006→          <Button onClick={() => initializeMutation.mutate()} disabled={initializeMutation.isPending}>
+  1007→            <TreePine className="size-4 mr-2" />
+  1008→            {t('تهيئة دليل الحسابات', 'Initialize Chart of Accounts', lang)}
+  1009→          </Button>
+  1010→        </div>
+  1011→      ) : (
+  1012→        <Card>
+  1013→          <CardContent className="p-0">
+  1014→            {/* Table Header */}
+  1015→            <div className="flex items-center gap-3 py-2.5 px-4 bg-gray-100/80 border-b border-gray-200 text-xs font-medium text-muted-foreground">
+  1016→              <span className="min-w-[48px]">{t('الكود', 'Code', lang)}</span>
+  1017→              <span className="flex-1">{t('اسم الحساب', 'Account Name', lang)}</span>
+  1018→              <span className="min-w-[60px]">{t('النوع', 'Type', lang)}</span>
+  1019→              <span className="min-w-[40px] text-center">{t('قيود', 'Entries', lang)}</span>
+  1020→              <span className="min-w-[120px] text-left" dir="ltr">{t('الرصيد', 'Balance', lang)}</span>
+  1021→            </div>
+  1022→            <div className="max-h-[500px] overflow-y-auto">
+  1023→              {flatAccounts.map(account => renderAccountNode(account))}
+  1024→            </div>
+  1025→          </CardContent>
+  1026→        </Card>
+  1027→      )}
+  1028→    </div>
+  1029→  )
+  1030→}
+  1031→
+  1032→
+  1033→// ============================================================================
+  1034→// 4. GENERAL LEDGER MODULE (اليومية العامة)
+  1035→// ============================================================================
+  1036→
+  1037→function GeneralLedgerModule() {
+  1038→  const { lang } = useAppStore()
+  1039→
+  1040→  // Fetch accounts for dropdown
+  1041→  const { data: accountsData } = useQuery<{
+  1042→    accounts: Account[]
+  1043→  }>({
+  1044→    queryKey: ['accounts-list'],
+  1045→    queryFn: async () => {
+  1046→      const res = await fetch('/api/accounts')
+  1047→      if (!res.ok) throw new Error()
+  1048→      return res.json()
+  1049→    },
+  1050→  })
+  1051→
+  1052→  const accounts = accountsData?.accounts || []
+  1053→  const [selectedCode, setSelectedCode] = useState<string>('')
+  1054→  const [dateFrom, setDateFrom] = useState('')
+  1055→  const [dateTo, setDateTo] = useState('')
+  1056→
+  1057→  // Fetch ledger entries
+  1058→  const { data: ledgerData, isLoading: loadingLedger, isError: ledgerError, refetch } = useQuery<{
+  1059→    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+  1060→    entries: LedgerEntry[]
+  1061→    currentBalance: number
+  1062→  }>({
+  1063→    queryKey: ['general-ledger', selectedCode, dateFrom, dateTo],
+  1064→    queryFn: async () => {
+  1065→      const params = new URLSearchParams()
+  1066→      params.set('accountCode', selectedCode)
+  1067→      if (dateFrom) params.set('dateFrom', dateFrom)
+  1068→      if (dateTo) params.set('dateTo', dateTo)
+  1069→      const res = await fetch(`/api/general-ledger?${params.toString()}`)
+  1070→      if (!res.ok) throw new Error()
+  1071→      return res.json()
+  1072→    },
+  1073→    enabled: !!selectedCode,
+  1074→  })
+  1075→
+  1076→  const selectedAccount = accounts.find(a => a.code === selectedCode)
+  1077→  const isDebitNormal = selectedAccount?.type === 'ASSET' || selectedAccount?.type === 'EXPENSE'
+  1078→
+  1079→  return (
+  1080→    <div className="space-y-4">
+  1081→      {/* Account Selection & Filters */}
+  1082→      <Card className="bg-gray-50/50">
+  1083→        <CardContent className="p-4">
+  1084→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  1085→            <div className="space-y-1 flex-1 min-w-[200px]">
+  1086→              <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
+  1087→              <Select value={selectedCode} onValueChange={setSelectedCode}>
+  1088→                <SelectTrigger>
+  1089→                  <SelectValue placeholder={t('اختر حساب', 'Select account', lang)} />
+  1090→                </SelectTrigger>
+  1091→                <SelectContent>
+  1092→                  {accounts.sort((a, b) => a.code.localeCompare(b.code)).map(a => (
+  1093→                    <SelectItem key={a.id} value={a.code}>
+  1094→                      {a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+  1095→                    </SelectItem>
+  1096→                  ))}
+  1097→                </SelectContent>
+  1098→              </Select>
+  1099→            </div>
+  1100→            <div className="space-y-1 min-w-[140px]">
+  1101→              <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
+  1102→              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" />
+  1103→            </div>
+  1104→            <div className="space-y-1 min-w-[140px]">
+  1105→              <Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label>
+  1106→              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
+  1107→            </div>
+  1108→            {selectedCode && (
+  1109→              <Button variant="outline" size="icon" className="size-9" onClick={() => refetch()}>
+  1110→                <RefreshCw className="size-4" />
+  1111→              </Button>
+  1112→            )}
+  1113→          </div>
+  1114→        </CardContent>
+  1115→      </Card>
+  1116→
+  1117→      {/* Account Info */}
+  1118→      {selectedCode && ledgerData && (
+  1119→        <Card className="border-emerald-200">
+  1120→          <CardContent className="p-4">
+  1121→            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+  1122→              <div className="flex-1">
+  1123→                <h3 className="text-lg font-bold">
+  1124→                  {ledgerData.account.code} - {lang === 'ar' && ledgerData.account.nameAr ? ledgerData.account.nameAr : ledgerData.account.name}
+  1125→                </h3>
+  1126→                <TypeBadge type={ledgerData.account.type} lang={lang} />
+  1127→              </div>
+  1128→              <div className="flex gap-4">
+  1129→                <div className="text-center">
+  1130→                  <p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p>
+  1131→                  <MoneyDisplay value={ledgerData.entries.reduce((s, e) => s + e.debit, 0)} lang={lang} bold className="text-emerald-700" />
+  1132→                </div>
+  1133→                <div className="text-center">
+  1134→                  <p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p>
+  1135→                  <MoneyDisplay value={ledgerData.entries.reduce((s, e) => s + e.credit, 0)} lang={lang} bold className="text-rose-700" />
+  1136→                </div>
+  1137→                <Separator orientation="vertical" className="h-12" />
+  1138→                <div className="text-center">
+  1139→                  <p className={`text-xs ${isDebitNormal ? 'text-amber-600' : 'text-teal-600'}`}>
+  1140→                    {t('الرصيد الحالي', 'Current Balance', lang)}
+  1141→                  </p>
+  1142→                  <MoneyDisplay
+  1143→                    value={ledgerData.currentBalance}
+  1144→                    lang={lang}
+  1145→                    bold
+  1146→                    className={ledgerData.currentBalance >= 0 ? 'text-amber-700' : 'text-teal-700'}
+  1147→                  />
+  1148→                </div>
+  1149→              </div>
+  1150→            </div>
+  1151→          </CardContent>
+  1152→        </Card>
+  1153→      )}
+  1154→
+  1155→      {/* Ledger Table */}
+  1156→      {selectedCode && loadingLedger && <TableSkeleton rows={8} />}
+  1157→      {selectedCode && ledgerError && (
+  1158→        <div className="flex flex-col items-center gap-3 py-10">
+  1159→          <AlertCircle className="size-12 text-rose-300" />
+  1160→          <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+  1161→          <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+  1162→        </div>
+  1163→      )}
+  1164→      {selectedCode && ledgerData && ledgerData.entries.length === 0 && (
+  1165→        <div className="flex flex-col items-center gap-3 py-10">
+  1166→          <BookCopy className="size-12 text-gray-300" />
+  1167→          <p className="text-muted-foreground">{t('لا توجد حركات على هذا الحساب', 'No transactions for this account', lang)}</p>
+  1168→        </div>
+  1169→      )}
+  1170→      {selectedCode && ledgerData && ledgerData.entries.length > 0 && (
+  1171→        <Card>
+  1172→          <CardContent className="p-0">
+  1173→            <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  1174→              <Table>
+  1175→                <TableHeader>
+  1176→                  <TableRow>
+  1177→                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  1178→                    <TableHead className="text-right">{t('رقم القيد', 'Entry No.', lang)}</TableHead>
+  1179→                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  1180→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  1181→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  1182→                    <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1183→                  </TableRow>
+  1184→                </TableHeader>
+  1185→                <TableBody>
+  1186→                  {ledgerData.entries.map((entry, idx) => (
+  1187→                    <TableRow key={entry.id} className={idx % 2 === 0 ? '' : 'bg-gray-50/30'}>
+  1188→                      <TableCell className="text-sm">{formatDate(entry.date, lang)}</TableCell>
+  1189→                      <TableCell className="font-mono text-sm">{entry.entryNo}</TableCell>
+  1190→                      <TableCell className="text-sm max-w-[200px] truncate">
+  1191→                        {entry.lineDescription || entry.description || '—'}
+  1192→                      </TableCell>
+  1193→                      <TableCell>
+  1194→                        {entry.debit > 0 ? <MoneyDisplay value={entry.debit} lang={lang} size="sm" className="text-emerald-700" /> : '—'}
+  1195→                      </TableCell>
+  1196→                      <TableCell>
+  1197→                        {entry.credit > 0 ? <MoneyDisplay value={entry.credit} lang={lang} size="sm" className="text-rose-700" /> : '—'}
+  1198→                      </TableCell>
+  1199→                      <TableCell>
+  1200→                        <MoneyDisplay
+  1201→                          value={entry.balance}
+  1202→                          lang={lang}
+  1203→                          size="sm"
+  1204→                          bold
+  1205→                          className={entry.balance >= 0 ? 'text-amber-700' : 'text-teal-700'}
+  1206→                        />
+  1207→                      </TableCell>
+  1208→                    </TableRow>
+  1209→                  ))}
+  1210→                </TableBody>
+  1211→              </Table>
+  1212→            </div>
+  1213→          </CardContent>
+  1214→        </Card>
+  1215→      )}
+  1216→
+  1217→      {/* Empty State */}
+  1218→      {!selectedCode && (
+  1219→        <div className="flex flex-col items-center gap-3 py-10">
+  1220→          <ArrowUpDown className="size-12 text-gray-300" />
+  1221→          <p className="text-muted-foreground">{t('اختر حساباً لعرض دفتر الأستاذ', 'Select an account to view the general ledger', lang)}</p>
+  1222→        </div>
+  1223→      )}
+  1224→    </div>
+  1225→  )
+  1226→}
+  1227→
+  1228→
+  1229→// ============================================================================
+  1230→// 5. RECEIVABLES MODULE (الذمم المدينة)
+  1231→// ============================================================================
+  1232→
+  1233→function ReceivablesModule() {
+  1234→  const { lang } = useAppStore()
+  1235→
+  1236→  const { data: summary, isLoading } = useQuery<FinancialSummary>({
+  1237→    queryKey: ['financial-summary'],
+  1238→    queryFn: async () => {
+  1239→      const res = await fetch('/api/financial-summary')
+  1240→      if (!res.ok) throw new Error()
+  1241→      return res.json()
+  1242→    },
+  1243→  })
+  1244→
+  1245→  const { data: clientsData } = useQuery<{ clients: { id: string; name: string; nameAr: string | null; balance: number }[] }>({
+  1246→    queryKey: ['clients-ar'],
+  1247→    queryFn: async () => {
+  1248→      const res = await fetch('/api/clients')
+  1249→      if (!res.ok) throw new Error()
+  1250→      return res.json()
+  1251→    },
+  1252→  })
+  1253→
+  1254→  if (isLoading) return <CardSkeleton />
+  1255→
+  1256→  const arBalance = summary?.arBalance || 0
+  1257→  const assetAccounts = summary?.breakdown?.ASSET || []
+  1258→  const receivableAccounts = assetAccounts.filter(a =>
+  1259→    a.code.startsWith('12') || a.code.startsWith('14')
+  1260→  )
+  1261→
+  1262→  return (
+  1263→    <div className="space-y-6">
+  1264→      {/* AR Balance Cards */}
+  1265→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  1266→        <Card className="bg-gradient-to-br from-emerald-50 to-white border-emerald-200">
+  1267→          <CardContent className="p-5">
+  1268→            <div className="flex items-center gap-3 mb-3">
+  1269→              <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center">
+  1270→                <ArrowDownToLine className="size-5 text-emerald-600" />
+  1271→              </div>
+  1272→              <p className="text-sm font-medium text-emerald-700">
+  1273→                {t('إجمالي الذمم المدينة', 'Total Receivables', lang)}
+  1274→              </p>
+  1275→            </div>
+  1276→            <MoneyDisplay value={arBalance} lang={lang} size="xl" bold className="text-emerald-800" />
+  1277→          </CardContent>
+  1278→        </Card>
+  1279→
+  1280→        <Card className="border-sky-200">
+  1281→          <CardContent className="p-5">
+  1282→            <div className="flex items-center gap-3 mb-3">
+  1283→              <div className="size-10 rounded-full bg-sky-100 flex items-center justify-center">
+  1284→                <CheckCircle2 className="size-5 text-sky-600" />
+  1285→              </div>
+  1286→              <p className="text-sm font-medium text-sky-700">
+  1287→                {t('الإيرادات', 'Revenue', lang)}
+  1288→              </p>
+  1289→            </div>
+  1290→            <MoneyDisplay value={summary?.totalRevenue || 0} lang={lang} size="lg" bold className="text-sky-800" />
+  1291→          </CardContent>
+  1292→        </Card>
+  1293→
+  1294→        <Card className="border-amber-200">
+  1295→          <CardContent className="p-5">
+  1296→            <div className="flex items-center gap-3 mb-3">
+  1297→              <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center">
+  1298→                <Calculator className="size-5 text-amber-600" />
+  1299→              </div>
+  1300→              <p className="text-sm font-medium text-amber-700">
+  1301→                {t('صافي الدخل', 'Net Income', lang)}
+  1302→              </p>
+  1303→            </div>
+  1304→            <MoneyDisplay
+  1305→              value={summary?.netIncome || 0}
+  1306→              lang={lang}
+  1307→              size="lg"
+  1308→              bold
+  1309→              className={(summary?.netIncome || 0) >= 0 ? 'text-emerald-800' : 'text-rose-800'}
+  1310→            />
+  1311→          </CardContent>
+  1312→        </Card>
+  1313→      </div>
+  1314→
+  1315→      {/* Receivable Accounts Breakdown */}
+  1316→      <Card>
+  1317→        <CardHeader className="pb-3">
+  1318→          <CardTitle className="text-base flex items-center gap-2">
+  1319→            <BookOpen className="size-4 text-emerald-600" />
+  1320→            {t('حسابات الذمم المدينة', 'Receivable Accounts', lang)}
+  1321→          </CardTitle>
+  1322→        </CardHeader>
+  1323→        <CardContent className="p-0">
+  1324→          {receivableAccounts.length === 0 ? (
+  1325→            <div className="py-8 text-center text-sm text-muted-foreground">
+  1326→              {t('لا توجد حسابات دائنة', 'No receivable accounts found', lang)}
+  1327→            </div>
+  1328→          ) : (
+  1329→            <div className="overflow-x-auto">
+  1330→              <Table>
+  1331→                <TableHeader>
+  1332→                  <TableRow>
+  1333→                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+  1334→                    <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+  1335→                    <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1336→                  </TableRow>
+  1337→                </TableHeader>
+  1338→                <TableBody>
+  1339→                  {receivableAccounts.map(a => (
+  1340→                    <TableRow key={a.code}>
+  1341→                      <TableCell className="font-mono text-sm">{a.code}</TableCell>
+  1342→                      <TableCell className="text-sm">{lang === 'ar' && a.nameAr ? a.nameAr : a.name}</TableCell>
+  1343→                      <TableCell>
+  1344→                        <MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} />
+  1345→                      </TableCell>
+  1346→                    </TableRow>
+  1347→                  ))}
+  1348→                </TableBody>
+  1349→              </Table>
+  1350→            </div>
+  1351→          )}
+  1352→        </CardContent>
+  1353→      </Card>
+  1354→
+  1355→      {/* Aging Report Placeholder */}
+  1356→      <Card className="border-dashed border-2 border-gray-200 bg-gray-50/50">
+  1357→        <CardContent className="p-6">
+  1358→          <div className="flex items-center gap-3 mb-4">
+  1359→            <div className="size-10 rounded-full bg-gray-100 flex items-center justify-center">
+  1360→              <FileText className="size-5 text-gray-400" />
+  1361→            </div>
+  1362→            <div>
+  1363→              <h3 className="font-semibold text-gray-700">{t('تقرير التقادم', 'Aging Report', lang)}</h3>
+  1364→              <p className="text-xs text-muted-foreground">{t('تحليل الذمم المدينة حسب الفترة', 'Receivables aging analysis', lang)}</p>
+  1365→            </div>
+  1366→          </div>
+  1367→          <div className="grid grid-cols-4 gap-3">
+  1368→            {[
+  1369→              { label: { ar: 'حتى 30 يوم', en: 'Up to 30 days' }, value: 0, color: 'text-emerald-700 bg-emerald-50' },
+  1370→              { label: { ar: '31-60 يوم', en: '31-60 days' }, value: 0, color: 'text-amber-700 bg-amber-50' },
+  1371→              { label: { ar: '61-90 يوم', en: '61-90 days' }, value: 0, color: 'text-orange-700 bg-orange-50' },
+  1372→              { label: { ar: 'أكثر من 90 يوم', en: 'Over 90 days' }, value: 0, color: 'text-rose-700 bg-rose-50' },
+  1373→            ].map((bucket) => (
+  1374→              <div key={bucket.label.en} className={`rounded-lg p-3 text-center ${bucket.color}`}>
+  1375→                <p className="text-xs mb-1">{bucket.label[lang]}</p>
+  1376→                <MoneyDisplay value={bucket.value} lang={lang} size="sm" bold />
+  1377→              </div>
+  1378→            ))}
+  1379→          </div>
+  1380→        </CardContent>
+  1381→      </Card>
+  1382→    </div>
+  1383→  )
+  1384→}
+  1385→
+  1386→
+  1387→// ============================================================================
+  1388→// 6. PAYABLES MODULE (الذمم الدائنة)
+  1389→// ============================================================================
+  1390→
+  1391→function PayablesModule() {
+  1392→  const { lang } = useAppStore()
+  1393→
+  1394→  const { data: summary, isLoading } = useQuery<FinancialSummary>({
+  1395→    queryKey: ['financial-summary'],
+  1396→    queryFn: async () => {
+  1397→      const res = await fetch('/api/financial-summary')
+  1398→      if (!res.ok) throw new Error()
+  1399→      return res.json()
+  1400→    },
+  1401→  })
+  1402→
+  1403→  const { data: suppliersData } = useQuery<{ suppliers: { id: string; name: string; nameAr: string | null; balance: number }[] }>({
+  1404→    queryKey: ['suppliers-ap'],
+  1405→    queryFn: async () => {
+  1406→      const res = await fetch('/api/suppliers')
+  1407→      if (!res.ok) throw new Error()
+  1408→      return res.json()
+  1409→    },
+  1410→  })
+  1411→
+  1412→  if (isLoading) return <CardSkeleton />
+  1413→
+  1414→  const apBalance = summary?.apBalance || 0
+  1415→  const liabilityAccounts = summary?.breakdown?.LIABILITY || []
+  1416→  const payableAccounts = liabilityAccounts.filter(a =>
+  1417→    a.code.startsWith('31') || a.code.startsWith('32')
+  1418→  )
+  1419→
+  1420→  return (
+  1421→    <div className="space-y-6">
+  1422→      {/* AP Balance Cards */}
+  1423→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  1424→        <Card className="bg-gradient-to-br from-rose-50 to-white border-rose-200">
+  1425→          <CardContent className="p-5">
+  1426→            <div className="flex items-center gap-3 mb-3">
+  1427→              <div className="size-10 rounded-full bg-rose-100 flex items-center justify-center">
+  1428→                <ArrowUpFromLine className="size-5 text-rose-600" />
+  1429→              </div>
+  1430→              <p className="text-sm font-medium text-rose-700">
+  1431→                {t('إجمالي الذمم الدائنة', 'Total Payables', lang)}
+  1432→              </p>
+  1433→            </div>
+  1434→            <MoneyDisplay value={apBalance} lang={lang} size="xl" bold className="text-rose-800" />
+  1435→          </CardContent>
+  1436→        </Card>
+  1437→
+  1438→        <Card className="border-violet-200">
+  1439→          <CardContent className="p-5">
+  1440→            <div className="flex items-center gap-3 mb-3">
+  1441→              <div className="size-10 rounded-full bg-violet-100 flex items-center justify-center">
+  1442→                <Building className="size-5 text-violet-600" />
+  1443→              </div>
+  1444→              <p className="text-sm font-medium text-violet-700">
+  1445→                {t('إجمالي الالتزامات', 'Total Liabilities', lang)}
+  1446→              </p>
+  1447→            </div>
+  1448→            <MoneyDisplay value={summary?.totalLiabilities || 0} lang={lang} size="lg" bold className="text-violet-800" />
+  1449→          </CardContent>
+  1450→        </Card>
+  1451→
+  1452→        <Card className="border-amber-200">
+  1453→          <CardContent className="p-5">
+  1454→            <div className="flex items-center gap-3 mb-3">
+  1455→              <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center">
+  1456→                <Percent className="size-5 text-amber-600" />
+  1457→              </div>
+  1458→              <p className="text-sm font-medium text-amber-700">
+  1459→                {t('ضريبة مستحقة', 'VAT Payable', lang)}
+  1460→              </p>
+  1461→            </div>
+  1462→            <MoneyDisplay value={summary?.vatPayable || 0} lang={lang} size="lg" bold className="text-amber-800" />
+  1463→          </CardContent>
+  1464→        </Card>
+  1465→      </div>
+  1466→
+  1467→      {/* Payable Accounts Breakdown */}
+  1468→      <Card>
+  1469→        <CardHeader className="pb-3">
+  1470→          <CardTitle className="text-base flex items-center gap-2">
+  1471→            <BookOpen className="size-4 text-rose-600" />
+  1472→            {t('حسابات الذمم الدائنة', 'Payable Accounts', lang)}
+  1473→          </CardTitle>
+  1474→        </CardHeader>
+  1475→        <CardContent className="p-0">
+  1476→          {payableAccounts.length === 0 ? (
+  1477→            <div className="py-8 text-center text-sm text-muted-foreground">
+  1478→              {t('لا توجد حسابات دائنة', 'No payable accounts found', lang)}
+  1479→            </div>
+  1480→          ) : (
+  1481→            <div className="overflow-x-auto">
+  1482→              <Table>
+  1483→                <TableHeader>
+  1484→                  <TableRow>
+  1485→                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+  1486→                    <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+  1487→                    <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1488→                  </TableRow>
+  1489→                </TableHeader>
+  1490→                <TableBody>
+  1491→                  {payableAccounts.map(a => (
+  1492→                    <TableRow key={a.code}>
+  1493→                      <TableCell className="font-mono text-sm">{a.code}</TableCell>
+  1494→                      <TableCell className="text-sm">{lang === 'ar' && a.nameAr ? a.nameAr : a.name}</TableCell>
+  1495→                      <TableCell>
+  1496→                        <MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-rose-700' : 'text-emerald-700'} />
+  1497→                      </TableCell>
+  1498→                    </TableRow>
+  1499→                  ))}
+  1500→                </TableBody>
+  1501→              </Table>
+  1502→            </div>
+  1503→          )}
+  1504→        </CardContent>
+  1505→      </Card>
+  1506→
+  1507→      {/* Suppliers List */}
+  1508→      <Card>
+  1509→        <CardHeader className="pb-3">
+  1510→          <CardTitle className="text-base flex items-center gap-2">
+  1511→            <Building className="size-4 text-rose-600" />
+  1512→            {t('الموردون', 'Suppliers', lang)}
+  1513→          </CardTitle>
+  1514→        </CardHeader>
+  1515→        <CardContent className="p-0">
+  1516→          {suppliersData?.suppliers && suppliersData.suppliers.length > 0 ? (
+  1517→            <div className="overflow-x-auto max-h-64 overflow-y-auto">
+  1518→              <Table>
+  1519→                <TableHeader>
+  1520→                  <TableRow>
+  1521→                    <TableHead className="text-right">{t('اسم المورد', 'Supplier Name', lang)}</TableHead>
+  1522→                    <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  1523→                  </TableRow>
+  1524→                </TableHeader>
+  1525→                <TableBody>
+  1526→                  {suppliersData.suppliers.map(s => (
+  1527→                    <TableRow key={s.id}>
+  1528→                      <TableCell className="text-sm font-medium">
+  1529→                        {lang === 'ar' && s.nameAr ? s.nameAr : s.name}
+  1530→                      </TableCell>
+  1531→                      <TableCell>
+  1532→                        <MoneyDisplay value={s.balance || 0} lang={lang} size="sm" className="text-rose-700" />
+  1533→                      </TableCell>
+  1534→                    </TableRow>
+  1535→                  ))}
+  1536→                </TableBody>
+  1537→              </Table>
+  1538→            </div>
+  1539→          ) : (
+  1540→            <div className="py-8 text-center text-sm text-muted-foreground">
+  1541→              {t('لا يوجد موردون مسجلون', 'No suppliers registered', lang)}
+  1542→            </div>
+  1543→          )}
+  1544→        </CardContent>
+  1545→      </Card>
+  1546→    </div>
+  1547→  )
+  1548→}
+  1549→
+  1550→
+  1551→// ============================================================================
+  1552→// MAIN FINANCE SECTION
+  1553→// ============================================================================
+  1554→
+  1555→export function FinanceSection() {
+  1556→  const { activeSubModule, lang } = useAppStore()
+  1557→
+  1558→  const renderTabContent = () => {
+  1559→    switch (activeSubModule) {
+  1560→      case 'treasury':
+  1561→        return <TreasuryModule />
+  1562→      case 'journal-entries':
+  1563→        return <JournalEntriesModule />
+  1564→      case 'chart-of-accounts':
+  1565→        return <ChartOfAccountsModule />
+  1566→      case 'general-ledger':
+  1567→        return <GeneralLedgerModule />
+  1568→      case 'receivables':
+  1569→        return <ReceivablesModule />
+  1570→      case 'payables':
+  1571→        return <PayablesModule />
+  1572→      case 'vat':
+  1573→        return <VATModule />
+  1574→      case 'banks':
+  1575→        return (
+  1576→          <TabPlaceholder
+  1577→            icon={Building}
+  1578→            title={placeholderData['banks'].title}
+  1579→            description={placeholderData['banks'].description}
+  1580→            lang={lang}
+  1581→          />
+  1582→        )
+  1583→      case 'checks':
+  1584→        return (
+  1585→          <TabPlaceholder
+  1586→            icon={CreditCard}
+  1587→            title={placeholderData['checks'].title}
+  1588→            description={placeholderData['checks'].description}
+  1589→            lang={lang}
+  1590→          />
+  1591→        )
+  1592→      case 'fixed-assets':
+  1593→        return (
+  1594→          <TabPlaceholder
+  1595→            icon={Building2}
+  1596→            title={placeholderData['fixed-assets'].title}
+  1597→            description={placeholderData['fixed-assets'].description}
+  1598→            lang={lang}
+  1599→          />
+  1600→        )
+  1601→      case 'depreciation':
+  1602→        return (
+  1603→          <TabPlaceholder
+  1604→            icon={TrendingDown}
+  1605→            title={placeholderData['depreciation'].title}
+  1606→            description={placeholderData['depreciation'].description}
+  1607→            lang={lang}
+  1608→          />
+  1609→        )
+  1610→      case 'budgets':
+  1611→        return (
+  1612→          <TabPlaceholder
+  1613→            icon={PieChart}
+  1614→            title={placeholderData['budgets'].title}
+  1615→            description={placeholderData['budgets'].description}
+  1616→            lang={lang}
+  1617→          />
+  1618→        )
+  1619→      case 'cash-flow':
+  1620→        return (
+  1621→          <TabPlaceholder
+  1622→            icon={Banknote}
+  1623→            title={placeholderData['cash-flow'].title}
+  1624→            description={placeholderData['cash-flow'].description}
+  1625→            lang={lang}
+  1626→          />
+  1627→        )
+  1628→      default:
+  1629→        return <TreasuryModule />
+  1630→    }
+  1631→  }
+  1632→
+  1633→  return (
+  1634→    <SectionLayout
+  1635→      title={{ ar: 'المالية', en: 'Finance' }}
+  1636→      subtitle={{
+  1637→        ar: 'إدارة الحسابات المالية والمحاسبة والضرائب',
+  1638→        en: 'Manage financial accounts, accounting, and taxes',
+  1639→      }}
+  1640→      tabs={financeTabs}
+  1641→      showPrintExport={false}
+  1642→    >
+  1643→      {renderTabContent()}
+  1644→    </SectionLayout>
+  1645→  )
+  1646→}
+  1647→

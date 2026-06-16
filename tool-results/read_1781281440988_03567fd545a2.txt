@@ -1,0 +1,1323 @@
+     1→// ============================================================================
+     2→// أنماط CSS المشتركة - Shared CSS Styles
+     3→// نظام بِنَاء ERP - Binaa Construction ERP
+     4→// ============================================================================
+     5→
+     6→// ============ Default Document CSS ============
+     7→
+     8→export function getDefaultCSS(lang: 'ar' | 'en'): string {
+     9→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+    10→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+    11→  const textAlign = lang === 'ar' ? 'right' : 'left'
+    12→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+    13→
+    14→  return `
+    15→    * { margin: 0; padding: 0; box-sizing: border-box; }
+    16→    body {
+    17→      font-family: ${fontFamily};
+    18→      font-size: 11px;
+    19→      color: #1a1a1a;
+    20→      direction: ${dir};
+    21→      background: #e5e7eb;
+    22→      line-height: 1.6;
+    23→    }
+    24→    @page {
+    25→      size: A4 portrait;
+    26→      margin: 0;
+    27→    }
+    28→    @media print {
+    29→      body { background: white; }
+    30→      .page { margin: 0; box-shadow: none; }
+    31→      .no-print { display: none !important; }
+    32→      .page-break { page-break-before: always; }
+    33→    }
+    34→    .page {
+    35→      width: 210mm;
+    36→      min-height: 297mm;
+    37→      padding: 0;
+    38→      margin: 0 auto 20px;
+    39→      background: white;
+    40→      box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+    41→      position: relative;
+    42→      overflow: hidden;
+    43→    }
+    44→    /* ──── HEADER ──── */
+    45→    .doc-header {
+    46→      background: linear-gradient(135deg, #065f46 0%, #047857 50%, #059669 100%);
+    47→      color: white;
+    48→      padding: 18px 25px;
+    49→      display: flex;
+    50→      align-items: center;
+    51→      gap: 15px;
+    52→      position: relative;
+    53→    }
+    54→    .doc-header::after {
+    55→      content: '';
+    56→      position: absolute;
+    57→      bottom: 0;
+    58→      left: 0;
+    59→      right: 0;
+    60→      height: 4px;
+    61→      background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24);
+    62→    }
+    63→    .header-logo {
+    64→      width: 60px;
+    65→      height: 60px;
+    66→      border-radius: 10px;
+    67→      background: white;
+    68→      padding: 4px;
+    69→      flex-shrink: 0;
+    70→      object-fit: contain;
+    71→    }
+    72→    .header-company {
+    73→      flex: 1;
+    74→    }
+    75→    .header-company-name {
+    76→      font-size: 18px;
+    77→      font-weight: 700;
+    78→      letter-spacing: 0.5px;
+    79→    }
+    80→    .header-company-details {
+    81→      font-size: 9px;
+    82→      opacity: 0.9;
+    83→      margin-top: 3px;
+    84→      display: flex;
+    85→      flex-wrap: wrap;
+    86→      gap: 8px;
+    87→    }
+    88→    .header-company-details span {
+    89→      display: inline-flex;
+    90→      align-items: center;
+    91→      gap: 3px;
+    92→    }
+    93→    .header-doc-title-section {
+    94→      flex-shrink: 0;
+    95→      text-align: center;
+    96→      background: rgba(255,255,255,0.15);
+    97→      border-radius: 8px;
+    98→      padding: 8px 16px;
+    99→      backdrop-filter: blur(4px);
+   100→    }
+   101→    .header-doc-title {
+   102→      font-size: 14px;
+   103→      font-weight: 700;
+   104→    }
+   105→    .header-doc-subtitle {
+   106→      font-size: 9px;
+   107→      opacity: 0.85;
+   108→      margin-top: 2px;
+   109→    }
+   110→    /* ──── CUSTOM HEADER IMAGE ──── */
+   111→    .custom-header img {
+   112→      width: 100%;
+   113→      max-height: 100px;
+   114→      object-fit: contain;
+   115→    }
+   116→    /* ──── BODY ──── */
+   117→    .doc-body {
+   118→      padding: 20px 25px 10px;
+   119→    }
+   120→    /* ──── INFO GRID ──── */
+   121→    .info-grid {
+   122→      display: grid;
+   123→      grid-template-columns: 1fr 1fr;
+   124→      gap: 10px 20px;
+   125→      margin: 12px 0;
+   126→    }
+   127→    .info-grid-3 {
+   128→      display: grid;
+   129→      grid-template-columns: 1fr 1fr 1fr;
+   130→      gap: 10px 20px;
+   131→      margin: 12px 0;
+   132→    }
+   133→    .info-item {
+   134→      padding: 6px 10px;
+   135→      background: #f9fafb;
+   136→      border-radius: 4px;
+   137→      border-right: 3px solid #059669;
+   138→      border-left: none;
+   139→    }
+   140→    [dir="ltr"] .info-item {
+   141→      border-right: none;
+   142→      border-left: 3px solid #059669;
+   143→    }
+   144→    .info-label {
+   145→      font-size: 8px;
+   146→      color: #9ca3af;
+   147→      text-transform: uppercase;
+   148→      letter-spacing: 0.5px;
+   149→      margin-bottom: 2px;
+   150→    }
+   151→    .info-value {
+   152→      font-size: 11px;
+   153→      font-weight: 600;
+   154→      color: #1a1a1a;
+   155→    }
+   156→    /* ──── PARTIES SECTION ──── */
+   157→    .parties-section {
+   158→      display: grid;
+   159→      grid-template-columns: 1fr 1fr;
+   160→      gap: 15px;
+   161→      margin: 15px 0;
+   162→    }
+   163→    .party-card {
+   164→      border: 1px solid #e5e7eb;
+   165→      border-radius: 8px;
+   166→      padding: 12px;
+   167→      background: #fafafa;
+   168→    }
+   169→    .party-card-title {
+   170→      font-size: 9px;
+   171→      font-weight: 700;
+   172→      color: #059669;
+   173→      text-transform: uppercase;
+   174→      letter-spacing: 0.5px;
+   175→      margin-bottom: 8px;
+   176→      padding-bottom: 5px;
+   177→      border-bottom: 1px solid #e5e7eb;
+   178→    }
+   179→    .party-card-row {
+   180→      display: flex;
+   181→      justify-content: space-between;
+   182→      margin: 3px 0;
+   183→      font-size: 10px;
+   184→    }
+   185→    .party-card-row .label { color: #6b7280; }
+   186→    .party-card-row .value { font-weight: 600; color: #1a1a1a; }
+   187→    /* ──── TABLE ──── */
+   188→    .doc-table {
+   189→      width: 100%;
+   190→      border-collapse: collapse;
+   191→      margin: 15px 0;
+   192→      border-radius: 8px;
+   193→      overflow: hidden;
+   194→      border: 1px solid #e5e7eb;
+   195→    }
+   196→    .doc-table thead {
+   197→      background: linear-gradient(135deg, #065f46, #047857);
+   198→    }
+   199→    .doc-table thead th {
+   200→      padding: 10px 12px;
+   201→      color: white;
+   202→      font-size: 9px;
+   203→      font-weight: 600;
+   204→      text-transform: uppercase;
+   205→      letter-spacing: 0.3px;
+   206→      text-align: ${textAlign};
+   207→    }
+   208→    .doc-table thead th.amount-header {
+   209→      text-align: ${amountAlign};
+   210→    }
+   211→    .doc-table tbody tr {
+   212→      border-bottom: 1px solid #f3f4f6;
+   213→      transition: background 0.15s;
+   214→    }
+   215→    .doc-table tbody tr:nth-child(even) {
+   216→      background: #f9fafb;
+   217→    }
+   218→    .doc-table tbody tr:hover {
+   219→      background: #f0fdf4;
+   220→    }
+   221→    .doc-table tbody td {
+   222→      padding: 8px 12px;
+   223→      font-size: 10px;
+   224→      text-align: ${textAlign};
+   225→    }
+   226→    .doc-table tbody td.amount-cell {
+   227→      text-align: ${amountAlign};
+   228→      font-variant-numeric: tabular-nums;
+   229→      direction: ltr;
+   230→      font-weight: 500;
+   231→    }
+   232→    .doc-table tbody td.row-num {
+   233→      text-align: center;
+   234→      color: #9ca3af;
+   235→      font-weight: 600;
+   236→      width: 35px;
+   237→    }
+   238→    /* ──── CURRENCY SYMBOL IMAGE ──── */
+   239→    .ri-currency-img {
+   240→      height: 0.9em;
+   241→      width: auto;
+   242→      vertical-align: middle;
+   243→      display: inline-block;
+   244→      margin: 0 2px;
+   245→      mix-blend-mode: multiply;
+   246→    }
+   247→    .doc-header .ri-currency-img {
+   248→      mix-blend-mode: screen;
+   249→    }
+   250→    /* ──── TOTALS SECTION ──── */
+   251→    .totals-section {
+   252→      margin-top: 15px;
+   253→      display: flex;
+   254→      justify-content: flex-end;
+   255→    }
+   256→    .totals-box {
+   257→      width: 280px;
+   258→      border: 1px solid #e5e7eb;
+   259→      border-radius: 8px;
+   260→      overflow: hidden;
+   261→    }
+   262→    .total-row {
+   263→      display: flex;
+   264→      justify-content: space-between;
+   265→      padding: 7px 12px;
+   266→      font-size: 10px;
+   267→      border-bottom: 1px solid #f3f4f6;
+   268→    }
+   269→    .total-row .label { color: #6b7280; }
+   270→    .total-row .value { font-weight: 600; direction: ltr; }
+   271→    .total-row.grand {
+   272→      background: linear-gradient(135deg, #065f46, #047857);
+   273→      color: white;
+   274→      font-size: 13px;
+   275→      font-weight: 700;
+   276→      padding: 10px 12px;
+   277→      border-bottom: none;
+   278→    }
+   279→    .total-row.grand .label { color: rgba(255,255,255,0.9); }
+   280→    .total-row.grand .value { color: white; font-size: 14px; }
+   281→    /* ──── AMOUNT IN WORDS ──── */
+   282→    .amount-words {
+   283→      margin-top: 12px;
+   284→      padding: 10px 14px;
+   285→      background: #fefce8;
+   286→      border: 1px dashed #fbbf24;
+   287→      border-radius: 6px;
+   288→      font-size: 10px;
+   289→    }
+   290→    .amount-words-label {
+   291→      font-size: 8px;
+   292→      font-weight: 700;
+   293→      color: #92400e;
+   294→      text-transform: uppercase;
+   295→      letter-spacing: 0.3px;
+   296→      margin-bottom: 3px;
+   297→    }
+   298→    .amount-words-text {
+   299→      color: #78350f;
+   300→      font-weight: 600;
+   301→      line-height: 1.5;
+   302→    }
+   303→    /* ──── BANK INFO ──── */
+   304→    .bank-info {
+   305→      margin-top: 12px;
+   306→      padding: 10px 14px;
+   307→      background: #f0f9ff;
+   308→      border: 1px solid #bae6fd;
+   309→      border-radius: 6px;
+   310→      font-size: 9px;
+   311→    }
+   312→    .bank-info-title {
+   313→      font-weight: 700;
+   314→      color: #0369a1;
+   315→      margin-bottom: 5px;
+   316→    }
+   317→    .bank-info-row {
+   318→      display: flex;
+   319→      gap: 15px;
+   320→      color: #0c4a6e;
+   321→    }
+   322→    .bank-info-row span { font-weight: 600; }
+   323→    /* ──── TERMS ──── */
+   324→    .terms-section {
+   325→      margin-top: 12px;
+   326→      padding: 10px 14px;
+   327→      background: #f9fafb;
+   328→      border: 1px solid #e5e7eb;
+   329→      border-radius: 6px;
+   330→      font-size: 9px;
+   331→      color: #6b7280;
+   332→    }
+   333→    .terms-title {
+   334→      font-weight: 700;
+   335→      color: #374151;
+   336→      margin-bottom: 4px;
+   337→    }
+   338→    /* ──── STAMP & SIGNATURE ──── */
+   339→    .signatures-section {
+   340→      margin-top: 25px;
+   341→      display: flex;
+   342→      justify-content: space-between;
+   343→      align-items: flex-end;
+   344→    }
+   345→    .stamp-area {
+   346→      text-align: center;
+   347→    }
+   348→    .stamp-area img {
+   349→      max-width: 120px;
+   350→      max-height: 120px;
+   351→      object-fit: contain;
+   352→    }
+   353→    .signature-box {
+   354→      text-align: center;
+   355→      min-width: 160px;
+   356→    }
+   357→    .signature-line {
+   358→      border-top: 1px dashed #9ca3af;
+   359→      margin-top: 40px;
+   360→      padding-top: 5px;
+   361→      font-size: 9px;
+   362→      color: #6b7280;
+   363→    }
+   364→    /* ──── FOOTER ──── */
+   365→    .doc-footer {
+   366→      position: absolute;
+   367→      bottom: 0;
+   368→      left: 0;
+   369→      right: 0;
+   370→      background: #f9fafb;
+   371→      border-top: 2px solid #059669;
+   372→      padding: 8px 25px;
+   373→      display: flex;
+   374→      justify-content: space-between;
+   375→      align-items: center;
+   376→      font-size: 8px;
+   377→      color: #9ca3af;
+   378→    }
+   379→    .doc-footer .company-info {
+   380→      display: flex;
+   381→      gap: 10px;
+   382→      flex-wrap: wrap;
+   383→    }
+   384→    .doc-footer .page-info {
+   385→      font-weight: 600;
+   386→    }
+   387→    .custom-footer img {
+   388→      width: 100%;
+   389→      max-height: 60px;
+   390→      object-fit: contain;
+   391→    }
+   392→    /* ──── STATUS BADGE ──── */
+   393→    .status-badge {
+   394→      display: inline-block;
+   395→      padding: 3px 10px;
+   396→      border-radius: 12px;
+   397→      font-size: 9px;
+   398→      font-weight: 700;
+   399→      letter-spacing: 0.3px;
+   400→    }
+   401→    .status-draft { background: #fef3c7; color: #92400e; }
+   402→    .status-active { background: #d1fae5; color: #065f46; }
+   403→    .status-paid { background: #d1fae5; color: #065f46; }
+   404→    .status-partial { background: #dbeafe; color: #1e40af; }
+   405→    .status-overdue { background: #fee2e2; color: #991b1b; }
+   406→    .status-cancelled { background: #f3f4f6; color: #6b7280; }
+   407→    /* ──── RENTAL EQUIPMENT SECTION ──── */
+   408→    .rental-equipment-section {
+   409→      border: 1px solid #fbbf24;
+   410→      border-radius: 8px;
+   411→      padding: 12px;
+   412→      margin: 12px 0;
+   413→      background: #fffbeb;
+   414→    }
+   415→    .rental-equipment-section .section-title {
+   416→      font-size: 11px;
+   417→      font-weight: 700;
+   418→      color: #92400e;
+   419→      margin-bottom: 8px;
+   420→      padding-bottom: 5px;
+   421→      border-bottom: 1px solid #fbbf24;
+   422→    }
+   423→    .rental-equipment-section .info-grid {
+   424→      grid-template-columns: 1fr 1fr 1fr;
+   425→    }
+   426→    .rental-equipment-section .info-item {
+   427→      border-right-color: #f59e0b;
+   428→      background: #fefce8;
+   429→    }
+   430→    /* ──── DIVIDER ──── */
+   431→    .section-divider {
+   432→      border: none;
+   433→      border-top: 1px dashed #d1d5db;
+   434→      margin: 12px 0;
+   435→    }
+   436→    /* ──── PRINT BUTTON ──── */
+   437→    .print-actions {
+   438→      position: fixed;
+   439→      top: 10px;
+   440→      left: 50%;
+   441→      transform: translateX(-50%);
+   442→      z-index: 999;
+   443→      display: flex;
+   444→      gap: 8px;
+   445→    }
+   446→    .print-actions button {
+   447→      padding: 8px 20px;
+   448→      background: #059669;
+   449→      color: white;
+   450→      border: none;
+   451→      border-radius: 8px;
+   452→      font-size: 13px;
+   453→      font-weight: 600;
+   454→      cursor: pointer;
+   455→      font-family: ${fontFamily};
+   456→      box-shadow: 0 2px 8px rgba(5,150,105,0.3);
+   457→      transition: all 0.2s;
+   458→    }
+   459→    .print-actions button:hover {
+   460→      background: #047857;
+   461→      box-shadow: 0 4px 12px rgba(5,150,105,0.4);
+   462→      transform: translateY(-1px);
+   463→    }
+   464→    .print-actions .close-btn {
+   465→      background: #6b7280;
+   466→      box-shadow: 0 2px 8px rgba(107,114,128,0.3);
+   467→    }
+   468→    .print-actions .close-btn:hover {
+   469→      background: #4b5563;
+   470→    }
+   471→    /* ──── WATERMARK ──── */
+   472→    .watermark {
+   473→      position: absolute;
+   474→      top: 50%;
+   475→      left: 50%;
+   476→      transform: translate(-50%, -50%) rotate(-45deg);
+   477→      font-size: 80px;
+   478→      color: rgba(0,0,0,0.03);
+   479→      font-weight: 700;
+   480→      pointer-events: none;
+   481→      white-space: nowrap;
+   482→    }
+   483→  `
+   484→}
+   485→
+   486→// ============ Rental Invoice CSS ============
+   487→
+   488→export function getRentalInvoiceCSS(lang: 'ar' | 'en'): string {
+   489→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+   490→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+   491→  const textAlign = lang === 'ar' ? 'right' : 'left'
+   492→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+   493→
+   494→  return `
+   495→    * { margin: 0; padding: 0; box-sizing: border-box; }
+   496→    body {
+   497→      font-family: ${fontFamily};
+   498→      font-size: 10px;
+   499→      color: #1e293b;
+   500→      direction: ${dir};
+   501→      background: #e2e8f0;
+   502→      line-height: 1.5;
+   503→    }
+   504→    @page {
+   505→      size: A4 portrait;
+   506→      margin: 0;
+   507→    }
+   508→    @media print {
+   509→      body { background: white; }
+   510→      .page { margin: 0; box-shadow: none; }
+   511→      .no-print { display: none !important; }
+   512→    }
+   513→    .page {
+   514→      width: 210mm;
+   515→      min-height: 297mm;
+   516→      padding: 0;
+   517→      margin: 0 auto 20px;
+   518→      background: white;
+   519→      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+   520→      position: relative;
+   521→      overflow: hidden;
+   522→    }
+   523→    /* ──── HEADER ──── */
+   524→    .ri-header {
+   525→      background: linear-gradient(135deg, #064e3b 0%, #065f46 40%, #047857 100%);
+   526→      color: white;
+   527→      padding: 20px 28px 16px;
+   528→      position: relative;
+   529→      display: flex;
+   530→      align-items: flex-start;
+   531→      gap: 16px;
+   532→    }
+   533→    .ri-header::after {
+   534→      content: '';
+   535→      position: absolute;
+   536→      bottom: 0; left: 0; right: 0;
+   537→      height: 4px;
+   538→      background: linear-gradient(90deg, #d97706, #f59e0b, #d97706);
+   539→    }
+   540→    .ri-header-logo {
+   541→      width: 72px; height: 72px;
+   542→      border-radius: 12px;
+   543→      background: white;
+   544→      padding: 5px;
+   545→      flex-shrink: 0;
+   546→      object-fit: contain;
+   547→    }
+   548→    .ri-header-logo-placeholder {
+   549→      width: 72px; height: 72px;
+   550→      border-radius: 12px;
+   551→      background: rgba(255,255,255,0.15);
+   552→      display: flex; align-items: center; justify-content: center;
+   553→      font-size: 30px; font-weight: 800; color: #d97706;
+   554→      flex-shrink: 0;
+   555→    }
+   556→    .ri-header-company {
+   557→      flex: 1;
+   558→      min-width: 0;
+   559→    }
+   560→    .ri-header-company-name {
+   561→      font-size: 20px;
+   562→      font-weight: 800;
+   563→      letter-spacing: 0.5px;
+   564→      line-height: 1.3;
+   565→    }
+   566→    .ri-header-company-name-en {
+   567→      font-size: 11px;
+   568→      opacity: 0.8;
+   569→      font-weight: 400;
+   570→      margin-top: 1px;
+   571→    }
+   572→    .ri-header-details {
+   573→      display: flex;
+   574→      flex-wrap: wrap;
+   575→      gap: 6px 14px;
+   576→      margin-top: 6px;
+   577→      font-size: 8.5px;
+   578→      opacity: 0.9;
+   579→    }
+   580→    .ri-header-details span {
+   581→      display: inline-flex;
+   582→      align-items: center;
+   583→      gap: 3px;
+   584→      white-space: nowrap;
+   585→    }
+   586→    .ri-header-title-box {
+   587→      flex-shrink: 0;
+   588→      text-align: center;
+   589→      background: rgba(255,255,255,0.12);
+   590→      border-radius: 10px;
+   591→      padding: 10px 18px;
+   592→      backdrop-filter: blur(4px);
+   593→      border: 1px solid rgba(255,255,255,0.2);
+   594→      align-self: center;
+   595→    }
+   596→    .ri-header-title {
+   597→      font-size: 14px;
+   598→      font-weight: 700;
+   599→      white-space: nowrap;
+   600→    }
+   601→    .ri-header-title-en {
+   602→      font-size: 9px;
+   603→      opacity: 0.85;
+   604→      margin-top: 2px;
+   605→    }
+   606→    .ri-custom-header img {
+   607→      width: 100%;
+   608→      max-height: 100px;
+   609→      object-fit: contain;
+   610→    }
+   611→    .ri-body {
+   612→      padding: 16px 28px 8px;
+   613→    }
+   614→    .ri-rental-data {
+   615→      margin: 0 0 14px;
+   616→      border: 1.5px solid #047857;
+   617→      border-radius: 8px;
+   618→      overflow: hidden;
+   619→    }
+   620→    .ri-rental-data-title {
+   621→      background: linear-gradient(135deg, #064e3b, #047857);
+   622→      color: white;
+   623→      padding: 6px 12px;
+   624→      font-size: 10px;
+   625→      font-weight: 700;
+   626→    }
+   627→    .ri-rental-data-grid {
+   628→      display: grid;
+   629→      grid-template-columns: 1fr 1fr 1fr;
+   630→      gap: 0;
+   631→    }
+   632→    .ri-rental-data-item {
+   633→      padding: 5px 10px;
+   634→      border-bottom: 1px solid #f1f5f9;
+   635→      border-left: 1px solid #f1f5f9;
+   636→    }
+   637→    [dir="rtl"] .ri-rental-data-item {
+   638→      border-left: none;
+   639→      border-right: 1px solid #f1f5f9;
+   640→    }
+   641→    .ri-rental-data-label {
+   642→      font-size: 7px;
+   643→      color: #94a3b8;
+   644→      text-transform: uppercase;
+   645→      letter-spacing: 0.3px;
+   646→    }
+   647→    .ri-rental-data-value {
+   648→      font-size: 10px;
+   649→      font-weight: 600;
+   650→      color: #1e293b;
+   651→    }
+   652→    .ri-info-section {
+   653→      display: grid;
+   654→      grid-template-columns: 1fr 1fr;
+   655→      gap: 8px 20px;
+   656→      margin: 0 0 14px;
+   657→    }
+   658→    .ri-info-item {
+   659→      padding: 5px 10px;
+   660→      background: #f8fafc;
+   661→      border-radius: 4px;
+   662→      border-right: 3px solid #047857;
+   663→    }
+   664→    [dir="ltr"] .ri-info-item {
+   665→      border-right: none;
+   666→      border-left: 3px solid #047857;
+   667→    }
+   668→    .ri-info-label {
+   669→      font-size: 7.5px;
+   670→      color: #94a3b8;
+   671→      text-transform: uppercase;
+   672→      letter-spacing: 0.4px;
+   673→      margin-bottom: 1px;
+   674→    }
+   675→    .ri-info-value {
+   676→      font-size: 10px;
+   677→      font-weight: 600;
+   678→      color: #1e293b;
+   679→    }
+   680→    .ri-parties {
+   681→      display: grid;
+   682→      grid-template-columns: 1fr 1fr;
+   683→      gap: 14px;
+   684→      margin: 0 0 14px;
+   685→    }
+   686→    .ri-party-card {
+   687→      border: 1.5px solid #e2e8f0;
+   688→      border-radius: 8px;
+   689→      padding: 10px 12px;
+   690→      background: #fafafa;
+   691→    }
+   692→    .ri-party-title {
+   693→      font-size: 8px;
+   694→      font-weight: 700;
+   695→      color: #047857;
+   696→      text-transform: uppercase;
+   697→      letter-spacing: 0.5px;
+   698→      margin-bottom: 6px;
+   699→      padding-bottom: 4px;
+   700→      border-bottom: 1px solid #e2e8f0;
+   701→    }
+   702→    .ri-party-row {
+   703→      display: flex;
+   704→      justify-content: space-between;
+   705→      margin: 2px 0;
+   706→      font-size: 9px;
+   707→    }
+   708→    .ri-party-row .label { color: #64748b; }
+   709→    .ri-party-row .value { font-weight: 600; color: #1e293b; }
+   710→    .ri-table {
+   711→      width: 100%;
+   712→      border-collapse: collapse;
+   713→      margin: 0 0 14px;
+   714→      border-radius: 8px;
+   715→      overflow: hidden;
+   716→      border: 1px solid #e2e8f0;
+   717→    }
+   718→    .ri-table thead {
+   719→      background: linear-gradient(135deg, #064e3b, #047857);
+   720→    }
+   721→    .ri-table thead th {
+   722→      padding: 8px 10px;
+   723→      color: white;
+   724→      font-size: 8px;
+   725→      font-weight: 600;
+   726→      text-transform: uppercase;
+   727→      letter-spacing: 0.3px;
+   728→      text-align: ${textAlign};
+   729→      white-space: nowrap;
+   730→    }
+   731→    .ri-table thead th.amount-header {
+   732→      text-align: ${amountAlign};
+   733→    }
+   734→    .ri-table tbody tr {
+   735→      border-bottom: 1px solid #f1f5f9;
+   736→      transition: background 0.15s;
+   737→    }
+   738→    .ri-table tbody tr:nth-child(even) {
+   739→      background: #f8fafc;
+   740→    }
+   741→    .ri-table tbody td {
+   742→      padding: 6px 10px;
+   743→      font-size: 9px;
+   744→      text-align: ${textAlign};
+   745→    }
+   746→    .ri-table tbody td.amount-cell {
+   747→      text-align: ${amountAlign};
+   748→      font-variant-numeric: tabular-nums;
+   749→      direction: ltr;
+   750→      font-weight: 500;
+   751→    }
+   752→    .ri-table tbody td.row-num {
+   753→      text-align: center;
+   754→      color: #94a3b8;
+   755→      font-weight: 600;
+   756→      width: 30px;
+   757→    }
+   758→    .ri-totals-qr-wrapper {
+   759→      margin: 0 0 12px;
+   760→      display: flex;
+   761→      gap: 12px;
+   762→      align-items: stretch;
+   763→    }
+   764→    .ri-totals-box {
+   765→      flex: 1;
+   766→      border: 1.5px solid #e2e8f0;
+   767→      border-radius: 8px;
+   768→      overflow: hidden;
+   769→    }
+   770→    .ri-qr-box {
+   771→      width: 140px;
+   772→      flex-shrink: 0;
+   773→      border: 1.5px solid #e2e8f0;
+   774→      border-radius: 8px;
+   775→      overflow: hidden;
+   776→      display: flex;
+   777→      flex-direction: column;
+   778→      align-items: center;
+   779→      justify-content: center;
+   780→      padding: 8px;
+   781→      background: #f0fdf4;
+   782→    }
+   783→    .ri-qr-label {
+   784→      font-size: 6px;
+   785→      color: #065f46;
+   786→      text-align: center;
+   787→      margin-top: 4px;
+   788→      font-weight: 600;
+   789→    }
+   790→    .ri-total-row {
+   791→      display: flex;
+   792→      justify-content: space-between;
+   793→      padding: 5px 12px;
+   794→      font-size: 9.5px;
+   795→      border-bottom: 1px solid #f1f5f9;
+   796→    }
+   797→    .ri-total-row .label { color: #64748b; }
+   798→    .ri-total-row .value { font-weight: 600; direction: ltr; }
+   799→    .ri-total-row.grand {
+   800→      background: linear-gradient(135deg, #064e3b, #047857);
+   801→      color: white;
+   802→      font-size: 12px;
+   803→      font-weight: 700;
+   804→      padding: 8px 12px;
+   805→      border-bottom: none;
+   806→    }
+   807→    .ri-total-row.grand .label { color: rgba(255,255,255,0.9); }
+   808→    .ri-total-row.grand .value { color: white; font-size: 13px; }
+   809→    .ri-amount-words {
+   810→      margin: 0 0 10px;
+   811→      padding: 8px 12px;
+   812→      background: #fffbeb;
+   813→      border: 1px dashed #f59e0b;
+   814→      border-radius: 6px;
+   815→      font-size: 9px;
+   816→    }
+   817→    .ri-amount-words-label {
+   818→      font-size: 7.5px;
+   819→      font-weight: 700;
+   820→      color: #92400e;
+   821→      text-transform: uppercase;
+   822→      letter-spacing: 0.3px;
+   823→      margin-bottom: 2px;
+   824→    }
+   825→    .ri-amount-words-text {
+   826→      color: #78350f;
+   827→      font-weight: 600;
+   828→      line-height: 1.5;
+   829→    }
+   830→    .ri-amount-words-en {
+   831→      color: #94a3b8;
+   832→      font-size: 8px;
+   833→      margin-top: 2px;
+   834→    }
+   835→    .ri-bank {
+   836→      margin: 0 0 10px;
+   837→      padding: 8px 12px;
+   838→      background: #eff6ff;
+   839→      border: 1px solid #bfdbfe;
+   840→      border-radius: 6px;
+   841→      font-size: 8.5px;
+   842→    }
+   843→    .ri-bank-title {
+   844→      font-weight: 700;
+   845→      color: #1e40af;
+   846→      margin-bottom: 4px;
+   847→      font-size: 9px;
+   848→    }
+   849→    .ri-bank-grid {
+   850→      display: grid;
+   851→      grid-template-columns: 1fr 1fr 1fr;
+   852→      gap: 6px;
+   853→      color: #1e3a5f;
+   854→    }
+   855→    .ri-bank-item-label {
+   856→      color: #64748b;
+   857→      font-size: 7.5px;
+   858→    }
+   859→    .ri-bank-item-value {
+   860→      font-weight: 600;
+   861→      color: #1e293b;
+   862→      font-size: 9px;
+   863→      direction: ltr;
+   864→      unicode-bidi: plaintext;
+   865→    }
+   866→    .ri-signatures {
+   867→      margin: 14px 0 8px;
+   868→      display: grid;
+   869→      grid-template-columns: 1fr 1fr;
+   870→      gap: 20px;
+   871→    }
+   872→    .ri-sign-box {
+   873→      border: 1.5px dashed #cbd5e1;
+   874→      border-radius: 8px;
+   875→      padding: 12px;
+   876→      text-align: center;
+   877→      min-height: 80px;
+   878→      display: flex;
+   879→      flex-direction: column;
+   880→      justify-content: flex-end;
+   881→    }
+   882→    .ri-sign-box .sign-label {
+   883→      font-size: 8px;
+   884→      color: #64748b;
+   885→      font-weight: 600;
+   886→      margin-top: 8px;
+   887→      padding-top: 6px;
+   888→      border-top: 1px solid #e2e8f0;
+   889→    }
+   890→    .ri-sign-box .stamp-img {
+   891→      max-width: 80px;
+   892→      max-height: 60px;
+   893→      object-fit: contain;
+   894→      margin: 0 auto;
+   895→    }
+   896→    .ri-terms {
+   897→      margin: 0 0 8px;
+   898→      padding: 8px 12px;
+   899→      background: #f8fafc;
+   900→      border: 1px solid #e2e8f0;
+   901→      border-radius: 6px;
+   902→      font-size: 8px;
+   903→      color: #64748b;
+   904→    }
+   905→    .ri-terms-title {
+   906→      font-weight: 700;
+   907→      color: #334155;
+   908→      margin-bottom: 3px;
+   909→      font-size: 8.5px;
+   910→    }
+   911→    .ri-footer {
+   912→      position: absolute;
+   913→      bottom: 0; left: 0; right: 0;
+   914→      background: #f1f5f9;
+   915→      border-top: 2px solid #047857;
+   916→      padding: 6px 28px;
+   917→      display: flex;
+   918→      justify-content: space-between;
+   919→      align-items: center;
+   920→      font-size: 7.5px;
+   921→      color: #94a3b8;
+   922→    }
+   923→    .ri-footer .company-info {
+   924→      display: flex;
+   925→      gap: 8px;
+   926→      flex-wrap: wrap;
+   927→    }
+   928→    .ri-custom-footer img {
+   929→      width: 100%;
+   930→      max-height: 50px;
+   931→      object-fit: contain;
+   932→    }
+   933→    .ri-status-badge {
+   934→      display: inline-block;
+   935→      padding: 2px 8px;
+   936→      border-radius: 10px;
+   937→      font-size: 8px;
+   938→      font-weight: 700;
+   939→    }
+   940→    .ri-status-draft { background: #fef3c7; color: #92400e; }
+   941→    .ri-status-active { background: #d1fae5; color: #065f46; }
+   942→    .ri-status-paid { background: #d1fae5; color: #065f46; }
+   943→    .ri-status-partial { background: #dbeafe; color: #1e40af; }
+   944→    .ri-status-overdue { background: #fee2e2; color: #991b1b; }
+   945→    .ri-status-cancelled { background: #f3f4f6; color: #6b7280; }
+   946→    .ri-status-sent { background: #d1fae5; color: #065f46; }
+   947→    .ri-status-approved { background: #d1fae5; color: #065f46; }
+   948→    .ri-status-completed { background: #d1fae5; color: #065f46; }
+   949→    .ri-currency-img {
+   950→      height: 0.9em;
+   951→      width: auto;
+   952→      vertical-align: middle;
+   953→      display: inline-block;
+   954→      margin: 0 2px;
+   955→      mix-blend-mode: multiply;
+   956→    }
+   957→    .ri-footer .ri-currency-img,
+   958→    .ri-header .ri-currency-img {
+   959→      mix-blend-mode: screen;
+   960→    }
+   961→    .ri-watermark {
+   962→      position: absolute;
+   963→      top: 50%;
+   964→      left: 50%;
+   965→      transform: translate(-50%, -50%) rotate(-45deg);
+   966→      font-size: 80px;
+   967→      color: rgba(0,0,0,0.03);
+   968→      font-weight: 700;
+   969→      pointer-events: none;
+   970→      white-space: nowrap;
+   971→    }
+   972→    .ri-print-actions {
+   973→      position: fixed;
+   974→      top: 10px;
+   975→      left: 50%;
+   976→      transform: translateX(-50%);
+   977→      z-index: 999;
+   978→      display: flex;
+   979→      gap: 8px;
+   980→    }
+   981→    .ri-print-actions button {
+   982→      padding: 8px 18px;
+   983→      color: white;
+   984→      border: none;
+   985→      border-radius: 8px;
+   986→      font-size: 12px;
+   987→      font-weight: 600;
+   988→      cursor: pointer;
+   989→      font-family: ${fontFamily};
+   990→      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+   991→      transition: all 0.2s;
+   992→    }
+   993→    .ri-print-actions button:hover {
+   994→      transform: translateY(-1px);
+   995→      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+   996→    }
+   997→    .ri-btn-print { background: #047857; }
+   998→    .ri-btn-print:hover { background: #065f46; }
+   999→    .ri-btn-jpg { background: #d97706; }
+  1000→    .ri-btn-jpg:hover { background: #b45309; }
+  1001→    .ri-btn-png { background: #7c3aed; }
+  1002→    .ri-btn-png:hover { background: #6d28d9; }
+  1003→    .ri-btn-close { background: #6b7280; }
+  1004→    .ri-btn-close:hover { background: #4b5563; }
+  1005→    .ri-export-loading {
+  1006→      opacity: 0.6;
+  1007→      pointer-events: none;
+  1008→    }
+  1009→    .ri-divider {
+  1010→      border: none;
+  1011→      border-top: 1px dashed #d1d5db;
+  1012→      margin: 10px 0;
+  1013→    }
+  1014→  `
+  1015→}
+  1016→
+  1017→// ============ Accounting Report CSS ============
+  1018→
+  1019→export function getAccountingCSS(lang: 'ar' | 'en'): string {
+  1020→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+  1021→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+  1022→  const textAlign = lang === 'ar' ? 'right' : 'left'
+  1023→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+  1024→
+  1025→  return `
+  1026→    * { margin: 0; padding: 0; box-sizing: border-box; }
+  1027→    body {
+  1028→      font-family: ${fontFamily};
+  1029→      font-size: 11px;
+  1030→      color: #1a1a1a;
+  1031→      direction: ${dir};
+  1032→      background: #e5e7eb;
+  1033→      line-height: 1.6;
+  1034→    }
+  1035→    @page {
+  1036→      size: A4 portrait;
+  1037→      margin: 0;
+  1038→    }
+  1039→    @media print {
+  1040→      body { background: white; }
+  1041→      .page { margin: 0; box-shadow: none; }
+  1042→      .no-print { display: none !important; }
+  1043→      .page-break { page-break-before: always; }
+  1044→    }
+  1045→    .page {
+  1046→      width: 210mm;
+  1047→      min-height: 297mm;
+  1048→      padding: 0;
+  1049→      margin: 0 auto 20px;
+  1050→      background: white;
+  1051→      box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+  1052→      position: relative;
+  1053→      overflow: hidden;
+  1054→    }
+  1055→    /* ──── ACCOUNTING HEADER (simple, no gradient) ──── */
+  1056→    .acct-header {
+  1057→      padding: 20px 25px 12px;
+  1058→      border-bottom: 2px solid #1e293b;
+  1059→      margin-bottom: 15px;
+  1060→    }
+  1061→    .acct-header-company {
+  1062→      font-size: 18px;
+  1063→      font-weight: 700;
+  1064→      color: #1e293b;
+  1065→    }
+  1066→    .acct-header-title {
+  1067→      font-size: 16px;
+  1068→      font-weight: 700;
+  1069→      color: #1e293b;
+  1070→      text-align: center;
+  1071→      margin-top: 8px;
+  1072→    }
+  1073→    .acct-header-subtitle {
+  1074→      font-size: 10px;
+  1075→      color: #64748b;
+  1076→      text-align: center;
+  1077→    }
+  1078→    .acct-header-info {
+  1079→      display: flex;
+  1080→      justify-content: space-between;
+  1081→      font-size: 9px;
+  1082→      color: #64748b;
+  1083→      margin-top: 8px;
+  1084→    }
+  1085→    /* ──── BODY ──── */
+  1086→    .doc-body {
+  1087→      padding: 0 25px 10px;
+  1088→    }
+  1089→    /* ──── TABLE ──── */
+  1090→    .doc-table {
+  1091→      width: 100%;
+  1092→      border-collapse: collapse;
+  1093→      margin: 10px 0;
+  1094→      border: 1px solid #334155;
+  1095→    }
+  1096→    .doc-table thead {
+  1097→      background: #1e293b;
+  1098→    }
+  1099→    .doc-table thead th {
+  1100→      padding: 8px 10px;
+  1101→      color: white;
+  1102→      font-size: 9px;
+  1103→      font-weight: 600;
+  1104→      text-transform: uppercase;
+  1105→      letter-spacing: 0.3px;
+  1106→      text-align: ${textAlign};
+  1107→    }
+  1108→    .doc-table thead th.amount-header {
+  1109→      text-align: ${amountAlign};
+  1110→    }
+  1111→    .doc-table tbody tr {
+  1112→      border-bottom: 1px solid #e2e8f0;
+  1113→    }
+  1114→    .doc-table tbody tr:nth-child(even) {
+  1115→      background: #f8fafc;
+  1116→    }
+  1117→    .doc-table tbody td {
+  1118→      padding: 6px 10px;
+  1119→      font-size: 10px;
+  1120→      text-align: ${textAlign};
+  1121→    }
+  1122→    .doc-table tbody td.amount-cell {
+  1123→      text-align: ${amountAlign};
+  1124→      font-variant-numeric: tabular-nums;
+  1125→      direction: ltr;
+  1126→      font-weight: 500;
+  1127→    }
+  1128→    .doc-table tbody td.row-num {
+  1129→      text-align: center;
+  1130→      color: #9ca3af;
+  1131→      font-weight: 600;
+  1132→      width: 35px;
+  1133→    }
+  1134→    .doc-table tfoot {
+  1135→      border-top: 2px solid #1e293b;
+  1136→    }
+  1137→    .doc-table tfoot td {
+  1138→      padding: 8px 10px;
+  1139→      font-weight: 700;
+  1140→      font-size: 10px;
+  1141→      background: #f1f5f9;
+  1142→    }
+  1143→    .doc-table tfoot td.amount-cell {
+  1144→      text-align: ${amountAlign};
+  1145→      font-variant-numeric: tabular-nums;
+  1146→      direction: ltr;
+  1147→    }
+  1148→    /* ──── TOTALS SECTION ──── */
+  1149→    .totals-section {
+  1150→      margin-top: 10px;
+  1151→      display: flex;
+  1152→      justify-content: flex-end;
+  1153→    }
+  1154→    .totals-box {
+  1155→      width: 300px;
+  1156→      border: 2px solid #1e293b;
+  1157→      border-radius: 0;
+  1158→      overflow: hidden;
+  1159→    }
+  1160→    .total-row {
+  1161→      display: flex;
+  1162→      justify-content: space-between;
+  1163→      padding: 7px 12px;
+  1164→      font-size: 10px;
+  1165→      border-bottom: 1px solid #e2e8f0;
+  1166→    }
+  1167→    .total-row .label { color: #334155; font-weight: 600; }
+  1168→    .total-row .value { font-weight: 700; direction: ltr; color: #1e293b; }
+  1169→    .total-row.grand {
+  1170→      background: #1e293b;
+  1171→      color: white;
+  1172→      font-size: 12px;
+  1173→      font-weight: 700;
+  1174→      padding: 8px 12px;
+  1175→      border-bottom: none;
+  1176→    }
+  1177→    .total-row.grand .label { color: #e2e8f0; }
+  1178→    .total-row.grand .value { color: white; font-size: 13px; }
+  1179→    /* ──── INFO GRID ──── */
+  1180→    .info-grid {
+  1181→      display: grid;
+  1182→      grid-template-columns: 1fr 1fr;
+  1183→      gap: 10px 20px;
+  1184→      margin: 12px 0;
+  1185→    }
+  1186→    .info-item {
+  1187→      padding: 6px 10px;
+  1188→      background: #f9fafb;
+  1189→      border-radius: 4px;
+  1190→      border-right: 3px solid #1e293b;
+  1191→      border-left: none;
+  1192→    }
+  1193→    [dir="ltr"] .info-item {
+  1194→      border-right: none;
+  1195→      border-left: 3px solid #1e293b;
+  1196→    }
+  1197→    .info-label {
+  1198→      font-size: 8px;
+  1199→      color: #9ca3af;
+  1200→      text-transform: uppercase;
+  1201→      letter-spacing: 0.5px;
+  1202→      margin-bottom: 2px;
+  1203→    }
+  1204→    .info-value {
+  1205→      font-size: 11px;
+  1206→      font-weight: 600;
+  1207→      color: #1a1a1a;
+  1208→    }
+  1209→    /* ──── SECTION TITLE ──── */
+  1210→    .section-title {
+  1211→      font-size: 12px;
+  1212→      font-weight: 700;
+  1213→      color: #1e293b;
+  1214→      margin: 15px 0 8px;
+  1215→      padding-bottom: 4px;
+  1216→      border-bottom: 1px solid #e2e8f0;
+  1217→    }
+  1218→    /* ──── DIVIDER ──── */
+  1219→    .section-divider {
+  1220→      border: none;
+  1221→      border-top: 1px dashed #d1d5db;
+  1222→      margin: 12px 0;
+  1223→    }
+  1224→    /* ──── FOOTER ──── */
+  1225→    .doc-footer {
+  1226→      position: absolute;
+  1227→      bottom: 0;
+  1228→      left: 0;
+  1229→      right: 0;
+  1230→      background: #f9fafb;
+  1231→      border-top: 1px solid #cbd5e1;
+  1232→      padding: 6px 25px;
+  1233→      display: flex;
+  1234→      justify-content: space-between;
+  1235→      align-items: center;
+  1236→      font-size: 8px;
+  1237→      color: #94a3b8;
+  1238→    }
+  1239→    .doc-footer .company-info {
+  1240→      display: flex;
+  1241→      gap: 10px;
+  1242→      flex-wrap: wrap;
+  1243→    }
+  1244→    /* ──── PRINT BUTTON ──── */
+  1245→    .print-actions {
+  1246→      position: fixed;
+  1247→      top: 10px;
+  1248→      left: 50%;
+  1249→      transform: translateX(-50%);
+  1250→      z-index: 999;
+  1251→      display: flex;
+  1252→      gap: 8px;
+  1253→    }
+  1254→    .print-actions button {
+  1255→      padding: 8px 20px;
+  1256→      background: #1e293b;
+  1257→      color: white;
+  1258→      border: none;
+  1259→      border-radius: 8px;
+  1260→      font-size: 13px;
+  1261→      font-weight: 600;
+  1262→      cursor: pointer;
+  1263→      font-family: ${fontFamily};
+  1264→      box-shadow: 0 2px 8px rgba(30,41,59,0.3);
+  1265→      transition: all 0.2s;
+  1266→    }
+  1267→    .print-actions button:hover {
+  1268→      background: #0f172a;
+  1269→      box-shadow: 0 4px 12px rgba(30,41,59,0.4);
+  1270→      transform: translateY(-1px);
+  1271→    }
+  1272→    .print-actions .close-btn {
+  1273→      background: #6b7280;
+  1274→      box-shadow: 0 2px 8px rgba(107,114,128,0.3);
+  1275→    }
+  1276→    .print-actions .close-btn:hover {
+  1277→      background: #4b5563;
+  1278→    }
+  1279→    /* ──── STATUS BADGE ──── */
+  1280→    .status-badge {
+  1281→      display: inline-block;
+  1282→      padding: 3px 10px;
+  1283→      border-radius: 12px;
+  1284→      font-size: 9px;
+  1285→      font-weight: 700;
+  1286→      letter-spacing: 0.3px;
+  1287→    }
+  1288→    .status-draft { background: #fef3c7; color: #92400e; }
+  1289→    .status-active { background: #d1fae5; color: #065f46; }
+  1290→    .status-paid { background: #d1fae5; color: #065f46; }
+  1291→    .status-partial { background: #dbeafe; color: #1e40af; }
+  1292→    .status-overdue { background: #fee2e2; color: #991b1b; }
+  1293→    .status-cancelled { background: #f3f4f6; color: #6b7280; }
+  1294→    /* ──── CURRENCY SYMBOL IMAGE ──── */
+  1295→    .ri-currency-img {
+  1296→      height: 0.9em;
+  1297→      width: auto;
+  1298→      vertical-align: middle;
+  1299→      display: inline-block;
+  1300→      margin: 0 2px;
+  1301→      mix-blend-mode: multiply;
+  1302→    }
+  1303→    /* ──── SIGNATURES ──── */
+  1304→    .signatures-section {
+  1305→      margin-top: 25px;
+  1306→      display: flex;
+  1307→      justify-content: space-between;
+  1308→      align-items: flex-end;
+  1309→    }
+  1310→    .signature-box {
+  1311→      text-align: center;
+  1312→      min-width: 160px;
+  1313→    }
+  1314→    .signature-line {
+  1315→      border-top: 1px dashed #9ca3af;
+  1316→      margin-top: 40px;
+  1317→      padding-top: 5px;
+  1318→      font-size: 9px;
+  1319→      color: #6b7280;
+  1320→    }
+  1321→  `
+  1322→}
+  1323→

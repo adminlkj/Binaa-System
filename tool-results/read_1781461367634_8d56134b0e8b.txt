@@ -1,0 +1,649 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Banknote, Plus, Search, Trash2, RefreshCw, Download,
+     7→  Landmark, Wallet, BookOpen, AlertCircle,
+     8→} from 'lucide-react'
+     9→import { toast } from 'sonner'
+    10→import { Card, CardContent } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Input } from '@/components/ui/input'
+    13→import { Badge } from '@/components/ui/badge'
+    14→import {
+    15→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    16→} from '@/components/ui/table'
+    17→import {
+    18→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    19→} from '@/components/ui/dialog'
+    20→import {
+    21→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    22→} from '@/components/ui/select'
+    23→import { Label } from '@/components/ui/label'
+    24→import { Textarea } from '@/components/ui/textarea'
+    25→import { Separator } from '@/components/ui/separator'
+    26→import { MoneyDisplay } from '@/components/ui/money-display'
+    27→import { ModuleLayout } from '@/components/shared/module-layout'
+    28→import { PrintButton } from '@/components/shared/print-button'
+    29→import { useAppStore, formatDate } from '@/stores/app-store'
+    30→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    31→
+    32→// ============ Types ============
+    33→type PaymentMethod = 'BANK' | 'CASH'
+    34→type PayrollRunStatus = 'DRAFT' | 'REVIEW' | 'APPROVED' | 'PARTIALLY_PAID' | 'PAID'
+    35→
+    36→interface PayrollRunSummary {
+    37→  id: string
+    38→  code: string
+    39→  month: number
+    40→  year: number
+    41→  status: PayrollRunStatus
+    42→  totalNet: number
+    43→}
+    44→
+    45→interface SalaryPayment {
+    46→  id: string
+    47→  payrollRunId: string
+    48→  paymentMethod: PaymentMethod
+    49→  amount: number
+    50→  referenceNumber: string | null
+    51→  paymentDate: string
+    52→  notes: string | null
+    53→  journalEntryId: string | null
+    54→  createdAt: string
+    55→  updatedAt: string
+    56→  payrollRun: PayrollRunSummary
+    57→}
+    58→
+    59→interface PayrollRunOption {
+    60→  id: string
+    61→  code: string
+    62→  month: number
+    63→  year: number
+    64→  status: PayrollRunStatus
+    65→  totalNet: number
+    66→  salaryPayments: Array<{ id: string; amount: number }>
+    67→}
+    68→
+    69→interface PaymentFormData {
+    70→  payrollRunId: string
+    71→  paymentMethod: PaymentMethod
+    72→  amount: string
+    73→  referenceNumber: string
+    74→  paymentDate: string
+    75→  notes: string
+    76→}
+    77→
+    78→const defaultForm: PaymentFormData = {
+    79→  payrollRunId: '',
+    80→  paymentMethod: 'BANK',
+    81→  amount: '',
+    82→  referenceNumber: '',
+    83→  paymentDate: new Date().toISOString().split('T')[0],
+    84→  notes: '',
+    85→}
+    86→
+    87→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    88→
+    89→const paymentMethodConfig: Record<PaymentMethod, { label: { ar: string; en: string }; color: string; bg: string; icon: React.ElementType }> = {
+    90→  BANK: { label: { ar: 'بنكي', en: 'Bank' }, color: 'text-blue-700', bg: 'bg-blue-100', icon: Landmark },
+    91→  CASH: { label: { ar: 'نقدي', en: 'Cash' }, color: 'text-emerald-700', bg: 'bg-emerald-100', icon: Wallet },
+    92→}
+    93→
+    94→const arabicMonths = [
+    95→  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+    96→  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+    97→]
+    98→const englishMonths = [
+    99→  'January', 'February', 'March', 'April', 'May', 'June',
+   100→  'July', 'August', 'September', 'October', 'November', 'December',
+   101→]
+   102→
+   103→function formatMonth(month: number, year: number, lang: 'ar' | 'en') {
+   104→  const months = lang === 'ar' ? arabicMonths : englishMonths
+   105→  return `${months[month - 1]} ${year}`
+   106→}
+   107→
+   108→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   109→  return (
+   110→    <div className="space-y-2">
+   111→      {Array.from({ length: rows }).map((_, i) => (
+   112→        <div key={i} className="flex gap-4 p-3">
+   113→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   114→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+   115→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   116→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   117→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   118→        </div>
+   119→      ))}
+   120→    </div>
+   121→  )
+   122→}
+   123→
+   124→// ============ Create Payment Dialog ============
+   125→function CreatePaymentDialog({ open, onOpenChange, payrollRuns }: {
+   126→  open: boolean; onOpenChange: (open: boolean) => void; payrollRuns: PayrollRunOption[]
+   127→}) {
+   128→  const queryClient = useQueryClient()
+   129→  const { lang } = useAppStore()
+   130→  const [form, setForm] = useState<PaymentFormData>(defaultForm)
+   131→  const [error, setError] = useState('')
+   132→
+   133→  React.useEffect(() => {
+   134→    if (open) {
+   135→      setForm(defaultForm)
+   136→      setError('')
+   137→    }
+   138→  }, [open])
+   139→
+   140→  const selectedRun = form.payrollRunId
+   141→    ? payrollRuns.find(r => r.id === form.payrollRunId)
+   142→    : null
+   143→
+   144→  const totalPaidSoFar = selectedRun
+   145→    ? selectedRun.salaryPayments.reduce((sum, p) => sum + p.amount, 0)
+   146→    : 0
+   147→  const remaining = selectedRun ? selectedRun.totalNet - totalPaidSoFar : 0
+   148→
+   149→  // Auto-fill amount with remaining when payroll run changes
+   150→  React.useEffect(() => {
+   151→    if (selectedRun && remaining > 0) {
+   152→      setForm(f => ({ ...f, amount: remaining.toFixed(2) }))
+   153→    }
+   154→  }, [form.payrollRunId, selectedRun, remaining])
+   155→
+   156→  const createMutation = useMutation({
+   157→    mutationFn: (data: Record<string, unknown>) => fetch('/api/salary-payments', {
+   158→      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+   159→    }).then(r => {
+   160→      if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Error') })
+   161→      return r.json()
+   162→    }),
+   163→    onSuccess: () => {
+   164→      queryClient.invalidateQueries({ queryKey: ['salary-payments'] })
+   165→      queryClient.invalidateQueries({ queryKey: ['payroll-runs-for-payment'] })
+   166→      toast.success(t('تم تسجيل السداد بنجاح', 'Payment recorded successfully', lang))
+   167→      onOpenChange(false)
+   168→    },
+   169→    onError: (err: Error) => {
+   170→      setError(err.message)
+   171→      toast.error(t('فشل في تسجيل السداد', 'Failed to record payment', lang))
+   172→    },
+   173→  })
+   174→
+   175→  const handleSubmit = (e: React.FormEvent) => {
+   176→    e.preventDefault()
+   177→    setError('')
+   178→    createMutation.mutate({
+   179→      payrollRunId: form.payrollRunId,
+   180→      paymentMethod: form.paymentMethod,
+   181→      amount: parseFloat(form.amount) || 0,
+   182→      referenceNumber: form.referenceNumber || null,
+   183→      paymentDate: form.paymentDate,
+   184→      notes: form.notes || null,
+   185→    })
+   186→  }
+   187→
+   188→  return (
+   189→    <Dialog open={open} onOpenChange={onOpenChange}>
+   190→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   191→        <DialogHeader>
+   192→          <DialogTitle>{t('سداد رواتب', 'Salary Payment', lang)}</DialogTitle>
+   193→          <DialogDescription>{t('تسجيل سداد رواتب مسير معتمد', 'Record payment for an approved payroll run', lang)}</DialogDescription>
+   194→        </DialogHeader>
+   195→        <form onSubmit={handleSubmit} className="space-y-4">
+   196→          {/* Payroll Run Selection */}
+   197→          <div className="space-y-2">
+   198→            <Label>{t('مسير الرواتب *', 'Payroll Run *', lang)}</Label>
+   199→            <Select value={form.payrollRunId} onValueChange={v => setForm(f => ({ ...f, payrollRunId: v }))}>
+   200→              <SelectTrigger>
+   201→                <SelectValue placeholder={t('اختر مسير رواتب معتمد', 'Select an approved payroll run', lang)} />
+   202→              </SelectTrigger>
+   203→              <SelectContent>
+   204→                {payrollRuns.map(run => (
+   205→                  <SelectItem key={run.id} value={run.id}>
+   206→                    {run.code} - {formatMonth(run.month, run.year, lang)}
+   207→                  </SelectItem>
+   208→                ))}
+   209→              </SelectContent>
+   210→            </Select>
+   211→          </div>
+   212→
+   213→          {/* Selected Payroll Run Info */}
+   214→          {selectedRun && (
+   215→            <Card className="bg-amber-50 border-amber-200">
+   216→              <CardContent className="p-3 space-y-1.5">
+   217→                <div className="flex justify-between text-sm">
+   218→                  <span className="text-muted-foreground">{t('كود المسير', 'Run Code', lang)}</span>
+   219→                  <span className="font-mono font-medium">{selectedRun.code}</span>
+   220→                </div>
+   221→                <div className="flex justify-between text-sm">
+   222→                  <span className="text-muted-foreground">{t('الشهر/السنة', 'Month/Year', lang)}</span>
+   223→                  <span>{formatMonth(selectedRun.month, selectedRun.year, lang)}</span>
+   224→                </div>
+   225→                <div className="flex justify-between text-sm">
+   226→                  <span className="text-muted-foreground">{t('صافي الرواتب', 'Net Salaries', lang)}</span>
+   227→                  <MoneyDisplay value={selectedRun.totalNet} mode="system" lang={lang} size="sm" bold />
+   228→                </div>
+   229→                <div className="flex justify-between text-sm">
+   230→                  <span className="text-muted-foreground">{t('المدفوع سابقاً', 'Previously Paid', lang)}</span>
+   231→                  <span className="text-teal-700">
+   232→                    <MoneyDisplay value={totalPaidSoFar} mode="system" lang={lang} size="sm" bold className="text-teal-700" />
+   233→                  </span>
+   234→                </div>
+   235→                <Separator />
+   236→                <div className="flex justify-between text-sm font-bold">
+   237→                  <span>{t('المتبقي', 'Remaining', lang)}</span>
+   238→                  <span className="text-amber-700">
+   239→                    <MoneyDisplay value={remaining} mode="system" lang={lang} size="md" bold className="text-amber-700" />
+   240→                  </span>
+   241→                </div>
+   242→              </CardContent>
+   243→            </Card>
+   244→          )}
+   245→
+   246→          {/* Payment Method */}
+   247→          <div className="space-y-2">
+   248→            <Label>{t('طريقة السداد *', 'Payment Method *', lang)}</Label>
+   249→            <Select value={form.paymentMethod} onValueChange={v => setForm(f => ({ ...f, paymentMethod: v as PaymentMethod }))}>
+   250→              <SelectTrigger><SelectValue /></SelectTrigger>
+   251→              <SelectContent>
+   252→                {Object.entries(paymentMethodConfig).map(([key, cfg]) => (
+   253→                  <SelectItem key={key} value={key}>
+   254→                    <span className="flex items-center gap-2">
+   255→                      <cfg.icon className="size-4" />
+   256→                      {cfg.label[lang]}
+   257→                    </span>
+   258→                  </SelectItem>
+   259→                ))}
+   260→              </SelectContent>
+   261→            </Select>
+   262→          </div>
+   263→
+   264→          {/* Amount */}
+   265→          <div className="grid grid-cols-2 gap-4">
+   266→            <div className="space-y-2">
+   267→              <Label>{t('المبلغ *', 'Amount *', lang)}</Label>
+   268→              <Input
+   269→                type="number"
+   270→                min="0"
+   271→                step="0.01"
+   272→                max={remaining || undefined}
+   273→                value={form.amount}
+   274→                onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+   275→                dir="ltr"
+   276→                required
+   277→              />
+   278→            </div>
+   279→            <div className="space-y-2">
+   280→              <Label>{t('تاريخ السداد *', 'Payment Date *', lang)}</Label>
+   281→              <Input
+   282→                type="date"
+   283→                value={form.paymentDate}
+   284→                onChange={e => setForm(f => ({ ...f, paymentDate: e.target.value }))}
+   285→                required
+   286→              />
+   287→            </div>
+   288→          </div>
+   289→
+   290→          {/* Reference Number */}
+   291→          <div className="space-y-2">
+   292→            <Label>{t('رقم المرجع', 'Reference Number', lang)}</Label>
+   293→            <Input
+   294→              value={form.referenceNumber}
+   295→              onChange={e => setForm(f => ({ ...f, referenceNumber: e.target.value }))}
+   296→              placeholder={t('رقم التحويل أو الشيك', 'Transfer or check number', lang)}
+   297→              dir="ltr"
+   298→            />
+   299→          </div>
+   300→
+   301→          {/* Notes */}
+   302→          <div className="space-y-2">
+   303→            <Label>{t('ملاحظات', 'Notes', lang)}</Label>
+   304→            <Textarea
+   305→              value={form.notes}
+   306→              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+   307→              placeholder={t('ملاحظات إضافية', 'Additional notes', lang)}
+   308→              rows={2}
+   309→            />
+   310→          </div>
+   311→
+   312→          {/* Error Display */}
+   313→          {error && (
+   314→            <div className="flex items-center gap-2 rounded-md bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+   315→              <AlertCircle className="size-4 shrink-0" />
+   316→              {error}
+   317→            </div>
+   318→          )}
+   319→
+   320→          <DialogFooter>
+   321→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+   322→              {t('إلغاء', 'Cancel', lang)}
+   323→            </Button>
+   324→            <Button
+   325→              type="submit"
+   326→              disabled={createMutation.isPending || !form.payrollRunId || !form.amount || !form.paymentDate}
+   327→              className="bg-emerald-600 hover:bg-emerald-700 gap-2"
+   328→            >
+   329→              {createMutation.isPending
+   330→                ? t('جاري السداد...', 'Processing...', lang)
+   331→                : (<><Banknote className="size-4" />{t('سداد', 'Pay', lang)}</>)
+   332→              }
+   333→            </Button>
+   334→          </DialogFooter>
+   335→        </form>
+   336→      </DialogContent>
+   337→    </Dialog>
+   338→  )
+   339→}
+   340→
+   341→// ============ Main Salary Payments Module ============
+   342→export function SalaryPaymentsModule() {
+   343→  const queryClient = useQueryClient()
+   344→  const { lang } = useAppStore()
+   345→  const [search, setSearch] = useState('')
+   346→  const [paymentMethodFilter, setPaymentMethodFilter] = useState<string>('ALL')
+   347→  const [dialogOpen, setDialogOpen] = useState(false)
+   348→
+   349→  // Fetch salary payments
+   350→  const { data: payments = [], isLoading, isError, refetch } = useQuery<SalaryPayment[]>({
+   351→    queryKey: ['salary-payments'],
+   352→    queryFn: async () => {
+   353→      const res = await fetch('/api/salary-payments')
+   354→      if (!res.ok) throw new Error()
+   355→      return res.json()
+   356→    },
+   357→  })
+   358→
+   359→  // Fetch eligible payroll runs for the create dialog
+   360→  const { data: allPayrollRuns = [] } = useQuery<PayrollRunOption[]>({
+   361→    queryKey: ['payroll-runs-for-payment'],
+   362→    queryFn: async () => {
+   363→      const res = await fetch('/api/payroll-runs')
+   364→      if (!res.ok) return []
+   365→      return res.json()
+   366→    },
+   367→  })
+   368→
+   369→  // Only APPROVED or PARTIALLY_PAID runs are eligible for payment
+   370→  const eligiblePayrollRuns = useMemo(() => {
+   371→    return allPayrollRuns.filter(
+   372→      (run): run is PayrollRunOption =>
+   373→        run.status === 'APPROVED' || run.status === 'PARTIALLY_PAID'
+   374→    )
+   375→  }, [allPayrollRuns])
+   376→
+   377→  // Delete mutation
+   378→  const deleteMutation = useMutation({
+   379→    mutationFn: (id: string) => fetch(`/api/salary-payments/${id}`, { method: 'DELETE' }).then(r => {
+   380→      if (!r.ok) throw new Error()
+   381→      return r.json()
+   382→    }),
+   383→    onSuccess: () => {
+   384→      queryClient.invalidateQueries({ queryKey: ['salary-payments'] })
+   385→      queryClient.invalidateQueries({ queryKey: ['payroll-runs-for-payment'] })
+   386→      toast.success(t('تم حذف السداد', 'Payment deleted', lang))
+   387→    },
+   388→    onError: () => toast.error(t('فشل في حذف السداد', 'Failed to delete payment', lang)),
+   389→  })
+   390→
+   391→  // Filter payments
+   392→  const filtered = useMemo(() => {
+   393→    return payments.filter(p => {
+   394→      if (paymentMethodFilter !== 'ALL' && p.paymentMethod !== paymentMethodFilter) return false
+   395→      if (!search) return true
+   396→      const s = search.toLowerCase()
+   397→      return (
+   398→        p.payrollRun.code.toLowerCase().includes(s) ||
+   399→        (p.referenceNumber?.toLowerCase().includes(s)) ||
+   400→        (p.notes?.toLowerCase().includes(s))
+   401→      )
+   402→    })
+   403→  }, [payments, search, paymentMethodFilter])
+   404→
+   405→  // Summary calculations
+   406→  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
+   407→  const approvedRunsCount = allPayrollRuns.filter(
+   408→    r => r.status === 'APPROVED' || r.status === 'PARTIALLY_PAID'
+   409→  ).length
+   410→  // Calculate total remaining across all approved/partially paid runs
+   411→  const totalRemaining = eligiblePayrollRuns.reduce((sum, run) => {
+   412→    const paidForRun = (run as PayrollRunOption).salaryPayments?.reduce((s, p) => s + p.amount, 0) || 0
+   413→    return sum + (run.totalNet - paidForRun)
+   414→  }, 0)
+   415→
+   416→  // Export handler
+   417→  const handleExport = () => {
+   418→    const columns: CSVColumn[] = [
+   419→      { key: 'code', label: t('كود المسير', 'Run Code', lang) },
+   420→      { key: 'monthYear', label: t('الشهر/السنة', 'Month/Year', lang) },
+   421→      { key: 'paymentMethod', label: t('طريقة السداد', 'Payment Method', lang) },
+   422→      { key: 'amount', label: t('المبلغ', 'Amount', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+   423→      { key: 'referenceNumber', label: t('رقم المرجع', 'Reference', lang) },
+   424→      { key: 'paymentDate', label: t('تاريخ السداد', 'Payment Date', lang) },
+   425→      { key: 'notes', label: t('ملاحظات', 'Notes', lang) },
+   426→    ]
+   427→    exportToCSV(
+   428→      filtered.map(p => ({
+   429→        code: p.payrollRun.code,
+   430→        monthYear: formatMonth(p.payrollRun.month, p.payrollRun.year, lang),
+   431→        paymentMethod: paymentMethodConfig[p.paymentMethod]?.label[lang] || p.paymentMethod,
+   432→        amount: p.amount,
+   433→        referenceNumber: p.referenceNumber || '',
+   434→        paymentDate: formatDate(p.paymentDate, lang),
+   435→        notes: p.notes || '',
+   436→      })),
+   437→      `salary-payments-${new Date().toISOString().slice(0, 10)}`,
+   438→      columns,
+   439→    )
+   440→  }
+   441→
+   442→  // Print data
+   443→  const printData = useMemo(() => ({
+   444→    columns: [
+   445→      { key: 'code', label: lang === 'ar' ? 'كود المسير' : 'Run Code' },
+   446→      { key: 'monthYear', label: lang === 'ar' ? 'الشهر/السنة' : 'Month/Year' },
+   447→      { key: 'paymentMethod', label: lang === 'ar' ? 'طريقة السداد' : 'Method' },
+   448→      { key: 'amount', label: lang === 'ar' ? 'المبلغ' : 'Amount' },
+   449→      { key: 'referenceNumber', label: lang === 'ar' ? 'رقم المرجع' : 'Reference' },
+   450→      { key: 'paymentDate', label: lang === 'ar' ? 'تاريخ السداد' : 'Date' },
+   451→    ],
+   452→    rows: filtered.map(p => ({
+   453→      code: p.payrollRun.code,
+   454→      monthYear: formatMonth(p.payrollRun.month, p.payrollRun.year, lang),
+   455→      paymentMethod: paymentMethodConfig[p.paymentMethod]?.label[lang] || p.paymentMethod,
+   456→      amount: p.amount,
+   457→      referenceNumber: p.referenceNumber || '—',
+   458→      paymentDate: formatDate(p.paymentDate, lang),
+   459→    })),
+   460→    infoItems: [
+   461→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   462→      { label: lang === 'ar' ? 'إجمالي المدفوع' : 'Total Paid', value: String(totalPaid) },
+   463→    ],
+   464→  }), [filtered, lang, totalPaid])
+   465→
+   466→  return (
+   467→    <ModuleLayout
+   468→      title={{ ar: 'سداد الرواتب', en: 'Salary Payments' }}
+   469→      subtitle={{ ar: 'تسجيل ومتابعة صرف رواتب الموظفين', en: 'Record and track employee salary payments' }}
+   470→      actions={
+   471→        <div className="flex items-center gap-2">
+   472→          <PrintButton type="salary-payment" data={printData} size="icon" />
+   473→          <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
+   474→          <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
+   475→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+   476→            <Plus className="size-4" />{t('سداد جديد', 'New Payment', lang)}
+   477→          </Button>
+   478→        </div>
+   479→      }
+   480→    >
+   481→      {/* Summary Cards */}
+   482→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   483→        <Card className="bg-emerald-50 border-emerald-200">
+   484→          <CardContent className="p-4 flex items-center gap-3">
+   485→            <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center">
+   486→              <Banknote className="size-5 text-emerald-600" />
+   487→            </div>
+   488→            <div>
+   489→              <p className="text-sm text-emerald-600">{t('إجمالي المدفوع', 'Total Paid', lang)}</p>
+   490→              <MoneyDisplay value={totalPaid} mode="system" lang={lang} bold size="lg" className="text-emerald-700" />
+   491→            </div>
+   492→          </CardContent>
+   493→        </Card>
+   494→        <Card className="bg-amber-50 border-amber-200">
+   495→          <CardContent className="p-4 flex items-center gap-3">
+   496→            <div className="size-10 rounded-full bg-amber-100 flex items-center justify-center">
+   497→              <AlertCircle className="size-5 text-amber-600" />
+   498→            </div>
+   499→            <div>
+   500→              <p className="text-sm text-amber-600">{t('المتبقي', 'Remaining', lang)}</p>
+   501→              <MoneyDisplay value={totalRemaining} mode="system" lang={lang} bold size="lg" className="text-amber-700" />
+   502→            </div>
+   503→          </CardContent>
+   504→        </Card>
+   505→        <Card className="bg-violet-50 border-violet-200">
+   506→          <CardContent className="p-4 flex items-center gap-3">
+   507→            <div className="size-10 rounded-full bg-violet-100 flex items-center justify-center">
+   508→              <BookOpen className="size-5 text-violet-600" />
+   509→            </div>
+   510→            <div>
+   511→              <p className="text-sm text-violet-600">{t('مسيرات معتمدة', 'Approved Runs', lang)}</p>
+   512→              <p className="text-lg font-bold text-violet-700">{approvedRunsCount}</p>
+   513→            </div>
+   514→          </CardContent>
+   515→        </Card>
+   516→      </div>
+   517→
+   518→      {/* Search & Filter */}
+   519→      <Card>
+   520→        <CardContent className="p-4">
+   521→          <div className="flex flex-col sm:flex-row gap-3">
+   522→            <div className="relative flex-1">
+   523→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   524→              <Input
+   525→                placeholder={t('بحث بكود المسير أو المرجع...', 'Search by run code or reference...', lang)}
+   526→                value={search}
+   527→                onChange={e => setSearch(e.target.value)}
+   528→                className="pr-9"
+   529→              />
+   530→            </div>
+   531→            <Select value={paymentMethodFilter} onValueChange={setPaymentMethodFilter}>
+   532→              <SelectTrigger className="w-full sm:w-40">
+   533→                <SelectValue placeholder={t('طريقة السداد', 'Payment Method', lang)} />
+   534→              </SelectTrigger>
+   535→              <SelectContent>
+   536→                <SelectItem value="ALL">{t('الكل', 'All', lang)}</SelectItem>
+   537→                <SelectItem value="BANK">{t('بنكي', 'Bank', lang)}</SelectItem>
+   538→                <SelectItem value="CASH">{t('نقدي', 'Cash', lang)}</SelectItem>
+   539→              </SelectContent>
+   540→            </Select>
+   541→          </div>
+   542→        </CardContent>
+   543→      </Card>
+   544→
+   545→      {/* Payments Table */}
+   546→      <Card>
+   547→        <CardContent className="p-0">
+   548→          {isLoading ? (
+   549→            <div className="p-6"><TableSkeleton /></div>
+   550→          ) : isError ? (
+   551→            <div className="flex flex-col items-center gap-3 py-10">
+   552→              <p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p>
+   553→              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+   554→            </div>
+   555→          ) : filtered.length === 0 ? (
+   556→            <div className="flex flex-col items-center gap-3 py-10">
+   557→              <Banknote className="size-12 text-gray-300" />
+   558→              <p className="text-muted-foreground">{t('لا توجد سداد رواتب', 'No salary payments', lang)}</p>
+   559→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+   560→                <Plus className="size-4 mr-1" />{t('سداد جديد', 'New Payment', lang)}
+   561→              </Button>
+   562→            </div>
+   563→          ) : (
+   564→            <div className="overflow-x-auto">
+   565→              <Table>
+   566→                <TableHeader>
+   567→                  <TableRow>
+   568→                    <TableHead className="text-right">{t('المسير', 'Payroll Run', lang)}</TableHead>
+   569→                    <TableHead className="text-right">{t('طريقة السداد', 'Method', lang)}</TableHead>
+   570→                    <TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead>
+   571→                    <TableHead className="text-right">{t('رقم المرجع', 'Reference', lang)}</TableHead>
+   572→                    <TableHead className="text-right">{t('تاريخ السداد', 'Payment Date', lang)}</TableHead>
+   573→                    <TableHead className="text-right">{t('ملاحظات', 'Notes', lang)}</TableHead>
+   574→                    <TableHead className="text-right">{t('الإجراءات', 'Actions', lang)}</TableHead>
+   575→                  </TableRow>
+   576→                </TableHeader>
+   577→                <TableBody>
+   578→                  {filtered.map(p => {
+   579→                    const pmCfg = paymentMethodConfig[p.paymentMethod]
+   580→                    const PmIcon = pmCfg.icon
+   581→                    return (
+   582→                      <TableRow key={p.id}>
+   583→                        <TableCell>
+   584→                          <div className="flex flex-col">
+   585→                            <span className="font-mono font-medium">{p.payrollRun.code}</span>
+   586→                            <span className="text-xs text-muted-foreground">
+   587→                              {formatMonth(p.payrollRun.month, p.payrollRun.year, lang)}
+   588→                            </span>
+   589→                          </div>
+   590→                        </TableCell>
+   591→                        <TableCell>
+   592→                          <Badge className={`${pmCfg.bg} ${pmCfg.color} border-0 gap-1`}>
+   593→                            <PmIcon className="size-3" />
+   594→                            {pmCfg.label[lang]}
+   595→                          </Badge>
+   596→                        </TableCell>
+   597→                        <TableCell>
+   598→                          <MoneyDisplay value={p.amount} mode="system" lang={lang} size="sm" bold />
+   599→                        </TableCell>
+   600→                        <TableCell dir="ltr" className="text-right">
+   601→                          {p.referenceNumber || <span className="text-muted-foreground">—</span>}
+   602→                        </TableCell>
+   603→                        <TableCell>{formatDate(p.paymentDate, lang)}</TableCell>
+   604→                        <TableCell className="max-w-32 truncate">
+   605→                          {p.notes || <span className="text-muted-foreground">—</span>}
+   606→                        </TableCell>
+   607→                        <TableCell>
+   608→                          <div className="flex items-center gap-1">
+   609→                            {p.journalEntryId && (
+   610→                              <Badge className="bg-purple-100 text-purple-700 border-0 gap-1 text-xs">
+   611→                                <BookOpen className="size-3" />{t('قيد', 'Entry', lang)}
+   612→                              </Badge>
+   613→                            )}
+   614→                            {!p.journalEntryId && (
+   615→                              <Button
+   616→                                variant="ghost"
+   617→                                size="icon"
+   618→                                className="size-8 text-rose-600 hover:text-rose-700"
+   619→                                onClick={() => {
+   620→                                  if (confirm(t('هل أنت متأكد من حذف هذا السداد؟', 'Are you sure you want to delete this payment?', lang))) {
+   621→                                    deleteMutation.mutate(p.id)
+   622→                                  }
+   623→                                }}
+   624→                              >
+   625→                                <Trash2 className="size-4" />
+   626→                              </Button>
+   627→                            )}
+   628→                          </div>
+   629→                        </TableCell>
+   630→                      </TableRow>
+   631→                    )
+   632→                  })}
+   633→                </TableBody>
+   634→              </Table>
+   635→            </div>
+   636→          )}
+   637→        </CardContent>
+   638→      </Card>
+   639→
+   640→      {/* Create Payment Dialog */}
+   641→      <CreatePaymentDialog
+   642→        open={dialogOpen}
+   643→        onOpenChange={setDialogOpen}
+   644→        payrollRuns={eligiblePayrollRuns}
+   645→      />
+   646→    </ModuleLayout>
+   647→  )
+   648→}
+   649→
