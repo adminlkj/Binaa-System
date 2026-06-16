@@ -2,29 +2,27 @@ import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
+import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
 
 // Helper: round to 4 decimal places
 function r4(n: number): number {
   return Math.round(n * 10000) / 10000
 }
 
-// Get account balances up to a specific date, filtered by code prefixes
-async function getBalancesByPrefixes(
-  prefixes: string[],
+// Get account balances up to a specific date, filtered by account IDs
+async function getBalancesByAccountIds(
+  accountIds: string[],
   dateFrom: Date | undefined,
   dateTo: Date | undefined
 ): Promise<number> {
+  if (accountIds.length === 0) return 0
+
   const accounts = await db.account.findMany({
-    where: {
-      isActive: true,
-      OR: prefixes.map(p => ({ code: { startsWith: p } })),
-    },
+    where: { id: { in: accountIds }, isActive: true },
     select: { id: true, code: true, type: true },
   })
 
   if (accounts.length === 0) return 0
-
-  const accountIds = accounts.map(a => a.id)
 
   const dateFilter: { date?: { gte?: Date; lte?: Date } } = {}
   if (dateFrom || dateTo) {
@@ -56,23 +54,18 @@ async function getBalancesByPrefixes(
   return r4(balance)
 }
 
-// More efficient: get balance changes between two periods for specific account prefixes
-async function getBalanceChange(
-  prefixes: string[],
+// More efficient: get balance changes between two periods for specific account IDs
+async function getBalanceChangeByAccountIds(
+  accountIds: string[],
   dateFrom: Date | undefined,
   dateTo: Date | undefined
 ): Promise<number> {
   const accounts = await db.account.findMany({
-    where: {
-      isActive: true,
-      OR: prefixes.map(p => ({ code: { startsWith: p } })),
-    },
+    where: { id: { in: accountIds }, isActive: true },
     select: { id: true, type: true },
   })
 
   if (accounts.length === 0) return 0
-
-  const accountIds = accounts.map(a => a.id)
 
   // Get balance up to dateTo
   const toDateFilter: { date?: { lte?: Date } } = {}
@@ -115,6 +108,26 @@ async function getBalanceChange(
   return r4(balanceEnd - balanceStart)
 }
 
+// Helper: get balance change for accounts matched by code prefixes (used for non-role-mapped groups)
+async function getBalanceChange(
+  prefixes: string[],
+  dateFrom: Date | undefined,
+  dateTo: Date | undefined
+): Promise<number> {
+  const accounts = await db.account.findMany({
+    where: {
+      isActive: true,
+      OR: prefixes.map(p => ({ code: { startsWith: p } })),
+    },
+    select: { id: true, type: true },
+  })
+
+  if (accounts.length === 0) return 0
+
+  const accountIds = accounts.map(a => a.id)
+  return getBalanceChangeByAccountIds(accountIds, dateFrom, dateTo)
+}
+
 // GET /api/financial-statements/cash-flow?dateFrom=...&dateTo=...
 export async function GET(request: Request) {
   try {
@@ -125,19 +138,42 @@ export async function GET(request: Request) {
     const dateFrom = dateFromStr ? new Date(dateFromStr) : undefined
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
 
-    // ---- Cash/Bank account balances ----
-    const cashPrefixes = ['1110', '1120', '1130', '1140']
+    // ---- Resolve cash/bank accounts by role ----
+    const [cashRoleAccounts, bankRoleAccounts] = await Promise.all([
+      getAccountsByRoles([AccountRole.CASH]),
+      getAccountsByRoles([AccountRole.BANK]),
+    ])
+
+    // Combine all cash/bank accounts
+    const allCashBankAccounts = [...cashRoleAccounts, ...bankRoleAccounts]
+    const cashBankIds = allCashBankAccounts.map(a => a.id)
+
+    // Fallback to code-based lookup if no role-mapped accounts
+    const cashPrefixes = allCashBankAccounts.length > 0
+      ? []  // No need for prefix-based lookup
+      : ['1110', '1120', '1130', '1140']
 
     const beginDateFilter: { date?: { lt?: Date } } = {}
     if (dateFrom) beginDateFilter.date = { lt: dateFrom }
 
-    const cashAccounts = await db.account.findMany({
-      where: {
-        isActive: true,
-        OR: cashPrefixes.map(p => ({ code: { startsWith: p } })),
-      },
-      select: { id: true, code: true, name: true, nameAr: true, type: true },
-    })
+    let cashAccountsForBalance: { id: true; code: true; name: true; nameAr: true; type: true }[]
+
+    if (allCashBankAccounts.length > 0) {
+      // Use role-resolved accounts
+      cashAccountsForBalance = await db.account.findMany({
+        where: { id: { in: cashBankIds }, isActive: true },
+        select: { id: true, code: true, name: true, nameAr: true, type: true },
+      })
+    } else {
+      // Fallback: use code prefix
+      cashAccountsForBalance = await db.account.findMany({
+        where: {
+          isActive: true,
+          OR: cashPrefixes.map(p => ({ code: { startsWith: p } })),
+        },
+        select: { id: true, code: true, name: true, nameAr: true, type: true },
+      })
+    }
 
     let beginningCash = 0
     let endingCash = 0
@@ -145,7 +181,7 @@ export async function GET(request: Request) {
     const endDateFilter: { date?: { lte?: Date } } = {}
     if (dateTo) endDateFilter.date = { lte: dateTo }
 
-    for (const account of cashAccounts) {
+    for (const account of cashAccountsForBalance) {
       // Beginning balance
       const begLines = await db.journalLine.aggregate({
         _sum: { debit: true, credit: true },
@@ -222,8 +258,18 @@ export async function GET(request: Request) {
 
     const netIncome = r4(totalRevenue - totalExpenses)
 
-    // Non-cash items: Depreciation (8300)
-    const depreciationChange = await getBalanceChange(['8300'], dateFrom, dateTo)
+    // Non-cash items: Depreciation (role-based)
+    const depreciationAccounts = await getAccountsByRoles([AccountRole.DEPRECIATION_EXPENSE, AccountRole.RENTAL_DEPRECIATION])
+    const depreciationAccountIds = depreciationAccounts.length > 0
+      ? depreciationAccounts.map(a => a.id)
+      : (await db.account.findMany({
+          where: { isActive: true, code: { startsWith: '8300' } },
+          select: { id: true },
+        })).map(a => a.id)
+
+    const depreciationChange = depreciationAccountIds.length > 0
+      ? await getBalanceChangeByAccountIds(depreciationAccountIds, dateFrom, dateTo)
+      : 0
 
     // Changes in working capital
     const receivablesChange = await getBalanceChange(['12'], dateFrom, dateTo)

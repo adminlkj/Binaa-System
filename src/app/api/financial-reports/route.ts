@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextRequest, NextResponse } from 'next/server'
+import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,7 +43,7 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
       journalEntry: entryWhere,
     },
     include: {
-      account: { select: { id: true, code: true, name: true, nameAr: true, type: true } },
+      account: { select: { id: true, code: true, name: true, nameAr: true, type: true, accountRole: true } },
     },
   })
 
@@ -57,12 +58,14 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
     const amount = toNumber(line.credit) - toNumber(line.debit)
     if (amount === 0) continue
 
+    // Categorize by account role first, then by code prefix
+    const role = line.account.accountRole
     let category: string
-    if (code.startsWith('61')) {
+    if (role === 'PROJECT_REVENUE' || code.startsWith('61')) {
       category = 'Construction Revenue'
-    } else if (code.startsWith('62')) {
+    } else if (role === 'RENTAL_REVENUE' || code.startsWith('62')) {
       category = 'Rental Revenue'
-    } else if (code.startsWith('63')) {
+    } else if (role === 'SERVICE_REVENUE' || code.startsWith('63')) {
       category = 'Other Revenue'
     } else {
       category = 'Other Revenue'
@@ -75,8 +78,21 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
     totalRevenue += amount
   }
 
-  // Project Costs: accounts starting with '71'
-  const projectCostLines = lines.filter((l) => l.account.code.startsWith('71'))
+  // Resolve account roles for cost categorization
+  const [projectCostAccounts, rentalDepAccounts, depExpenseAccounts] = await Promise.all([
+    getAccountsByRoles([AccountRole.PROJECT_COST, AccountRole.SUBCONTRACTOR_COST]),
+    getAccountsByRoles([AccountRole.RENTAL_DEPRECIATION, AccountRole.FUEL_EXPENSE, AccountRole.MAINTENANCE_EXPENSE, AccountRole.DRIVER_EXPENSE, AccountRole.TRANSPORT_EXPENSE]),
+    getAccountsByRoles([AccountRole.DEPRECIATION_EXPENSE]),
+  ])
+
+  const projectCostCodes = new Set(projectCostAccounts.map(a => a.code))
+  const rentalCostCodes = new Set(rentalDepAccounts.map(a => a.code))
+  const depExpenseCodes = new Set(depExpenseAccounts.map(a => a.code))
+
+  // Project Costs: accounts with project cost roles or starting with '71'
+  const projectCostLines = lines.filter((l) =>
+    projectCostCodes.has(l.account.code) || l.account.code.startsWith('71')
+  )
   const projectCosts: Record<string, number> = {}
   let totalProjectCosts = 0
 
@@ -91,8 +107,10 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
     totalProjectCosts += amount
   }
 
-  // Rental Costs: accounts starting with '72'
-  const rentalCostLines = lines.filter((l) => l.account.code.startsWith('72'))
+  // Rental Costs: accounts with rental cost roles or starting with '72'
+  const rentalCostLines = lines.filter((l) =>
+    rentalCostCodes.has(l.account.code) || l.account.code.startsWith('72')
+  )
   const rentalCosts: Record<string, number> = {}
   let totalRentalCosts = 0
 
@@ -108,8 +126,18 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
 
   const grossProfit = totalRevenue - (totalProjectCosts + totalRentalCosts)
 
-  // Operating Expenses: accounts starting with '8'
-  const opexLines = lines.filter((l) => l.account.code.startsWith('8'))
+  // Operating Expenses: accounts starting with '8' or with admin/expense roles
+  const adminExpenseRoles = [
+    AccountRole.PAYROLL_EXPENSE, AccountRole.GOSI_EXPENSE,
+    AccountRole.ADMIN_EXPENSE, AccountRole.DEPRECIATION_EXPENSE,
+    AccountRole.ZAKAT_EXPENSE,
+  ]
+  const adminExpenseAccounts = await getAccountsByRoles(adminExpenseRoles)
+  const adminExpenseCodes = new Set(adminExpenseAccounts.map(a => a.code))
+
+  const opexLines = lines.filter((l) =>
+    adminExpenseCodes.has(l.account.code) || l.account.code.startsWith('8')
+  )
   const operatingExpenses: Record<string, number> = {}
   let totalOperatingExpenses = 0
 
@@ -118,15 +146,16 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
     if (amount === 0) continue
 
     const code = line.account.code
+    const role = line.account.accountRole
     let category: string
 
-    if (code.startsWith('811') || code.startsWith('812') || code.startsWith('813')) {
+    if (role === 'PAYROLL_EXPENSE' || code.startsWith('811') || code.startsWith('812') || code.startsWith('813')) {
       category = 'Salaries'
-    } else if (code.startsWith('821')) {
+    } else if (role === 'GOSI_EXPENSE' || code.startsWith('821')) {
       category = 'GOSI'
-    } else if (code.startsWith('831') || code.startsWith('832') || code.startsWith('833') || code.startsWith('834')) {
+    } else if (role === 'DEPRECIATION_EXPENSE' || code.startsWith('831') || code.startsWith('832') || code.startsWith('833') || code.startsWith('834')) {
       category = 'Depreciation'
-    } else if (code.startsWith('85') || code.startsWith('86')) {
+    } else if (role === 'ZAKAT_EXPENSE' || code.startsWith('85') || code.startsWith('86')) {
       category = 'Other Admin'
     } else {
       category = line.account.name
@@ -283,6 +312,20 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
   const fromDate = new Date(dateFrom)
   const toDate = new Date(dateTo)
 
+  // Resolve account roles for depreciation and cash
+  const [depreciationAccounts, cashAccounts] = await Promise.all([
+    getAccountsByRoles([AccountRole.DEPRECIATION_EXPENSE, AccountRole.RENTAL_DEPRECIATION]),
+    getAccountsByRoles([AccountRole.CASH, AccountRole.BANK]),
+  ])
+
+  const depreciationCodes = depreciationAccounts.length > 0
+    ? depreciationAccounts.map(a => a.code)
+    : ['8310', '8320', '8330', '8340', '7250']
+
+  const cashCodes = cashAccounts.length > 0
+    ? cashAccounts.map(a => a.code)
+    : ['1110', '1120', '1130']
+
   // Net Profit for the period
   const periodLines = await db.journalLine.findMany({
     where: {
@@ -292,7 +335,7 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
       },
     },
     include: {
-      account: { select: { id: true, code: true, name: true, type: true } },
+      account: { select: { id: true, code: true, name: true, type: true, accountRole: true } },
     },
   })
 
@@ -302,10 +345,11 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
   const totalPeriodExpense = expenseLines.reduce((s, l) => s + toNumber(l.debit) - toNumber(l.credit), 0)
   const netProfit = totalPeriodRevenue - totalPeriodExpense
 
-  // Add back non-cash items: Depreciation (8310-8340 + 7250)
-  const depreciationCodes = ['8310', '8320', '8330', '8340', '7250']
+  // Add back non-cash items: Depreciation (role-based codes)
   const depreciationLines = periodLines.filter((l) =>
-    depreciationCodes.some((c) => l.account.code.startsWith(c))
+    depreciationCodes.some((c) => l.account.code.startsWith(c)) ||
+    l.account.accountRole === 'DEPRECIATION_EXPENSE' ||
+    l.account.accountRole === 'RENTAL_DEPRECIATION'
   )
   const depreciation = depreciationLines.reduce((s, l) => s + toNumber(l.debit) - toNumber(l.credit), 0)
 
@@ -373,8 +417,7 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
 
   const netChange = operatingCashFlow + investingCashFlow + financingCashFlow
 
-  // Opening and closing cash balances
-  const cashCodes = ['1110', '1120', '1130']
+  // Opening and closing cash balances (role-based cash codes)
   const openingCash = beforePeriodLines
     .filter((l) => cashCodes.some((c) => l.account.code.startsWith(c)))
     .reduce((s, l) => s + toNumber(l.debit) - toNumber(l.credit), 0)

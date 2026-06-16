@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
 
 // Normal balance mapping by account type
 const NORMAL_BALANCE: Record<string, 'DEBIT' | 'CREDIT'> = {
@@ -45,14 +46,44 @@ export async function GET() {
         : agg.totalCredit - agg.totalDebit
     }
 
-    // Helper: get balance by account code
-    const getBalanceByCode = (code: string): number => {
-      const account = accounts.find(a => a.code === code)
-      if (!account) return 0
-      return getBalanceFromMap(account.id, account.type)
+    // ===== 3. Resolve account codes by role (dynamic lookup) =====
+    // Instead of hardcoded codes, resolve dynamically from account roles
+    const [
+      arAccounts, apAccounts,
+      cashAccounts, bankAccounts, pettyCashAccounts,
+      outputVatAccounts, inputVatAccounts, vatDueAccounts,
+    ] = await Promise.all([
+      getAccountsByRoles([AccountRole.CUSTOMER_AR]),
+      getAccountsByRoles([AccountRole.SUPPLIER_AP]),
+      getAccountsByRoles([AccountRole.CASH]),
+      getAccountsByRoles([AccountRole.BANK]),
+      getAccountsByRoles([AccountRole.CASH]),  // Petty cash is also CASH role
+      getAccountsByRoles([AccountRole.VAT_OUTPUT]),
+      getAccountsByRoles([AccountRole.VAT_INPUT]),
+      getAccountsByRoles([AccountRole.VAT_DUE]),
+    ])
+
+    // Build code arrays from role-resolved accounts, with fallback defaults
+    const arCodes = arAccounts.length > 0 ? arAccounts.map(a => a.code) : ['1210']
+    const apCodes = apAccounts.length > 0 ? apAccounts.map(a => a.code) : ['3210']
+    const cashCodes = cashAccounts.length > 0 ? cashAccounts.map(a => a.code) : ['1110']
+    const bankCodes = bankAccounts.length > 0 ? bankAccounts.map(a => a.code) : ['1120']
+    const pettyCashCodes = pettyCashAccounts.length > 0 ? pettyCashAccounts.map(a => a.code) : ['1130']
+    const outputVatCodes = outputVatAccounts.length > 0 ? outputVatAccounts.map(a => a.code) : ['3110']
+    const inputVatCodes = inputVatAccounts.length > 0 ? inputVatAccounts.map(a => a.code) : ['3120']
+    const vatDueCodes = vatDueAccounts.length > 0 ? vatDueAccounts.map(a => a.code) : ['3130']
+
+    // Helper: get balance by account codes (using pre-fetched data)
+    const getBalanceByCodes = (codes: string[]): number => {
+      let total = 0
+      for (const code of codes) {
+        const account = accounts.find(a => a.code === code)
+        if (account) total += getBalanceFromMap(account.id, account.type)
+      }
+      return total
     }
 
-    // ===== 3. Compute balances for all accounts (no N+1 queries) =====
+    // ===== 4. Compute balances for all accounts (no N+1 queries) =====
     const accountsWithBalances = accounts.map(account => ({
       ...account,
       balance: getBalanceFromMap(account.id, account.type),
@@ -86,19 +117,19 @@ export async function GET() {
     const totalExpenses = accountsByType.EXPENSE.reduce((sum, a) => sum + a.balance, 0)
     const netIncome = totalRevenue - totalExpenses
 
-    // Specific account balances (from pre-fetched data, no additional queries)
-    const arBalance = getBalanceByCode('1210')   // Clients Receivable
-    const apBalance = getBalanceByCode('3210')   // Suppliers Payable (موردون)
-    const cashTreasury = getBalanceByCode('1110') // Cash - Treasury
-    const cashBank = getBalanceByCode('1120')     // Bank Accounts
-    const cashPetty = getBalanceByCode('1130')    // Petty Cash
+    // Specific account balances (from role-resolved codes, using pre-fetched data)
+    const arBalance = getBalanceByCodes(arCodes)
+    const apBalance = getBalanceByCodes(apCodes)
+    const cashTreasury = getBalanceByCodes(cashCodes)
+    const cashBank = getBalanceByCodes(bankCodes)
+    const cashPetty = getBalanceByCodes(pettyCashCodes)
     const cashBalance = cashTreasury + cashBank + cashPetty
 
-    // VAT balances (from pre-fetched data, no additional queries)
-    const outputVat = getBalanceByCode('3110')  // Output VAT (ضريبة مخرجات)
-    const inputVat = getBalanceByCode('3120')    // Input VAT (ضريبة مدخلات)
-    const vatDue = getBalanceByCode('3130')      // VAT Due (ضريبة مستحقة)
-    const vatNet = outputVat - inputVat          // Net VAT position (positive = owed to tax authority)
+    // VAT balances (from role-resolved codes, using pre-fetched data)
+    const outputVat = getBalanceByCodes(outputVatCodes)
+    const inputVat = getBalanceByCodes(inputVatCodes)
+    const vatDue = getBalanceByCodes(vatDueCodes)
+    const vatNet = outputVat - inputVat  // Net VAT position (positive = owed to tax authority)
 
     // Key financial ratios
     const currentRatio = totalLiabilities > 0 ? totalAssets / totalLiabilities : 0

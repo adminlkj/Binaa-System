@@ -11,7 +11,7 @@ import {
   Wallet, Landmark, FileSpreadsheet, CircleDollarSign,
   CalendarCheck, Wrench, Banknote, FolderClosed, CheckCircle2,
   Printer, Download, Search, Link2, Pencil, FileSearch, ArrowRightLeft,
-  Settings,
+  Settings, List,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -45,6 +45,9 @@ interface Account {
   _count: { journalLines: number }
   balance: number
   normalBalance: string
+  entryCount: number
+  lastTransactionDate: string | null
+  childrenCount: number
 }
 
 interface JournalLine {
@@ -403,6 +406,144 @@ function AccountStatementDialog({ account, open, onClose }: {
   )
 }
 
+// ============ Account Transactions Dialog ============
+interface AccountTransactionEntry {
+  id: string; entryNo: string; date: string; description: string | null
+  status: string; sourceType: string | null; debit: number; credit: number
+}
+
+function AccountTransactionsDialog({ account, open, onClose }: {
+  account: Account | null; open: boolean; onClose: () => void
+}) {
+  const { lang } = useAppStore()
+
+  const { data, isLoading, isError, refetch } = useQuery<{
+    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+    entries: AccountTransactionEntry[]
+    totalLines: number
+  } | null>({
+    queryKey: ['account-transactions', account?.id],
+    queryFn: async () => {
+      if (!account) return null
+      const res = await fetch(`/api/journal-entries/by-account?accountId=${account.id}`)
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    enabled: !!account && open,
+  })
+
+  if (!account) return null
+
+  const entries = data?.entries || []
+  const totalDebit = entries.reduce((s, e) => s + e.debit, 0)
+  const totalCredit = entries.reduce((s, e) => s + e.credit, 0)
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <List className="size-5 text-emerald-600" />
+            <span>{t('حركات الحساب', 'Account Transactions', lang)}</span>
+            <span className="font-mono">{account.code}</span>
+            <span>-</span>
+            <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 flex-1 overflow-hidden">
+          {isLoading ? (
+            <TableSkeleton />
+          ) : isError ? (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p>
+              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button>
+            </div>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Card className="bg-emerald-50 border-emerald-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p>
+                    <MoneyDisplay value={totalDebit} lang={lang} bold className="text-emerald-700" />
+                  </CardContent>
+                </Card>
+                <Card className="bg-rose-50 border-rose-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p>
+                    <MoneyDisplay value={totalCredit} lang={lang} bold className="text-rose-700" />
+                  </CardContent>
+                </Card>
+                <Card className="bg-sky-50 border-sky-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-sky-600">{t('عدد القيود', 'Entry Count', lang)}</p>
+                    <p className="text-lg font-bold text-sky-700">{formatNumber(entries.length)}</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-purple-50 border-purple-200">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-xs text-purple-600">{t('عدد البنود', 'Line Count', lang)}</p>
+                    <p className="text-lg font-bold text-purple-700">{formatNumber(data?.totalLines || 0)}</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Entries Table */}
+              <Card className="flex-1 overflow-hidden">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+                          <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+                          <TableHead className="text-right">{t('البيان', 'Description', lang)}</TableHead>
+                          <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+                          <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+                          <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {entries.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                              {t('لا توجد حركات', 'No transactions found', lang)}
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          entries.map((entry) => (
+                            <TableRow key={entry.id}>
+                              <TableCell className="font-mono">{entry.entryNo}</TableCell>
+                              <TableCell>{formatDate(entry.date, lang)}</TableCell>
+                              <TableCell>{entry.description || '—'}</TableCell>
+                              <TableCell>{entry.debit > 0 ? <MoneyDisplay value={entry.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+                              <TableCell>{entry.credit > 0 ? <MoneyDisplay value={entry.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+                              <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                        {entries.length > 0 && (
+                          <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+                            <TableCell colSpan={3}>{t('الإجمالي', 'Total', lang)}</TableCell>
+                            <TableCell><MoneyDisplay value={totalDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+                            <TableCell><MoneyDisplay value={totalCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+                            <TableCell />
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ============ Journal Entry Detail ============
 function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; onBack: () => void; accounts: Account[] }) {
   const { lang } = useAppStore()
@@ -585,8 +726,9 @@ function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; 
 }
 
 // ============ Tab 1: Chart of Accounts ============
-function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize, isInitializing }: {
+function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize, isInitializing, onViewLedger }: {
   accounts: Account[]; isLoading: boolean; onInitialize: () => void; onReInitialize: () => void; isInitializing: boolean
+  onViewLedger: (accountCode: string) => void
 }) {
   const { lang } = useAppStore()
   const [activityFilter, setActivityFilter] = useState<string>('all')
@@ -601,6 +743,8 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   const [detailOpen, setDetailOpen] = useState(false)
   const [statementAccount, setStatementAccount] = useState<Account | null>(null)
   const [statementOpen, setStatementOpen] = useState(false)
+  const [transactionsAccount, setTransactionsAccount] = useState<Account | null>(null)
+  const [transactionsOpen, setTransactionsOpen] = useState(false)
 
   const allParentIds = useMemo(() => {
     const ids = new Set<string>()
@@ -742,7 +886,7 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
                   <TableHead className="text-right">{t('النشاط', 'Activity', lang)}</TableHead>
                   <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
                   <TableHead className="text-right">{t('القيود', 'Entries', lang)}</TableHead>
-                  <TableHead className="text-right">{t('كشف', 'Statement', lang)}</TableHead>
+                  <TableHead className="text-right min-w-[200px]">{t('الإجراءات', 'Actions', lang)}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -767,21 +911,48 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
                       <TableCell><TypeBadge type={a.type} lang={lang} /></TableCell>
                       <TableCell><ActivityBadge activityType={a.activityType} lang={lang} /></TableCell>
                       <TableCell><MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
-                      <TableCell className="text-center">{formatNumber(a._count.journalLines)}</TableCell>
+                      <TableCell className="text-center">{formatNumber(a.entryCount)}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 gap-1 text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setStatementAccount(a)
-                            setStatementOpen(true)
-                          }}
-                        >
-                          <FileSearch className="size-3.5" />
-                          {t('كشف', 'Statement', lang)}
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setStatementAccount(a)
+                              setStatementOpen(true)
+                            }}
+                          >
+                            <FileSearch className="size-3.5" />
+                            {t('كشف', 'Stmt', lang)}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 text-xs text-sky-700 hover:text-sky-800 hover:bg-sky-50"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onViewLedger(a.code)
+                            }}
+                          >
+                            <BookOpen className="size-3.5" />
+                            {t('أستاذ', 'Ledger', lang)}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setTransactionsAccount(a)
+                              setTransactionsOpen(true)
+                            }}
+                          >
+                            <List className="size-3.5" />
+                            {t('حركات', 'Txns', lang)}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -794,6 +965,7 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
 
       <AccountDetailDialog account={selectedAccount} open={detailOpen} onClose={() => setDetailOpen(false)} />
       <AccountStatementDialog account={statementAccount} open={statementOpen} onClose={() => setStatementOpen(false)} />
+      <AccountTransactionsDialog account={transactionsAccount} open={transactionsOpen} onClose={() => setTransactionsOpen(false)} />
     </div>
   )
 }
@@ -902,12 +1074,19 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
 }
 
 // ============ Tab 3: General Ledger ============
-function GeneralLedgerTab({ accounts }: { accounts: Account[] }) {
+function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; preselectedCode?: string }) {
   const { lang } = useAppStore()
   const postingAccounts = useMemo(() => accounts.filter(a => a.allowPosting).sort((a, b) => a.code.localeCompare(b.code)), [accounts])
-  const [selectedCode, setSelectedCode] = useState('')
+  const [selectedCode, setSelectedCode] = useState(preselectedCode || '')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+
+  // Sync with preselectedCode from parent
+  React.useEffect(() => {
+    if (preselectedCode) {
+      setSelectedCode(preselectedCode)
+    }
+  }, [preselectedCode])
 
   const { data: ledgerData, isLoading, isError, refetch } = useQuery<{
     account: { id: string; code: string; name: string; nameAr: string | null; type: string }
@@ -2356,6 +2535,7 @@ export function AccountingModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState('chart-of-accounts')
+  const [glPreselectedCode, setGlPreselectedCode] = useState('')
 
   const { data: accountsData, isLoading: loadingAccounts, refetch: refetchAccounts } = useQuery<{
     accounts: Account[]; tree: unknown[]; total: number
@@ -2438,7 +2618,7 @@ export function AccountingModule() {
         </div>
 
         <TabsContent value="chart-of-accounts">
-          <ChartOfAccountsTab accounts={accounts} isLoading={loadingAccounts} onInitialize={() => initMutation.mutate()} onReInitialize={() => reInitMutation.mutate()} isInitializing={isInitializing} />
+          <ChartOfAccountsTab accounts={accounts} isLoading={loadingAccounts} onInitialize={() => initMutation.mutate()} onReInitialize={() => reInitMutation.mutate()} isInitializing={isInitializing} onViewLedger={(accountCode) => { setGlPreselectedCode(accountCode); setActiveTab('general-ledger') }} />
         </TabsContent>
 
         <TabsContent value="role-mapping">
@@ -2450,7 +2630,7 @@ export function AccountingModule() {
         </TabsContent>
 
         <TabsContent value="general-ledger">
-          <GeneralLedgerTab accounts={accounts} />
+          <GeneralLedgerTab accounts={accounts} preselectedCode={glPreselectedCode} />
         </TabsContent>
 
         <TabsContent value="trial-balance">

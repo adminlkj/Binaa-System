@@ -1,11 +1,11 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
+import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const withBalances = searchParams.get('withBalances') === 'true'
 
     const accounts = await db.account.findMany({
       where: { isActive: true },
@@ -28,51 +28,44 @@ export async function GET(request: Request) {
       orderBy: { code: 'asc' },
     })
 
-    // Compute balances efficiently using a single aggregation query
-    let balanceMap = new Map<string, number>()
-    const normalBalanceMap: Record<string, 'DEBIT' | 'CREDIT'> = {
-      ASSET: 'DEBIT',
-      LIABILITY: 'CREDIT',
-      EQUITY: 'CREDIT',
-      REVENUE: 'CREDIT',
-      EXPENSE: 'DEBIT',
-    }
+    // Compute balance and last transaction for each account
+    const accountIds = accounts.map(a => a.id)
+    const balances = await db.journalLine.groupBy({
+      by: ['accountId'],
+      where: {
+        accountId: { in: accountIds },
+        journalEntry: { status: 'POSTED' },
+      },
+      _sum: { debit: true, credit: true },
+      _max: { createdAt: true },
+    })
 
-    if (withBalances) {
-      // Use a single efficient aggregation query
-      const aggregatedLines = await db.journalLine.groupBy({
-        by: ['accountId'],
-        _sum: { debit: true, credit: true },
-        where: { journalEntry: { status: 'POSTED' } },
-      })
+    // Build a map for quick lookup
+    const balanceMap = new Map(balances.map(b => [b.accountId, b]))
 
-      // Create a map from accountId to account type for normal balance calculation
-      const accountTypeMap = new Map<string, string>()
-      for (const account of accounts) {
-        accountTypeMap.set(account.id, account.type)
+    // Enrich each account with computed indicators
+    const enrichedAccounts = accounts.map(account => {
+      const bal = balanceMap.get(account.id)
+      const totalDebit = toNumber(bal?._sum?.debit) || 0
+      const totalCredit = toNumber(bal?._sum?.credit) || 0
+      const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
+      const balance = normalBalance === 'DEBIT' ? totalDebit - totalCredit : totalCredit - totalDebit
+
+      return {
+        ...account,
+        balance,
+        entryCount: account._count.journalLines,
+        lastTransactionDate: bal?._max?.createdAt || null,
+        childrenCount: account.children.length,
+        normalBalance,
       }
-
-      for (const line of aggregatedLines) {
-        const accountType = accountTypeMap.get(line.accountId) || 'ASSET'
-        const normalBalance = normalBalanceMap[accountType] || 'DEBIT'
-        const debit = toNumber(line._sum.debit)
-        const credit = toNumber(line._sum.credit)
-        const amount = normalBalance === 'DEBIT' ? debit - credit : credit - debit
-        balanceMap.set(line.accountId, amount)
-      }
-    }
-
-    const accountsWithBalances = accounts.map((account) => ({
-      ...account,
-      balance: withBalances ? (balanceMap.get(account.id) || 0) : 0,
-      normalBalance: normalBalanceMap[account.type] || 'DEBIT',
-    }))
+    })
 
     // Build hierarchical tree structure
-    const rootAccounts = accountsWithBalances.filter((a) => !a.parentId)
-    const childMap = new Map<string, typeof accountsWithBalances>()
+    const rootAccounts = enrichedAccounts.filter((a) => !a.parentId)
+    const childMap = new Map<string, typeof enrichedAccounts>()
 
-    for (const account of accountsWithBalances) {
+    for (const account of enrichedAccounts) {
       if (account.parentId) {
         const children = childMap.get(account.parentId) || []
         children.push(account)
@@ -81,7 +74,7 @@ export async function GET(request: Request) {
     }
 
     // Recursive function to build tree with computed totals
-    function buildTree(account: typeof accountsWithBalances[number]) {
+    function buildTree(account: typeof enrichedAccounts[number]) {
       const children = childMap.get(account.id) || []
       const childTrees = children.map(buildTree)
 
@@ -95,14 +88,14 @@ export async function GET(request: Request) {
         ...account,
         children: childTrees,
         childBalanceTotal,
-        totalBalance: account.balance + (account.children.length > 0 ? childBalanceTotal : 0),
+        totalBalance: account.balance + (account.childrenCount > 0 ? childBalanceTotal : 0),
       }
     }
 
     const tree = rootAccounts.map(buildTree)
 
     return NextResponse.json(serializeDecimal({
-      accounts: accountsWithBalances.map(a => ({
+      accounts: enrichedAccounts.map(a => ({
         id: a.id,
         code: a.code,
         name: a.name,
@@ -121,8 +114,11 @@ export async function GET(request: Request) {
         _count: a._count,
         balance: a.balance,
         normalBalance: a.normalBalance,
+        entryCount: a.entryCount,
+        lastTransactionDate: a.lastTransactionDate,
+        childrenCount: a.childrenCount,
       })),
-      total: accountsWithBalances.length,
+      total: enrichedAccounts.length,
     }))
   } catch (error) {
     console.error('Error fetching accounts:', error)
@@ -202,6 +198,30 @@ export async function POST(request: Request) {
       }
     }
 
+    // Rule 2: Posting-level account must have a parent
+    const isAllowPosting = body.allowPosting !== undefined ? body.allowPosting : true
+    if (isAllowPosting && !body.parentId && !body.parentCode) {
+      return NextResponse.json(
+        { error: 'لا يمكن إنشاء حساب ترحيل بدون حساب أب - يرجى تحديد الحساب الأب أولاً' },
+        { status: 400 }
+      )
+    }
+
+    // If parentCode is provided, verify it exists
+    if (body.parentCode) {
+      const parentByCode = await db.account.findUnique({ where: { code: body.parentCode } })
+      if (!parentByCode) {
+        return NextResponse.json(
+          { error: 'لا يمكن إنشاء حساب ترحيل بدون حساب أب - يرجى تحديد الحساب الأب أولاً' },
+          { status: 400 }
+        )
+      }
+      // Auto-set parentId from parentCode if not already set
+      if (!body.parentId) {
+        body.parentId = parentByCode.id
+      }
+    }
+
     // Validate activity type if provided
     const validActivityTypes = ['CONSTRUCTION', 'EQUIPMENT_RENTAL', 'BOTH']
     if (body.activityType && !validActivityTypes.includes(body.activityType)) {
@@ -218,6 +238,7 @@ export async function POST(request: Request) {
         nameAr: body.nameAr || null,
         type: body.type,
         parentId: body.parentId || null,
+        parentCode: body.parentCode || null,
         isActive: true,
         activityType: body.activityType || null,
         isSystem: body.isSystem ?? false,

@@ -19,7 +19,7 @@ export type NavItem =
   // المحاسبة والتقارير
   | 'accounting' | 'vat' | 'reports'
   // الإعدادات والبيانات الأساسية
-  | 'clients' | 'suppliers' | 'inventory' | 'settings' | 'expenses'
+  | 'clients' | 'suppliers' | 'inventory' | 'settings' | 'expenses' | 'accounting-mapping'
 
 export type NavGroup = 'home' | 'construction-hub' | 'rental-hub' | 'hr' | 'supply-chain' | 'operations' | 'accounting-reports' | 'settings-data'
 
@@ -90,7 +90,7 @@ export const navGroups: NavGroupConfig[] = [
     label: { ar: 'الإعدادات والبيانات', en: 'Settings & Data' },
     icon: 'Settings',
     color: 'text-gray-500',
-    items: ['clients', 'suppliers', 'inventory', 'settings'],
+    items: ['clients', 'suppliers', 'inventory', 'settings', 'accounting-mapping'],
   },
 ]
 
@@ -139,6 +139,7 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'suppliers': { ar: 'الموردون', en: 'Suppliers' },
   'inventory': { ar: 'المخزون', en: 'Inventory' },
   'settings': { ar: 'الإعدادات', en: 'Settings' },
+  'accounting-mapping': { ar: 'الربط المحاسبي', en: 'Accounting Mapping' },
 }
 
 // Activity type mapping
@@ -186,6 +187,7 @@ export const navItemActivity: Record<NavItem, ActivityType> = {
   'suppliers': 'both',
   'inventory': 'both',
   'settings': 'both',
+  'accounting-mapping': 'both',
 }
 
 // Workflow chain definitions

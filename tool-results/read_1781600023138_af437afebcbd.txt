@@ -1,0 +1,502 @@
+     1→   600→   600→  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
+     2→   601→   601→  const [detailOpen, setDetailOpen] = useState(false)
+     3→   602→   602→  const [statementAccount, setStatementAccount] = useState<Account | null>(null)
+     4→   603→   603→  const [statementOpen, setStatementOpen] = useState(false)
+     5→   604→   604→
+     6→   605→   605→  const allParentIds = useMemo(() => {
+     7→   606→   606→    const ids = new Set<string>()
+     8→   607→   607→    accounts.forEach(a => { if (a.children && a.children.length > 0) ids.add(a.id) })
+     9→   608→   608→    return ids
+    10→   609→   609→  }, [accounts])
+    11→   610→   610→
+    12→   611→   611→  const rootAccounts = useMemo(() => {
+    13→   612→   612→    return accounts.filter(a => !a.parentId).sort((a, b) => a.code.localeCompare(b.code))
+    14→   613→   613→  }, [accounts])
+    15→   614→   614→
+    16→   615→   615→  const childMap = useMemo(() => {
+    17→   616→   616→    const map = new Map<string, Account[]>()
+    18→   617→   617→    accounts.forEach(a => { if (a.parentId) { const siblings = map.get(a.parentId) || []; siblings.push(a); map.set(a.parentId, siblings) } })
+    19→   618→   618→    map.forEach((children) => children.sort((a, b) => a.code.localeCompare(b.code)))
+    20→   619→   619→    return map
+    21→   620→   620→  }, [accounts])
+    22→   621→   621→
+    23→   622→   622→  const filteredAccounts = useMemo(() => {
+    24→   623→   623→    let filtered = accounts
+    25→   624→   624→    if (activityFilter !== 'all') {
+    26→   625→   625→      if (activityFilter === 'BOTH') filtered = filtered.filter(a => a.activityType === 'BOTH' || !a.activityType)
+    27→   626→   626→      else filtered = filtered.filter(a => a.activityType === activityFilter)
+    28→   627→   627→    }
+    29→   628→   628→    if (typeFilter !== 'all') filtered = filtered.filter(a => a.type === typeFilter)
+    30→   629→   629→    if (searchTerm) {
+    31→   630→   630→      const term = searchTerm.toLowerCase()
+    32→   631→   631→      filtered = filtered.filter(a => a.code.toLowerCase().includes(term) || a.name.toLowerCase().includes(term) || (a.nameAr && a.nameAr.toLowerCase().includes(term)))
+    33→   632→   632→    }
+    34→   633→   633→    return filtered
+    35→   634→   634→  }, [accounts, activityFilter, typeFilter, searchTerm])
+    36→   635→   635→
+    37→   636→   636→  const flatAccounts = useMemo(() => {
+    38→   637→   637→    function flatten(roots: Account[], level: number): (Account & { displayLevel: number })[] {
+    39→   638→   638→      const result: (Account & { displayLevel: number })[] = []
+    40→   639→   639→      for (const root of roots) {
+    41→   640→   640→        if (!filteredAccounts.find(a => a.id === root.id)) continue
+    42→   641→   641→        result.push({ ...root, displayLevel: level })
+    43→   642→   642→        const children = childMap.get(root.id) || []
+    44→   643→   643→        if (children.length > 0 && expandedIds.has(root.id)) result.push(...flatten(children, level + 1))
+    45→   644→   644→      }
+    46→   645→   645→      return result
+    47→   646→   646→    }
+    48→   647→   647→    return flatten(rootAccounts, 0)
+    49→   648→   648→  }, [rootAccounts, filteredAccounts, childMap, expandedIds])
+    50→   649→   649→
+    51→   650→   650→  const toggleExpand = useCallback((id: string) => {
+    52→   651→   651→    setExpandedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
+    53→   652→   652→  }, [])
+    54→   653→   653→
+    55→   654→   654→  const typeSummary = useMemo(() => { const s: Record<string, number> = {}; accounts.forEach(a => { s[a.type] = (s[a.type] || 0) + 1 }); return s }, [accounts])
+    56→   655→   655→
+    57→   656→   656→  if (isLoading) return <TableSkeleton />
+    58→   657→   657→  if (accounts.length === 0) {
+    59→   658→   658→    return (
+    60→   659→   659→      <Card className="border-emerald-200 bg-emerald-50">
+    61→   660→   660→        <CardContent className="p-6 flex flex-col items-center gap-4 text-center">
+    62→   661→   661→          <Database className="size-12 text-emerald-500" />
+    63→   662→   662→          <div>
+    64→   663→   663→            <h3 className="text-lg font-semibold text-emerald-800">{t('لا توجد حسابات', 'No Accounts Found', lang)}</h3>
+    65→   664→   664→            <p className="text-sm text-emerald-600 mt-1">{t('قم بتهيئة دليل الحسابات الافتراضي', 'Initialize the default chart of accounts', lang)}</p>
+    66→   665→   665→          </div>
+    67→   666→   666→          <Button onClick={onInitialize} disabled={isInitializing} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+    68→   667→   667→            {isInitializing ? <RefreshCw className="size-4 animate-spin" /> : <PlusCircle className="size-4" />}
+    69→   668→   668→            {isInitializing ? t('جاري التهيئة...', 'Initializing...', lang) : t('تهيئة دليل الحسابات', 'Initialize Chart of Accounts', lang)}
+    70→   669→   669→          </Button>
+    71→   670→   670→        </CardContent>
+    72→   671→   671→      </Card>
+    73→   672→   672→    )
+    74→   673→   673→  }
+    75→   674→   674→
+    76→   675→   675→  return (
+    77→   676→   676→    <div className="space-y-4">
+    78→   677→   677→      {/* Summary */}
+    79→   678→   678→      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+    80→   679→   679→        {Object.entries(typeSummary).map(([type, count]) => {
+    81→   680→   680→          const cfg = typeConfig[type]
+    82→   681→   681→          if (!cfg) return null
+    83→   682→   682→          return <Card key={type} className={`${cfg.bg} border-0`}><CardContent className="p-3 text-center"><p className={`text-xs ${cfg.color}`}>{cfg.label[lang]}</p><p className={`text-lg font-bold ${cfg.color}`}>{count}</p></CardContent></Card>
+    84→   683→   683→        })}
+    85→   684→   684→      </div>
+    86→   685→   685→
+    87→   686→   686→      {/* Filters */}
+    88→   687→   687→      <Card className="bg-gray-50/50">
+    89→   688→   688→        <CardContent className="p-4">
+    90→   689→   689→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+    91→   690→   690→            <div className="space-y-1 flex-1 min-w-[120px]">
+    92→   691→   691→              <Label className="text-xs">{t('النشاط', 'Activity', lang)}</Label>
+    93→   692→   692→              <Select value={activityFilter} onValueChange={setActivityFilter}>
+    94→   693→   693→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+    95→   694→   694→                <SelectContent>
+    96→   695→   695→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+    97→   696→   696→                  <SelectItem value="CONSTRUCTION">{t('مشاريع', 'Construction', lang)}</SelectItem>
+    98→   697→   697→                  <SelectItem value="EQUIPMENT_RENTAL">{t('تأجير', 'Rental', lang)}</SelectItem>
+    99→   698→   698→                  <SelectItem value="BOTH">{t('مشترك', 'Both', lang)}</SelectItem>
+   100→   699→   699→                </SelectContent>
+   101→   700→   700→              </Select>
+   102→   701→   701→            </div>
+   103→   702→   702→            <div className="space-y-1 flex-1 min-w-[120px]">
+   104→   703→   703→              <Label className="text-xs">{t('النوع', 'Type', lang)}</Label>
+   105→   704→   704→              <Select value={typeFilter} onValueChange={setTypeFilter}>
+   106→   705→   705→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   107→   706→   706→                <SelectContent>
+   108→   707→   707→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   109→   708→   708→                  <SelectItem value="ASSET">{t('أصول', 'Asset', lang)}</SelectItem>
+   110→   709→   709→                  <SelectItem value="LIABILITY">{t('التزامات', 'Liability', lang)}</SelectItem>
+   111→   710→   710→                  <SelectItem value="EQUITY">{t('حقوق ملكية', 'Equity', lang)}</SelectItem>
+   112→   711→   711→                  <SelectItem value="REVENUE">{t('إيرادات', 'Revenue', lang)}</SelectItem>
+   113→   712→   712→                  <SelectItem value="EXPENSE">{t('مصروفات', 'Expense', lang)}</SelectItem>
+   114→   713→   713→                </SelectContent>
+   115→   714→   714→              </Select>
+   116→   715→   715→            </div>
+   117→   716→   716→            <div className="space-y-1 flex-1 min-w-[180px]">
+   118→   717→   717→              <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+   119→   718→   718→              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث بالكود أو الاسم...', 'Search by code or name...', lang)} className="h-9" />
+   120→   719→   719→            </div>
+   121→   720→   720→            <div className="flex gap-1">
+   122→   721→   721→              <Button variant="outline" size="sm" onClick={() => setExpandedIds(new Set(allParentIds))} className="text-xs gap-1 h-9"><ChevronDown className="size-3" />{t('توسيع', 'Expand', lang)}</Button>
+   123→   722→   722→              <Button variant="outline" size="sm" onClick={() => setExpandedIds(new Set())} className="text-xs gap-1 h-9"><ChevronRight className="size-3" />{t('تقليص', 'Collapse', lang)}</Button>
+   124→   723→   723→            </div>
+   125→   724→   724→            <Button variant="outline" size="sm" onClick={onReInitialize} disabled={isInitializing} className="gap-2 text-xs h-9">
+   126→   725→   725→              {isInitializing ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+   127→   726→   726→              {t('تحديث', 'Re-initialize', lang)}
+   128→   727→   727→            </Button>
+   129→   728→   728→          </div>
+   130→   729→   729→        </CardContent>
+   131→   730→   730→      </Card>
+   132→   731→   731→
+   133→   732→   732→      {/* Table */}
+   134→   733→   733→      <Card>
+   135→   734→   734→        <CardContent className="p-0">
+   136→   735→   735→          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+   137→   736→   736→            <Table>
+   138→   737→   737→              <TableHeader>
+   139→   738→   738→                <TableRow>
+   140→   739→   739→                  <TableHead className="text-right min-w-[120px]">{t('الكود', 'Code', lang)}</TableHead>
+   141→   740→   740→                  <TableHead className="text-right min-w-[200px]">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
+   142→   741→   741→                  <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+   143→   742→   742→                  <TableHead className="text-right">{t('النشاط', 'Activity', lang)}</TableHead>
+   144→   743→   743→                  <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+   145→   744→   744→                  <TableHead className="text-right">{t('القيود', 'Entries', lang)}</TableHead>
+   146→   745→   745→                  <TableHead className="text-right">{t('كشف', 'Statement', lang)}</TableHead>
+   147→   746→   746→                </TableRow>
+   148→   747→   747→              </TableHeader>
+   149→   748→   748→              <TableBody>
+   150→   749→   749→                {flatAccounts.map(a => {
+   151→   750→   750→                  const hasChildren = childMap.has(a.id) && (childMap.get(a.id)?.length || 0) > 0
+   152→   751→   751→                  const isExpanded = expandedIds.has(a.id)
+   153→   752→   752→                  return (
+   154→   753→   753→                    <TableRow key={a.id} className={`cursor-pointer hover:bg-emerald-50/30 ${a.displayLevel === 0 ? 'bg-gray-50/50 font-semibold' : ''} ${a.isSystem ? 'bg-amber-50/30' : ''}`}
+   155→   754→   754→                      onClick={() => { setSelectedAccount(a); setDetailOpen(true) }}>
+   156→   755→   755→                      <TableCell>
+   157→   756→   756→                        <div className="flex items-center" style={{ paddingLeft: `${a.displayLevel * 24}px` }}>
+   158→   757→   757→                          {hasChildren && <button onClick={(e) => { e.stopPropagation(); toggleExpand(a.id) }} className="mr-1 p-0.5 hover:bg-gray-200 rounded">{isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}</button>}
+   159→   758→   758→                          {!hasChildren && a.displayLevel > 0 && <span className="text-gray-300 mr-1 ml-1 text-xs">└</span>}
+   160→   759→   759→                          <span className="font-mono text-sm">{a.code}</span>
+   161→   760→   760→                        </div>
+   162→   761→   761→                      </TableCell>
+   163→   762→   762→                      <TableCell>
+   164→   763→   763→                        <span className={a.displayLevel === 0 ? 'font-bold' : ''}>
+   165→   764→   764→                          {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+   166→   765→   765→                        </span>
+   167→   766→   766→                      </TableCell>
+   168→   767→   767→                      <TableCell><TypeBadge type={a.type} lang={lang} /></TableCell>
+   169→   768→   768→                      <TableCell><ActivityBadge activityType={a.activityType} lang={lang} /></TableCell>
+   170→   769→   769→                      <TableCell><MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
+   171→   770→   770→                      <TableCell className="text-center">{formatNumber(a._count.journalLines)}</TableCell>
+   172→   771→   771→                      <TableCell>
+   173→   772→   772→                        <Button
+   174→   773→   773→                          variant="ghost"
+   175→   774→   774→                          size="sm"
+   176→   775→   775→                          className="h-7 gap-1 text-xs"
+   177→   776→   776→                          onClick={(e) => {
+   178→   777→   777→                            e.stopPropagation()
+   179→   778→   778→                            setStatementAccount(a)
+   180→   779→   779→                            setStatementOpen(true)
+   181→   780→   780→                          }}
+   182→   781→   781→                        >
+   183→   782→   782→                          <FileSearch className="size-3.5" />
+   184→   783→   783→                          {t('كشف', 'Statement', lang)}
+   185→   784→   784→                        </Button>
+   186→   785→   785→                      </TableCell>
+   187→   786→   786→                    </TableRow>
+   188→   787→   787→                  )
+   189→   788→   788→                })}
+   190→   789→   789→              </TableBody>
+   191→   790→   790→            </Table>
+   192→   791→   791→          </div>
+   193→   792→   792→        </CardContent>
+   194→   793→   793→      </Card>
+   195→   794→   794→
+   196→   795→   795→      <AccountDetailDialog account={selectedAccount} open={detailOpen} onClose={() => setDetailOpen(false)} />
+   197→   796→   796→      <AccountStatementDialog account={statementAccount} open={statementOpen} onClose={() => setStatementOpen(false)} />
+   198→   797→   797→    </div>
+   199→   798→   798→  )
+   200→   799→   799→}
+   201→   800→   800→
+   202→   801→   801→// ============ Tab 2: Journal Entries ============
+   203→   802→   802→function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
+   204→   803→   803→  entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void; accounts: Account[]
+   205→   804→   804→}) {
+   206→   805→   805→  const { lang } = useAppStore()
+   207→   806→   806→  const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
+   208→   807→   807→  const [statusFilter, setStatusFilter] = useState('all')
+   209→   808→   808→  const [sourceFilter, setSourceFilter] = useState('all')
+   210→   809→   809→  const [searchTerm, setSearchTerm] = useState('')
+   211→   810→   810→
+   212→   811→   811→  const filtered = useMemo(() => {
+   213→   812→   812→    let f = entries
+   214→   813→   813→    if (statusFilter !== 'all') f = f.filter(e => e.status === statusFilter)
+   215→   814→   814→    if (sourceFilter !== 'all') f = f.filter(e => e.sourceType === sourceFilter)
+   216→   815→   815→    if (searchTerm) {
+   217→   816→   816→      const term = searchTerm.toLowerCase()
+   218→   817→   817→      f = f.filter(e => e.entryNo.toLowerCase().includes(term) || (e.description || '').toLowerCase().includes(term))
+   219→   818→   818→    }
+   220→   819→   819→    return f
+   221→   820→   820→  }, [entries, statusFilter, sourceFilter, searchTerm])
+   222→   821→   821→
+   223→   822→   822→  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} accounts={accounts} />
+   224→   823→   823→  if (isLoading) return <TableSkeleton />
+   225→   824→   824→  if (isError) return <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+   226→   825→   825→
+   227→   826→   826→  return (
+   228→   827→   827→    <div className="space-y-4">
+   229→   828→   828→      {/* Filters */}
+   230→   829→   829→      <Card className="bg-gray-50/50">
+   231→   830→   830→        <CardContent className="p-4">
+   232→   831→   831→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+   233→   832→   832→            <div className="space-y-1 flex-1 min-w-[120px]">
+   234→   833→   833→              <Label className="text-xs">{t('الحالة', 'Status', lang)}</Label>
+   235→   834→   834→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+   236→   835→   835→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   237→   836→   836→                <SelectContent>
+   238→   837→   837→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   239→   838→   838→                  <SelectItem value="POSTED">{t('مرحّل', 'Posted', lang)}</SelectItem>
+   240→   839→   839→                  <SelectItem value="DRAFT">{t('مسودة', 'Draft', lang)}</SelectItem>
+   241→   840→   840→                  <SelectItem value="CANCELLED">{t('ملغي', 'Cancelled', lang)}</SelectItem>
+   242→   841→   841→                </SelectContent>
+   243→   842→   842→              </Select>
+   244→   843→   843→            </div>
+   245→   844→   844→            <div className="space-y-1 flex-1 min-w-[150px]">
+   246→   845→   845→              <Label className="text-xs">{t('المصدر', 'Source', lang)}</Label>
+   247→   846→   846→              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+   248→   847→   847→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   249→   848→   848→                <SelectContent>
+   250→   849→   849→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   251→   850→   850→                  {Object.entries(sourceTypeLabels).map(([key, label]) => (
+   252→   851→   851→                    <SelectItem key={key} value={key}>{label[lang]}</SelectItem>
+   253→   852→   852→                  ))}
+   254→   853→   853→                </SelectContent>
+   255→   854→   854→              </Select>
+   256→   855→   855→            </div>
+   257→   856→   856→            <div className="space-y-1 flex-1 min-w-[180px]">
+   258→   857→   857→              <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+   259→   858→   858→              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث برقم القيد أو الوصف...', 'Search by entry no or description...', lang)} className="h-9" />
+   260→   859→   859→            </div>
+   261→   860→   860→          </div>
+   262→   861→   861→        </CardContent>
+   263→   862→   862→      </Card>
+   264→   863→   863→
+   265→   864→   864→      {filtered.length === 0 ? (
+   266→   865→   865→        <div className="flex flex-col items-center gap-3 py-10"><FileText className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد قيود', 'No journal entries found', lang)}</p></div>
+   267→   866→   866→      ) : (
+   268→   867→   867→        <Card>
+   269→   868→   868→          <CardContent className="p-0">
+   270→   869→   869→            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+   271→   870→   870→              <Table>
+   272→   871→   871→                <TableHeader>
+   273→   872→   872→                  <TableRow>
+   274→   873→   873→                    <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+   275→   874→   874→                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   276→   875→   875→                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   277→   876→   876→                    <TableHead className="text-right">{t('المصدر', 'Source', lang)}</TableHead>
+   278→   877→   877→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   279→   878→   878→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   280→   879→   879→                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+   281→   880→   880→                  </TableRow>
+   282→   881→   881→                </TableHeader>
+   283→   882→   882→                <TableBody>
+   284→   883→   883→                  {filtered.map(entry => (
+   285→   884→   884→                    <TableRow key={entry.id} className="cursor-pointer hover:bg-emerald-50/30" onClick={() => setSelectedEntry(entry)}>
+   286→   885→   885→                      <TableCell className="font-mono font-medium">{entry.entryNo}</TableCell>
+   287→   886→   886→                      <TableCell>{formatDate(entry.date, lang)}</TableCell>
+   288→   887→   887→                      <TableCell className="max-w-[200px] truncate">{entry.description || '—'}</TableCell>
+   289→   888→   888→                      <TableCell>{entry.sourceType ? <Badge variant="outline" className="text-xs">{sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType}</Badge> : '—'}</TableCell>
+   290→   889→   889→                      <TableCell><MoneyDisplay value={entry.totalDebit} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+   291→   890→   890→                      <TableCell><MoneyDisplay value={entry.totalCredit} lang={lang} size="sm" className="text-rose-700" /></TableCell>
+   292→   891→   891→                      <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
+   293→   892→   892→                    </TableRow>
+   294→   893→   893→                  ))}
+   295→   894→   894→                </TableBody>
+   296→   895→   895→              </Table>
+   297→   896→   896→            </div>
+   298→   897→   897→          </CardContent>
+   299→   898→   898→        </Card>
+   300→   899→   899→      )}
+   301→   900→   900→    </div>
+   302→   901→   901→  )
+   303→   902→   902→}
+   304→   903→   903→
+   305→   904→   904→// ============ Tab 3: General Ledger ============
+   306→   905→   905→function GeneralLedgerTab({ accounts }: { accounts: Account[] }) {
+   307→   906→   906→  const { lang } = useAppStore()
+   308→   907→   907→  const postingAccounts = useMemo(() => accounts.filter(a => a.allowPosting).sort((a, b) => a.code.localeCompare(b.code)), [accounts])
+   309→   908→   908→  const [selectedCode, setSelectedCode] = useState('')
+   310→   909→   909→  const [dateFrom, setDateFrom] = useState('')
+   311→   910→   910→  const [dateTo, setDateTo] = useState('')
+   312→   911→   911→
+   313→   912→   912→  const { data: ledgerData, isLoading, isError, refetch } = useQuery<{
+   314→   913→   913→    account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+   315→   914→   914→    lines: StatementLine[]
+   316→   915→   915→    totalDebit: number; totalCredit: number; closingBalance: number
+   317→   916→   916→  } | null>({
+   318→   917→   917→    queryKey: ['general-ledger', selectedCode, dateFrom, dateTo],
+   319→   918→   918→    queryFn: async () => {
+   320→   919→   919→      if (!selectedCode) return null
+   321→   920→   920→      const params = new URLSearchParams({ accountCode: selectedCode })
+   322→   921→   921→      if (dateFrom) params.set('dateFrom', dateFrom)
+   323→   922→   922→      if (dateTo) params.set('dateTo', dateTo)
+   324→   923→   923→      const res = await fetch(`/api/general-ledger?${params}`)
+   325→   924→   924→      if (!res.ok) throw new Error()
+   326→   925→   925→      return res.json()
+   327→   926→   926→    },
+   328→   927→   927→    enabled: !!selectedCode,
+   329→   928→   928→  })
+   330→   929→   929→
+   331→   930→   930→  return (
+   332→   931→   931→    <div className="space-y-4">
+   333→   932→   932→      <Card className="bg-gray-50/50">
+   334→   933→   933→        <CardContent className="p-4">
+   335→   934→   934→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+   336→   935→   935→            <div className="space-y-1 flex-1 min-w-[200px]">
+   337→   936→   936→              <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
+   338→   937→   937→              <Select value={selectedCode} onValueChange={setSelectedCode}>
+   339→   938→   938→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} /></SelectTrigger>
+   340→   939→   939→                <SelectContent>
+   341→   940→   940→                  {postingAccounts.map(a => (
+   342→   941→   941→                    <SelectItem key={a.id} value={a.code}>{a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}</SelectItem>
+   343→   942→   942→                  ))}
+   344→   943→   943→                </SelectContent>
+   345→   944→   944→              </Select>
+   346→   945→   945→            </div>
+   347→   946→   946→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+   348→   947→   947→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+   349→   948→   948→            {selectedCode && <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>}
+   350→   949→   949→          </div>
+   351→   950→   950→        </CardContent>
+   352→   951→   951→      </Card>
+   353→   952→   952→
+   354→   953→   953→      {!selectedCode ? (
+   355→   954→   954→        <div className="flex flex-col items-center gap-3 py-10"><BookOpen className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر حساباً لعرض حركته', 'Select an account to view its ledger', lang)}</p></div>
+   356→   955→   955→      ) : isLoading ? <TableSkeleton /> : isError ? (
+   357→   956→   956→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+   358→   957→   957→      ) : ledgerData ? (
+   359→   958→   958→        <>
+   360→   959→   959→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   361→   960→   960→            <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('الحساب', 'Account', lang)}</p><p className="font-bold font-mono">{ledgerData.account.code}</p></CardContent></Card>
+   362→   961→   961→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('مدين', 'Debit', lang)}</p><MoneyDisplay value={ledgerData.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+   363→   962→   962→            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={ledgerData.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+   364→   963→   963→            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p><MoneyDisplay value={ledgerData.closingBalance} lang={lang} bold className="text-purple-700" /></CardContent></Card>
+   365→   964→   964→          </div>
+   366→   965→   965→          <Card>
+   367→   966→   966→            <CardContent className="p-0">
+   368→   967→   967→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+   369→   968→   968→                <Table>
+   370→   969→   969→                  <TableHeader>
+   371→   970→   970→                    <TableRow>
+   372→   971→   971→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   373→   972→   972→                      <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+   374→   973→   973→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   375→   974→   974→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   376→   975→   975→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   377→   976→   976→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+   378→   977→   977→                    </TableRow>
+   379→   978→   978→                  </TableHeader>
+   380→   979→   979→                  <TableBody>
+   381→   980→   980→                    {ledgerData.lines.map((line, idx) => (
+   382→   981→   981→                      <TableRow key={idx}>
+   383→   982→   982→                        <TableCell>{formatDate(line.date, lang)}</TableCell>
+   384→   983→   983→                        <TableCell className="font-mono">{line.entryNo}</TableCell>
+   385→   984→   984→                        <TableCell>{line.description || line.lineDescription || '—'}</TableCell>
+   386→   985→   985→                        <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+   387→   986→   986→                        <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+   388→   987→   987→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} bold /></TableCell>
+   389→   988→   988→                      </TableRow>
+   390→   989→   989→                    ))}
+   391→   990→   990→                  </TableBody>
+   392→   991→   991→                </Table>
+   393→   992→   992→              </div>
+   394→   993→   993→            </CardContent>
+   395→   994→   994→          </Card>
+   396→   995→   995→        </>
+   397→   996→   996→      ) : null}
+   398→   997→   997→    </div>
+   399→   998→   998→  )
+   400→   999→   999→}
+   401→  1000→  1000→
+   402→  1001→  1001→// ============ Tab 4: Trial Balance ============
+   403→  1002→  1002→function TrialBalanceTab() {
+   404→  1003→  1003→  const { lang } = useAppStore()
+   405→  1004→  1004→  const [dateFrom, setDateFrom] = useState('')
+   406→  1005→  1005→  const [dateTo, setDateTo] = useState('')
+   407→  1006→  1006→
+   408→  1007→  1007→  const { data: trialData, isLoading, isError, refetch } = useQuery<TrialBalanceItem[]>({
+   409→  1008→  1008→    queryKey: ['trial-balance', dateFrom, dateTo],
+   410→  1009→  1009→    queryFn: async () => {
+   411→  1010→  1010→      const params = new URLSearchParams()
+   412→  1011→  1011→      if (dateFrom) params.set('dateFrom', dateFrom)
+   413→  1012→  1012→      if (dateTo) params.set('dateTo', dateTo)
+   414→  1013→  1013→      const res = await fetch(`/api/trial-balance?${params}`)
+   415→  1014→  1014→      if (!res.ok) throw new Error()
+   416→  1015→  1015→      const data = await res.json()
+   417→  1016→  1016→      return Array.isArray(data) ? data : (data.items || [])
+   418→  1017→  1017→    },
+   419→  1018→  1018→  })
+   420→  1019→  1019→
+   421→  1020→  1020→  const safeData = trialData || []
+   422→  1021→  1021→  const totals = useMemo(() => ({
+   423→  1022→  1022→    netDebit: safeData.reduce((s, i) => s + i.netDebit, 0),
+   424→  1023→  1023→    netCredit: safeData.reduce((s, i) => s + i.netCredit, 0),
+   425→  1024→  1024→  }), [safeData])
+   426→  1025→  1025→
+   427→  1026→  1026→  return (
+   428→  1027→  1027→    <div className="space-y-4">
+   429→  1028→  1028→      <Card className="bg-gray-50/50">
+   430→  1029→  1029→        <CardContent className="p-4">
+   431→  1030→  1030→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+   432→  1031→  1031→            <div className="space-y-1"><Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label><Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" /></div>
+   433→  1032→  1032→            <div className="space-y-1"><Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label><Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" /></div>
+   434→  1033→  1033→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1"><RefreshCw className="size-3.5" />{t('تحديث', 'Refresh', lang)}</Button>
+   435→  1034→  1034→            <div className="mr-auto">
+   436→  1035→  1035→              <Badge className={Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-rose-100 text-rose-700 border-0'}>
+   437→  1036→  1036→                {Math.abs(totals.netDebit - totals.netCredit) < 0.01 ? t('✓ متوازن', '✓ Balanced', lang) : t('✗ غير متوازن', '✗ Unbalanced', lang)}
+   438→  1037→  1037→              </Badge>
+   439→  1038→  1038→            </div>
+   440→  1039→  1039→          </div>
+   441→  1040→  1040→        </CardContent>
+   442→  1041→  1041→      </Card>
+   443→  1042→  1042→
+   444→  1043→  1043→      {isLoading ? <TableSkeleton /> : isError ? (
+   445→  1044→  1044→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'Error', lang)}</p></div>
+   446→  1045→  1045→      ) : safeData.length === 0 ? (
+   447→  1046→  1046→        <div className="flex flex-col items-center gap-3 py-10"><Scale className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد أرصدة', 'No balances found', lang)}</p></div>
+   448→  1047→  1047→      ) : (
+   449→  1048→  1048→        <Card>
+   450→  1049→  1049→          <CardContent className="p-0">
+   451→  1050→  1050→            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+   452→  1051→  1051→              <Table>
+   453→  1052→  1052→                <TableHeader>
+   454→  1053→  1053→                  <TableRow>
+   455→  1054→  1054→                    <TableHead className="text-right">{t('الكود', 'Code', lang)}</TableHead>
+   456→  1055→  1055→                    <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+   457→  1056→  1056→                    <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+   458→  1057→  1057→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   459→  1058→  1058→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   460→  1059→  1059→                  </TableRow>
+   461→  1060→  1060→                </TableHeader>
+   462→  1061→  1061→                <TableBody>
+   463→  1062→  1062→                  {safeData.map((item, idx) => (
+   464→  1063→  1063→                    <TableRow key={idx}>
+   465→  1064→  1064→                      <TableCell className="font-mono text-sm">{item.account.code}</TableCell>
+   466→  1065→  1065→                      <TableCell className="font-medium">{lang === 'ar' && item.account.nameAr ? item.account.nameAr : item.account.name}</TableCell>
+   467→  1066→  1066→                      <TableCell><TypeBadge type={item.account.type} lang={lang} /></TableCell>
+   468→  1067→  1067→                      <TableCell>{item.netDebit > 0 ? <MoneyDisplay value={item.netDebit} lang={lang} size="sm" className="text-emerald-700" bold /> : '—'}</TableCell>
+   469→  1068→  1068→                      <TableCell>{item.netCredit > 0 ? <MoneyDisplay value={item.netCredit} lang={lang} size="sm" className="text-rose-700" bold /> : '—'}</TableCell>
+   470→  1069→  1069→                    </TableRow>
+   471→  1070→  1070→                  ))}
+   472→  1071→  1071→                  <TableRow className="bg-gray-100 font-bold border-t-2 border-gray-300">
+   473→  1072→  1072→                    <TableCell colSpan={3} className="text-lg">{t('الإجمالي', 'Total', lang)}</TableCell>
+   474→  1073→  1073→                    <TableCell><MoneyDisplay value={totals.netDebit} lang={lang} size="sm" bold className="text-emerald-800" /></TableCell>
+   475→  1074→  1074→                    <TableCell><MoneyDisplay value={totals.netCredit} lang={lang} size="sm" bold className="text-rose-800" /></TableCell>
+   476→  1075→  1075→                  </TableRow>
+   477→  1076→  1076→                </TableBody>
+   478→  1077→  1077→              </Table>
+   479→  1078→  1078→            </div>
+   480→  1079→  1079→          </CardContent>
+   481→  1080→  1080→        </Card>
+   482→  1081→  1081→      )}
+   483→  1082→  1082→    </div>
+   484→  1083→  1083→  )
+   485→  1084→  1084→}
+   486→  1085→  1085→
+   487→  1086→  1086→// ============ Tab 5: Income Statement ============
+   488→  1087→  1087→function IncomeStatementTab() {
+   489→  1088→  1088→  const { lang } = useAppStore()
+   490→  1089→  1089→  const [dateFrom, setDateFrom] = useState('')
+   491→  1090→  1090→  const [dateTo, setDateTo] = useState('')
+   492→  1091→  1091→
+   493→  1092→  1092→  const { data, isLoading, isError, refetch } = useQuery({
+   494→  1093→  1093→    queryKey: ['financial-reports', 'income-statement', dateFrom, dateTo],
+   495→  1094→  1094→    queryFn: async () => {
+   496→  1095→  1095→      const params = new URLSearchParams({ type: 'income-statement' })
+   497→  1096→  1096→      if (dateFrom) params.set('dateFrom', dateFrom)
+   498→  1097→  1097→      if (dateTo) params.set('dateTo', dateTo)
+   499→  1098→  1098→      const res = await fetch(`/api/financial-reports?${params}`)
+   500→  1099→  1099→      if (!res.ok) throw new Error()
+
+[showing lines 1-500 of 502; use offset=501 with limit to continue reading]

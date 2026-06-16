@@ -8,7 +8,7 @@ import {
   Fuel as FuelIcon, UsersRound, CalendarDays, Banknote,
   PackageCheck, FilePlus, ReceiptText, Cog, Network,
   Receipt, ArrowRightLeft, Hammer, ListChecks, HardHat,
-  DollarSign, Warehouse,
+  DollarSign, Warehouse, Link2,
 } from 'lucide-react'
 import {
   useAppStore,
@@ -65,6 +65,7 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'suppliers': Package,
   'inventory': Warehouse,
   'settings': Settings,
+  'accounting-mapping': Link2,
 }
 
 // Hub group icons

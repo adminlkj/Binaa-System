@@ -85,11 +85,104 @@ export async function GET(request: Request) {
   }
 }
 
-// POST is disabled - journal entries are created automatically by business transactions
-// No manual journal entries allowed
-export async function POST() {
-  return NextResponse.json(
-    { error: 'لا يمكن إنشاء قيود يدوية - القيود المحاسبية تُنشأ تلقائياً من العمليات التجارية' },
-    { status: 403 }
-  )
+// POST - Create manual journal entry with balance validation
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+
+    // Validate required fields
+    if (!body.entryNo || !body.date || !body.lines || !Array.isArray(body.lines) || body.lines.length === 0) {
+      return NextResponse.json(
+        { error: 'رقم القيد والتاريخ والبنود مطلوبة' },
+        { status: 400 }
+      )
+    }
+
+    // Rule 1: Validate balanced entry - total debits must equal total credits
+    const totalDebit = body.lines.reduce((sum: number, l: { debit?: number }) => sum + (l.debit || 0), 0)
+    const totalCredit = body.lines.reduce((sum: number, l: { credit?: number }) => sum + (l.credit || 0), 0)
+
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+      return NextResponse.json(
+        { error: 'لا يمكن ترحيل قيد غير متوازن - مجموع المدين يجب أن يساوي مجموع الدائن', totalDebit, totalCredit },
+        { status: 400 }
+      )
+    }
+
+    // Validate each line has an account and at least one side has a value
+    for (const line of body.lines as { accountCode?: string; accountId?: string; debit?: number; credit?: number }[]) {
+      if (!line.accountCode && !line.accountId) {
+        return NextResponse.json(
+          { error: 'كل بند يجب أن يكون مرتبطاً بحساب' },
+          { status: 400 }
+        )
+      }
+      if ((line.debit || 0) === 0 && (line.credit || 0) === 0) {
+        return NextResponse.json(
+          { error: 'كل بند يجب أن يحتوي على قيمة مدين أو دائن' },
+          { status: 400 }
+        )
+      }
+    }
+
+    // Resolve account IDs from codes if needed
+    const resolvedLines = await Promise.all(
+      (body.lines as { accountCode?: string; accountId?: string; debit?: number; credit?: number; description?: string; costCenterId?: string }[]).map(async (line) => {
+        let accountId = line.accountId
+        if (!accountId && line.accountCode) {
+          const account = await db.account.findUnique({ where: { code: line.accountCode } })
+          if (!account) {
+            throw new Error(`الحساب غير موجود: ${line.accountCode}`)
+          }
+          accountId = account.id
+        }
+        return {
+          accountId: accountId!,
+          debit: line.debit || 0,
+          credit: line.credit || 0,
+          description: line.description || null,
+          costCenterId: line.costCenterId || null,
+        }
+      })
+    )
+
+    // Create the journal entry
+    const entry = await db.journalEntry.create({
+      data: {
+        entryNo: body.entryNo,
+        date: new Date(body.date),
+        description: body.description || null,
+        status: body.status || 'DRAFT',
+        sourceType: body.sourceType || 'MANUAL',
+        sourceId: body.sourceId || null,
+        lines: {
+          create: resolvedLines,
+        },
+      },
+      include: {
+        lines: {
+          include: {
+            account: { select: { id: true, code: true, name: true, nameAr: true, type: true } },
+          },
+          orderBy: { id: 'asc' },
+        },
+      },
+    })
+
+    const computedDebit = entry.lines.reduce((s, l) => s + toNumber(l.debit), 0)
+    const computedCredit = entry.lines.reduce((s, l) => s + toNumber(l.credit), 0)
+
+    return NextResponse.json(serializeDecimal({
+      ...entry,
+      totalDebit: computedDebit,
+      totalCredit: computedCredit,
+    }), { status: 201 })
+  } catch (error) {
+    console.error('[API] Failed to create journal entry:', error)
+    const message = error instanceof Error ? error.message : 'فشل في إنشاء القيد المحاسبي'
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    )
+  }
 }

@@ -69,6 +69,7 @@ const ClientsModule = dynamic(() => import('@/components/modules/clients').then(
 const SuppliersModule = dynamic(() => import('@/components/modules/suppliers').then(m => ({ default: m.SuppliersModule })), { loading: ModuleLoading, ssr: false })
 const InventoryModule = dynamic(() => import('@/components/modules/inventory').then(m => ({ default: m.InventoryModule })), { loading: ModuleLoading, ssr: false })
 const SettingsModule = dynamic(() => import('@/components/modules/settings').then(m => ({ default: m.SettingsModule })), { loading: ModuleLoading, ssr: false })
+const AccountingMappingModule = dynamic(() => import('@/components/modules/accounting-mapping').then(m => ({ default: m.AccountingMappingModule })), { loading: ModuleLoading, ssr: false })
 
 // Fallback
 const PlaceholderModule = dynamic(() => import('@/components/modules/placeholder').then(m => ({ default: m.PlaceholderModule })), { loading: ModuleLoading, ssr: false })
@@ -118,6 +119,7 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   'suppliers': SuppliersModule,
   'inventory': InventoryModule,
   'settings': SettingsModule,
+  'accounting-mapping': AccountingMappingModule,
 }
 
 function ModuleRouter() {

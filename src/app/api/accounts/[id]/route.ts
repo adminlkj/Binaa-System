@@ -174,3 +174,61 @@ export async function PUT(
     )
   }
 }
+
+// ============================================================================
+// DELETE /api/accounts/[id]
+// Rule 3: Prevent deleting accounts with journal lines or children
+// ============================================================================
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+
+    // Verify the account exists
+    const existing = await db.account.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json(
+        { error: 'الحساب غير موجود' },
+        { status: 404 }
+      )
+    }
+
+    // Check if account has children
+    const childCount = await db.account.count({ where: { parentId: id } })
+    if (childCount > 0) {
+      return NextResponse.json(
+        { error: 'لا يمكن حذف حساب لديه حسابات فرعية - قم بتعطيله بدلاً من ذلك' },
+        { status: 400 }
+      )
+    }
+
+    // Check if account has journal lines
+    const lineCount = await db.journalLine.count({ where: { accountId: id } })
+    if (lineCount > 0) {
+      // Instead of deleting, deactivate the account
+      await db.account.update({
+        where: { id },
+        data: { isActive: false },
+      })
+      return NextResponse.json({
+        message: 'تم تعطيل الحساب بدلاً من حذفه لوجود حركات محاسبية مرتبطة',
+        deactivated: true,
+      })
+    }
+
+    // Safe to delete - no children, no journal lines
+    await db.account.delete({ where: { id } })
+    return NextResponse.json({
+      message: 'تم حذف الحساب بنجاح',
+      deleted: true,
+    })
+  } catch (error) {
+    console.error('Error deleting account:', error)
+    return NextResponse.json(
+      { error: 'فشل في حذف الحساب' },
+      { status: 500 }
+    )
+  }
+}

@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
+import { toNumber } from '@/lib/decimal'
 import { NextRequest, NextResponse } from 'next/server'
+import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,38 +41,30 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
     return NextResponse.json({ error: 'Client not found' }, { status: 404 })
   }
 
-  // Get all invoices for this client
-  const invoiceWhere: Record<string, unknown> = { clientId: entityId }
-  if (dateFrom || dateTo) {
-    const dateFilter: Record<string, Date> = {}
-    if (dateFrom) dateFilter.gte = new Date(dateFrom)
-    if (dateTo) dateFilter.lte = new Date(dateTo)
-    invoiceWhere.date = dateFilter
-  }
-
+  // Get all invoices for this client (descriptive detail)
   const invoices = await db.salesInvoice.findMany({
     where: { clientId: entityId },
     orderBy: { date: 'asc' },
   })
 
-  // Get all payments for this client
+  // Get all payments for this client (descriptive detail)
   const payments = await db.clientPayment.findMany({
     where: { clientId: entityId },
     orderBy: { date: 'asc' },
   })
 
-  // Build opening balance (before dateFrom)
-  let openingBalance = 0
+  // Build operational opening balance (before dateFrom)
+  let operationalOpeningBalance = 0
   if (dateFrom) {
     const from = new Date(dateFrom)
     const invoicesBefore = invoices.filter((i) => new Date(i.date) < from)
     const paymentsBefore = payments.filter((p) => new Date(p.date) < from)
-    openingBalance = invoicesBefore.reduce((s, i) => s + i.totalAmount, 0) - paymentsBefore.reduce((s, p) => s + p.amount, 0)
+    operationalOpeningBalance = invoicesBefore.reduce((s, i) => s + i.totalAmount, 0) - paymentsBefore.reduce((s, p) => s + p.amount, 0)
   }
 
-  // Build statement lines
+  // Build statement lines (operational - descriptive detail)
   interface StatementLine {
-    date: Date
+    date: string
     description: string
     debit: number
     credit: number
@@ -79,7 +73,7 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
   }
 
   const lines: StatementLine[] = []
-  let runningBalance = openingBalance
+  let runningBalance = operationalOpeningBalance
 
   // Filter to date range
   const filteredInvoices = dateFrom || dateTo
@@ -123,8 +117,12 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
   for (const entry of allEntries) {
     runningBalance += entry.debit - entry.credit
     lines.push({
-      ...entry,
+      date: entry.date.toISOString().split('T')[0],
+      description: entry.description,
+      debit: entry.debit,
+      credit: entry.credit,
       balance: runningBalance,
+      category: entry.category,
     })
   }
 
@@ -132,11 +130,46 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
   const totalCosts = filteredPayments.reduce((s, p) => s + p.amount, 0)
   const profit = totalRevenues - totalCosts
 
+  // ===== GL-based book balance (رصيد دفتري) =====
+  // Get AR account balance from GL filtered by this client's cost center
+  const arAccounts = await getAccountsByRoles([AccountRole.CUSTOMER_AR])
+  const arCodes = arAccounts.length > 0 ? arAccounts.map(a => a.code) : ['1210']
+
+  // Find cost center for this client
+  const clientCostCenter = await db.costCenter.findFirst({
+    where: { code: client.code || client.id },
+  })
+
+  let bookBalance = 0
+  if (arAccounts.length > 0) {
+    const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+    if (dateFrom || dateTo) {
+      jeWhere.date = {}
+      if (dateFrom) jeWhere.date.gte = new Date(dateFrom)
+      if (dateTo) jeWhere.date.lte = new Date(dateTo)
+    }
+
+    const arAgg = await db.journalLine.aggregate({
+      _sum: { debit: true, credit: true },
+      where: {
+        accountId: { in: arAccounts.map(a => a.id) },
+        ...(clientCostCenter ? { costCenterId: clientCostCenter.id } : {}),
+        journalEntry: jeWhere,
+      },
+    })
+    // AR is ASSET (debit normal)
+    bookBalance = toNumber(arAgg._sum.debit) - toNumber(arAgg._sum.credit)
+  }
+
   return NextResponse.json({
     entity: { id: client.id, name: client.name, type: 'customer' },
-    openingBalance,
+    openingBalance: operationalOpeningBalance,
     lines,
     closingBalance: runningBalance,
+    // رصيد دفتري (book balance from GL)
+    bookBalance,
+    // رصيد مستخلص (statement balance from operations)
+    statementBalance: runningBalance,
     summary: {
       totalRevenues,
       totalCosts,
@@ -164,14 +197,14 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
     orderBy: { date: 'asc' },
   })
 
-  // Build opening balance (before dateFrom)
-  let openingBalance = 0
+  // Build operational opening balance (before dateFrom)
+  let operationalOpeningBalance = 0
   if (dateFrom) {
     const from = new Date(dateFrom)
     const invoicesBefore = invoices.filter((i) => new Date(i.date) < from)
     const paymentsBefore = payments.filter((p) => new Date(p.date) < from)
     // For vendors: invoices are credits (we owe), payments are debits (we pay)
-    openingBalance = invoicesBefore.reduce((s, i) => s + i.totalAmount, 0) - paymentsBefore.reduce((s, p) => s + p.amount, 0)
+    operationalOpeningBalance = invoicesBefore.reduce((s, i) => s + i.totalAmount, 0) - paymentsBefore.reduce((s, p) => s + p.amount, 0)
   }
 
   const filteredInvoices = dateFrom || dateTo
@@ -193,7 +226,7 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
     : payments
 
   interface StatementLine {
-    date: Date
+    date: string
     description: string
     debit: number
     credit: number
@@ -202,7 +235,7 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
   }
 
   const lines: StatementLine[] = []
-  let runningBalance = openingBalance
+  let runningBalance = operationalOpeningBalance
 
   const allEntries: { date: Date; description: string; debit: number; credit: number; category: string }[] = [
     ...filteredInvoices.map((i) => ({
@@ -226,19 +259,57 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
   for (const entry of allEntries) {
     runningBalance += entry.credit - entry.debit
     lines.push({
-      ...entry,
+      date: entry.date.toISOString().split('T')[0],
+      description: entry.description,
+      debit: entry.debit,
+      credit: entry.credit,
       balance: runningBalance,
+      category: entry.category,
     })
   }
 
   const totalRevenues = filteredPayments.reduce((s, p) => s + p.amount, 0)
   const totalCosts = filteredInvoices.reduce((s, i) => s + i.totalAmount, 0)
 
+  // ===== GL-based book balance (رصيد دفتري) =====
+  const apAccounts = await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])
+  const apCodes = apAccounts.length > 0 ? apAccounts.map(a => a.code) : ['3210']
+
+  // Find cost center for this supplier
+  const supplierCostCenter = await db.costCenter.findFirst({
+    where: { code: supplier.code || supplier.id },
+  })
+
+  let bookBalance = 0
+  if (apAccounts.length > 0) {
+    const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+    if (dateFrom || dateTo) {
+      jeWhere.date = {}
+      if (dateFrom) jeWhere.date.gte = new Date(dateFrom)
+      if (dateTo) jeWhere.date.lte = new Date(dateTo)
+    }
+
+    const apAgg = await db.journalLine.aggregate({
+      _sum: { debit: true, credit: true },
+      where: {
+        accountId: { in: apAccounts.map(a => a.id) },
+        ...(supplierCostCenter ? { costCenterId: supplierCostCenter.id } : {}),
+        journalEntry: jeWhere,
+      },
+    })
+    // AP is LIABILITY (credit normal)
+    bookBalance = toNumber(apAgg._sum.credit) - toNumber(apAgg._sum.debit)
+  }
+
   return NextResponse.json({
     entity: { id: supplier.id, name: supplier.name, type: 'vendor' },
-    openingBalance,
+    openingBalance: operationalOpeningBalance,
     lines,
     closingBalance: runningBalance,
+    // رصيد دفتري (book balance from GL)
+    bookBalance,
+    // رصيد مستخلص (statement balance from operations)
+    statementBalance: runningBalance,
     summary: {
       totalRevenues,
       totalCosts,
@@ -248,7 +319,7 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
   })
 }
 
-// ============ PROJECT STATEMENT ============
+// ============ PROJECT STATEMENT (GL-ONLY, NO DOUBLE COUNTING) ============
 
 async function getProjectStatement(entityId: string, dateFrom: string | null, dateTo: string | null) {
   const project = await db.project.findUnique({ where: { id: entityId } })
@@ -261,13 +332,14 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
     where: { code: project.code },
   })
 
-  // Query all JournalLines with that costCenterId
-  const journalWhere: Record<string, unknown> = {}
-  if (costCenter) journalWhere.costCenterId = costCenter.id
-
+  // Build journal entry filter
   const dateFilter: Record<string, Date> = {}
   if (dateFrom) dateFilter.gte = new Date(dateFrom)
   if (dateTo) dateFilter.lte = new Date(dateTo)
+
+  const journalWhere: Record<string, unknown> = {}
+  if (costCenter) journalWhere.costCenterId = costCenter.id
+
   if (dateFrom || dateTo) {
     journalWhere.journalEntry = {
       status: 'POSTED',
@@ -277,35 +349,22 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
     journalWhere.journalEntry = { status: 'POSTED' }
   }
 
+  // Query ALL JournalLines with that costCenterId (REVENUE + EXPENSE only)
   const journalLines = costCenter
     ? await db.journalLine.findMany({
-        where: journalWhere,
+        where: {
+          ...journalWhere,
+          account: { type: { in: ['REVENUE', 'EXPENSE'] } },
+        },
         include: {
-          account: { select: { code: true, name: true, type: true } },
+          account: { select: { code: true, name: true, type: true, accountRole: true } },
           journalEntry: { select: { date: true, description: true, entryNo: true } },
         },
         orderBy: { journalEntry: { date: 'asc' } },
       })
     : []
 
-  // Also query SalesInvoices and ProgressClaims for this project
-  const salesInvoices = await db.salesInvoice.findMany({
-    where: {
-      projectId: entityId,
-      ...(dateFrom || dateTo ? { date: dateFilter } : {}),
-    },
-    orderBy: { date: 'asc' },
-  })
-
-  const progressClaims = await db.progressClaim.findMany({
-    where: {
-      projectId: entityId,
-      ...(dateFrom || dateTo ? { date: dateFilter } : {}),
-    },
-    orderBy: { date: 'asc' },
-  })
-
-  // Build statement lines
+  // Build statement lines from GL ONLY (no operational tables for amounts)
   interface StatementLine {
     date: string
     description: string
@@ -317,34 +376,6 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
 
   const lines: StatementLine[] = []
   let runningBalance = 0
-
-  // Revenue entries from invoices
-  for (const inv of salesInvoices) {
-    runningBalance += inv.totalAmount
-    lines.push({
-      date: new Date(inv.date).toISOString().split('T')[0],
-      description: `Invoice ${inv.invoiceNo}`,
-      debit: inv.totalAmount,
-      credit: 0,
-      balance: runningBalance,
-      category: 'revenue',
-    })
-  }
-
-  // Revenue entries from progress claims
-  for (const claim of progressClaims) {
-    runningBalance += claim.totalAmount
-    lines.push({
-      date: new Date(claim.date).toISOString().split('T')[0],
-      description: `Progress Claim ${claim.claimNo}`,
-      debit: claim.totalAmount,
-      credit: 0,
-      balance: runningBalance,
-      category: 'revenue',
-    })
-  }
-
-  // Cost entries from journal lines
   let totalRevenue = 0
   let totalCosts = 0
 
@@ -353,7 +384,7 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
     const isExpense = jl.account.type === 'EXPENSE'
 
     if (isRevenue) {
-      const amount = jl.credit - jl.debit
+      const amount = toNumber(jl.credit) - toNumber(jl.debit)
       if (amount !== 0) {
         totalRevenue += amount
         runningBalance += amount
@@ -367,7 +398,7 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
         })
       }
     } else if (isExpense) {
-      const amount = jl.debit - jl.credit
+      const amount = toNumber(jl.debit) - toNumber(jl.credit)
       if (amount !== 0) {
         totalCosts += amount
         runningBalance -= amount
@@ -383,14 +414,10 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
     }
   }
 
-  // Also add invoice revenue amounts
-  totalRevenue += salesInvoices.reduce((s, i) => s + i.totalAmount, 0)
-  totalRevenue += progressClaims.reduce((s, c) => s + c.totalAmount, 0)
-
   // Sort lines by date
   lines.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
-  // Recalculate running balance
+  // Recalculate running balance after sort
   let recalculatedBalance = 0
   for (const line of lines) {
     recalculatedBalance += line.debit - line.credit
@@ -404,6 +431,9 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
     openingBalance: 0,
     lines,
     closingBalance: recalculatedBalance,
+    // Book balance = same as GL (this IS the GL statement)
+    bookBalance: recalculatedBalance,
+    statementBalance: recalculatedBalance,
     summary: {
       totalRevenues: totalRevenue,
       totalCosts,
@@ -427,7 +457,7 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
 
   const whereDate = dateFrom || dateTo ? dateFilter : undefined
 
-  // Revenue from EquipmentRental
+  // Revenue from EquipmentRental (descriptive detail)
   const rentals = await db.equipmentRental.findMany({
     where: {
       equipmentId: entityId,
@@ -438,7 +468,7 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
     },
   })
 
-  // Costs from EquipmentExpense
+  // Costs from EquipmentExpense (descriptive detail)
   const expenses = await db.equipmentExpense.findMany({
     where: {
       equipmentId: entityId,
@@ -537,24 +567,28 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
     line.balance = recalculatedBalance
   }
 
-  const totalRevenues = rentals.reduce((s, r) => s + (r.totalAmount || r.monthlyRate), 0)
-  const totalCosts =
+  // Operational totals (descriptive)
+  const operationalTotalRevenues = rentals.reduce((s, r) => s + (r.totalAmount || r.monthlyRate), 0)
+  const operationalTotalCosts =
     expenses.reduce((s, e) => s + e.amount, 0) +
     fuelLogs.reduce((s, f) => s + f.totalCost, 0) +
     maintenance.reduce((s, m) => s + m.cost, 0)
 
-  const profit = totalRevenues - totalCosts
+  const profit = operationalTotalRevenues - operationalTotalCosts
 
   return NextResponse.json({
     entity: { id: equipment.id, name: equipment.name, type: 'equipment' },
     openingBalance: 0,
     lines,
     closingBalance: recalculatedBalance,
+    // Equipment doesn't have direct GL cost centers, so book balance = operational
+    bookBalance: recalculatedBalance,
+    statementBalance: recalculatedBalance,
     summary: {
-      totalRevenues,
-      totalCosts,
+      totalRevenues: operationalTotalRevenues,
+      totalCosts: operationalTotalCosts,
       profit,
-      profitMargin: totalRevenues > 0 ? (profit / totalRevenues) * 100 : 0,
+      profitMargin: operationalTotalRevenues > 0 ? (profit / operationalTotalRevenues) * 100 : 0,
     },
   })
 }

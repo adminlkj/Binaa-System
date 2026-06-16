@@ -1,6 +1,41 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { getAccountBalance } from '@/lib/accounting/engine'
+import { toNumber } from '@/lib/decimal'
+import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
+
+// Normal balance mapping by account type
+const NORMAL_BALANCE: Record<string, 'DEBIT' | 'CREDIT'> = {
+  ASSET: 'DEBIT', LIABILITY: 'CREDIT', EQUITY: 'CREDIT', REVENUE: 'CREDIT', EXPENSE: 'DEBIT',
+}
+
+/**
+ * Resolve account codes for a set of roles, falling back to default codes if no role-mapped accounts exist.
+ */
+async function resolveAccountCodes(roles: string[], defaultCodes: string[]): Promise<string[]> {
+  const accounts = await getAccountsByRoles(roles)
+  if (accounts.length > 0) return accounts.map(a => a.code)
+  return defaultCodes
+}
+
+/**
+ * Compute balance for accounts matching a set of codes, using a pre-fetched balance map.
+ */
+function computeBalanceFromMap(
+  codes: string[],
+  accounts: { id: string; code: string; type: string }[],
+  balanceMap: Map<string, { totalDebit: number; totalCredit: number }>
+): number {
+  let total = 0
+  for (const code of codes) {
+    const account = accounts.find(a => a.code === code)
+    if (!account) continue
+    const agg = balanceMap.get(account.id)
+    if (!agg) continue
+    const normalBalance = NORMAL_BALANCE[account.type] || 'DEBIT'
+    total += normalBalance === 'DEBIT' ? agg.totalDebit - agg.totalCredit : agg.totalCredit - agg.totalDebit
+  }
+  return total
+}
 
 /**
  * Aggregate GL balances by account type with optional date range and activity type filters.
@@ -45,6 +80,42 @@ async function getGLBalance(
 export async function GET() {
   try {
     const now = new Date()
+
+    // ===== Resolve account codes by role (single query per role group) =====
+    const [
+      cashCodes, bankCodes, pettyCashCodes,
+      arCodes, retentionCodes, employeeAdvanceCodes,
+      supplierAdvCodes, otherRecvCodes,
+      supplierApCodes, subcontractorApCodes,
+      salariesPayableCodes, otherAccruedCodes,
+      outputVatCodes, inputVatCodes, vatDueCodes,
+    ] = await Promise.all([
+      resolveAccountCodes([AccountRole.CASH], ['1110']),
+      resolveAccountCodes([AccountRole.BANK], ['1120']),
+      resolveAccountCodes([AccountRole.CASH], ['1130']),
+      resolveAccountCodes([AccountRole.CUSTOMER_AR], ['1210']),
+      resolveAccountCodes([AccountRole.RETENTION_RECEIVABLE], ['1220']),
+      resolveAccountCodes([AccountRole.EMPLOYEE_ADVANCE], ['1230']),
+      resolveAccountCodes([AccountRole.EMPLOYEE_ADVANCE], ['1240']),
+      resolveAccountCodes([AccountRole.CUSTOMER_AR], ['1250']),
+      resolveAccountCodes([AccountRole.SUPPLIER_AP], ['3210']),
+      resolveAccountCodes([AccountRole.SUBCONTRACTOR_AP], ['3220']),
+      resolveAccountCodes([AccountRole.SALARIES_PAYABLE], ['3310']),
+      resolveAccountCodes([AccountRole.GOSI_PAYABLE], ['3320']),
+      resolveAccountCodes([AccountRole.VAT_OUTPUT], ['3110']),
+      resolveAccountCodes([AccountRole.VAT_INPUT], ['3120']),
+      resolveAccountCodes([AccountRole.VAT_DUE], ['3130']),
+    ])
+
+    // All role-resolved codes combined (for the single balance query)
+    const allCodes = [
+      ...cashCodes, ...bankCodes, ...pettyCashCodes,
+      ...arCodes, ...retentionCodes, ...employeeAdvanceCodes,
+      ...supplierAdvCodes, ...otherRecvCodes,
+      ...supplierApCodes, ...subcontractorApCodes,
+      ...salariesPayableCodes, ...otherAccruedCodes,
+      ...outputVatCodes, ...inputVatCodes, ...vatDueCodes,
+    ]
 
     // ===== 1. Active Projects count & Total Contract Value =====
     const activeProjects = await db.project.count({
@@ -144,34 +215,62 @@ export async function GET() {
     const rentedEquipment = equipmentStatusMap['RENTED'] || 0
     const inUseEquipment = equipmentStatusMap['IN_USE'] || 0
 
-    // ===== 6. Project Profitability Summary =====
+    // ===== 6. Project Profitability Summary (GL-BASED) =====
+    // Get all active projects with their cost centers
     const projects = await db.project.findMany({
       where: { status: { in: ['ACTIVE', 'PLANNING', 'COMPLETED'] } },
       include: {
         client: { select: { name: true } },
         contracts: { select: { totalValue: true } },
-        expenses: { select: { amount: true } },
-        laborCosts: { select: { totalAmount: true } },
-        equipmentCosts: { select: { amount: true } },
-        purchaseOrders: { select: { totalAmount: true } },
-        progressClaims: { select: { totalAmount: true, status: true } },
-        subcontractorInvoices: { select: { totalAmount: true } },
-        salesInvoices: { select: { subtotal: true } },
       },
       orderBy: { contractValue: 'desc' },
       take: 10,
     })
 
+    // Find cost centers for these projects
+    const projectCodes = projects.map(p => p.code)
+    const costCenters = await db.costCenter.findMany({
+      where: { code: { in: projectCodes } },
+      select: { id: true, code: true },
+    })
+    const costCenterMap = new Map(costCenters.map(cc => [cc.code, cc.id]))
+
+    // Single GL query for all project-related journal lines
+    const projectCostCenterIds = costCenters.map(cc => cc.id)
+
+    // Get all journal lines for these cost centers with revenue/expense accounts
+    const projectGLLines = projectCostCenterIds.length > 0
+      ? await db.journalLine.findMany({
+          where: {
+            costCenterId: { in: projectCostCenterIds },
+            journalEntry: { status: 'POSTED' },
+            account: { type: { in: ['REVENUE', 'EXPENSE'] } },
+          },
+          include: { account: { select: { type: true } }, costCenter: { select: { code: true } } },
+        })
+      : []
+
+    // Build per-project GL aggregation
+    const projectGLMap = new Map<string, { revenue: number; costs: number }>()
+    for (const line of projectGLLines) {
+      const ccCode = line.costCenter?.code
+      if (!ccCode) continue
+      if (!projectGLMap.has(ccCode)) {
+        projectGLMap.set(ccCode, { revenue: 0, costs: 0 })
+      }
+      const entry = projectGLMap.get(ccCode)!
+      if (line.account.type === 'REVENUE') {
+        entry.revenue += toNumber(line.credit) - toNumber(line.debit)
+      } else if (line.account.type === 'EXPENSE') {
+        entry.costs += toNumber(line.debit) - toNumber(line.credit)
+      }
+    }
+
     const projectProfitability = projects.map(p => {
       const contractValue = p.contractValue || p.contracts.reduce((s, c) => s + c.totalValue, 0)
-      const totalCosts =
-        p.expenses.reduce((s, e) => s + e.amount, 0) +
-        p.laborCosts.reduce((s, l) => s + l.totalAmount, 0) +
-        p.equipmentCosts.reduce((s, e) => s + e.amount, 0) +
-        p.purchaseOrders.reduce((s, po) => s + po.totalAmount, 0) +
-        p.subcontractorInvoices.reduce((s, si) => s + si.totalAmount, 0)
-      const totalRevenue = p.progressClaims.reduce((s, c) => s + c.totalAmount, 0) +
-        p.salesInvoices.reduce((s, si) => s + si.subtotal, 0)
+      const glData = projectGLMap.get(p.code) || { revenue: 0, costs: 0 }
+      const totalRevenue = glData.revenue
+      const totalCosts = glData.costs
       const profit = contractValue - totalCosts
       const margin = contractValue > 0 ? (profit / contractValue) * 100 : 0
 
@@ -190,13 +289,49 @@ export async function GET() {
       }
     })
 
-    // ===== 7. Receivables from General Ledger =====
-    const clientsReceivable = await getAccountBalance('1210')
-    const retentionReceivable = await getAccountBalance('1220')
-    const employeeAdvances = await getAccountBalance('1230')
-    const supplierAdvances = await getAccountBalance('1240')
-    const otherReceivablesBalance = await getAccountBalance('1250')
+    // ===== 7-8. Single batch query for all role-based account balances =====
+    const allRoleAccounts = await db.account.findMany({
+      where: {
+        code: { in: allCodes },
+        isActive: true,
+      },
+      select: { id: true, code: true, type: true },
+      orderBy: { code: 'asc' },
+    })
+
+    const allRoleAccountIds = allRoleAccounts.map(a => a.id)
+    const balanceAggregates = allRoleAccountIds.length > 0
+      ? await db.journalLine.groupBy({
+          by: ['accountId'],
+          _sum: { debit: true, credit: true },
+          where: {
+            accountId: { in: allRoleAccountIds },
+            journalEntry: { status: 'POSTED' },
+          },
+        })
+      : []
+
+    const balanceMap = new Map<string, { totalDebit: number; totalCredit: number }>()
+    for (const agg of balanceAggregates) {
+      balanceMap.set(agg.accountId, {
+        totalDebit: toNumber(agg._sum.debit),
+        totalCredit: toNumber(agg._sum.credit),
+      })
+    }
+
+    // Compute role-based balances
+    const clientsReceivable = computeBalanceFromMap(arCodes, allRoleAccounts, balanceMap)
+    const retentionReceivable = computeBalanceFromMap(retentionCodes, allRoleAccounts, balanceMap)
+    const employeeAdvances = computeBalanceFromMap(employeeAdvanceCodes, allRoleAccounts, balanceMap)
+    const supplierAdvances = computeBalanceFromMap(supplierAdvCodes, allRoleAccounts, balanceMap)
+    const otherReceivablesBalance = computeBalanceFromMap(otherRecvCodes, allRoleAccounts, balanceMap)
     const outstandingReceivables = clientsReceivable + retentionReceivable + employeeAdvances + supplierAdvances + otherReceivablesBalance
+
+    const suppliersPayable = computeBalanceFromMap(supplierApCodes, allRoleAccounts, balanceMap)
+    const subcontractorsPayable = computeBalanceFromMap(subcontractorApCodes, allRoleAccounts, balanceMap)
+    const salariesPayable = computeBalanceFromMap(salariesPayableCodes, allRoleAccounts, balanceMap)
+    const otherAccrued = computeBalanceFromMap(otherAccruedCodes, allRoleAccounts, balanceMap)
+    const outstandingPayables = suppliersPayable + subcontractorsPayable + salariesPayable + otherAccrued
 
     // Overdue Receivables (still from operational tables - GL has no due-date concept)
     const overdueReceivablesInvoices = await db.salesInvoice.findMany({
@@ -209,13 +344,6 @@ export async function GET() {
     const overdueReceivables = overdueReceivablesInvoices.reduce(
       (s, i) => s + (i.totalAmount - i.paidAmount), 0
     )
-
-    // ===== 8. Payables from General Ledger =====
-    const suppliersPayable = await getAccountBalance('3210')
-    const subcontractorsPayable = await getAccountBalance('3220')
-    const salariesPayable = await getAccountBalance('3310')
-    const otherAccrued = await getAccountBalance('3320')
-    const outstandingPayables = suppliersPayable + subcontractorsPayable + salariesPayable + otherAccrued
 
     // Overdue Payables (still from operational tables - GL has no due-date concept)
     const overduePayablesInvoices = await db.purchaseInvoice.findMany({
@@ -314,16 +442,16 @@ export async function GET() {
       })),
     ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).slice(0, 10)
 
-    // ===== 12. Cash Position (treasury + bank balances) =====
-    const cashBalance = await getAccountBalance('1110')
-    const bankBalance = await getAccountBalance('1120')
-    const pettyCashBalance = await getAccountBalance('1130')
+    // ===== 12. Cash Position (treasury + bank balances from role-based GL) =====
+    const cashBalance = computeBalanceFromMap(cashCodes, allRoleAccounts, balanceMap)
+    const bankBalance = computeBalanceFromMap(bankCodes, allRoleAccounts, balanceMap)
+    const pettyCashBalance = computeBalanceFromMap(pettyCashCodes, allRoleAccounts, balanceMap)
     const cashPosition = cashBalance + bankBalance + pettyCashBalance
 
-    // ===== 13. VAT Position =====
-    const outputVat = await getAccountBalance('3110')  // Output VAT (ضريبة مخرجات)
-    const inputVat = await getAccountBalance('3120')    // Input VAT (ضريبة مدخلات)
-    const vatDue = await getAccountBalance('3130')      // VAT Due (ضريبة مستحقة)
+    // ===== 13. VAT Position (from role-based GL) =====
+    const outputVat = computeBalanceFromMap(outputVatCodes, allRoleAccounts, balanceMap)
+    const inputVat = computeBalanceFromMap(inputVatCodes, allRoleAccounts, balanceMap)
+    const vatDue = computeBalanceFromMap(vatDueCodes, allRoleAccounts, balanceMap)
     const netVAT = outputVat - inputVat
 
     // ===== 14. Low Inventory Items =====
@@ -375,7 +503,16 @@ export async function GET() {
     // Total client invoices count
     const totalClientInvoices = await db.salesInvoice.count()
 
-    // Outstanding construction collections (unpaid construction invoices)
+    // Outstanding construction collections (GL-based: AR balance for construction projects)
+    // Use GL: get the AR balance for cost centers of construction projects
+    const constructionCostCenterIds = constructionProjectIds.length > 0
+      ? (await db.costCenter.findMany({
+          where: { code: { in: (await db.project.findMany({ where: { id: { in: constructionProjectIds } }, select: { code: true } })).map(p => p.code) } },
+          select: { id: true },
+        })).map(cc => cc.id)
+      : []
+
+    // For outstanding collections, use operational data (GL doesn't track paid vs unpaid per invoice)
     const constructionReceivablesInvoices = await db.salesInvoice.findMany({
       where: {
         projectId: { in: constructionProjectIds },
@@ -409,7 +546,7 @@ export async function GET() {
     })
     const constructionContractValue = constructionContractAgg._sum.totalValue || 0
 
-    // Total extracts amount
+    // Total extracts amount from GL (REVENUE accounts with construction cost centers)
     const extractsAgg = await db.progressClaim.aggregate({
       _sum: { totalAmount: true },
       where: { status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] } },
