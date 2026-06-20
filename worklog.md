@@ -482,3 +482,36 @@ Stage Summary:
   6. ✅ Accounting Health Check (7 checks, 100% score, 🟢🟡🔴 color coding)
 - Architecture: Chart of Accounts → Account Roles → Financial Mapping Engine → Business Operations → Journal Entries → General Ledger → Financial Statements
 - Health Score: 100% (all 32 roles mapped, all operations mapped, no inactive accounts in mappings)
+
+---
+Task ID: DOC-ZIP-1
+Agent: Main Agent
+Task: Update compressed file with all architectural modifications and ensure it contains all changes/updates
+
+Work Log:
+- Read current generate-doc.ts (1723 lines, 12 chapters) to understand existing documentation structure
+- Audited all new architectural files: financial-mapping-engine.ts (698 lines, 24 operation types), accounting-health-check.ts (457 lines, 7 checks), account-impact.ts (395 lines), account-roles.ts (614 lines, 31 roles), engine.ts (~2061 lines, role-based resolution)
+- Updated generate-doc.ts with major architectural expansion:
+  - Expanded Chapter 3 with 3 new sections (3.5 three-tier pattern, 3.6 soft-delete, 3.7 account statement)
+  - Added NEW Chapter 4: Financial Mapping Engine (24 operation types, auto-update mechanism, mapping screen)
+  - Added NEW Chapter 5: Accounting Health Check (7 checks, color indicator, weighted scoring)
+  - Added NEW Chapter 6: Account Impact (impact analysis, deactivation blockers, accountant workflow)
+  - Renumbered all subsequent chapters 4-12 → 7-15 (headings, sections, sub-sections)
+  - Enhanced conclusion with 6 new architectural feature bullets
+- Regenerated DOCX: 48KB, valid Microsoft Word 2007+ format, now 15 chapters (was 12)
+- Created CHANGELOG-Architecture-Overhaul.md (10KB) documenting all changes
+- Created comprehensive ZIP archive (Binaa-ERP-Architecture-Overhaul.zip, 221KB, 26 files) containing:
+  - Documentation: DOCX + changelog + generate script
+  - Core engine: financial-mapping-engine, accounting-health-check, account-impact, account-roles, engine.ts
+  - Prisma schema (with accountRole, parentCode, isActive, FinancialMapping models)
+  - 6 API routes: financial-mapping, accounting-health, account-impact, role-mapping, statement, by-role
+  - 3 shared components: account-selector, je-preview, accounting-entry-display
+  - 9 updated screen modules: accounting, accounting-mapping, expenses, client-payments, supplier-payments, rental-invoices, equipment, payroll-runs
+- Verified: DOCX is valid Word format, ZIP contains all 26 files (935KB uncompressed), lint passes on all project files (pre-existing take-screenshots.mjs error unrelated)
+
+Stage Summary:
+- Compressed file Binaa-ERP-Architecture-Overhaul.zip updated with ALL changes and updates
+- Documentation expanded from 12 to 15 chapters covering all 6 architectural improvements
+- ZIP archive contains 26 files: documentation + source code + API routes + components + screens
+- All architectural changes documented: Role→AccountGroup→Account pattern, Financial Mapping Engine, Accounting Health Check, Account Impact, Soft Delete, Account Statement
+- Final health score: 100% (32 roles mapped, 24 operations mapped, 151 accounts with roles)
