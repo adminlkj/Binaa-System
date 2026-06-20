@@ -269,12 +269,8 @@ async function createInvoiceFromExtract(body: Record<string, unknown>) {
       data: { invoiced: true },
     })
 
-    // Create auto accounting entry
-    try {
-      await createSalesInvoiceJournalEntry(invoice.id, tx)
-    } catch (accountingError) {
-      console.error('[API] Accounting entry failed for sales invoice from extract:', accountingError)
-    }
+    // Create auto accounting entry (throws on failure → tx rolls back).
+    await createSalesInvoiceJournalEntry(invoice.id, tx)
 
     // Re-fetch to include journalEntryId
     return await tx.salesInvoice.findUnique({
@@ -499,12 +495,8 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
       data: { status: 'INVOICED', invoiced: true, invoiceId: invoice.id, approvedDate: timesheet.approvedDate || new Date() },
     })
 
-    // Create auto accounting entry
-    try {
-      await createSalesInvoiceJournalEntry(invoice.id, tx)
-    } catch (accountingError) {
-      console.error('[API] Accounting entry failed for sales invoice from timesheet:', accountingError)
-    }
+    // Create auto accounting entry (throws on failure → tx rolls back).
+    await createSalesInvoiceJournalEntry(invoice.id, tx)
 
     // Re-fetch to include journalEntryId
     return await tx.salesInvoice.findUnique({
@@ -640,12 +632,8 @@ async function createInvoiceManual(body: Record<string, unknown>) {
       },
     })
 
-    // Auto-create accounting journal entry
-    try {
-      await createSalesInvoiceJournalEntry(invoice.id, tx)
-    } catch (accountingError) {
-      console.error('[API] Accounting entry failed for sales invoice:', accountingError)
-    }
+    // Auto-create accounting journal entry (throws on failure → tx rolls back).
+    await createSalesInvoiceJournalEntry(invoice.id, tx)
 
     // Re-fetch to include journalEntryId
     return await tx.salesInvoice.findUnique({
@@ -749,11 +737,7 @@ export async function PUT(request: Request) {
           },
         })
 
-        try {
-          await createSalesInvoiceJournalEntry(existing.id, tx)
-        } catch (journalError) {
-          console.error('[API] Failed to create replacement journal entry:', journalError)
-        }
+        await createSalesInvoiceJournalEntry(existing.id, tx)
       })
     }
 

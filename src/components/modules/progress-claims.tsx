@@ -351,9 +351,9 @@ export function ProgressClaimsModule() {
     const acc: Record<string, { contractNo: string; totalValue: number; claimedAmount: number }> = {}
     for (const c of claims) {
       if (!acc[c.contractId]) {
-        acc[c.contractId] = { contractNo: c.contract.contractNo, totalValue: c.contract.totalValue, claimedAmount: 0 }
+        acc[c.contractId] = { contractNo: c.contract.contractNo, totalValue: Number(c.contract.totalValue || 0), claimedAmount: 0 }
       }
-      acc[c.contractId] = { contractNo: acc[c.contractId].contractNo, totalValue: acc[c.contractId].totalValue, claimedAmount: acc[c.contractId].claimedAmount + c.amount }
+      acc[c.contractId] = { contractNo: acc[c.contractId].contractNo, totalValue: acc[c.contractId].totalValue, claimedAmount: acc[c.contractId].claimedAmount + Number(c.amount || 0) }
     }
     const result: Record<string, { contractNo: string; totalValue: number; claimedAmount: number; claimedPercent: string }> = {}
     for (const [key, val] of Object.entries(acc)) {
@@ -365,9 +365,9 @@ export function ProgressClaimsModule() {
     // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [claims])
 
-  const totalClaimedAmount = filtered.reduce((s, c) => s + (c.totalAmount ?? 0), 0)
-  const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + (c.totalAmount ?? 0), 0)
-  const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+  const totalClaimedAmount = filtered.reduce((s, c) => s + Number(c.totalAmount ?? 0), 0)
+  const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + Number(c.totalAmount ?? 0), 0)
+  const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + Number(c.totalAmount ?? 0), 0)
 
   // Counters
   const invoicedCount = filtered.filter(c => c.invoiced).length

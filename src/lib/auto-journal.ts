@@ -1,18 +1,46 @@
 // Auto Journal Entry Generation
-// Simplified direct journal entry creation using account codes
-// This replaces the heavy accounting engine for automatic entries
+// Simplified direct journal entry creation using role-based account resolution.
+//
+// This module is the legacy "auto-journal" layer still used by 13 API routes.
+// Previously it relied on hardcoded SOCPA account codes (1101, 1102, 1104,
+// 2101, 2102, 4101, 4102, 5101, 5102) that DID NOT EXIST in the database,
+// causing every journal entry creation to fail silently.
+//
+// All hardcoded lookups have been replaced with `getDefaultAccountByRole()`
+// from `@/lib/account-roles`. If a role is unmapped the function now THROWS
+// so the surrounding `$transaction` rolls back instead of leaving the
+// operational record without a journal entry.
 
 import { db } from '@/lib/db'
 import { PrismaClient } from '@prisma/client'
 import { toNumber } from '@/lib/decimal'
+import { AccountRole, getDefaultAccountByRole } from '@/lib/account-roles'
 
 export type PrismaTransaction = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
 
-// Generate next journal entry number
+// Generate next journal entry number.
+// Looks at all existing entries matching the `JE-NNNNNN` pattern and produces
+// the next sequential number. Entries that don't match the pattern (e.g.
+// `JE-TEST-002`, `JE-REV-EXP-...`) are ignored so they cannot poison the
+// counter with NaN.
 async function getNextEntryNo(tx: PrismaTransaction): Promise<string> {
-  const last = await tx.journalEntry.findFirst({ orderBy: { entryNo: 'desc' } })
-  const next = last ? parseInt(last.entryNo.replace('JE-', '')) + 1 : 1
-  return `JE-${next.toString().padStart(6, '0')}`
+  // Find ALL JE- entries and compute the maximum numeric suffix.
+  // This is more robust than string-sorting because it handles
+  // non-standard entries like "JE-TEST-002" or "JE-000NaN" correctly.
+  const all = await tx.journalEntry.findMany({
+    where: { entryNo: { startsWith: 'JE-' } },
+    select: { entryNo: true },
+  })
+  let max = 0
+  for (const je of all) {
+    // Only match entries that are exactly JE- followed by digits
+    const match = je.entryNo.match(/^JE-(\d+)$/)
+    if (match) {
+      const n = parseInt(match[1], 10)
+      if (!isNaN(n) && n > max) max = n
+    }
+  }
+  return `JE-${(max + 1).toString().padStart(6, '0')}`
 }
 
 // Journal entry for Sales Invoice (project or rental)
@@ -24,28 +52,26 @@ export async function createSalesInvoiceJournalEntry(
     where: { id: invoiceId },
     include: { client: true }
   })
-  if (!invoice) return
+  if (!invoice) {
+    throw new Error(`فاتورة المبيعات غير موجودة: ${invoiceId}`)
+  }
 
   const entryNo = await getNextEntryNo(tx)
 
-  // Debit: العملاء (Clients Receivable)
-  // Credit: إيرادات المشاريع أو إيرادات التأجير
-  // Credit: ضريبة المخرجات (Output VAT)
-
-  // Find the correct accounts
-  const clientAccount = await tx.account.findFirst({ where: { code: '1101' } }) // العملاء
+  // Debit: العملاء (Clients Receivable) — resolved via role
+  const clientAccount = await getDefaultAccountByRole(AccountRole.CUSTOMER_AR, tx)
+  // Credit: إيرادات المشاريع أو إيرادات التأجير — resolved via role
   const revenueAccount = invoice.invoiceType === 'RENTAL'
-    ? await tx.account.findFirst({ where: { code: '4102' } }) // إيرادات التأجير
-    : await tx.account.findFirst({ where: { code: '4101' } }) // إيرادات المشاريع
-  const outputVatAccount = await tx.account.findFirst({ where: { code: '2102' } }) // ضريبة المخرجات
+    ? await getDefaultAccountByRole(AccountRole.RENTAL_REVENUE, tx)
+    : await getDefaultAccountByRole(AccountRole.PROJECT_REVENUE, tx)
+  // Credit: ضريبة المخرجات (Output VAT) — resolved via role
+  const outputVatAccount = await getDefaultAccountByRole(AccountRole.VAT_OUTPUT, tx)
 
   if (!clientAccount || !revenueAccount || !outputVatAccount) {
-    console.error('[AutoJournal] Missing accounts for sales invoice journal:', {
-      clientAccount: !!clientAccount,
-      revenueAccount: !!revenueAccount,
-      outputVatAccount: !!outputVatAccount
-    })
-    return
+    throw new Error(
+      `حساب مفقود لقيد فاتورة المبيعات: clientAccount=${!!clientAccount}, ` +
+      `revenueAccount=${!!revenueAccount}, outputVatAccount=${!!outputVatAccount}`
+    )
   }
 
   const entry = await tx.journalEntry.create({
@@ -80,23 +106,25 @@ export async function createPurchaseInvoiceJournalEntry(
     where: { id: invoiceId },
     include: { supplier: true }
   })
-  if (!invoice) return
+  if (!invoice) {
+    throw new Error(`فاتورة الشراء غير موجودة: ${invoiceId}`)
+  }
 
   const entryNo = await getNextEntryNo(tx)
 
+  // Cost account is project cost when tied to a project, otherwise rental/equipment cost.
+  // The MAINTENANCE_EXPENSE role covers rental/equipment operating expenses (7220).
   const costAccount = invoice.projectId
-    ? await tx.account.findFirst({ where: { code: '5101' } }) // تكلفة المشاريع
-    : await tx.account.findFirst({ where: { code: '5102' } }) // تكلفة التأجير
-  const inputVatAccount = await tx.account.findFirst({ where: { code: '1104' } }) // ضريبة المدخلات
-  const supplierAccount = await tx.account.findFirst({ where: { code: '2101' } }) // الموردون
+    ? await getDefaultAccountByRole(AccountRole.PROJECT_COST, tx)
+    : await getDefaultAccountByRole(AccountRole.MAINTENANCE_EXPENSE, tx)
+  const inputVatAccount = await getDefaultAccountByRole(AccountRole.VAT_INPUT, tx)
+  const supplierAccount = await getDefaultAccountByRole(AccountRole.SUPPLIER_AP, tx)
 
   if (!costAccount || !inputVatAccount || !supplierAccount) {
-    console.error('[AutoJournal] Missing accounts for purchase invoice journal:', {
-      costAccount: !!costAccount,
-      inputVatAccount: !!inputVatAccount,
-      supplierAccount: !!supplierAccount
-    })
-    return
+    throw new Error(
+      `حساب مفقود لقيد فاتورة الشراء: costAccount=${!!costAccount}, ` +
+      `inputVatAccount=${!!inputVatAccount}, supplierAccount=${!!supplierAccount}`
+    )
   }
 
   const entry = await tx.journalEntry.create({
@@ -131,27 +159,29 @@ export async function createClientPaymentJournalEntry(
     where: { id: paymentId },
     include: { client: true }
   })
-  if (!payment) return
+  if (!payment) {
+    throw new Error(`تحصيل العميل غير موجود: ${paymentId}`)
+  }
 
   const entryNo = await getNextEntryNo(tx)
 
-  // Use the receiving account from the payment if available, otherwise fall back to hardcoded
+  // Use the receiving account from the payment if available, otherwise fall back to role-based lookup.
   let receivingAccount: { id: string } | null = null
   if (payment.receivingAccountId) {
     receivingAccount = await tx.account.findUnique({ where: { id: payment.receivingAccountId } })
   }
   if (!receivingAccount) {
-    receivingAccount = await tx.account.findFirst({ where: { code: '1102' } }) // الصندوق/الخزينة
+    // Fall back to CASH role (treasury) — covers the old hardcoded '1102' lookup.
+    receivingAccount = await getDefaultAccountByRole(AccountRole.CASH, tx)
   }
 
-  const clientAccount = await tx.account.findFirst({ where: { code: '1101' } }) // العملاء
+  const clientAccount = await getDefaultAccountByRole(AccountRole.CUSTOMER_AR, tx)
 
   if (!receivingAccount || !clientAccount) {
-    console.error('[AutoJournal] Missing accounts for client payment journal:', {
-      receivingAccount: !!receivingAccount,
-      clientAccount: !!clientAccount
-    })
-    return
+    throw new Error(
+      `حساب مفقود لقيد تحصيل العميل: receivingAccount=${!!receivingAccount}, ` +
+      `clientAccount=${!!clientAccount}`
+    )
   }
 
   const entry = await tx.journalEntry.create({
@@ -185,27 +215,28 @@ export async function createSupplierPaymentJournalEntry(
     where: { id: paymentId },
     include: { supplier: true }
   })
-  if (!payment) return
+  if (!payment) {
+    throw new Error(`سداد المورد غير موجود: ${paymentId}`)
+  }
 
   const entryNo = await getNextEntryNo(tx)
 
-  const supplierAccount = await tx.account.findFirst({ where: { code: '2101' } }) // الموردون
+  const supplierAccount = await getDefaultAccountByRole(AccountRole.SUPPLIER_AP, tx)
 
-  // Use the paying account from the payment if available, otherwise fall back to hardcoded
+  // Use the paying account from the payment if available, otherwise fall back to role-based lookup.
   let payingAccount: { id: string } | null = null
   if (payment.payingAccountId) {
     payingAccount = await tx.account.findUnique({ where: { id: payment.payingAccountId } })
   }
   if (!payingAccount) {
-    payingAccount = await tx.account.findFirst({ where: { code: '1102' } }) // الصندوق
+    payingAccount = await getDefaultAccountByRole(AccountRole.CASH, tx)
   }
 
   if (!supplierAccount || !payingAccount) {
-    console.error('[AutoJournal] Missing accounts for supplier payment journal:', {
-      supplierAccount: !!supplierAccount,
-      payingAccount: !!payingAccount
-    })
-    return
+    throw new Error(
+      `حساب مفقود لقيد سداد المورد: supplierAccount=${!!supplierAccount}, ` +
+      `payingAccount=${!!payingAccount}`
+    )
   }
 
   const entry = await tx.journalEntry.create({
@@ -236,22 +267,31 @@ export async function createExpenseJournalEntry(
   tx: PrismaTransaction
 ) {
   const expense = await tx.expense.findUnique({ where: { id: expenseId } })
-  if (!expense) return
+  if (!expense) {
+    throw new Error(`المصروف غير موجود: ${expenseId}`)
+  }
 
   const entryNo = await getNextEntryNo(tx)
 
+  // Cost account is project cost when tied to a project, otherwise admin/rental
+  // expense. Project expenses → PROJECT_COST (7110..); admin expenses → ADMIN_EXPENSE.
   const costAccount = expense.projectId
-    ? await tx.account.findFirst({ where: { code: '5101' } })
-    : await tx.account.findFirst({ where: { code: '5102' } })
-  const inputVatAccount = await tx.account.findFirst({ where: { code: '1104' } })
-  const treasuryAccount = await tx.account.findFirst({ where: { code: '1102' } })
+    ? await getDefaultAccountByRole(AccountRole.PROJECT_COST, tx)
+    : await getDefaultAccountByRole(AccountRole.ADMIN_EXPENSE, tx)
+
+  // Input VAT — always resolved via role.
+  const inputVatAccount = await getDefaultAccountByRole(AccountRole.VAT_INPUT, tx)
+
+  // Paying (cash/bank) account: BANK role when payFrom === 'BANK', otherwise CASH (treasury).
+  const treasuryAccount = expense.payFrom === 'BANK'
+    ? await getDefaultAccountByRole(AccountRole.BANK, tx)
+    : await getDefaultAccountByRole(AccountRole.CASH, tx)
 
   if (!costAccount || !treasuryAccount) {
-    console.error('[AutoJournal] Missing accounts for expense journal:', {
-      costAccount: !!costAccount,
-      treasuryAccount: !!treasuryAccount
-    })
-    return
+    throw new Error(
+      `حساب مفقود لقيد المصروف: costAccount=${!!costAccount}, ` +
+      `treasuryAccount=${!!treasuryAccount}`
+    )
   }
 
   const lines = [

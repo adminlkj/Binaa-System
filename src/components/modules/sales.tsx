@@ -1159,8 +1159,8 @@ export function SalesModule() {
     return matchSearch && matchStatus && matchSource && matchProjectType
   })
 
-  const totalSales = invoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+  const totalSales = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
+  const totalPaid = invoices.reduce((s, i) => s + Number(i.paidAmount || 0), 0)
   const totalOutstanding = totalSales - totalPaid
 
   // ============ CREATE VIEW ============

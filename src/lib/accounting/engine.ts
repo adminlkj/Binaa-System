@@ -651,11 +651,22 @@ export async function autoEntryPurchaseInvoice(data: {
 
 /**
  * مستخلص - Progress Claim
- * Dr: Clients Receivable (1210) - totalAmount
- * Cr: Progress Claims Revenue (6110) - amount
- * Cr: VAT Payable (3200) - vatAmount
+ *
+ * DEPRECATED — Progress claims do NOT create journal entries.
+ *
+ * A progress claim is a request for payment, not an invoice. Creating a JE
+ * here would double-count revenue once the approved claim is converted into
+ * a sales invoice (which itself creates the proper JE via
+ * `createSalesInvoiceJournalEntry`).
+ *
+ * To preserve API compatibility this function now throws a descriptive
+ * error so callers are forced to migrate to the correct workflow:
+ *   1. Create claim (DRAFT) — no JE.
+ *   2. Approve claim — no JE.
+ *   3. Generate invoice from approved claim — JE created by the sales
+ *      invoice API.
  */
-export async function autoEntryProgressClaim(data: {
+export async function autoEntryProgressClaim(_data: {
   claimNo: string
   projectId: string
   contractId: string
@@ -665,30 +676,11 @@ export async function autoEntryProgressClaim(data: {
   totalAmount: number
   date: Date
   costCenterId?: string
-}, tx?: PrismaTransaction) {
-  // Resolved by role — no hardcoded code!
-  const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR, tx) || '1210'
-  const revenueCode = await getAccountCodeByRole(AccountRole.PROJECT_REVENUE, tx) || '6110'
-
-  const lines = [
-    { accountCode: arCode, debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId },
-    { accountCode: revenueCode, debit: 0, credit: data.amount, costCenterId: data.costCenterId },
-  ]
-
-  if (data.vatAmount > 0) {
-    const vatCode = await getAccountCodeByRole(AccountRole.VAT_OUTPUT, tx) || '3110'
-    lines.push({ accountCode: vatCode, debit: 0, credit: data.vatAmount })
-  }
-
-  return createJournalEntry({
-    entryNo: `JE-PC-${Date.now()}`,
-    date: data.date,
-    description: `Progress Claim ${data.claimNo}`,
-    descriptionAr: `مستخلص رقم ${data.claimNo}`,
-    lines,
-    sourceType: 'PROGRESS_CLAIM',
-    sourceId: data.claimNo,
-  }, tx)
+}, _tx?: PrismaTransaction) {
+  throw new Error(
+    'Progress claims do not create journal entries. ' +
+    'Generate an invoice from the approved claim instead.'
+  )
 }
 
 /**

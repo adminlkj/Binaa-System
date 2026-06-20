@@ -123,12 +123,8 @@ export async function POST(request: Request) {
         },
       })
 
-      // Create accounting journal entry: Debit Bank (1120), Credit Client Receivable (1210)
-      try {
-        await createClientPaymentJournalEntry(payment.id, tx)
-      } catch (accountingError) {
-        console.error('[API] Accounting entry failed for rental payment:', accountingError)
-      }
+      // Create accounting journal entry: Debit Bank, Credit Client Receivable (throws on failure → tx rolls back).
+      await createClientPaymentJournalEntry(payment.id, tx)
 
       // Update sales invoice paidAmount and status
       if (invoiceId) {

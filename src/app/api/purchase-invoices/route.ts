@@ -127,12 +127,8 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry
-      try {
-        await createPurchaseInvoiceJournalEntry(invoice.id, tx)
-      } catch (accountingError) {
-        console.error('[API] Accounting entry failed for purchase invoice:', accountingError)
-      }
+      // Auto-create accounting journal entry (throws on failure → tx rolls back).
+      await createPurchaseInvoiceJournalEntry(invoice.id, tx)
 
       // Re-fetch to include journalEntryId
       return await tx.purchaseInvoice.findUnique({
@@ -226,12 +222,8 @@ export async function PUT(request: Request) {
           },
         })
 
-        // Create new journal entry
-        try {
-          await createPurchaseInvoiceJournalEntry(existing.id, tx)
-        } catch (journalError) {
-          console.error('[API] Failed to create replacement journal entry for purchase invoice:', journalError)
-        }
+        // Create new journal entry (throws on failure so the tx rolls back).
+        await createPurchaseInvoiceJournalEntry(existing.id, tx)
 
         updateData.journalEntryId = undefined // Will be set by createPurchaseInvoiceJournalEntry
       })

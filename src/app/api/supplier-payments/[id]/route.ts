@@ -105,12 +105,8 @@ export async function PUT(
           },
         })
 
-        // 6. Create a new journal entry for the updated payment
-        try {
-          await createSupplierPaymentJournalEntry(updated.id, tx)
-        } catch (accountingError) {
-          console.error('[API] Accounting entry failed for updated supplier payment:', accountingError)
-        }
+        // 6. Create a new journal entry for the updated payment (throws on failure → tx rolls back).
+        await createSupplierPaymentJournalEntry(updated.id, tx)
 
         // 7. Apply the new invoice paidAmount update if linked
         const newInvoiceId = existing.invoiceId // supplier payments don't change invoiceId on edit

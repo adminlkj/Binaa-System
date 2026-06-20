@@ -177,7 +177,14 @@ function ExpenseFormDialog({
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [vatAmount, setVatAmount] = useState('')
-  const [date, setDate] = useState('')
+  const [date, setDate] = useState(() => {
+    // Default to today's ISO date (yyyy-mm-dd) so the date picker never renders 0/0/0.
+    const now = new Date()
+    const y = now.getFullYear()
+    const m = String(now.getMonth() + 1).padStart(2, '0')
+    const d = String(now.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  })
   const [reference, setReference] = useState('')
   const [payFrom, setPayFrom] = useState('TREASURY')
   const [attachmentPath, setAttachmentPath] = useState('')
@@ -198,7 +205,13 @@ function ExpenseFormDialog({
       setTab(initialTab)
       setProjectId('')
       setCategory(''); setDescription('')
-      setAmount(''); setVatAmount(''); setDate('')
+      setAmount(''); setVatAmount('')
+      // Reset date to today's ISO date so the picker always shows a valid value.
+      const now = new Date()
+      const y = now.getFullYear()
+      const m = String(now.getMonth() + 1).padStart(2, '0')
+      const d = String(now.getDate()).padStart(2, '0')
+      setDate(`${y}-${m}-${d}`)
       setReference(''); setPayFrom('TREASURY')
       setAttachmentPath(''); setVatRate('0.15')
       setPayingAccountId(null); setPayingAccountCode(''); setPayingAccountName('')
@@ -422,7 +435,20 @@ function ExpenseFormDialog({
             </div>
             <div className="space-y-2">
               <Label>{t(lang, 'نسبة الضريبة', 'VAT Rate')}</Label>
-              <Input type="number" min="0" max="1" step="0.01" value={vatRate} onChange={e => setVatRate(e.target.value)} dir="ltr" placeholder="0.15" />
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={vatRate}
+                onChange={e => {
+                  const raw = e.target.value
+                  // Only allow valid decimal number patterns (e.g., 0.15, .15, 15)
+                  if (raw === '' || /^\d*\.?\d{0,4}$/.test(raw)) {
+                    setVatRate(raw)
+                  }
+                }}
+                dir="ltr"
+                placeholder="0.15"
+              />
             </div>
             <div className="space-y-2">
               <Label>{t(lang, 'مسار المرفق', 'Attachment Path')}</Label>

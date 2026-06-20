@@ -2137,17 +2137,18 @@ function TrialBalanceTab() {
     enabled: generated,
   })
 
-  const items = (data?.items || data || []) as TrialBalanceItem[]
-  const totalDebit = items.reduce((s, i) => s + i.totalDebit, 0)
-  const totalCredit = items.reduce((s, i) => s + i.totalCredit, 0)
-  const totalNetDebit = items.reduce((s, i) => s + i.netDebit, 0)
-  const totalNetCredit = items.reduce((s, i) => s + i.netCredit, 0)
+  const itemsRaw = data?.items || data?.data || data?.rows || (Array.isArray(data) ? data : [])
+  const items = (Array.isArray(itemsRaw) ? itemsRaw : []) as TrialBalanceItem[]
+  const totalDebit = items.reduce((s, i) => s + (Number(i.totalDebit) || 0), 0)
+  const totalCredit = items.reduce((s, i) => s + (Number(i.totalCredit) || 0), 0)
+  const totalNetDebit = items.reduce((s, i) => s + (Number(i.netDebit) || 0), 0)
+  const totalNetCredit = items.reduce((s, i) => s + (Number(i.netCredit) || 0), 0)
 
-  const totalAssets = items.filter(i => i.account.type === 'ASSET').reduce((s, i) => s + i.netDebit - i.netCredit, 0)
-  const totalLiabilities = items.filter(i => i.account.type === 'LIABILITY').reduce((s, i) => s + i.netCredit - i.netDebit, 0)
-  const totalEquity = items.filter(i => i.account.type === 'EQUITY').reduce((s, i) => s + i.netCredit - i.netDebit, 0)
-  const totalRevenue = items.filter(i => i.account.type === 'REVENUE').reduce((s, i) => s + i.netCredit - i.netDebit, 0)
-  const totalExpenses = items.filter(i => i.account.type === 'EXPENSE').reduce((s, i) => s + i.netDebit - i.netCredit, 0)
+  const totalAssets = items.filter(i => i.account?.type === 'ASSET').reduce((s, i) => s + (Number(i.netDebit) || 0) - (Number(i.netCredit) || 0), 0)
+  const totalLiabilities = items.filter(i => i.account?.type === 'LIABILITY').reduce((s, i) => s + (Number(i.netCredit) || 0) - (Number(i.netDebit) || 0), 0)
+  const totalEquity = items.filter(i => i.account?.type === 'EQUITY').reduce((s, i) => s + (Number(i.netCredit) || 0) - (Number(i.netDebit) || 0), 0)
+  const totalRevenue = items.filter(i => i.account?.type === 'REVENUE').reduce((s, i) => s + (Number(i.netCredit) || 0) - (Number(i.netDebit) || 0), 0)
+  const totalExpenses = items.filter(i => i.account?.type === 'EXPENSE').reduce((s, i) => s + (Number(i.netDebit) || 0) - (Number(i.netCredit) || 0), 0)
 
   const handleGenerate = () => { setGenerated(true); refetch() }
 

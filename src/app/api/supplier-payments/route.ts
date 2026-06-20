@@ -115,12 +115,8 @@ export async function POST(request: Request) {
         },
       })
 
-      // Create accounting entry using auto-journal
-      try {
-        await createSupplierPaymentJournalEntry(payment.id, tx)
-      } catch (accountingError) {
-        console.error('[API] Accounting entry failed for supplier payment:', accountingError)
-      }
+      // Create accounting entry (throws on failure → tx rolls back).
+      await createSupplierPaymentJournalEntry(payment.id, tx)
 
       // Update purchase invoice paidAmount and status
       if (invoiceId) {

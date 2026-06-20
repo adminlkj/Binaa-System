@@ -182,12 +182,8 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry
-      try {
-        await createPurchaseInvoiceJournalEntry(invoice.id, tx)
-      } catch (accountingError) {
-        console.error('[API] Accounting entry failed for supplier invoice:', accountingError)
-      }
+      // Auto-create accounting journal entry (throws on failure → tx rolls back).
+      await createPurchaseInvoiceJournalEntry(invoice.id, tx)
 
       // Re-fetch to include journalEntryId
       return await tx.purchaseInvoice.findUnique({

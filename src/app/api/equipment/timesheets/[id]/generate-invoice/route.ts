@@ -258,12 +258,8 @@ export async function POST(
         },
       })
 
-      // Create auto journal entry
-      try {
-        await createSalesInvoiceJournalEntry(inv.id, tx)
-      } catch (accountingError) {
-        console.error('[API] Accounting entry failed for rental invoice:', accountingError)
-      }
+      // Create auto journal entry (throws on failure → tx rolls back).
+      await createSalesInvoiceJournalEntry(inv.id, tx)
 
       return inv
     })

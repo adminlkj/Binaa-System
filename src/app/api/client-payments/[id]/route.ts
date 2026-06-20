@@ -106,12 +106,8 @@ export async function PATCH(
           },
         })
 
-        // 6. Create a new journal entry for the updated payment
-        try {
-          await createClientPaymentJournalEntry(updated.id, tx)
-        } catch (accountingError) {
-          console.error('[API] Accounting entry failed for updated client payment:', accountingError)
-        }
+        // 6. Create a new journal entry for the updated payment (throws on failure → tx rolls back).
+        await createClientPaymentJournalEntry(updated.id, tx)
 
         // 7. Apply the new invoice paidAmount update if linked
         const newInvoiceId = body.invoiceId !== undefined ? (body.invoiceId || null) : existing.invoiceId

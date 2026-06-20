@@ -111,12 +111,10 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry
-      try {
-        await createExpenseJournalEntry(expense.id, tx)
-      } catch (accountingError) {
-        console.error('[API] Accounting entry failed for expense:', accountingError)
-      }
+      // Auto-create accounting journal entry.
+      // createExpenseJournalEntry now throws on missing role-mapped accounts,
+      // so any failure rolls back the entire $transaction (no silent failure).
+      await createExpenseJournalEntry(expense.id, tx)
 
       // Re-fetch to include journalEntryId
       return await tx.expense.findUnique({
@@ -212,12 +210,8 @@ export async function PUT(request: Request) {
           },
         })
 
-        // Create new journal entry
-        try {
-          await createExpenseJournalEntry(existing.id, tx)
-        } catch (journalError) {
-          console.error('[API] Failed to create replacement journal entry for expense:', journalError)
-        }
+        // Create new journal entry (throws on failure so the tx rolls back).
+        await createExpenseJournalEntry(existing.id, tx)
 
         updateData.journalEntryId = undefined // Will be set by createExpenseJournalEntry
       })

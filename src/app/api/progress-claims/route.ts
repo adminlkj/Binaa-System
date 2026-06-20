@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { type PrismaTransaction } from '@/lib/auto-journal'
-import { autoEntryProgressClaim, initializeChartOfAccounts, createJournalEntry } from '@/lib/accounting/engine'
+import { createJournalEntry } from '@/lib/accounting/engine'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
@@ -72,7 +72,10 @@ export async function POST(request: Request) {
     const vatAmount = Math.round(parseFloat(amount) * rate * 100) / 100
     const totalAmount = Math.round((parseFloat(amount) + vatAmount) * 100) / 100
 
-    // Create claim + accounting entry in transaction
+    // Create claim ONLY — no journal entry.
+    // A progress claim is a request for payment, NOT an invoice. The JE will
+    // be created when an invoice is generated FROM the approved claim.
+    // (See /api/progress-claims/[id]/generate-invoice or the sales-invoices API.)
     const result = await db.$transaction(async (tx: PrismaTransaction) => {
       const claim = await tx.progressClaim.create({
         data: {
@@ -96,37 +99,7 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry and store journalEntryId
-      try {
-        await initializeChartOfAccounts()
-        const journalEntry = await autoEntryProgressClaim({
-          claimNo: claim.claimNo,
-          projectId: claim.projectId,
-          contractId: claim.contractId,
-          amount: toNumber(claim.amount),
-          vatRate: toNumber(claim.vatRate),
-          vatAmount: toNumber(claim.vatAmount),
-          totalAmount: toNumber(claim.totalAmount),
-          date: claim.date,
-        }, tx)
-
-        // Store the journalEntryId on the claim
-        await tx.progressClaim.update({
-          where: { id: claim.id },
-          data: { journalEntryId: journalEntry.id },
-        })
-      } catch (accountingError) {
-        console.error('[API] Accounting entry failed for progress claim:', accountingError)
-      }
-
-      // Re-fetch to include journalEntryId
-      return await tx.progressClaim.findUnique({
-        where: { id: claim.id },
-        include: {
-          project: { select: { id: true, name: true, code: true } },
-          contract: { select: { id: true, contractNo: true, totalValue: true } },
-        },
-      })
+      return claim
     })
 
     return NextResponse.json(result, { status: 201 })
@@ -161,7 +134,10 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'لا يمكن تعديل مستخلص تم إصدار فاتورة له. يجب إلغاء الفاتورة أولاً' }, { status: 400 })
     }
 
-    // If the claim has a journal entry and amounts are changing, create reversal + new entry
+    // If the claim has a journal entry (legacy data) and amounts are changing,
+    // reverse the old entry. We do NOT create a new entry here — the claim
+    // workflow does not auto-create JEs. The new JE (if any) will be created
+    // when an invoice is generated from the approved claim.
     if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
       await db.$transaction(async (tx: PrismaTransaction) => {
         const originalEntry = await tx.journalEntry.findUnique({
@@ -198,25 +174,9 @@ export async function PUT(request: Request) {
           })
         }
 
-        // Create new entry with updated values
-        const newAmount = updateData.amount !== undefined ? parseFloat(updateData.amount) : toNumber(existing.amount)
-        const newVatAmount = updateData.vatAmount !== undefined ? parseFloat(updateData.vatAmount) : toNumber(existing.vatAmount)
-        const newTotalAmount = updateData.totalAmount !== undefined ? parseFloat(updateData.totalAmount) : toNumber(existing.totalAmount)
-        const newDate = updateData.date ? new Date(updateData.date) : existing.date
-
-        await initializeChartOfAccounts()
-        const newJournalEntry = await autoEntryProgressClaim({
-          claimNo: existing.claimNo,
-          projectId: existing.projectId,
-          contractId: existing.contractId,
-          amount: newAmount,
-          vatRate: toNumber(existing.vatRate),
-          vatAmount: newVatAmount,
-          totalAmount: newTotalAmount,
-          date: newDate,
-        }, tx)
-
-        updateData.journalEntryId = newJournalEntry.id
+        // Detach the cancelled JE — a fresh JE will be created only when an
+        // invoice is generated from this claim.
+        updateData.journalEntryId = null
       })
     }
 
