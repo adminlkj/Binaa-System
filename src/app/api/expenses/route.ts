@@ -29,6 +29,7 @@ export async function GET(request: Request) {
 
     const include = {
       project: { select: { id: true, code: true, name: true, projectType: true } },
+      costCenter: { select: { id: true, code: true, name: true } },
     }
 
     const whereClause = Object.keys(where).length > 0 ? where : undefined
@@ -95,6 +96,7 @@ export async function POST(request: Request) {
         data: {
           projectId,
           expenseType,
+          costCenterId: body.costCenterId || null,
           category: body.category,
           description: body.description,
           amount,
@@ -108,6 +110,7 @@ export async function POST(request: Request) {
         },
         include: {
           project: { select: { id: true, code: true, name: true, projectType: true } },
+          costCenter: { select: { id: true, code: true, name: true } },
         },
       })
 

@@ -738,8 +738,26 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   const filteredAccounts = useMemo(() => {
     let filtered = accounts
     if (activityFilter !== 'all') {
-      if (activityFilter === 'BOTH') filtered = filtered.filter(a => a.activityType === 'BOTH' || !a.activityType)
-      else filtered = filtered.filter(a => a.activityType === activityFilter)
+      if (activityFilter === 'BOTH') {
+        filtered = filtered.filter(a => a.activityType === 'BOTH' || !a.activityType)
+      } else {
+        // When filtering by a specific activity (CONSTRUCTION or EQUIPMENT_RENTAL),
+        // include the matching accounts AND all their ancestor accounts so the
+        // tree structure is preserved and visible to the user.
+        const matchingIds = new Set(
+          accounts.filter(a => a.activityType === activityFilter).map(a => a.id)
+        )
+        // Add ancestor ids
+        const idToParent = new Map(accounts.map(a => [a.id, a.parentId]))
+        for (const id of [...matchingIds]) {
+          let current = idToParent.get(id)
+          while (current) {
+            matchingIds.add(current)
+            current = idToParent.get(current)
+          }
+        }
+        filtered = filtered.filter(a => matchingIds.has(a.id))
+      }
     }
     if (typeFilter !== 'all') filtered = filtered.filter(a => a.type === typeFilter)
     if (searchTerm) {
@@ -750,18 +768,22 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   }, [accounts, activityFilter, typeFilter, searchTerm])
 
   const flatAccounts = useMemo(() => {
+    // When an activity or type filter is active, auto-expand all parent accounts
+    // that have matching children so the filtered results are visible.
+    const isFiltering = activityFilter !== 'all' || typeFilter !== 'all' || !!searchTerm
+    const effectiveExpanded = isFiltering ? new Set(allParentIds) : expandedIds
     function flatten(roots: Account[], level: number): (Account & { displayLevel: number })[] {
       const result: (Account & { displayLevel: number })[] = []
       for (const root of roots) {
         if (!filteredAccounts.find(a => a.id === root.id)) continue
         result.push({ ...root, displayLevel: level })
         const children = childMap.get(root.id) || []
-        if (children.length > 0 && expandedIds.has(root.id)) result.push(...flatten(children, level + 1))
+        if (children.length > 0 && effectiveExpanded.has(root.id)) result.push(...flatten(children, level + 1))
       }
       return result
     }
     return flatten(rootAccounts, 0)
-  }, [rootAccounts, filteredAccounts, childMap, expandedIds])
+  }, [rootAccounts, filteredAccounts, childMap, expandedIds, activityFilter, typeFilter, searchTerm, allParentIds])
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })

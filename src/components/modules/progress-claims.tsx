@@ -130,8 +130,10 @@ function CreateClaimPage({
       const res = await fetch(`/api/contracts?projectId=${form.projectId}`)
       if (!res.ok) return []
       const data = await res.json()
-      return data.map((c: { id: string; contractNo: string; totalValue: number; value: number }) => ({
-        id: c.id, contractNo: c.contractNo, totalValue: c.totalValue, value: c.value,
+      return data.map((c: { id: string; contractNo: string; totalValue: number | string; value: number | string }) => ({
+        id: c.id, contractNo: c.contractNo,
+        totalValue: typeof c.totalValue === 'string' ? parseFloat(c.totalValue) : (c.totalValue ?? 0),
+        value: typeof c.value === 'string' ? parseFloat(c.value) : (c.value ?? 0),
       }))
     },
     enabled: !!form.projectId,
@@ -139,11 +141,11 @@ function CreateClaimPage({
 
   const selectedContract = projectContracts.find(c => c.id === form.contractId)
   const pct = parseFloat(form.percentage) || 0
-  const contractValueExVat = selectedContract ? selectedContract.value || (selectedContract.totalValue / 1.15) : 0
+  const contractValueExVat = selectedContract ? (Number(selectedContract.value) || (Number(selectedContract.totalValue) / 1.15)) : 0
   const autoAmount = contractValueExVat > 0 ? Math.round(contractValueExVat * pct / 100 * 100) / 100 : 0
 
   const existingClaimsForContract = existingClaims.filter(c => c.contractId === form.contractId)
-  const existingPercentage = existingClaimsForContract.reduce((s, c) => s + c.percentage, 0)
+  const existingPercentage = existingClaimsForContract.reduce((s, c) => s + (Number(c.percentage) || 0), 0)
   const cumulativePercentage = existingPercentage + pct
   const exceeds100 = cumulativePercentage > 100
 

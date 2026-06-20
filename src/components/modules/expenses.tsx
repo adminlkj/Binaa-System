@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Receipt, Plus, Search, RefreshCw, TrendingUp,
   Building2, Briefcase, Download, Landmark, Wallet, Banknote,
+  Target, CheckCircle2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -40,7 +41,9 @@ interface Expense {
   id: string; projectId: string | null; expenseType: string; category: string; description: string
   amount: number; vatRate: number; vatAmount: number | null; totalAmount: number; date: string
   reference: string | null; payFrom: string; attachmentPath: string | null; journalEntryId: string | null
+  costCenterId?: string | null
   project: { id: string; code: string; name: string; projectType?: string } | null
+  costCenter?: { id: string; code: string; name: string } | null
 }
 
 // ============ Bilingual Helpers ============
@@ -199,6 +202,18 @@ function ExpenseFormDialog({
   const [expenseAccountNameAr, setExpenseAccountNameAr] = useState('')
   const [expenseAccountRole, setExpenseAccountRole] = useState<string | null>(null)
   const [expenseAccountActivityType, setExpenseAccountActivityType] = useState<string | null>(null)
+  // Cost center (مركز التكلفة) — optional, linked to journal lines
+  const [costCenterId, setCostCenterId] = useState<string>('')
+
+  // Fetch cost centers for selection
+  const { data: costCenters = [] } = useQuery<{ id: string; code: string; name: string; parentId: string | null }[]>({
+    queryKey: ['cost-centers-list'],
+    queryFn: async () => {
+      const res = await fetch('/api/cost-centers')
+      if (!res.ok) return []
+      return res.json()
+    },
+  })
 
   React.useEffect(() => {
     if (open) {
@@ -217,6 +232,7 @@ function ExpenseFormDialog({
       setPayingAccountId(null); setPayingAccountCode(''); setPayingAccountName('')
       setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('')
       setExpenseAccountRole(null); setExpenseAccountActivityType(null)
+      setCostCenterId('')
     }
   }, [open, initialTab])
 
@@ -284,6 +300,7 @@ function ExpenseFormDialog({
     createMutation.mutate({
       projectId: isProject ? projectId : null,
       expenseType,
+      costCenterId: costCenterId || undefined,
       category, description, amount,
       vatRate: parsedVatRate,
       vatAmount: autoVat || null,
@@ -429,6 +446,32 @@ function ExpenseFormDialog({
               label={t(lang, 'السداد من *', 'Pay From *')}
               placeholder={t(lang, 'اختر حساب السداد...', 'Select paying account...')}
             />
+            {/* Cost Center selector — links expense to a cost center for project/department accounting */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Target className="size-3.5 text-muted-foreground" />
+                {t(lang, 'مركز التكلفة', 'Cost Center')}
+                <span className="text-xs text-muted-foreground font-normal">({t(lang, 'اختياري', 'optional')})</span>
+              </Label>
+              <Select value={costCenterId} onValueChange={setCostCenterId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t(lang, 'اختر مركز التكلفة...', 'Select cost center...')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {costCenters.map(cc => (
+                    <SelectItem key={cc.id} value={cc.id}>
+                      <span className="font-mono text-xs ml-1">{cc.code}</span> — {cc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {costCenterId && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="size-3" />
+                  {t(lang, 'سيتم ربط القيد المحاسبي بمركز التكلفة المحدد', 'Journal entry will be linked to the selected cost center')}
+                </p>
+              )}
+            </div>
             <div className="space-y-2 sm:col-span-2">
               <Label>{t(lang, 'المرجع', 'Reference')}</Label>
               <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={t(lang, 'رقم المرجع', 'Reference number')} />

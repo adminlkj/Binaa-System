@@ -228,6 +228,14 @@ model CompanySetting {
   useThousandSeparatorsSystem   Boolean  @default(true)
   useThousandSeparatorsOfficial Boolean  @default(false)
   decimalPlaces                 Int      @default(2)
+  // Invoice template customization
+  invoiceTemplate               String   @default("classic") // classic, modern, minimal, corporate
+  invoicePrimaryColor           String   @default("#0f766e") // Tailwind emerald-700
+  invoiceAccentColor            String   @default("#34d399") // Tailwind emerald-400
+  invoiceFontFamily             String   @default("default") // default, tajawal, cairo, amiri
+  invoiceShowBankDetails        Boolean  @default(true)
+  invoiceShowSignature          Boolean  @default(true)
+  invoiceShowStamp              Boolean  @default(false)
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 }
@@ -290,6 +298,7 @@ model CostCenter {
   parent       CostCenter?   @relation("CostCenterHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children     CostCenter[]  @relation("CostCenterHierarchy")
   journalLines JournalLine[]
+  expenses     Expense[]
 
   @@index([parentId])
   @@index([isActive])
@@ -1148,6 +1157,7 @@ model Expense {
   id             String          @id @default(cuid())
   projectId      String?
   equipmentId    String? // ربط بالمعدة
+  costCenterId   String? // مركز التكلفة (يُربط بقيد اليومية)
   expenseType    ExpenseType     @default(PROJECT)
   activityType   String          @default("EXECUTION") // EXECUTION, RENTAL, GENERAL
   category       ExpenseCategory
@@ -1165,11 +1175,13 @@ model Expense {
   updatedAt      DateTime        @updatedAt
   deletedAt      DateTime?
 
-  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  equipment Equipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  project    Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  equipment  Equipment?  @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  costCenter CostCenter? @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([equipmentId])
+  @@index([costCenterId])
   @@index([category])
   @@index([date])
   @@index([expenseType])

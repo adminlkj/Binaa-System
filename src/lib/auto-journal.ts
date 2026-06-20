@@ -295,14 +295,14 @@ export async function createExpenseJournalEntry(
   }
 
   const lines = [
-    { accountId: costAccount.id, debit: toNumber(expense.amount), credit: 0, description: `مصروف ${expense.description}` },
+    { accountId: costAccount.id, debit: toNumber(expense.amount), credit: 0, costCenterId: expense.costCenterId || undefined, description: `مصروف ${expense.description}` },
   ]
 
   if (toNumber(expense.vatAmount) > 0 && inputVatAccount) {
-    lines.push({ accountId: inputVatAccount.id, debit: toNumber(expense.vatAmount), credit: 0, description: `ضريبة مدخلات مصروف` })
+    lines.push({ accountId: inputVatAccount.id, debit: toNumber(expense.vatAmount), credit: 0, costCenterId: expense.costCenterId || undefined, description: `ضريبة مدخلات مصروف` })
   }
 
-  lines.push({ accountId: treasuryAccount.id, debit: 0, credit: toNumber(expense.totalAmount), description: `صرف نقدي` })
+  lines.push({ accountId: treasuryAccount.id, debit: 0, credit: toNumber(expense.totalAmount), costCenterId: expense.costCenterId || undefined, description: `صرف نقدي` })
 
   const entry = await tx.journalEntry.create({
     data: {
@@ -318,5 +318,84 @@ export async function createExpenseJournalEntry(
   })
 
   await tx.expense.update({ where: { id: expenseId }, data: { journalEntryId: entry.id } })
+  return entry
+}
+
+// Journal entry for Progress Claim (مستخلص) — created when claim is APPROVED.
+// Accounting treatment (SOCPA-compliant):
+//   The progress claim (مستخلص) is a progress certificate (Interim Payment Certificate).
+//   It recognizes revenue for work completed based on contract progress percentage.
+//   Debit: العملاء (Clients Receivable) — totalAmount (amount + VAT)
+//   Credit: إيرادات المشاريع (Project Revenue) — amount (ex VAT)
+//   Credit: ضريبة المخرجات (Output VAT) — vatAmount
+// Note: The claim itself is NOT a tax invoice. A formal tax invoice (فاتورة ضريبية)
+//   is issued separately after the claim is approved, per Saudi construction accounting.
+export async function createProgressClaimJournalEntry(
+  claimId: string,
+  tx: PrismaTransaction
+) {
+  const claim = await tx.progressClaim.findUnique({
+    where: { id: claimId },
+    include: {
+      project: { select: { id: true, name: true, code: true } },
+      contract: { select: { id: true, contractNo: true } },
+    },
+  })
+  if (!claim) {
+    throw new Error(`المستخلص غير موجود: ${claimId}`)
+  }
+
+  const entryNo = await getNextEntryNo(tx)
+
+  const clientAccount = await getDefaultAccountByRole(AccountRole.CUSTOMER_AR, tx)
+  const revenueAccount = await getDefaultAccountByRole(AccountRole.PROJECT_REVENUE, tx)
+  const outputVatAccount = await getDefaultAccountByRole(AccountRole.VAT_OUTPUT, tx)
+
+  if (!clientAccount || !revenueAccount || !outputVatAccount) {
+    throw new Error(
+      `حساب مفقود لقيد المستخلص: clientAccount=${!!clientAccount}, ` +
+      `revenueAccount=${!!revenueAccount}, outputVatAccount=${!!outputVatAccount}`
+    )
+  }
+
+  const amount = toNumber(claim.amount)
+  const vatAmount = toNumber(claim.vatAmount)
+  const totalAmount = toNumber(claim.totalAmount)
+
+  const entry = await tx.journalEntry.create({
+    data: {
+      entryNo,
+      date: claim.date,
+      description: `مستخلص ${claim.claimNo} - ${claim.project?.name || ''}`,
+      sourceType: 'PROGRESS_CLAIM',
+      sourceId: claim.id,
+      isSystem: true,
+      status: 'POSTED',
+      lines: {
+        create: [
+          {
+            accountId: clientAccount.id,
+            debit: totalAmount,
+            credit: 0,
+            description: `مستخلص ${claim.claimNo} - ${claim.project?.name || ''}`,
+          },
+          {
+            accountId: revenueAccount.id,
+            debit: 0,
+            credit: amount,
+            description: `إيراد مستخلص ${claim.claimNo} (${claim.percentage}%)`,
+          },
+          ...(vatAmount > 0 ? [{
+            accountId: outputVatAccount.id,
+            debit: 0,
+            credit: vatAmount,
+            description: `ضريبة مخرجات مستخلص ${claim.claimNo}`,
+          }] : []),
+        ]
+      }
+    }
+  })
+
+  await tx.progressClaim.update({ where: { id: claimId }, data: { journalEntryId: entry.id } })
   return entry
 }

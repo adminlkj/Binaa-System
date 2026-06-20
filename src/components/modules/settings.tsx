@@ -58,6 +58,14 @@ interface CompanySettings {
   currencySymbolImage: string | null
   headerImage: string | null
   footerImage: string | null
+  // Invoice template customization
+  invoiceTemplate?: string
+  invoicePrimaryColor?: string
+  invoiceAccentColor?: string
+  invoiceFontFamily?: string
+  invoiceShowBankDetails?: boolean
+  invoiceShowSignature?: boolean
+  invoiceShowStamp?: boolean
 }
 
 // ============ ImageUploadField Component ============
@@ -1011,12 +1019,13 @@ export function SettingsModule() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-5 w-full max-w-2xl">
+        <TabsList className="grid grid-cols-6 w-full max-w-3xl">
           <TabsTrigger value="company" className="gap-1 text-xs"><Settings className="size-3" /> {lang === 'ar' ? 'بيانات الشركة' : 'Company'}</TabsTrigger>
           <TabsTrigger value="branches" className="gap-1 text-xs"><Building2 className="size-3" /> {lang === 'ar' ? 'الفروع' : 'Branches'}</TabsTrigger>
           <TabsTrigger value="warehouses" className="gap-1 text-xs"><Warehouse className="size-3" /> {lang === 'ar' ? 'المستودعات' : 'Warehouses'}</TabsTrigger>
           <TabsTrigger value="cost-centers" className="gap-1 text-xs"><Target className="size-3" /> {lang === 'ar' ? 'التكلفة' : 'Cost Ctrs'}</TabsTrigger>
           <TabsTrigger value="currencies" className="gap-1 text-xs"><Coins className="size-3" /> {lang === 'ar' ? 'العملات' : 'Currencies'}</TabsTrigger>
+          <TabsTrigger value="invoice-templates" className="gap-1 text-xs"><FileText className="size-3" /> {lang === 'ar' ? 'قوالب الفاتورة' : 'Invoice Templates'}</TabsTrigger>
         </TabsList>
 
         {/* Company Settings Tab */}
@@ -1178,12 +1187,470 @@ export function SettingsModule() {
             </Card>
           )}
         </TabsContent>
+
+        {/* Invoice Templates Tab */}
+        <TabsContent value="invoice-templates" className="space-y-3">
+          <InvoiceTemplatesTab />
+        </TabsContent>
       </Tabs>
 
       {/* Dialogs */}
       <BranchDialog open={branchDialogOpen} onOpenChange={setBranchDialogOpen} />
       <WarehouseDialog open={warehouseDialogOpen} onOpenChange={setWarehouseDialogOpen} branches={branches} />
       <CostCenterDialog open={costCenterDialogOpen} onOpenChange={setCostCenterDialogOpen} costCenters={costCenters} />
+    </div>
+  )
+}
+
+// ============ Invoice Templates Tab ============
+const INVOICE_TEMPLATES = [
+  {
+    id: 'classic',
+    nameAr: 'كلاسيكي',
+    nameEn: 'Classic',
+    descAr: 'تصميم تقليدي بإطار نظيف - مناسب للشركات الرسمية',
+    descEn: 'Traditional design with clean borders - suited for formal companies',
+    primary: '#0f766e',
+    accent: '#34d399',
+  },
+  {
+    id: 'modern',
+    nameAr: 'عصري',
+    nameEn: 'Modern',
+    descAr: 'تصميم عصري بألوان متدرجة - مناسب للشركات التقنية',
+    descEn: 'Modern design with gradient colors - suited for tech companies',
+    primary: '#7c3aed',
+    accent: '#a78bfa',
+  },
+  {
+    id: 'minimal',
+    nameAr: 'مبسط',
+    nameEn: 'Minimal',
+    descAr: 'تصميم مبسط بمساحات بيضاء - مناسب للشركات الاستشارية',
+    descEn: 'Minimal design with whitespace - suited for consulting firms',
+    primary: '#374151',
+    accent: '#9ca3af',
+  },
+  {
+    id: 'corporate',
+    nameAr: 'مؤسسي',
+    nameEn: 'Corporate',
+    descAr: 'تصميم مؤسسي قوي - مناسب للشركات الكبرى والمقاولات',
+    descEn: 'Strong corporate design - suited for large enterprises and contractors',
+    primary: '#b45309',
+    accent: '#fbbf24',
+  },
+  {
+    id: 'royal',
+    nameAr: 'ملكي',
+    nameEn: 'Royal',
+    descAr: 'تصميم فاخر بلمسات ذهبية - مناسب للشركات المرموقة',
+    descEn: 'Luxurious design with golden touches - suited for prestigious companies',
+    primary: '#9a3412',
+    accent: '#f59e0b',
+  },
+  {
+    id: 'ocean',
+    nameAr: 'محيط',
+    nameEn: 'Ocean',
+    descAr: 'تصميم بألوان البحر الهادئة - مناسب للشركات الخدمية',
+    descEn: 'Calm ocean-colored design - suited for service companies',
+    primary: '#0369a1',
+    accent: '#38bdf8',
+  },
+]
+
+const PRESET_COLORS = [
+  '#0f766e', '#0369a1', '#7c3aed', '#b45309', '#9a3412', '#be123c',
+  '#15803d', '#a16207', '#475569', '#1e293b', '#0d9488', '#c2410c',
+]
+
+function InvoiceTemplatesTab() {
+  const { lang } = useAppStore()
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({
+    invoiceTemplate: 'classic',
+    invoicePrimaryColor: '#0f766e',
+    invoiceAccentColor: '#34d399',
+    invoiceFontFamily: 'default',
+    invoiceShowBankDetails: true,
+    invoiceShowSignature: true,
+    invoiceShowStamp: false,
+  })
+  const [saving, setSaving] = useState(false)
+
+  // Load existing settings
+  const { data: settings } = useQuery<CompanySettings>({
+    queryKey: ['company-settings'],
+    queryFn: async () => {
+      const res = await fetch('/api/company-settings')
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+  })
+
+  useEffect(() => {
+    if (settings) {
+      setForm({
+        invoiceTemplate: settings.invoiceTemplate || 'classic',
+        invoicePrimaryColor: settings.invoicePrimaryColor || '#0f766e',
+        invoiceAccentColor: settings.invoiceAccentColor || '#34d399',
+        invoiceFontFamily: settings.invoiceFontFamily || 'default',
+        invoiceShowBankDetails: settings.invoiceShowBankDetails ?? true,
+        invoiceShowSignature: settings.invoiceShowSignature ?? true,
+        invoiceShowStamp: settings.invoiceShowStamp ?? false,
+      })
+    }
+  }, [settings])
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: typeof form) => {
+      setSaving(true)
+      const res = await fetch('/api/company-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['company-settings'] })
+      setSaving(false)
+    },
+    onError: () => setSaving(false),
+  })
+
+  const selectedTemplate = INVOICE_TEMPLATES.find(t => t.id === form.invoiceTemplate) || INVOICE_TEMPLATES[0]
+
+  const applyTemplate = (templateId: string) => {
+    const tpl = INVOICE_TEMPLATES.find(t => t.id === templateId)
+    if (tpl) {
+      setForm(f => ({
+        ...f,
+        invoiceTemplate: templateId,
+        invoicePrimaryColor: tpl.primary,
+        invoiceAccentColor: tpl.accent,
+      }))
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <Card>
+        <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center">
+              <FileText className="size-5 text-emerald-600" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">
+                {lang === 'ar' ? 'قوالب تصميم الفواتير' : 'Invoice Design Templates'}
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                {lang === 'ar'
+                  ? 'اختر قالباً جاهزاً أو خصص الألوان والخطوط مع معاينة مباشرة'
+                  : 'Choose a ready template or customize colors and fonts with live preview'}
+              </p>
+            </div>
+          </div>
+          <Button
+            onClick={() => saveMutation.mutate(form)}
+            disabled={saving}
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+          >
+            <Save className="size-4" />
+            {saving ? (lang === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes')}
+          </Button>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Left: Template selection & customization */}
+        <div className="space-y-4">
+          {/* Ready templates */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileText className="size-4 text-emerald-600" />
+                {lang === 'ar' ? 'القوالب الجاهزة' : 'Ready Templates'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {INVOICE_TEMPLATES.map(tpl => (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => applyTemplate(tpl.id)}
+                  className={`text-right p-3 rounded-lg border-2 transition-all ${
+                    form.invoiceTemplate === tpl.id
+                      ? 'border-emerald-500 bg-emerald-50 shadow-sm'
+                      : 'border-gray-200 hover:border-emerald-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="size-8 rounded-md" style={{ background: `linear-gradient(135deg, ${tpl.primary}, ${tpl.accent})` }} />
+                    <span className="font-medium text-sm">{lang === 'ar' ? tpl.nameAr : tpl.nameEn}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground line-clamp-2">
+                    {lang === 'ar' ? tpl.descAr : tpl.descEn}
+                  </p>
+                </button>
+              ))}
+            </CardContent>
+          </Card>
+
+          {/* Color customization */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Stamp className="size-4 text-emerald-600" />
+                {lang === 'ar' ? 'تخصيص الألوان' : 'Color Customization'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Primary color */}
+              <div className="space-y-2">
+                <Label>{lang === 'ar' ? 'اللون الأساسي' : 'Primary Color'}</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={form.invoicePrimaryColor}
+                    onChange={e => setForm(f => ({ ...f, invoicePrimaryColor: e.target.value }))}
+                    className="size-10 rounded-md border border-gray-300 cursor-pointer"
+                  />
+                  <Input
+                    value={form.invoicePrimaryColor}
+                    onChange={e => setForm(f => ({ ...f, invoicePrimaryColor: e.target.value }))}
+                    dir="ltr"
+                    className="font-mono flex-1"
+                  />
+                </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {PRESET_COLORS.map(c => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setForm(f => ({ ...f, invoicePrimaryColor: c }))}
+                      className="size-6 rounded-md border-2 border-white shadow-sm hover:scale-110 transition-transform"
+                      style={{ background: c }}
+                      title={c}
+                    />
+                  ))}
+                </div>
+              </div>
+              {/* Accent color */}
+              <div className="space-y-2">
+                <Label>{lang === 'ar' ? 'لون التمييز' : 'Accent Color'}</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={form.invoiceAccentColor}
+                    onChange={e => setForm(f => ({ ...f, invoiceAccentColor: e.target.value }))}
+                    className="size-10 rounded-md border border-gray-300 cursor-pointer"
+                  />
+                  <Input
+                    value={form.invoiceAccentColor}
+                    onChange={e => setForm(f => ({ ...f, invoiceAccentColor: e.target.value }))}
+                    dir="ltr"
+                    className="font-mono flex-1"
+                  />
+                </div>
+              </div>
+              {/* Font family */}
+              <div className="space-y-2">
+                <Label>{lang === 'ar' ? 'نوع الخط' : 'Font Family'}</Label>
+                <Select
+                  value={form.invoiceFontFamily}
+                  onValueChange={v => setForm(f => ({ ...f, invoiceFontFamily: v }))}
+                >
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">{lang === 'ar' ? 'الافتراضي (System)' : 'Default (System)'}</SelectItem>
+                    <SelectItem value="tajawal">Tajawal</SelectItem>
+                    <SelectItem value="cairo">Cairo</SelectItem>
+                    <SelectItem value="amiri">Amiri</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Display options */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Eye className="size-4 text-emerald-600" />
+                {lang === 'ar' ? 'خيارات العرض' : 'Display Options'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>{lang === 'ar' ? 'إظهار بيانات البنك' : 'Show Bank Details'}</Label>
+                <Switch
+                  checked={form.invoiceShowBankDetails}
+                  onCheckedChange={v => setForm(f => ({ ...f, invoiceShowBankDetails: v }))}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>{lang === 'ar' ? 'إظهار التوقيع' : 'Show Signature'}</Label>
+                <Switch
+                  checked={form.invoiceShowSignature}
+                  onCheckedChange={v => setForm(f => ({ ...f, invoiceShowSignature: v }))}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>{lang === 'ar' ? 'إظهار الختم' : 'Show Stamp'}</Label>
+                <Switch
+                  checked={form.invoiceShowStamp}
+                  onCheckedChange={v => setForm(f => ({ ...f, invoiceShowStamp: v }))}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right: Live preview */}
+        <div className="space-y-4">
+          <Card className="sticky top-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Eye className="size-4 text-emerald-600" />
+                {lang === 'ar' ? 'معاينة مباشرة' : 'Live Preview'}
+                <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs mr-auto">
+                  {lang === 'ar' ? selectedTemplate.nameAr : selectedTemplate.nameEn}
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Mini invoice preview */}
+              <div
+                className="bg-white rounded-lg border shadow-sm overflow-hidden mx-auto"
+                style={{ maxWidth: '420px', fontFamily: form.invoiceFontFamily === 'default' ? 'inherit' : form.invoiceFontFamily }}
+                dir="rtl"
+              >
+                {/* Header band */}
+                <div
+                  className="px-4 py-3 flex items-center justify-between"
+                  style={{ background: `linear-gradient(135deg, ${form.invoicePrimaryColor}, ${form.invoicePrimaryColor}dd)` }}
+                >
+                  <div className="text-white">
+                    <div className="text-base font-bold">شركة البناء الحديثة</div>
+                    <div className="text-[10px] opacity-90">Al Binaa Al Haditha Contracting</div>
+                  </div>
+                  <div
+                    className="px-2 py-1 rounded text-[10px] font-bold"
+                    style={{ background: form.invoiceAccentColor, color: form.invoicePrimaryColor }}
+                  >
+                    فاتورة ضريبية
+                  </div>
+                </div>
+
+                {/* Invoice meta */}
+                <div className="px-4 py-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] border-b" style={{ borderColor: `${form.invoicePrimaryColor}22` }}>
+                  <div>
+                    <span className="text-gray-500">رقم الفاتورة:</span>
+                    <span className="font-mono font-semibold mr-1">INV-2025-0001</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">التاريخ:</span>
+                    <span className="font-semibold mr-1">٣٠ يونيو ٢٠٢٥</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">العميل:</span>
+                    <span className="font-semibold mr-1">شركة المقاولات المتحدة</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">الرقم الضريبي:</span>
+                    <span className="font-mono mr-1">300000000100003</span>
+                  </div>
+                </div>
+
+                {/* Line items */}
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr style={{ background: `${form.invoicePrimaryColor}11`, color: form.invoicePrimaryColor }}>
+                      <th className="text-right px-3 py-1.5 font-semibold">#</th>
+                      <th className="text-right px-2 py-1.5 font-semibold">الوصف</th>
+                      <th className="text-center px-2 py-1.5 font-semibold">الكمية</th>
+                      <th className="text-left px-2 py-1.5 font-semibold">السعر</th>
+                      <th className="text-left px-3 py-1.5 font-semibold">الإجمالي</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100">
+                      <td className="px-3 py-1.5">1</td>
+                      <td className="px-2 py-1.5">تأجير حفارة - 180 ساعة</td>
+                      <td className="text-center px-2 py-1.5">180</td>
+                      <td className="text-left px-2 py-1.5 font-mono">923.08</td>
+                      <td className="text-left px-3 py-1.5 font-mono font-semibold">166,153.85</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Totals */}
+                <div className="px-4 py-2 space-y-1 text-[10px] border-t" style={{ borderColor: `${form.invoicePrimaryColor}22` }}>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">المجموع الفرعي</span>
+                    <span className="font-mono">166,153.85 ر.س</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500">ضريبة القيمة المضافة (15%)</span>
+                    <span className="font-mono">24,923.08 ر.س</span>
+                  </div>
+                  <div
+                    className="flex justify-between items-center px-2 py-1.5 rounded mt-1"
+                    style={{ background: `${form.invoicePrimaryColor}11` }}
+                  >
+                    <span className="font-bold" style={{ color: form.invoicePrimaryColor }}>الإجمالي</span>
+                    <span className="font-mono font-bold text-sm" style={{ color: form.invoicePrimaryColor }}>191,076.93 ر.س</span>
+                  </div>
+                </div>
+
+                {/* Footer band */}
+                <div
+                  className="px-4 py-2 flex items-center justify-between text-[9px] text-white"
+                  style={{ background: form.invoicePrimaryColor }}
+                >
+                  <span>ض.ر: 300123456700003</span>
+                  <span>info@albinaa.com</span>
+                </div>
+
+                {/* Conditional sections */}
+                {form.invoiceShowBankDetails && (
+                  <div className="px-4 py-1.5 text-[9px] text-gray-600 border-t border-gray-100">
+                    <span className="font-semibold">البنك:</span> الراجحي |
+                    <span className="font-semibold mr-1">IBAN:</span> SA00 8000 0000 6080 1016 7519
+                  </div>
+                )}
+                {form.invoiceShowSignature && (
+                  <div className="px-4 py-2 flex justify-between text-[9px] text-gray-500 border-t border-gray-100">
+                    <div className="border-t border-dashed border-gray-300 pt-1 mt-3 w-24 text-center">توقيع الشركة</div>
+                    <div className="border-t border-dashed border-gray-300 pt-1 mt-3 w-24 text-center">توقيع العميل</div>
+                  </div>
+                )}
+                {form.invoiceShowStamp && (
+                  <div className="px-4 pb-3 flex justify-center">
+                    <div
+                      className="size-12 rounded-full border-2 flex items-center justify-center text-[8px] font-bold opacity-60"
+                      style={{ borderColor: form.invoiceAccentColor, color: form.invoicePrimaryColor }}
+                    >
+                      ختم
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground text-center mt-3">
+                {lang === 'ar'
+                  ? 'هذه معاينة توضيحية - سيتم تطبيق القالب على جميع الفواتير المطبوعة'
+                  : 'This is an illustrative preview - the template will be applied to all printed invoices'}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

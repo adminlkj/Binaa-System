@@ -14,12 +14,20 @@ const defaultSettings = {
   bankAccountName: 'شركة البناء الحديثة للمقاولات',
   defaultVatRate: 0.15,
   currency: 'SAR',
-  currencySymbol: '\uFDFC',     // Saudi Riyal Unicode symbol (﷼)
+  currencySymbol: '\uFDFC',     // Saudi Riyal Unicode symbol
   currencySymbolEn: 'SAR',     // English currency text
-  currencySymbolAr: '\uFDFC',  // Arabic currency symbol (﷼)
+  currencySymbolAr: '\uFDFC',  // Arabic currency symbol
   invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
   useThousandSeparatorsSystem: true,
   useThousandSeparatorsOfficial: false,
+  // Invoice template defaults
+  invoiceTemplate: 'classic',
+  invoicePrimaryColor: '#0f766e',
+  invoiceAccentColor: '#34d399',
+  invoiceFontFamily: 'default',
+  invoiceShowBankDetails: true,
+  invoiceShowSignature: true,
+  invoiceShowStamp: false,
 }
 
 export async function GET() {
@@ -40,33 +48,42 @@ export async function PUT(request: Request) {
     const body = await request.json()
     const existing = await db.companySetting.findFirst()
 
-    const updateData = {
-      nameAr: body.nameAr,
-      nameEn: body.nameEn,
-      logo: body.logo ?? null,
-      logoUrl: body.logoUrl ?? null,
-      commercialReg: body.commercialReg ?? null,
-      taxNumber: body.taxNumber ?? null,
-      address: body.address ?? null,
-      phone: body.phone ?? null,
-      email: body.email ?? null,
-      website: body.website ?? null,
-      bankName: body.bankName ?? null,
-      bankIban: body.bankIban ?? null,
-      bankAccountName: body.bankAccountName ?? null,
-      stamp: body.stamp ?? null,
-      defaultVatRate: body.defaultVatRate ?? 0.15,
-      currency: body.currency ?? 'SAR',
-      currencySymbol: body.currencySymbol ?? '\uFDFC',
-      currencySymbolEn: body.currencySymbolEn ?? 'SAR',
-      currencySymbolAr: body.currencySymbolAr ?? '\uFDFC',
-      invoiceTerms: body.invoiceTerms ?? null,
-      useThousandSeparatorsSystem: body.useThousandSeparatorsSystem ?? true,
-      useThousandSeparatorsOfficial: body.useThousandSeparatorsOfficial ?? false,
-      currencySymbolImage: body.currencySymbolImage ?? null,
-      headerImage: body.headerImage ?? null,
-      footerImage: body.footerImage ?? null,
-    }
+    const updateData: Record<string, unknown> = {}
+    // Company fields (only update if provided — allows partial updates
+    // from the Invoice Templates tab without sending all company data)
+    if (body.nameAr !== undefined) updateData.nameAr = body.nameAr
+    if (body.nameEn !== undefined) updateData.nameEn = body.nameEn
+    if (body.logo !== undefined) updateData.logo = body.logo
+    if (body.logoUrl !== undefined) updateData.logoUrl = body.logoUrl
+    if (body.commercialReg !== undefined) updateData.commercialReg = body.commercialReg
+    if (body.taxNumber !== undefined) updateData.taxNumber = body.taxNumber
+    if (body.address !== undefined) updateData.address = body.address
+    if (body.phone !== undefined) updateData.phone = body.phone
+    if (body.email !== undefined) updateData.email = body.email
+    if (body.website !== undefined) updateData.website = body.website
+    if (body.bankName !== undefined) updateData.bankName = body.bankName
+    if (body.bankIban !== undefined) updateData.bankIban = body.bankIban
+    if (body.bankAccountName !== undefined) updateData.bankAccountName = body.bankAccountName
+    if (body.stamp !== undefined) updateData.stamp = body.stamp
+    if (body.defaultVatRate !== undefined) updateData.defaultVatRate = body.defaultVatRate
+    if (body.currency !== undefined) updateData.currency = body.currency
+    if (body.currencySymbol !== undefined) updateData.currencySymbol = body.currencySymbol
+    if (body.currencySymbolEn !== undefined) updateData.currencySymbolEn = body.currencySymbolEn
+    if (body.currencySymbolAr !== undefined) updateData.currencySymbolAr = body.currencySymbolAr
+    if (body.invoiceTerms !== undefined) updateData.invoiceTerms = body.invoiceTerms
+    if (body.useThousandSeparatorsSystem !== undefined) updateData.useThousandSeparatorsSystem = body.useThousandSeparatorsSystem
+    if (body.useThousandSeparatorsOfficial !== undefined) updateData.useThousandSeparatorsOfficial = body.useThousandSeparatorsOfficial
+    if (body.currencySymbolImage !== undefined) updateData.currencySymbolImage = body.currencySymbolImage
+    if (body.headerImage !== undefined) updateData.headerImage = body.headerImage
+    if (body.footerImage !== undefined) updateData.footerImage = body.footerImage
+    // Invoice template fields
+    if (body.invoiceTemplate !== undefined) updateData.invoiceTemplate = body.invoiceTemplate
+    if (body.invoicePrimaryColor !== undefined) updateData.invoicePrimaryColor = body.invoicePrimaryColor
+    if (body.invoiceAccentColor !== undefined) updateData.invoiceAccentColor = body.invoiceAccentColor
+    if (body.invoiceFontFamily !== undefined) updateData.invoiceFontFamily = body.invoiceFontFamily
+    if (body.invoiceShowBankDetails !== undefined) updateData.invoiceShowBankDetails = body.invoiceShowBankDetails
+    if (body.invoiceShowSignature !== undefined) updateData.invoiceShowSignature = body.invoiceShowSignature
+    if (body.invoiceShowStamp !== undefined) updateData.invoiceShowStamp = body.invoiceShowStamp
 
     let settings
     if (existing) {
@@ -102,6 +119,13 @@ export async function PUT(request: Request) {
           currencySymbolImage: body.currencySymbolImage ?? null,
           headerImage: body.headerImage ?? null,
           footerImage: body.footerImage ?? null,
+          invoiceTemplate: body.invoiceTemplate ?? defaultSettings.invoiceTemplate,
+          invoicePrimaryColor: body.invoicePrimaryColor ?? defaultSettings.invoicePrimaryColor,
+          invoiceAccentColor: body.invoiceAccentColor ?? defaultSettings.invoiceAccentColor,
+          invoiceFontFamily: body.invoiceFontFamily ?? defaultSettings.invoiceFontFamily,
+          invoiceShowBankDetails: body.invoiceShowBankDetails ?? defaultSettings.invoiceShowBankDetails,
+          invoiceShowSignature: body.invoiceShowSignature ?? defaultSettings.invoiceShowSignature,
+          invoiceShowStamp: body.invoiceShowStamp ?? defaultSettings.invoiceShowStamp,
         },
       })
     }
