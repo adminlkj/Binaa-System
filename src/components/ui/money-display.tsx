@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { CurrencySymbol } from '@/components/ui/currency-symbol'
+import { useAppStore } from '@/stores/app-store'
 
 /**
  * MoneyDisplay - The unified financial display component for نظام بِنَاء
@@ -272,7 +273,7 @@ export function MoneyDisplay({
   lang = 'ar',
   symbolAr = '\uFDFC',
   symbolEn = 'SAR',
-  symbolImage,
+  symbolImage: symbolImageProp,
   size = 'md',
   showSymbol = true,
   bold = false,
@@ -280,8 +281,21 @@ export function MoneyDisplay({
   className = '',
   dir,
 }: MoneyDisplayProps) {
+  // Read the global currency symbol image from the Zustand store.
+  // This makes the symbol appear next to every amount in the system automatically
+  // (the constant rule: the currency symbol image is the ONLY approved currency symbol).
+  // The prop `symbolImage` (if explicitly passed) takes priority over the store value.
+  const globalSymbolImage = useAppStore(s => s.currencySymbolImage)
+  const globalUseSystemSep = useAppStore(s => s.useThousandSeparatorsSystem)
+  const symbolImage = symbolImageProp !== undefined ? symbolImageProp : globalSymbolImage
+
+  // Resolve effective display mode based on global separator settings
+  // (official mode is reserved for printed documents; system screens always follow globalUseSystemSep)
+  const effectiveMode: 'system' | 'official' =
+    mode === 'official' ? 'official' : (globalUseSystemSep ? 'system' : 'official')
+
   // Format the number based on mode (safe for undefined/null)
-  const formattedAmount = formatAmount(value, mode)
+  const formattedAmount = formatAmount(value, effectiveMode)
 
   // Determine text direction
   const effectiveDir = dir || (lang === 'ar' ? 'rtl' : 'ltr')
@@ -318,7 +332,8 @@ export function MoneyDisplay({
   const renderSymbol = () => {
     if (!showSymbol) return null
 
-    // If a symbol image is provided, render it with transparent background
+    // CONSTANT RULE: if a currency symbol image is set (globally or via prop),
+    // render it with transparent background — this is the ONLY approved currency symbol.
     if (symbolImage) {
       const imgSize = symbolImageSizeMap[size] || 16
       return (

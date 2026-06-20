@@ -13,6 +13,7 @@ import {
   Printer, Download, Search, Link2, Pencil, FileSearch, ArrowRightLeft,
   Settings, List, Heart, Activity, Zap, ChevronUp, Trash2,
   XCircle, AlertCircle, InfoIcon, ShieldCheck, Stethoscope,
+  Undo2, Send,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,7 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+import { useToast } from '@/hooks/use-toast'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
@@ -63,6 +65,7 @@ interface JournalEntry {
   id: string; entryNo: string; date: string; description: string | null
   status: string; sourceType: string | null; sourceId: string | null
   createdAt: string
+  isReversal?: boolean; reversedEntryId?: string | null
   lines: JournalLine[]
   totalDebit: number; totalCredit: number
 }
@@ -248,6 +251,7 @@ function JEStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) 
 }
 
 const sourceTypeLabels: Record<string, { ar: string; en: string }> = {
+  MANUAL: { ar: 'يدوي', en: 'Manual' },
   SALES_INVOICE: { ar: 'فاتورة مبيعات', en: 'Sales Invoice' },
   PURCHASE_INVOICE: { ar: 'فاتورة مشتريات', en: 'Purchase Invoice' },
   PROGRESS_CLAIM: { ar: 'مستخلص', en: 'Progress Claim' },
@@ -577,9 +581,13 @@ function AccountTransactionsDialog({ account, open, onClose }: {
 }
 
 // ============ Journal Entry Detail ============
-function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; onBack: () => void; accounts: Account[] }) {
+function JournalEntryDetail({ entry, onBack, accounts, onEntryChanged }: { entry: JournalEntry; onBack: () => void; accounts: Account[]; onEntryChanged?: (updated: JournalEntry) => void }) {
   const { lang } = useAppStore()
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [detailTab, setDetailTab] = useState('lines')
+  const [actionInProgress, setActionInProgress] = useState(false)
+  const [reverseDialogOpen, setReverseDialogOpen] = useState(false)
 
   const accountImpactData = useMemo(() => {
     const uniqueAccounts = new Map<string, { code: string; name: string; nameAr: string | null; totalDebit: number; totalCredit: number }>()
@@ -601,19 +609,86 @@ function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; 
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Button variant="outline" size="sm" onClick={onBack} className="gap-1">
           <ChevronLeft className="size-4" />{t('رجوع', 'Back', lang)}
         </Button>
-        <div className="flex-1">
-          <h3 className="text-lg font-bold flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg font-bold flex items-center gap-2 flex-wrap">
             <FileText className="size-5 text-emerald-600" />
             <span className="font-mono">{entry.entryNo}</span>
             <span>-</span>
-            <span>{entry.description || t('قيد يومية', 'Journal Entry', lang)}</span>
+            <span className="truncate">{entry.description || t('قيد يومية', 'Journal Entry', lang)}</span>
+            {entry.isReversal && (
+              <Badge className="bg-amber-100 text-amber-800 border-0 gap-1">
+                <Undo2 className="size-3" />
+                {t('قيد عكسي', 'Reversal', lang)}
+              </Badge>
+            )}
           </h3>
         </div>
         <JEStatusBadge status={entry.status} lang={lang} />
+        {/* ===== Action Buttons (source-of-truth controls) ===== */}
+        <div className="flex gap-2 flex-wrap">
+          <PrintButton type="journal-entry" documentId={entry.id} size="sm" />
+          {entry.status === 'DRAFT' && (
+            <Button
+              size="sm"
+              onClick={async () => {
+                setActionInProgress(true)
+                try {
+                  const res = await fetch(`/api/journal-entries/${entry.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'POSTED' }),
+                  })
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}))
+                    throw new Error(err.error || `HTTP ${res.status}`)
+                  }
+                  const updated = await res.json()
+                  toast({
+                    title: t('تم الترحيل', 'Posted', lang),
+                    description: t(
+                      `تم ترحيل القيد ${entry.entryNo} بنجاح. سيظهر الآن في ميزان المراجعة والتقارير.`,
+                      `Journal entry ${entry.entryNo} posted. It will now appear in Trial Balance and reports.`,
+                      lang
+                    ),
+                  })
+                  queryClient.invalidateQueries({ queryKey: ['journal-entries'] })
+                  queryClient.invalidateQueries({ queryKey: ['trial-balance'] })
+                  queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+                  onEntryChanged?.(updated)
+                } catch (e) {
+                  toast({
+                    title: t('خطأ', 'Error', lang),
+                    description: e instanceof Error ? e.message : t('فشل في ترحيل القيد', 'Failed to post entry', lang),
+                    variant: 'destructive',
+                  })
+                } finally {
+                  setActionInProgress(false)
+                }
+              }}
+              disabled={actionInProgress}
+              className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              <Send className="size-3.5" />
+              {t('ترحيل القيد', 'Post Entry', lang)}
+            </Button>
+          )}
+          {entry.status === 'POSTED' && !entry.isReversal && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setReverseDialogOpen(true)}
+              disabled={actionInProgress}
+              className="gap-1 border-amber-400 text-amber-700 hover:bg-amber-50"
+            >
+              <Undo2 className="size-3.5" />
+              {t('عكس القيد', 'Reverse Entry', lang)}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -693,6 +768,79 @@ function JournalEntryDetail({ entry, onBack, accounts }: { entry: JournalEntry; 
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ===== Reverse Entry Confirmation Dialog ===== */}
+      <Dialog open={reverseDialogOpen} onOpenChange={setReverseDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Undo2 className="size-5 text-amber-600" />
+              {t('عكس القيد المحاسبي', 'Reverse Journal Entry', lang)}
+            </DialogTitle>
+            <DialogDescription>
+              {t(
+                `سيتم إنشاء قيد عكسي جديد بتبديل المدين والدائن لجميع بنود القيد ${entry.entryNo}. سيتم تعليم القيد الحالي كملغي (CANCELLED). القيد العكسي سيكون مرحّلاً (POSTED) فوراً.`,
+                `A new reversal entry will be created by flipping debit/credit on every line of ${entry.entryNo}. The current entry will be marked CANCELLED. The reversal entry will be POSTED immediately.`,
+                lang
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+            {t(
+              'ملاحظة: لا يمكن التراجع عن العكس. سيظهر القيد العكسي في ميزان المراجعة والتقارير.',
+              'Note: Reversal cannot be undone. The reversal entry will appear in Trial Balance and reports.',
+              lang
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReverseDialogOpen(false)} disabled={actionInProgress}>
+              {t('إلغاء', 'Cancel', lang)}
+            </Button>
+            <Button
+              onClick={async () => {
+                setActionInProgress(true)
+                try {
+                  const res = await fetch(`/api/journal-entries/${entry.id}/reverse`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                  })
+                  if (!res.ok) {
+                    const err = await res.json().catch(() => ({}))
+                    throw new Error(err.error || `HTTP ${res.status}`)
+                  }
+                  const reversal = await res.json()
+                  toast({
+                    title: t('تم عكس القيد', 'Entry Reversed', lang),
+                    description: t(
+                      `تم إنشاء القيد العكسي ${reversal.entryNo}. القيد الأصلي ${entry.entryNo} أصبح ملغياً.`,
+                      `Reversal entry ${reversal.entryNo} created. Original entry ${entry.entryNo} is now CANCELLED.`,
+                      lang
+                    ),
+                  })
+                  queryClient.invalidateQueries({ queryKey: ['journal-entries'] })
+                  queryClient.invalidateQueries({ queryKey: ['trial-balance'] })
+                  queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+                  setReverseDialogOpen(false)
+                  onBack()
+                } catch (e) {
+                  toast({
+                    title: t('خطأ', 'Error', lang),
+                    description: e instanceof Error ? e.message : t('فشل في عكس القيد', 'Failed to reverse entry', lang),
+                    variant: 'destructive',
+                  })
+                } finally {
+                  setActionInProgress(false)
+                }
+              }}
+              disabled={actionInProgress}
+              className="gap-1 bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              <Undo2 className="size-4" />
+              {t('تأكيد العكس', 'Confirm Reverse', lang)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -1923,10 +2071,22 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
   entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void; accounts: Account[]
 }) {
   const { lang } = useAppStore()
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+
+  // ===== Manual JE form state =====
+  const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10))
+  const [formDescription, setFormDescription] = useState('')
+  const [formDebitAccountCode, setFormDebitAccountCode] = useState('')
+  const [formCreditAccountCode, setFormCreditAccountCode] = useState('')
+  const [formAmount, setFormAmount] = useState('')
+  const [formPostImmediately, setFormPostImmediately] = useState(true)
 
   const filtered = useMemo(() => {
     let list = entries
@@ -1939,10 +2099,115 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
     return list
   }, [entries, statusFilter, sourceFilter, searchTerm])
 
-  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} accounts={accounts} />
+  // Posting accounts for dropdowns (declared before any conditional return so hooks run in order)
+  const postingAccounts = useMemo(
+    () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
+    [accounts]
+  )
+
+  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} accounts={accounts} onEntryChanged={(updated) => setSelectedEntry(updated)} />
+
+  const resetForm = () => {
+    setFormDate(new Date().toISOString().slice(0, 10))
+    setFormDescription('')
+    setFormDebitAccountCode('')
+    setFormCreditAccountCode('')
+    setFormAmount('')
+    setFormPostImmediately(true)
+  }
+
+  const handleCreateJE = async () => {
+    // Validate
+    if (!formDate || !formDebitAccountCode || !formCreditAccountCode || !formAmount) {
+      toast({
+        title: t('حقول ناقصة', 'Missing fields', lang),
+        description: t('يرجى تعبئة التاريخ والحساب المدين والحساب الدائن والمبلغ', 'Please fill date, debit account, credit account, and amount', lang),
+        variant: 'destructive',
+      })
+      return
+    }
+    if (formDebitAccountCode === formCreditAccountCode) {
+      toast({
+        title: t('خطأ', 'Error', lang),
+        description: t('لا يمكن أن يكون الحساب المدين والدائن نفس الحساب', 'Debit and credit accounts cannot be the same', lang),
+        variant: 'destructive',
+      })
+      return
+    }
+    const amount = parseFloat(formAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast({
+        title: t('مبلغ غير صالح', 'Invalid amount', lang),
+        description: t('المبلغ يجب أن يكون رقماً موجباً', 'Amount must be a positive number', lang),
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setCreating(true)
+    try {
+      // Generate entry number — use a unique placeholder; backend may also auto-generate
+      const entryNo = `JE-MAN-${Date.now().toString().slice(-8)}`
+
+      const res = await fetch('/api/journal-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entryNo,
+          date: formDate,
+          description: formDescription || t('قيد يدوي', 'Manual journal entry', lang),
+          status: formPostImmediately ? 'POSTED' : 'DRAFT',
+          sourceType: 'MANUAL',
+          lines: [
+            { accountCode: formDebitAccountCode, debit: amount, credit: 0, description: formDescription || null },
+            { accountCode: formCreditAccountCode, debit: 0, credit: amount, description: formDescription || null },
+          ],
+        }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `HTTP ${res.status}`)
+      }
+      const created = await res.json()
+      toast({
+        title: t('تم إنشاء القيد', 'Entry Created', lang),
+        description: t(
+          `تم إنشاء القيد ${created.entryNo} بحالة ${formPostImmediately ? 'مرحّل' : 'مسودة'}.`,
+          `Entry ${created.entryNo} created with status ${formPostImmediately ? 'POSTED' : 'DRAFT'}.`,
+          lang
+        ),
+      })
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] })
+      queryClient.invalidateQueries({ queryKey: ['trial-balance'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+      resetForm()
+      setCreateDialogOpen(false)
+      refetch()
+    } catch (e) {
+      toast({
+        title: t('خطأ', 'Error', lang),
+        description: e instanceof Error ? e.message : t('فشل في إنشاء القيد', 'Failed to create entry', lang),
+        variant: 'destructive',
+      })
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h3 className="text-base font-bold flex items-center gap-2">
+          <FileText className="size-5 text-emerald-600" />
+          {t('القيود اليومية', 'Journal Entries', lang)}
+          <Badge variant="outline" className="text-xs">{filtered.length} / {entries.length}</Badge>
+        </h3>
+        <Button onClick={() => setCreateDialogOpen(true)} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+          <PlusCircle className="size-4" />
+          {t('قيد يدوي جديد', 'New Manual Entry', lang)}
+        </Button>
+      </div>
+
       <Card className="bg-gray-50/50">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
@@ -2016,6 +2281,130 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
           </CardContent>
         </Card>
       )}
+
+      {/* ===== Create Manual Journal Entry Dialog ===== */}
+      <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) resetForm() }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <PlusCircle className="size-5 text-emerald-600" />
+              {t('إنشاء قيد يدوي', 'Create Manual Journal Entry', lang)}
+            </DialogTitle>
+            <DialogDescription>
+              {t(
+                'القيد يجب أن يكون متوازناً (المدين = الدائن). سيتم إنشاء قيد بسيط من بندّين. للقيود المعقدة استخدم وحدة المصروفات أو الفواتير.',
+                'Entry must be balanced (Debit = Credit). A simple two-line entry will be created. For complex entries use Expenses or Invoices modules.',
+                lang
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1 col-span-1">
+              <Label className="text-xs">{t('التاريخ', 'Date', lang)} *</Label>
+              <Input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="h-9" />
+            </div>
+            <div className="space-y-1 col-span-1">
+              <Label className="text-xs">{t('المبلغ', 'Amount', lang)} *</Label>
+              <Input type="number" step="0.01" min="0" value={formAmount} onChange={e => setFormAmount(e.target.value)} placeholder="0.00" className="h-9" />
+            </div>
+            <div className="space-y-1 col-span-2">
+              <Label className="text-xs">{t('الوصف', 'Description', lang)}</Label>
+              <Input value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder={t('وصف القيد...', 'Entry description...', lang)} className="h-9" />
+            </div>
+            <div className="space-y-1 col-span-2 sm:col-span-1">
+              <Label className="text-xs">{t('الحساب المدين', 'Debit Account', lang)} *</Label>
+              <Select value={formDebitAccountCode} onValueChange={setFormDebitAccountCode}>
+                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب المدين', 'Select debit account', lang)} /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {postingAccounts.map(a => (
+                    <SelectItem key={a.code} value={a.code}>
+                      <span className="font-mono">{a.code}</span> - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1 col-span-2 sm:col-span-1">
+              <Label className="text-xs">{t('الحساب الدائن', 'Credit Account', lang)} *</Label>
+              <Select value={formCreditAccountCode} onValueChange={setFormCreditAccountCode}>
+                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب الدائن', 'Select credit account', lang)} /></SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {postingAccounts.map(a => (
+                    <SelectItem key={a.code} value={a.code}>
+                      <span className="font-mono">{a.code}</span> - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Live preview */}
+          {formDebitAccountCode && formCreditAccountCode && formAmount && !isNaN(parseFloat(formAmount)) && (
+            <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3">
+              <p className="text-xs font-semibold text-emerald-800 mb-2">{t('معاينة القيد', 'Entry Preview', lang)}</p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-right h-8 text-xs">{t('الحساب', 'Account', lang)}</TableHead>
+                    <TableHead className="text-right h-8 text-xs">{t('مدين', 'Debit', lang)}</TableHead>
+                    <TableHead className="text-right h-8 text-xs">{t('دائن', 'Credit', lang)}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  <TableRow className="h-8">
+                    <TableCell className="text-xs font-mono">{formDebitAccountCode}</TableCell>
+                    <TableCell className="text-xs text-emerald-700">{parseFloat(formAmount).toFixed(2)}</TableCell>
+                    <TableCell className="text-xs">—</TableCell>
+                  </TableRow>
+                  <TableRow className="h-8">
+                    <TableCell className="text-xs font-mono">{formCreditAccountCode}</TableCell>
+                    <TableCell className="text-xs">—</TableCell>
+                    <TableCell className="text-xs text-rose-700">{parseFloat(formAmount).toFixed(2)}</TableCell>
+                  </TableRow>
+                  <TableRow className="h-8 bg-gray-100 font-bold">
+                    <TableCell className="text-xs">{t('الإجمالي', 'Total', lang)}</TableCell>
+                    <TableCell className="text-xs text-emerald-800">{parseFloat(formAmount).toFixed(2)}</TableCell>
+                    <TableCell className="text-xs text-rose-800">{parseFloat(formAmount).toFixed(2)}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              <p className="text-[10px] text-emerald-700 mt-2 flex items-center gap-1">
+                <CheckCircle2 className="size-3" />
+                {t('القيد متوازن ✓', 'Entry is balanced ✓', lang)}
+              </p>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
+            <input
+              type="checkbox"
+              id="post-immediately"
+              checked={formPostImmediately}
+              onChange={e => setFormPostImmediately(e.target.checked)}
+              className="size-4"
+            />
+            <label htmlFor="post-immediately" className="cursor-pointer">
+              {t(
+                'ترحيل القيد فوراً (POSTED). إذا تم إلغاء هذا الخيار سيتم إنشاء القيد كمسودة (DRAFT) ولن يظهر في ميزان المراجعة حتى يتم ترحيله.',
+                'Post entry immediately (POSTED). If unchecked, the entry will be created as DRAFT and will not appear in Trial Balance until posted.',
+                lang
+              )}
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setCreateDialogOpen(false); resetForm() }} disabled={creating}>
+              {t('إلغاء', 'Cancel', lang)}
+            </Button>
+            <Button onClick={handleCreateJE} disabled={creating} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+              <CheckCircle2 className="size-4" />
+              {creating ? t('جاري الحفظ...', 'Saving...', lang) : t('حفظ القيد', 'Save Entry', lang)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -2319,7 +2708,6 @@ export function AccountingModule() {
       subtitle={{ ar: 'المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل', en: 'Complete Accounting Engine — Entries, Financial Reports & Analysis' }}
       actions={
         <div className="flex gap-2">
-          <PrintButton title={t('المحاسبة', 'Accounting', lang)} />
           <Button variant="outline" size="icon" onClick={() => { refetchAccounts(); refetchEntries() }}>
             <RefreshCw className="size-4" />
           </Button>

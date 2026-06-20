@@ -121,6 +121,81 @@ function transformDataForPrint(type: PrintDocumentType, data: Record<string, unk
       break
     }
 
+    case 'journal-entry': {
+      // Flatten lines[].account nested object → flat accountCode/accountName/accountNameEn
+      const rawLines = (d.lines as Array<Record<string, unknown>>) || []
+      d.lines = rawLines.map(line => {
+        const acct = line.account as Record<string, unknown> | undefined
+        const cc = line.costCenter as Record<string, unknown> | undefined
+        return {
+          accountCode: (acct?.code as string) || (line.accountCode as string) || '',
+          accountName: (acct?.nameAr as string) || (acct?.name as string) || (line.accountName as string) || '',
+          accountNameEn: (acct?.name as string) || (line.accountNameEn as string) || '',
+          debit: Number(line.debit) || 0,
+          credit: Number(line.credit) || 0,
+          description: line.description || '',
+          costCenterName: (cc?.name as string) || '',
+        }
+      })
+      // Map sourceType → source label
+      if (!d.source && d.sourceType) {
+        const sourceLabelMap: Record<string, { ar: string; en: string }> = {
+          SALES_INVOICE: { ar: 'فاتورة مبيعات', en: 'Sales Invoice' },
+          PURCHASE_INVOICE: { ar: 'فاتورة مشتريات', en: 'Purchase Invoice' },
+          EXPENSE: { ar: 'مصروف', en: 'Expense' },
+          PAYMENT: { ar: 'سند صرف/تحصيل', en: 'Payment Voucher' },
+          PAYROLL: { ar: 'رواتب', en: 'Payroll' },
+          MANUAL: { ar: 'يدوي', en: 'Manual' },
+          PROGRESS_CLAIM: { ar: 'مستخلص', en: 'Progress Claim' },
+        }
+        const src = sourceLabelMap[d.sourceType as string] || sourceLabelMap.MANUAL
+        d.source = src.ar // lang is applied later by the template via this single field
+      }
+      // Compute totals if missing
+      if (d.lines && Array.isArray(d.lines)) {
+        const lines = d.lines as Array<{ debit: number; credit: number }>
+        if (!d.totalDebit) d.totalDebit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0)
+        if (!d.totalCredit) d.totalCredit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0)
+      }
+      break
+    }
+
+    case 'expense-report':
+    case 'advance-voucher':
+    case 'petty-cash-voucher': {
+      // Map Expense fields → PaymentVoucher template fields
+      d.documentType = d.documentType || type
+      if (!d.paymentNo) d.paymentNo = d.id ? `EXP-${String(d.id).slice(-6).toUpperCase()}` : ''
+      if (!d.amount) d.amount = Number(d.totalAmount) || Number(d.amount) || 0
+      if (!d.totalAmount) d.totalAmount = Number(d.totalAmount) || Number(d.amount) || 0
+      if (!d.referenceNo) d.referenceNo = d.reference || ''
+      // Map payFrom → paymentMethod label (Arabic default; English fallback handled by template)
+      if (!d.paymentMethod && d.payFrom) {
+        const payFromLabelMap: Record<string, { ar: string; en: string }> = {
+          PETTY_CASH: { ar: 'نقدية (عربية)', en: 'Petty Cash' },
+          TREASURY: { ar: 'الخزينة', en: 'Treasury' },
+          BANK_TRANSFER: { ar: 'تحويل بنكي', en: 'Bank Transfer' },
+          CHEQUE: { ar: 'شيك', en: 'Cheque' },
+        }
+        const pf = payFromLabelMap[d.payFrom as string] || payFromLabelMap.BANK_TRANSFER
+        d.paymentMethod = pf.ar
+      }
+      // Expenses don't have a payee; mark as expense so the template shows "مصروف/Expense"
+      if (!d.clientName && !d.supplierName) {
+        d.supplierName = 'مصروف'
+      }
+      // Flatten project/costCenter for display
+      const proj = d.project as Record<string, unknown> | undefined
+      if (proj && typeof proj === 'object' && !d.projectName) {
+        d.projectName = proj.name || ''
+      }
+      const cc = d.costCenter as Record<string, unknown> | undefined
+      if (cc && typeof cc === 'object' && !d.costCenterName) {
+        d.costCenterName = cc.name || ''
+      }
+      break
+    }
+
     case 'equipment-report': {
       flattenEquipment(d)
       break

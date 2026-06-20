@@ -25,7 +25,9 @@ export const template: DocumentTemplate = {
 
   getBody(data, settings, lang) {
     const totalAmount = Number(data.amount) || Number(data.totalAmount) || 0
-    const isClient = data.clientName !== undefined && data.clientName !== null
+    // Treat as client voucher only if clientName is a non-empty string
+    const clientNameStr = typeof data.clientName === 'string' ? data.clientName.trim() : ''
+    const isClient = clientNameStr.length > 0
     const currency = getCurrencySymbol(settings, lang)
 
     // Determine document type label

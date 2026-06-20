@@ -4,8 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins,
-  Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon, Hash,
-  Upload, X, Loader2,
+  Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon,
+  Upload, X, Loader2, Info,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAppStore, formatNumber } from '@/stores/app-store'
+import { useAppStore } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { Switch } from '@/components/ui/switch'
 
@@ -31,7 +31,6 @@ import { Switch } from '@/components/ui/switch'
 interface Branch { id: string; code: string; name: string; address: string | null; isActive: boolean }
 interface Warehouse { id: string; code: string; name: string; branchId: string; isActive: boolean; branch: { id: string; code: string; name: string } }
 interface CostCenter { id: string; code: string; name: string; parentId: string | null; parent: { id: string; code: string; name: string } | null; children: { id: string; code: string; name: string }[] }
-interface Currency { id: string; code: string; name: string; symbol: string; rate: number; isActive: boolean }
 
 interface CompanySettings {
   id?: string
@@ -47,15 +46,13 @@ interface CompanySettings {
   bankIban: string | null
   bankAccountName: string | null
   defaultVatRate: number
-  currencySymbol: string
-  currencySymbolEn: string
-  currencySymbolAr: string
-  useThousandSeparatorsSystem: boolean
-  useThousandSeparatorsOfficial: boolean
+  // The ONLY approved currency symbol — uploaded as an image (PNG/JPG/SVG).
+  // The background is automatically removed and the symbol is rendered next to
+  // every amount across the system and in printed documents.
+  currencySymbolImage: string | null
   invoiceTerms: string | null
   logoUrl: string | null
   stamp: string | null
-  currencySymbolImage: string | null
   headerImage: string | null
   footerImage: string | null
   // Invoice template customization
@@ -231,7 +228,7 @@ function TableSkeleton({ rows = 3 }: { rows?: number }) {
 
 // ============ Company Settings Tab ============
 function CompanySettingsTab() {
-  const { lang, setCurrencySymbolImage, setThousandSeparatorSettings: updateStoreSeparators } = useAppStore()
+  const { lang, setCurrencySymbolImage } = useAppStore()
   const queryClient = useQueryClient()
   const [form, setForm] = useState<CompanySettings>({
     nameAr: '',
@@ -246,15 +243,10 @@ function CompanySettingsTab() {
     bankIban: '',
     bankAccountName: '',
     defaultVatRate: 0.15,
-    currencySymbol: '\uFDFC',
-    currencySymbolEn: 'SAR',
-    currencySymbolAr: 'ر.س',
-    useThousandSeparatorsSystem: true,
-    useThousandSeparatorsOfficial: false,
+    currencySymbolImage: '',
     invoiceTerms: '',
     logoUrl: '',
     stamp: '',
-    currencySymbolImage: '',
     headerImage: '',
     footerImage: '',
   })
@@ -281,15 +273,10 @@ function CompanySettingsTab() {
     bankIban: settings.bankIban || '',
     bankAccountName: settings.bankAccountName || '',
     defaultVatRate: settings.defaultVatRate ?? 0.15,
-    currencySymbol: settings.currencySymbol || '\uFDFC',
-    currencySymbolEn: settings.currencySymbolEn || 'SAR',
-    currencySymbolAr: settings.currencySymbolAr || 'ر.س',
-    useThousandSeparatorsSystem: settings.useThousandSeparatorsSystem ?? true,
-    useThousandSeparatorsOfficial: settings.useThousandSeparatorsOfficial ?? false,
+    currencySymbolImage: settings.currencySymbolImage || '',
     invoiceTerms: settings.invoiceTerms || '',
     logoUrl: settings.logoUrl || '',
     stamp: settings.stamp || '',
-    currencySymbolImage: settings.currencySymbolImage || '',
     headerImage: settings.headerImage || '',
     footerImage: settings.footerImage || '',
   } : null
@@ -317,13 +304,9 @@ function CompanySettingsTab() {
       // Reset the loaded ref so form will re-sync with fresh data
       settingsLoadedRef.current = false
       queryClient.invalidateQueries({ queryKey: ['company-settings'] })
-      // Update currency symbol image in global store
+      // Push the updated currency symbol image into the global store so that
+      // every <MoneyDisplay /> in the system picks it up instantly.
       setCurrencySymbolImage(data.currencySymbolImage || null)
-      // Update thousand separator settings in global store
-      updateStoreSeparators(
-        data.useThousandSeparatorsSystem ?? true,
-        data.useThousandSeparatorsOfficial ?? false
-      )
     },
   })
 
@@ -505,116 +488,81 @@ function CompanySettingsTab() {
         </CardContent>
       </Card>
 
-      {/* Currency & VAT */}
+      {/* Currency Symbol (Image Only) & VAT */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Coins className="size-4 text-emerald-600" />
-            {lang === 'ar' ? 'العملة والضريبة' : 'Currency & VAT'}
+            {lang === 'ar' ? 'رمز العملة والضريبة' : 'Currency Symbol & VAT'}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Currency Symbol Image Upload */}
+          {/* CONSTANT RULE banner: image-only currency symbol */}
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 flex items-start gap-2">
+            <Info className="size-4 text-emerald-600 mt-0.5 shrink-0" />
+            <div className="text-xs text-emerald-800 leading-relaxed">
+              {lang === 'ar'
+                ? 'رمز العملة الوحيد المعتمد هو الصورة المرفوعة هنا. يتم إزالة خلفيتها تلقائياً ويظهر الرمز بجانب كل مبلغ داخل النظام وفي جميع المطبوعات والفواتير. لا توجد إعدادات عملة أخرى.'
+                : 'The ONLY approved currency symbol is the image uploaded here. Its background is removed automatically and the symbol appears next to every amount across the system and in all printed documents and invoices. There are no other currency settings.'}
+            </div>
+          </div>
+
+          {/* Currency Symbol Image Upload — the only currency setting */}
           <ImageUploadField
             value={form.currencySymbolImage}
             onChange={url => updateField('currencySymbolImage', url)}
             label="Currency Symbol Image"
-            labelAr="صورة رمز العملة"
+            labelAr="صورة رمز العملة (الوحيد المعتمد)"
             lang={lang}
-            hint="When set, this image replaces text currency symbols in MoneyDisplay. SVG/PNG recommended."
-            hintAr="عند التعيين، تحل هذه الصورة محل رموز العملة النصية في عرض المبالغ. يُفضل SVG/PNG."
+            hint="PNG/JPG/SVG recommended. Background is removed automatically."
+            hintAr="يُفضل PNG/JPG/SVG. تتم إزالة الخلفية تلقائياً."
             previewHeight="h-28"
           />
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'رمز العملة (عربي)' : 'Currency Symbol (Arabic)'}</Label>
-              <Input
-                value={form.currencySymbol}
-                onChange={e => updateField('currencySymbol', e.target.value)}
-                placeholder="﷼"
-              />
-              <p className="text-xs text-muted-foreground">
-                {lang === 'ar' ? 'الافتراضي: ﷼' : 'Default: ﷼'}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'رمز العملة (إنجليزي)' : 'Currency Symbol (English)'}</Label>
-              <Input
-                value={form.currencySymbolEn}
-                onChange={e => updateField('currencySymbolEn', e.target.value)}
-                placeholder="SAR"
-                dir="ltr"
-              />
-              <p className="text-xs text-muted-foreground">
-                {lang === 'ar' ? 'الافتراضي: SAR' : 'Default: SAR'}
-              </p>
-            </div>
-            <div className="space-y-2">
-              <Label>{lang === 'ar' ? 'رمز العملة (اختصار عربي)' : 'Currency Symbol (Arabic Abbr.)'}</Label>
-              <Input
-                value={form.currencySymbolAr}
-                onChange={e => updateField('currencySymbolAr', e.target.value)}
-                placeholder="ر.س"
-              />
-              <p className="text-xs text-muted-foreground">
-                {lang === 'ar' ? 'الافتراضي: ر.س' : 'Default: ر.س'}
-              </p>
-            </div>
-          </div>
-
-          {/* Live Preview */}
+          {/* Live preview of how amounts will look across the system */}
           <div className="rounded-lg border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-4">
             <div className="flex items-center gap-2 mb-3">
               <Eye className="size-4 text-emerald-600" />
               <span className="text-sm font-semibold text-emerald-700">
-                {lang === 'ar' ? 'معاينة مباشرة' : 'Live Preview'}
+                {lang === 'ar' ? 'معاينة مباشرة - هكذا سيظهر رمز العملة بجانب كل مبلغ' : 'Live Preview - how the symbol will appear next to every amount'}
               </span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="rounded-md bg-white p-3 text-center border">
                 <p className="text-xs text-muted-foreground mb-1">
-                  {lang === 'ar' ? 'عرض عربي' : 'Arabic Display'}
+                  {lang === 'ar' ? 'مبلغ كبير' : 'Large Amount'}
                 </p>
                 <MoneyDisplay
                   value={150000}
                   mode="system"
                   lang="ar"
-                  symbolAr={form.currencySymbol}
-                  symbolEn={form.currencySymbolEn}
-                  symbolImage={form.currencySymbolImage}
+                  symbolImage={form.currencySymbolImage || null}
                   size="lg"
                   bold
                 />
               </div>
               <div className="rounded-md bg-white p-3 text-center border">
                 <p className="text-xs text-muted-foreground mb-1">
-                  {lang === 'ar' ? 'عرض إنجليزي' : 'English Display'}
+                  {lang === 'ar' ? 'مبلغ متوسط' : 'Medium Amount'}
                 </p>
                 <MoneyDisplay
-                  value={150000}
+                  value={42514.85}
                   mode="system"
-                  lang="en"
-                  symbolAr={form.currencySymbol}
-                  symbolEn={form.currencySymbolEn}
-                  symbolImage={form.currencySymbolImage}
-                  size="lg"
-                  bold
+                  lang="ar"
+                  symbolImage={form.currencySymbolImage || null}
+                  size="md"
                 />
               </div>
               <div className="rounded-md bg-white p-3 text-center border">
                 <p className="text-xs text-muted-foreground mb-1">
-                  {lang === 'ar' ? 'اختصار عربي' : 'Arabic Abbreviation'}
+                  {lang === 'ar' ? 'مبلغ صغير' : 'Small Amount'}
                 </p>
                 <MoneyDisplay
-                  value={150000}
+                  value={1250.5}
                   mode="system"
                   lang="ar"
-                  symbolAr={form.currencySymbolAr}
-                  symbolEn={form.currencySymbolEn}
-                  symbolImage={form.currencySymbolImage}
-                  size="lg"
-                  bold
+                  symbolImage={form.currencySymbolImage || null}
+                  size="sm"
                 />
               </div>
             </div>
@@ -636,99 +584,6 @@ function CompanySettingsTab() {
                 <span className="text-sm text-muted-foreground whitespace-nowrap">
                   ({((form.defaultVatRate ?? 0) * 100).toFixed(0)}%)
                 </span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Number Format / تنسيق المبالغ */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Hash className="size-4 text-emerald-600" />
-            {lang === 'ar' ? 'تنسيق المبالغ' : 'Number Format'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* System thousand separators toggle */}
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">
-                {lang === 'ar' ? 'استخدام فواصل الآلاف داخل النظام' : 'Use thousand separators in system'}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {lang === 'ar'
-                  ? 'عرض المبالغ بفواصل الآلاف في شاشات النظام الداخلية'
-                  : 'Display amounts with thousand separators in system screens'}
-              </p>
-            </div>
-            <Switch
-              checked={form.useThousandSeparatorsSystem}
-              onCheckedChange={(checked: boolean) =>
-                setForm(prev => ({ ...prev, useThousandSeparatorsSystem: checked }))
-              }
-            />
-          </div>
-
-          {/* Official documents thousand separators toggle */}
-          <div className="flex items-center justify-between rounded-lg border p-4">
-            <div className="space-y-0.5">
-              <Label className="text-sm font-medium">
-                {lang === 'ar' ? 'استخدام فواصل الآلاف في المستندات الرسمية' : 'Use thousand separators in official documents'}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {lang === 'ar'
-                  ? 'عرض المبالغ بفواصل الآلاف في الفواتير والمستندات الرسمية (فاتورة ضريبية، مستخلصات...)'
-                  : 'Display amounts with thousand separators in invoices and official documents (tax invoices, claims...)'}
-              </p>
-            </div>
-            <Switch
-              checked={form.useThousandSeparatorsOfficial}
-              onCheckedChange={(checked: boolean) =>
-                setForm(prev => ({ ...prev, useThousandSeparatorsOfficial: checked }))
-              }
-            />
-          </div>
-
-          {/* Live Preview */}
-          <div className="rounded-lg border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Eye className="size-4 text-emerald-600" />
-              <span className="text-sm font-semibold text-emerald-700">
-                {lang === 'ar' ? 'معاينة مباشرة' : 'Live Preview'}
-              </span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="rounded-md bg-white p-3 text-center border">
-                <p className="text-xs text-muted-foreground mb-2">
-                  {lang === 'ar' ? 'داخل النظام' : 'Inside System'}
-                </p>
-                <MoneyDisplay
-                  value={42514.85}
-                  mode={form.useThousandSeparatorsSystem ? 'system' : 'official'}
-                  lang={lang}
-                  symbolAr={form.currencySymbol}
-                  symbolEn={form.currencySymbolEn}
-                  symbolImage={form.currencySymbolImage}
-                  size="lg"
-                  bold
-                />
-              </div>
-              <div className="rounded-md bg-white p-3 text-center border">
-                <p className="text-xs text-muted-foreground mb-2">
-                  {lang === 'ar' ? 'المستندات الرسمية' : 'Official Documents'}
-                </p>
-                <MoneyDisplay
-                  value={42514.85}
-                  mode={form.useThousandSeparatorsOfficial ? 'system' : 'official'}
-                  lang={lang}
-                  symbolAr={form.currencySymbol}
-                  symbolEn={form.currencySymbolEn}
-                  symbolImage={form.currencySymbolImage}
-                  size="lg"
-                  bold
-                />
               </div>
             </div>
           </div>
@@ -999,11 +854,6 @@ export function SettingsModule() {
     queryFn: async () => { const r = await fetch('/api/cost-centers'); if (!r.ok) return []; return r.json() },
   })
 
-  const { data: currencies = [], isLoading: loadingCurrencies } = useQuery<Currency[]>({
-    queryKey: ['currencies'],
-    queryFn: async () => { const r = await fetch('/api/currencies'); if (!r.ok) return []; return r.json() },
-  })
-
   const refetchAll = () => { refetchBranches(); refetchWarehouses(); refetchCC() }
 
   return (
@@ -1019,12 +869,11 @@ export function SettingsModule() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-6 w-full max-w-3xl">
+        <TabsList className="grid grid-cols-5 w-full max-w-3xl">
           <TabsTrigger value="company" className="gap-1 text-xs"><Settings className="size-3" /> {lang === 'ar' ? 'بيانات الشركة' : 'Company'}</TabsTrigger>
           <TabsTrigger value="branches" className="gap-1 text-xs"><Building2 className="size-3" /> {lang === 'ar' ? 'الفروع' : 'Branches'}</TabsTrigger>
           <TabsTrigger value="warehouses" className="gap-1 text-xs"><Warehouse className="size-3" /> {lang === 'ar' ? 'المستودعات' : 'Warehouses'}</TabsTrigger>
           <TabsTrigger value="cost-centers" className="gap-1 text-xs"><Target className="size-3" /> {lang === 'ar' ? 'التكلفة' : 'Cost Ctrs'}</TabsTrigger>
-          <TabsTrigger value="currencies" className="gap-1 text-xs"><Coins className="size-3" /> {lang === 'ar' ? 'العملات' : 'Currencies'}</TabsTrigger>
           <TabsTrigger value="invoice-templates" className="gap-1 text-xs"><FileText className="size-3" /> {lang === 'ar' ? 'قوالب الفاتورة' : 'Invoice Templates'}</TabsTrigger>
         </TabsList>
 
@@ -1150,44 +999,6 @@ export function SettingsModule() {
           )}
         </TabsContent>
 
-        {/* Currencies Tab */}
-        <TabsContent value="currencies" className="space-y-3">
-          {loadingCurrencies ? <TableSkeleton /> : (
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الكود' : 'Code'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الاسم' : 'Name'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الرمز' : 'Symbol'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'السعر' : 'Rate'}</TableHead>
-                        <TableHead className="text-right">{lang === 'ar' ? 'الحالة' : 'Status'}</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {currencies.map(c => (
-                        <TableRow key={c.id}>
-                          <TableCell className="font-mono">{c.code}</TableCell>
-                          <TableCell className="font-medium">{c.name}</TableCell>
-                          <TableCell>{c.symbol}</TableCell>
-                          <TableCell dir="ltr">{formatNumber(c.rate)}</TableCell>
-                          <TableCell>
-                            <Badge className={c.isActive ? 'bg-emerald-100 text-emerald-700 border-0' : 'bg-gray-100 text-gray-700 border-0'}>
-                              {c.isActive ? (lang === 'ar' ? 'نشط' : 'Active') : (lang === 'ar' ? 'غير نشط' : 'Inactive')}
-                            </Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </TabsContent>
-
         {/* Invoice Templates Tab */}
         <TabsContent value="invoice-templates" className="space-y-3">
           <InvoiceTemplatesTab />
@@ -1268,15 +1079,15 @@ const PRESET_COLORS = [
 function InvoiceTemplatesTab() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const [form, setForm] = useState({
-    invoiceTemplate: 'classic',
-    invoicePrimaryColor: '#0f766e',
-    invoiceAccentColor: '#34d399',
-    invoiceFontFamily: 'default',
-    invoiceShowBankDetails: true,
-    invoiceShowSignature: true,
-    invoiceShowStamp: false,
-  })
+  const [userEdits, setUserEdits] = useState<Partial<{
+    invoiceTemplate: string
+    invoicePrimaryColor: string
+    invoiceAccentColor: string
+    invoiceFontFamily: string
+    invoiceShowBankDetails: boolean
+    invoiceShowSignature: boolean
+    invoiceShowStamp: boolean
+  }>>({})
   const [saving, setSaving] = useState(false)
 
   // Load existing settings
@@ -1289,19 +1100,22 @@ function InvoiceTemplatesTab() {
     },
   })
 
-  useEffect(() => {
-    if (settings) {
-      setForm({
-        invoiceTemplate: settings.invoiceTemplate || 'classic',
-        invoicePrimaryColor: settings.invoicePrimaryColor || '#0f766e',
-        invoiceAccentColor: settings.invoiceAccentColor || '#34d399',
-        invoiceFontFamily: settings.invoiceFontFamily || 'default',
-        invoiceShowBankDetails: settings.invoiceShowBankDetails ?? true,
-        invoiceShowSignature: settings.invoiceShowSignature ?? true,
-        invoiceShowStamp: settings.invoiceShowStamp ?? false,
-      })
-    }
-  }, [settings])
+  // Derive the effective form state from the server settings overlaid with the
+  // user's local edits. This avoids the "setState inside useEffect" pattern
+  // while still letting the user override values without waiting for a refetch.
+  const form = {
+    invoiceTemplate: userEdits.invoiceTemplate ?? settings?.invoiceTemplate ?? 'classic',
+    invoicePrimaryColor: userEdits.invoicePrimaryColor ?? settings?.invoicePrimaryColor ?? '#0f766e',
+    invoiceAccentColor: userEdits.invoiceAccentColor ?? settings?.invoiceAccentColor ?? '#34d399',
+    invoiceFontFamily: userEdits.invoiceFontFamily ?? settings?.invoiceFontFamily ?? 'default',
+    invoiceShowBankDetails: userEdits.invoiceShowBankDetails ?? settings?.invoiceShowBankDetails ?? true,
+    invoiceShowSignature: userEdits.invoiceShowSignature ?? settings?.invoiceShowSignature ?? true,
+    invoiceShowStamp: userEdits.invoiceShowStamp ?? settings?.invoiceShowStamp ?? false,
+  }
+
+  const setField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
+    setUserEdits(prev => ({ ...prev, [key]: value }))
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof form) => {
@@ -1315,6 +1129,8 @@ function InvoiceTemplatesTab() {
       return res.json()
     },
     onSuccess: () => {
+      // Clear local edits so the form reflects the persisted state from the server
+      setUserEdits({})
       queryClient.invalidateQueries({ queryKey: ['company-settings'] })
       setSaving(false)
     },
@@ -1326,8 +1142,8 @@ function InvoiceTemplatesTab() {
   const applyTemplate = (templateId: string) => {
     const tpl = INVOICE_TEMPLATES.find(t => t.id === templateId)
     if (tpl) {
-      setForm(f => ({
-        ...f,
+      setUserEdits(prev => ({
+        ...prev,
         invoiceTemplate: templateId,
         invoicePrimaryColor: tpl.primary,
         invoiceAccentColor: tpl.accent,
@@ -1417,12 +1233,12 @@ function InvoiceTemplatesTab() {
                   <input
                     type="color"
                     value={form.invoicePrimaryColor}
-                    onChange={e => setForm(f => ({ ...f, invoicePrimaryColor: e.target.value }))}
+                    onChange={e => setField('invoicePrimaryColor', e.target.value)}
                     className="size-10 rounded-md border border-gray-300 cursor-pointer"
                   />
                   <Input
                     value={form.invoicePrimaryColor}
-                    onChange={e => setForm(f => ({ ...f, invoicePrimaryColor: e.target.value }))}
+                    onChange={e => setField('invoicePrimaryColor', e.target.value)}
                     dir="ltr"
                     className="font-mono flex-1"
                   />
@@ -1432,7 +1248,7 @@ function InvoiceTemplatesTab() {
                     <button
                       key={c}
                       type="button"
-                      onClick={() => setForm(f => ({ ...f, invoicePrimaryColor: c }))}
+                      onClick={() => setField('invoicePrimaryColor', c)}
                       className="size-6 rounded-md border-2 border-white shadow-sm hover:scale-110 transition-transform"
                       style={{ background: c }}
                       title={c}
@@ -1447,12 +1263,12 @@ function InvoiceTemplatesTab() {
                   <input
                     type="color"
                     value={form.invoiceAccentColor}
-                    onChange={e => setForm(f => ({ ...f, invoiceAccentColor: e.target.value }))}
+                    onChange={e => setField('invoiceAccentColor', e.target.value)}
                     className="size-10 rounded-md border border-gray-300 cursor-pointer"
                   />
                   <Input
                     value={form.invoiceAccentColor}
-                    onChange={e => setForm(f => ({ ...f, invoiceAccentColor: e.target.value }))}
+                    onChange={e => setField('invoiceAccentColor', e.target.value)}
                     dir="ltr"
                     className="font-mono flex-1"
                   />
@@ -1463,7 +1279,7 @@ function InvoiceTemplatesTab() {
                 <Label>{lang === 'ar' ? 'نوع الخط' : 'Font Family'}</Label>
                 <Select
                   value={form.invoiceFontFamily}
-                  onValueChange={v => setForm(f => ({ ...f, invoiceFontFamily: v }))}
+                  onValueChange={v => setField('invoiceFontFamily', v)}
                 >
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -1490,21 +1306,21 @@ function InvoiceTemplatesTab() {
                 <Label>{lang === 'ar' ? 'إظهار بيانات البنك' : 'Show Bank Details'}</Label>
                 <Switch
                   checked={form.invoiceShowBankDetails}
-                  onCheckedChange={v => setForm(f => ({ ...f, invoiceShowBankDetails: v }))}
+                  onCheckedChange={v => setField('invoiceShowBankDetails', v)}
                 />
               </div>
               <div className="flex items-center justify-between">
                 <Label>{lang === 'ar' ? 'إظهار التوقيع' : 'Show Signature'}</Label>
                 <Switch
                   checked={form.invoiceShowSignature}
-                  onCheckedChange={v => setForm(f => ({ ...f, invoiceShowSignature: v }))}
+                  onCheckedChange={v => setField('invoiceShowSignature', v)}
                 />
               </div>
               <div className="flex items-center justify-between">
                 <Label>{lang === 'ar' ? 'إظهار الختم' : 'Show Stamp'}</Label>
                 <Switch
                   checked={form.invoiceShowStamp}
-                  onCheckedChange={v => setForm(f => ({ ...f, invoiceShowStamp: v }))}
+                  onCheckedChange={v => setField('invoiceShowStamp', v)}
                 />
               </div>
             </CardContent>

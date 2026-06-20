@@ -305,6 +305,80 @@ export async function GET(request: NextRequest) {
           netVat: Number(vatReturn.netVat),
         }
       }
+    } else if (type === 'journal-entry') {
+      const je = await db.journalEntry.findUnique({
+        where: { id },
+        include: {
+          lines: {
+            include: { account: true, costCenter: true },
+          },
+        },
+      })
+      if (je) {
+        const sourceLabelMap: Record<string, { ar: string; en: string }> = {
+          SALES_INVOICE: { ar: 'فاتورة مبيعات', en: 'Sales Invoice' },
+          PURCHASE_INVOICE: { ar: 'فاتورة مشتريات', en: 'Purchase Invoice' },
+          EXPENSE: { ar: 'مصروف', en: 'Expense' },
+          PAYMENT: { ar: 'سند صرف/تحصيل', en: 'Payment Voucher' },
+          PAYROLL: { ar: 'رواتب', en: 'Payroll' },
+          MANUAL: { ar: 'يدوي', en: 'Manual' },
+          PROGRESS_CLAIM: { ar: 'مستخلص', en: 'Progress Claim' },
+        }
+        const src = sourceLabelMap[je.sourceType || 'MANUAL'] || sourceLabelMap.MANUAL
+        const totalDebit = je.lines.reduce((s, l) => s + Number(l.debit), 0)
+        const totalCredit = je.lines.reduce((s, l) => s + Number(l.credit), 0)
+        data = {
+          id: je.id,
+          entryNo: je.entryNo,
+          date: je.date,
+          description: je.description || '',
+          source: lang === 'ar' ? src.ar : src.en,
+          lines: je.lines.map(l => ({
+            accountCode: l.account?.code || '',
+            accountName: l.account?.nameAr || l.account?.name || '',
+            accountNameEn: l.account?.name || '',
+            debit: Number(l.debit) || 0,
+            credit: Number(l.credit) || 0,
+            description: l.description || '',
+            costCenterName: l.costCenter?.name || '',
+          })),
+          totalDebit,
+          totalCredit,
+          status: je.status,
+        }
+      }
+    } else if (type === 'expense-report' || type === 'advance-voucher' || type === 'petty-cash-voucher') {
+      // For expense-report, the same Expense record is used as a payment voucher.
+      const exp = await db.expense.findUnique({
+        where: { id },
+        include: { project: true, costCenter: true },
+      })
+      if (exp) {
+        const payFromLabelMap: Record<string, { ar: string; en: string }> = {
+          PETTY_CASH: { ar: 'نقدية (عربية)', en: 'Petty Cash' },
+          TREASURY: { ar: 'الخزينة', en: 'Treasury' },
+          BANK_TRANSFER: { ar: 'تحويل بنكي', en: 'Bank Transfer' },
+          CHEQUE: { ar: 'شيك', en: 'Cheque' },
+        }
+        const pf = payFromLabelMap[exp.payFrom || 'BANK_TRANSFER'] || payFromLabelMap.BANK_TRANSFER
+        data = {
+          id: exp.id,
+          documentType: 'expense-report',
+          paymentNo: `EXP-${exp.id.slice(-6).toUpperCase()}`,
+          date: exp.date,
+          amount: Number(exp.totalAmount) || Number(exp.amount) || 0,
+          totalAmount: Number(exp.totalAmount) || Number(exp.amount) || 0,
+          description: exp.description || '',
+          referenceNo: exp.reference || '',
+          paymentMethod: lang === 'ar' ? pf.ar : pf.en,
+          clientName: '',
+          supplierName: lang === 'ar' ? 'مصروف' : 'Expense',
+          projectName: exp.project?.name || '',
+          costCenterName: exp.costCenter?.name || '',
+          category: exp.category || '',
+          expenseType: exp.expenseType || '',
+        }
+      }
     }
 
     // For invoice types, generate QR code server-side (ZATCA compliance)

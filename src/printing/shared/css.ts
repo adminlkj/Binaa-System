@@ -255,11 +255,16 @@ export function getDefaultCSS(lang: 'ar' | 'en'): string {
 
     /* ════════════════════════════════════════════
        CURRENCY SYMBOL IMAGE
+       - mix-blend-mode:multiply so dark/white PNG/JPG backgrounds
+         blend invisibly into white paper. (No-op for transparent SVGs.)
+       - height matches surrounding text (0.9em).
+       - Inline styles on each <img> tag mirror these rules for safety.
     ════════════════════════════════════════════ */
     .ri-currency-img {
-      height: 0.85em; width: auto;
+      height: 0.9em; width: auto;
       vertical-align: middle; display: inline-block;
       margin: 0 2px;
+      mix-blend-mode: multiply;
     }
 
     /* ════════════════════════════════════════════
@@ -1311,7 +1316,7 @@ export function getAccountingCSS(lang: 'ar' | 'en'): string {
     .doc-footer .page-info { font-weight: 600; }
 
     /* ──── CURRENCY ──── */
-    .ri-currency-img { height: 0.85em; width: auto; vertical-align: middle; display: inline-block; margin: 0 2px; }
+    .ri-currency-img { height: 0.9em; width: auto; vertical-align: middle; display: inline-block; margin: 0 2px; mix-blend-mode: multiply; }
 
     /* ──── PRINT ACTIONS ──── */
     .print-actions {

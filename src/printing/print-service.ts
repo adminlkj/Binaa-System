@@ -25,6 +25,7 @@ import { template as TrialBalanceTemplate } from './accounting/TrialBalance'
 import { template as GeneralLedgerTemplate } from './accounting/GeneralLedger'
 import { template as IncomeStatementTemplate } from './accounting/IncomeStatement'
 import { template as BalanceSheetTemplate } from './accounting/BalanceSheet'
+import { template as JournalEntryTemplate } from './accounting/JournalEntry'
 import { template as VatReturnTemplate } from './tax/VatReturn'
 import { template as PaymentVoucherTemplate } from './financial/PaymentVoucher'
 import { template as SalarySlipTemplate } from './financial/SalarySlip'
@@ -50,6 +51,7 @@ const templateRegistry: Record<string, DocumentTemplate> = {
   'general-ledger': GeneralLedgerTemplate,
   'income-statement': IncomeStatementTemplate,
   'balance-sheet': BalanceSheetTemplate,
+  'journal-entry': JournalEntryTemplate,
   // ضريبي
   'vat-return': VatReturnTemplate,
   'tax-declaration': VatReturnTemplate, // backward compatibility
@@ -71,7 +73,6 @@ const templateRegistry: Record<string, DocumentTemplate> = {
   'attendance-report': GenericTableTemplate,
   'purchase-request': GenericTableTemplate,
   'goods-receipt': GenericTableTemplate,
-  'journal-entry': GenericTableTemplate,
   'account-statement': GenericTableTemplate,
   'generic-table': GenericTableTemplate,
 }

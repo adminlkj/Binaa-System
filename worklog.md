@@ -789,3 +789,140 @@ Stage Summary:
 - ✓ الدليل المحاسبي مربوط في إنشاء المصروف (AccountSelector) ويعرض جميع حسابات المصروفات
 - ✓ مركز التكلفة مربوط في إنشاء المصروف ويُمرر لجميع سطور القيد المحاسبي
 - ✓ جميع الاختبارات تمت عبر المتصفح الحقيقي (agent-browser) بمحاكاة المستخدم
+
+---
+Task ID: PRINT-CURRENCY-SYMBOL
+Agent: Print Currency Symbol Updater
+Task: Update all print templates so every monetary amount renders the uploaded currency symbol image (with mix-blend-mode:multiply for PNG/JPG fallback, direct embed for SVG, text fallback "﷼" when no image is set). Single-point fix in shared utils; audit + repair custom templates that bypassed the shared formatter.
+
+Work Log:
+- Read worklog.md tail and confirmed prior agents already wired `currencySymbolImage` into: Prisma schema, `/api/company-settings` (PUT/GET), `/api/print` route (server-side `/api/remove-bg` pre-processing for non-SVG), `src/printing/shared/types.ts` (PrintSettings field), `src/printing/shared/utils.ts` (initial `currencyDisplay` private helper that emitted `<img class="ri-currency-img">`), `src/components/ui/money-display.tsx` (browser side), and `src/components/shared/print-button.tsx` (client-side remove-bg before passing settings to print engine).
+- Audited all 21 template files under `src/printing/` (invoices, financial, accounting, contracts, projects, procurement, reports, operations, tax, shared). Confirmed every monetary amount already routes through the shared `fmtMoney(value, settings, lang)` from `src/printing/shared/utils.ts`. Column-header labels like "Unit Price (ر.س)" use the text-only `getCurrencySymbol()` helper — those are labels, not monetary amounts, so they intentionally remain text.
+- Found 3 custom template bodies in `src/lib/unified-print-engine.ts` (`generateBOQBody`, `generateChangeOrderBody`, `generateEmployeeContractBody`) that defined a LOCAL `fmtMoney = (v) => \`${v.toFixed(2)} ${currency}\`` which bypassed the shared formatter and hard-coded the currency as text. These are reached when printing BOQ, Change Order, and Employee Contract documents via `/api/print?type=boq|change-order|employee-contract`.
+- Hardened `src/printing/shared/utils.ts`:
+  - Replaced the private `currencyDisplay` with a new exported `getCurrencyDisplay(settings, lang)` — the SINGLE source of truth for currency symbol HTML in print templates.
+  - Added `isSvgImage(src)` helper that detects SVGs by URL extension (`.svg`, `.svg?`) or data-URL MIME prefix (`data:image/svg`).
+  - For SVG: inline style `height:0.9em;width:auto;vertical-align:middle;display:inline-block;margin:0 2px;` (no blend mode — SVGs already transparent).
+  - For PNG/JPG: same style PLUS `mix-blend-mode:multiply;` so any dark/white background becomes invisible on white paper, even if `/api/remove-bg` fails server-side.
+  - Image height set to `0.9em` per task spec (was `0.85em`).
+  - Text fallback now respects the user-configured `currencySymbolAr`/`currencySymbolEn`/`currencySymbol` (defaults to "﷼" U+FDFC per `company-settings/route.ts` defaults) instead of hard-coding "ر.س"/"SAR".
+  - `fmtMoney` now delegates to `getCurrencyDisplay` (one place to change).
+- Updated `.ri-currency-img` CSS class in `src/printing/shared/css.ts` (both occurrences: line ~259 default-document CSS and line ~1319 fallback CSS) to add `mix-blend-mode: multiply` and bump `height` from `0.85em` to `0.9em`. Inline styles on each `<img>` mirror these rules for safety (e.g., when templates render in the custom-document CSS scope that previously had no `.ri-currency-img` rule).
+- Added `.ri-currency-img` CSS rule to the custom-document CSS block in `src/lib/unified-print-engine.ts` `generateCustomDocument()` (was missing entirely — BOQ/Change-Order/Employee-Contract templates previously had no styling for the currency image; now matches the shared rule).
+- Replaced all 3 local `fmtMoney` arrow functions in `src/lib/unified-print-engine.ts` with `const fmtMoney = (v: number) => sharedFmtMoney(v, settings, lang)` (where `sharedFmtMoney` is imported from `@/printing/shared/utils`). The local `currency` text variable is retained only for column-header labels like "Unit Price (ر.س)" — those are labels, not monetary amounts, per the task spec.
+- Did NOT touch `settings.tsx` or `money-display.tsx` (per task instructions — already done by prior agent).
+- Did NOT touch the dead-code file `src/lib/print-service.ts` (3853 lines, zero imports anywhere in `src/`); mentioned for completeness.
+- Ran `bun run lint`: only remaining error is the pre-existing `take-screenshots.mjs` `no-require-imports` violation (confirmed pre-existing by stashing my changes and re-running lint — same error present without my changes). Zero new lint errors from my changes.
+- Ran `bunx tsc --noEmit`: zero TypeScript errors in my 3 changed files (`printing/shared/utils.ts`, `printing/shared/css.ts`, `lib/unified-print-engine.ts`). All pre-existing tsc errors are in unrelated files (account-statement Decimal handling, examples/websocket, skills/*).
+- Checked `dev.log`: no errors related to printing or my changes. Only one transient Next.js "Failed to find Server Action" warning at the start of the log (pre-existing, unrelated to printing).
+
+Stage Summary:
+- ✓ Single source of truth: `getCurrencyDisplay()` in `src/printing/shared/utils.ts` is now the ONLY place that decides how the currency symbol is rendered in print templates. `fmtMoney()` delegates to it; every print template uses `fmtMoney()` for monetary amounts.
+- ✓ Image rendering: SVG embedded directly (already transparent); PNG/JPG get inline `mix-blend-mode:multiply; height:0.9em;` so dark/white backgrounds blend invisibly into white paper. This is a robust fallback that works even when `/api/remove-bg` fails server-side or client-side.
+- ✓ Text fallback respects user-configured `currencySymbolAr`/`currencySymbolEn`/`currencySymbol` (defaults to "﷼" U+FDFC).
+- ✓ Audit complete: all 21 templates under `src/printing/` use `fmtMoney` for monetary amounts. The 3 custom templates in `unified-print-engine.ts` (BOQ, Change Order, Employee Contract) that previously hard-coded currency as text now delegate to the shared `fmtMoney`.
+- ✓ CSS `.ri-currency-img` class hardened in all 3 places it appears (default-document CSS, fallback CSS, custom-document CSS).
+- ✓ ZATCA-compliance features preserved: QR code, "فاتورة ضريبية" label, bilingual text, bank details, amount-in-words — all untouched.
+- ✓ Lint passes (only pre-existing `take-screenshots.mjs` error remains).
+- ✓ Dev log clean.
+- Files modified: `src/printing/shared/utils.ts`, `src/printing/shared/css.ts`, `src/lib/unified-print-engine.ts`.
+
+---
+Task ID: MAIN-FIXES-1
+Agent: Main Agent
+Task: تنظيف شاشة الإعدادات + إصلاح رفع الصور + ربط صورة رمز العملة عالمياً + إصلاح أخطاء محورية
+
+Work Log:
+- اكتشفت أن مسار `/api/upload` كان مفقوداً تماماً (404) — هذا هو السبب الجذري لفشل جميع حقول رفع الصور في شاشة الإعدادات. أنشأت المسار الكامل مع دعم SVG/PNG/JPG/WEBP/GIF والتحقق من النوع والحجم (5MB).
+- أعدت هيكلة `src/components/modules/settings.tsx`:
+  - أزلت حقول `currencySymbol` و`currencySymbolEn` و`currencySymbolAr` النصية بالكامل
+  - أزلت بطاقة "تنسيق المبالغ" (useThousandSeparatorsSystem و useThousandSeparatorsOfficial)
+  - أزلت تبويب "العملات" (Currencies) بالكامل من قائمة التبويبات
+  - أزلت استعلام `/api/currencies` من المكون
+  - أبقيت فقط حقل رفع "صورة رمز العملة" مع لافتة توضح القاعدة الثابتة
+  - أضفت معاينة مباشرة بثلاثة مبالغ مختلفة الأحجام لعرض كيف سيظهر الرمز
+- حدّثت `src/components/ui/money-display.tsx`:
+  - يقرأ `currencySymbolImage` تلقائياً من متجر Zustand العام (`useAppStore`)
+  - يستخدم الصورة كرمز عملة افتراضي عند توفرها (مع إزالة الخلفية عبر `/api/remove-bg`)
+  - يحترم الإعداد العام `useThousandSeparatorsSystem` لعرض المبالغ
+  - الـ prop `symbolImage` الصريح يأخذ أولوية على المتجر (للاختبارات والمعاينات)
+- أنشأت `CurrencySettingsInitializer` في `src/components/layout/providers.tsx`:
+  - ي同步 إعدادات الشركة (currencySymbolImage + الفواصل) إلى المتجر العام عند بدء التطبيق
+  - يتحدث تلقائياً عند تغيير الإعدادات
+- إصلاح خطأ محاسبي في `src/components/modules/projects.tsx`:
+  - المشكلة: `contractValue` يأتي كـ string من Prisma Decimal، فيقوم `reduce` بدمج النصوص ("100000" + "109250" = "100000109250")
+  - كان يعرض "100,000,109,250,032,200,000,000,000.00" بدلاً من "9,587,500.00"
+  - أصلحت 8 عمليات reduce بلف القيم في `Number()`: contractValue, totalAmount, amount, totalCost
+- إصلاح خطأ في `src/app/api/attendance/route.ts`:
+  - المشكلة: النموذج يرسل checkIn/checkOut كـ "08:00" (وقت فقط)، فيحاول `new Date("08:00")` ويرجع Invalid Date → Prisma خطأ 500
+  - أضفت `safeDate()` و`combineDateTime()` لدمج التاريخ مع الوقت بأمان
+  - تم التحقق: إنشاء سجل حضور بنجاح مع workHours=9 محسوبة تلقائياً من 08:00-17:00
+- إصلاح خطأ `setState in effect` في InvoiceTemplatesTab عبر نمط userEdits + derive بدلاً من useEffect+setForm
+- أزلت استيرادات غير مستخدمة (formatNumber, Currency, Hash)
+- أعدت تسمية `test-nav.js` إلى `test-nav.sh` (كان ملف bash بامتداد js يسبب خطأ lint)
+
+Stage Summary:
+- ✅ مسار `/api/upload` الجديد يعمل: تم رفع صورة SVG لرمز العملة بنجاح وحفظها
+- ✅ شاشة الإعدادات منقحة: 5 تبويبات فقط (شركة/فروع/مستودعات/تكلفة/قوالب فاتورة) — لا أثر لحقول العملة النصية أو تبويب العملات أو تفعيلات الفواصل
+- ✅ صورة رمز العملة تظهر تلقائياً بجانب كل مبلغ في لوحة التحكم (4 صور ﷼ مرئية) بعد رفعها مرة واحدة في الإعدادات
+- ✅ قيمة العقود في صفحة المشاريع تعرض 9,587,500.00 بشكل صحيح (كانت تعرض رقم ضخم بسبب دمج النصوص)
+- ✅ إنشاء سجل الحضور يعمل (كان يفشل بـ 500 بسبب Invalid Date)
+- ✅ قوالب الطباعة (تم إصلاحها بواسطة عامل فرعي) تستخدم الآن صورة رمز العملة في كل مبلغ مطبوع مع mix-blend-mode:multiply كاحتياط
+- ✅ lint نظيف (الخطأ الوحيد في take-screenshots.mjs الموجود مسبقاً)
+
+---
+Task ID: MAIN-FIXES-2
+Agent: Main Agent
+Task: اختبار المتصفح المنهجي + إصلاح أخطاء إضافية + التحقق من المصدر الوحيد للحقيقة
+
+Work Log:
+- **اختبار شامل عبر المتصفح** لـ 35+ شاشة باستخدام agent-browser (smoke test):
+  - جميع الشاشات تُحمّل بنجاح (لم يتم رصد أخطاء 500 إلا في attendance — تم إصلاحه)
+  - رمز العملة يظهر بجانب المبالغ في لوحة التحكم (4 صور ﷼ مرئية)
+  - شاشة الإعدادات بعد التنظيف تحتوي فقط على 5 تبويبات (لا تبويب للعملات)
+- **اختبار طباعة فاتورة مشروع (PCL-2026-0001)**:
+  - استدعيت `/api/print?type=rental-invoice&id=cmqmu39g6001uquvg29h63jwd&lang=ar`
+  - ✅ الفاتورة تحتوي على 5 صور لرمز العملة (ri-currency-img) بجانب:
+    - المجموع قبل الضريبة (420,000.00)
+    - ضريبة القيمة المضافة 15% (63,000.00)
+    - الإجمالي شامل الضريبة (483,000.00)
+    - خليتان في جدول البنود
+  - ✅ كل صورة تستخدم SVG المرفوع مع style="height:0.9em" و mix-blend-mode:multiply
+- **إصلاح خطأ في تنسيق المبالغ المطبوعة**:
+  - المشكلة: `formatMoneyPrint` كان يستخدم `toFixed(4)` → المبالغ تظهر بـ 4 منازل عشرية (420000.0000)
+  - الإصلاح: غيرت إلى `toFixed(2)` في `src/printing/shared/utils.ts` (دالتان: formatMoneyPrint و fmtPrint)
+  - بعد الإصلاح: المبالغ تظهر بـ 2 منزلة عشرية (420000.00) — متوافق مع معايير SAR
+- **اختبار شامل لشاشة المصروفات + مركز التكلفة + القيد المحاسبي**:
+  - ✅ شاشة المصروفات تحتوي على:
+    - منتقي مركز التكلفة (Cost Center selector) — يعرض 3 مراكز (CC-001, CC-002, CC-003)
+    - منتقي الحساب المحاسبي (Account Selector) — يعرض 15 حساب مصروف من الدليل
+    - منتقي مصدر السداد (Payment Source) — يعرض حسابات الصندوق/البنك
+    - منتقي المشروع — يعرض المشاريع المتاحة
+  - أنشأت مصروف اختبار: 2,500 ر.س + 375 ضريبة = 2,875 إجمالي
+    - مركز التكلفة: CC-002 (مشروع مدرسة النسيم)
+    - الحساب: 7110 (تكاليف المواد)
+    - السداد من: 1110 (الصندوق)
+  - ✅ تم إنشاء القيد المحاسبي JE-000010 (POSTED):
+    - Line 1: 7110 - تكاليف المواد | مدين 2,500 | **CC: CC-002**
+    - Line 2: 1410 - ضريبة مستحقة الاسترداد | مدين 375 | **CC: CC-002**
+    - Line 3: 1110 - الصندوق (الخزينة) | دائن 2,875 | **CC: CC-002**
+  - ✅ مركز التكلفة مربوط بجميع سطور القيد (3/3 سطور)
+- **التحقق من المصدر الوحيد للحقيقة** (القيود اليومية المنشورة):
+  - ميزان المراجعة يعكس القيد JE-000010:
+    - حساب 1110 (الصندوق): دائن 8,625 (يشمل 2,875 من المصروف الجديد)
+    - حساب 1410 (ضريبة مستحقة الاسترداد): مدين 1,125 (يشمل 375 ضريبة المصروف)
+  - القيد POSTED يظهر في ميزان المراجعة ✓
+  - القيد متوازن: مدين 2,875 = دائن 2,875 ✓
+- **ملاحظات تشغيلية**:
+  - خادم التطوير يتعطل بشكل متكرر بسبب ضغط الذاكرة في بيئة sandbox (Turbopack compilation)
+  - keep-alive.sh يعيد تشغيله تلقائياً
+  - كل الـ APIs المجربة تعمل بشكل صحيح بعد إعادة التشغيل
+
+Stage Summary:
+- ✅ **رمز العملة في المطبوعات**: صورة SVG تظهر بجانب كل مبلغ في الفاتورة المطبوعة (5 مواقع) — متوافق مع القاعدة الثابتة
+- ✅ **تنسيق المبالغ المطبوعة**: 2 منزلة عشرية (بدلاً من 4) — متوافق مع معايير SAR
+- ✅ **شاشة المصروفات**: مركز التكلفة + الحساب المحاسبي + مصدر السداد + المشروع — كلها مربوطة من الدليل المحاسبي
+- ✅ **القيد المحاسبي التلقائي**: JE-000010 POSTED مع 3 سطور متوازنة، مركز التكلفة مربوط بكل سطر
+- ✅ **المصدر الوحيد للحقيقة**: ميزان المراجعة يعكس القيود المنشورة فقط (POSTED)، القيود متوازنة، الأرقام صحيحة
+- ✅ **اختبار شامل**: 35+ شاشة تم اختبارها، خطأ واحد فقط (attendance) تم إصلاحه
+- ✅ **lint نظيف**: لا أخطاء جديدة (الخطأ الوحيد في take-screenshots.mjs الموجود مسبقاً)

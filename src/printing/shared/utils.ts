@@ -7,18 +7,18 @@ import type { PrintSettings } from './types'
 
 // ============ Amount Formatting ============
 
-/** Format amount for print display with 4 decimal places */
+/** Format amount for print display with 2 decimal places (SAR standard) */
 export function formatMoneyPrint(value: number): string {
   const safe = (typeof value === 'number' && !isNaN(value)) ? value : 0
-  return safe.toFixed(4)
+  return safe.toFixed(2)
 }
 
-/** Format for print display with thousand separators and 4 decimals */
+/** Format for print display with thousand separators and 2 decimals */
 export function fmtPrint(value: number): string {
   const safe = (typeof value === 'number' && !isNaN(value)) ? value : 0
   return safe.toLocaleString('en-US', {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 4,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   })
 }
 
@@ -37,21 +37,63 @@ export function getCurrencySymbol(settings: PrintSettings, lang: 'ar' | 'en'): s
   return settings.currencySymbolEn || settings.currencySymbol || 'SAR'
 }
 
-function currencyDisplay(settings: PrintSettings, lang: 'ar' | 'en'): string {
+/**
+ * Detect if a currency symbol image is an SVG (already supports transparency).
+ * Handles both URL paths (e.g., "/uploads/cur.svg") and data URLs
+ * (e.g., "data:image/svg+xml;base64,...").
+ */
+function isSvgImage(src: string): boolean {
+  const lower = src.toLowerCase().trim()
+  return lower.startsWith('data:image/svg') || lower.endsWith('.svg') || lower.includes('.svg?')
+}
+
+/**
+ * Render the currency symbol as inline HTML for print templates.
+ *
+ * - If `currencySymbolImage` is set:
+ *   - For SVG: embed directly (SVGs already support transparency).
+ *   - For PNG/JPG: apply `mix-blend-mode: multiply` so any dark/white
+ *     background becomes invisible on white paper.
+ *   - Image height matches surrounding text (`height: 0.9em`).
+ * - Otherwise, fall back to the configured text symbol
+ *   (`currencySymbolAr` / `currencySymbolEn` / `currencySymbol`), which
+ *   defaults to the Saudi Riyal Unicode symbol "﷼" (U+FDFC) per
+ *   `company-settings/route.ts`.
+ *
+ * This is the SINGLE source of truth for currency symbol rendering in
+ * print templates. All monetary amounts should go through `fmtMoney`,
+ * which delegates here.
+ */
+export function getCurrencyDisplay(settings: PrintSettings, lang: 'ar' | 'en'): string {
   if (settings.currencySymbolImage) {
-    const altText = lang === 'ar' ? 'ر.س' : 'SAR'
-    return `<img class="ri-currency-img" src="${settings.currencySymbolImage}" alt="${altText}" />`
+    const altText = lang === 'ar'
+      ? (settings.currencySymbolAr || settings.currencySymbol || 'ر.س')
+      : (settings.currencySymbolEn || settings.currencySymbol || 'SAR')
+    const isSvg = isSvgImage(settings.currencySymbolImage)
+    // SVG already has transparency — no blend mode needed.
+    // PNG/JPG get `mix-blend-mode: multiply` so dark/white backgrounds
+    // blend invisibly into the white paper.
+    const blendStyle = isSvg ? '' : 'mix-blend-mode:multiply;'
+    const style = `${blendStyle}height:0.9em;width:auto;vertical-align:middle;display:inline-block;margin:0 2px;`
+    return `<img class="ri-currency-img" style="${style}" src="${settings.currencySymbolImage}" alt="${altText}" />`
   }
-  return lang === 'ar' ? 'ر.س' : 'SAR'
+  // Fall back to configured text symbol (defaults to "﷼" per company-settings)
+  return lang === 'ar'
+    ? (settings.currencySymbolAr || settings.currencySymbol || 'ر.س')
+    : (settings.currencySymbolEn || settings.currencySymbol || 'SAR')
 }
 
 /**
  * Format a money value with currency symbol for print templates.
  * Uses currency symbol image if available, otherwise text.
+ *
+ * This is the canonical money formatter for ALL print templates.
+ * It delegates symbol rendering to `getCurrencyDisplay`, which is the
+ * single place that handles the currency symbol image logic.
  */
 export function fmtMoney(value: number, settings: PrintSettings, lang: 'ar' | 'en'): string {
   const formatted = formatMoneyPrint(value)
-  const symbol = currencyDisplay(settings, lang)
+  const symbol = getCurrencyDisplay(settings, lang)
   if (lang === 'ar') {
     return `${formatted} ${symbol}`
   }

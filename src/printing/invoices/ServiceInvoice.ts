@@ -21,7 +21,29 @@ export const ServiceInvoiceTemplate: DocumentTemplate = {
   hasCustomFooter: false,
 
   getCSS(lang: 'ar' | 'en'): string {
-    return getDefaultCSS(lang)
+    return getDefaultCSS(lang) + `
+      .zatca-tax-banner {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 8px;
+        margin: 0 0 10px 0;
+        padding: 8px 14px;
+        background: linear-gradient(135deg, #064e3b 0%, #065f46 50%, #047857 100%);
+        color: #fff;
+        border-radius: 6px;
+        border-left: 4px solid #b45309;
+      }
+      .zatca-tax-banner-title {
+        font-size: 14px; font-weight: 800; letter-spacing: 0.4px;
+      }
+      .zatca-tax-banner-title-en {
+        font-size: 10px; font-weight: 600; opacity: 0.85;
+        margin-top: 1px;
+      }
+      .zatca-tax-banner-meta {
+        font-size: 8.5px; opacity: 0.92; text-align: ${lang === 'ar' ? 'left' : 'right'};
+        line-height: 1.45;
+      }
+    `
   },
 
   getBody(data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en'): string {
@@ -31,6 +53,20 @@ export const ServiceInvoiceTemplate: DocumentTemplate = {
     const subtotal = Number(data.subtotal) || 0
     const vatAmount = Number(data.vatAmount) || 0
     const vatRate = settings.defaultVatRate ?? 0.15
+
+    // ─── ZATCA Tax Invoice Banner (ZATCA compliance: prominently display "فاتورة ضريبية / Tax Invoice") ───
+    const zatcaBanner = `
+      <div class="zatca-tax-banner">
+        <div>
+          <div class="zatca-tax-banner-title">${lang === 'ar' ? 'فاتورة ضريبية' : 'Tax Invoice'}</div>
+          <div class="zatca-tax-banner-title-en">${lang === 'ar' ? 'Tax Invoice' : 'فاتورة ضريبية'}</div>
+        </div>
+        <div class="zatca-tax-banner-meta">
+          ${settings.taxNumber ? `<div>${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}: ${settings.taxNumber}</div>` : ''}
+          <div>${lang === 'ar' ? 'فاتورة خدمات' : 'Service Invoice'}</div>
+        </div>
+      </div>
+    `
 
     // ─── Invoice Info Grid (NO status badge - official invoice) ───
     const infoGrid = `
@@ -133,6 +169,7 @@ export const ServiceInvoiceTemplate: DocumentTemplate = {
 
     // ─── Assemble all sections ───
     return `
+      ${zatcaBanner}
       ${infoGrid}
       ${partiesHtml}
       ${itemsTable}

@@ -742,12 +742,12 @@ function WorkflowChainView({ project, lang }: { project: ProjectDetail; lang: 'a
 function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
-  const purchaseTotal = project.purchaseInvoices.reduce((s, p) => s + (p.totalAmount ?? 0), 0)
-  const expenseTotal = project.expenses.reduce((s, e) => s + (e.totalAmount ?? 0), 0)
-  const laborTotal = project.laborCosts.reduce((s, l) => s + (l.totalAmount ?? 0), 0)
-  const equipmentTotal = project.equipmentCosts.reduce((s, e) => s + (e.amount ?? 0), 0) +
+  const purchaseTotal = project.purchaseInvoices.reduce((s, p) => s + (Number(p.totalAmount) || 0), 0)
+  const expenseTotal = project.expenses.reduce((s, e) => s + (Number(e.totalAmount) || 0), 0)
+  const laborTotal = project.laborCosts.reduce((s, l) => s + (Number(l.totalAmount) || 0), 0)
+  const equipmentTotal = project.equipmentCosts.reduce((s, e) => s + (Number(e.amount) || 0), 0) +
     project.equipmentUsages.reduce((s, e) => s + (e.cost ?? 0), 0)
-  const subcontractorTotal = project.subcontractorInvoices.reduce((s, si) => s + (si.totalAmount ?? 0), 0)
+  const subcontractorTotal = project.subcontractorInvoices.reduce((s, si) => s + (Number(si.totalAmount) || 0), 0)
 
   const categories = [
     { key: 'purchases', label: t('فواتير المشتريات', 'Purchase Invoices'), count: project.purchaseInvoices.length, total: purchaseTotal, color: 'bg-rose-50 border-rose-200', badge: 'bg-rose-100 text-rose-700' },
@@ -869,7 +869,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
                 ))}
                 <TableRow className="bg-orange-50 font-bold">
                   <TableCell colSpan={3}>{t('الإجمالي', 'Total')}</TableCell>
-                  <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + e.amount, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+                  <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + e.vatAmount, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell><MoneyDisplay value={expenseTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                 </TableRow>
@@ -1031,11 +1031,11 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
 function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
-  const extractsTotal = project.progressClaims.reduce((s, c) => s + (c.totalAmount ?? 0), 0)
-  const invoicesTotal = project.salesInvoices.reduce((s, si) => s + (si.totalAmount ?? 0), 0)
+  const extractsTotal = project.progressClaims.reduce((s, c) => s + (Number(c.totalAmount) || 0), 0)
+  const invoicesTotal = project.salesInvoices.reduce((s, si) => s + (Number(si.totalAmount) || 0), 0)
   const paidTotal = project.salesInvoices.reduce((s, si) => s + (si.paidAmount ?? 0), 0)
   const collectionsTotal = project.salesInvoices.reduce((s, si) =>
-    s + si.clientPayments.reduce((ps, cp) => ps + (cp.amount ?? 0), 0), 0)
+    s + si.clientPayments.reduce((ps, cp) => ps + (Number(cp.amount) || 0), 0), 0)
 
   return (
     <div className="space-y-4">
@@ -1107,7 +1107,7 @@ function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'e
                 ))}
                 <TableRow className="bg-emerald-50 font-bold">
                   <TableCell colSpan={4}>{t('الإجمالي', 'Total')}</TableCell>
-                  <TableCell><MoneyDisplay value={project.progressClaims.reduce((s, c) => s + c.amount, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+                  <TableCell><MoneyDisplay value={project.progressClaims.reduce((s, c) => s + (Number(c.amount) || 0), 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell><MoneyDisplay value={extractsTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell />
                 </TableRow>
@@ -1347,7 +1347,7 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
                   <TableCell colSpan={2}>{t('الإجمالي', 'Total')}</TableCell>
                   <TableCell>{formatNumber(project.fuelLogs.reduce((s, f) => s + f.liters, 0))}</TableCell>
                   <TableCell />
-                  <TableCell><MoneyDisplay value={project.fuelLogs.reduce((s, f) => s + f.totalCost, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+                  <TableCell><MoneyDisplay value={project.fuelLogs.reduce((s, f) => s + (Number(f.totalCost) || 0), 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -1724,7 +1724,7 @@ export function ProjectsModule() {
   }
 
   // Summary stats
-  const totalContractValue = filtered.reduce((s, p) => s + (p.contractValue || 0), 0)
+  const totalContractValue = filtered.reduce((s, p) => s + (Number(p.contractValue) || 0), 0)
   const activeProjects = filtered.filter(p => p.status === 'ACTIVE').length
   const constructionProjects = filtered.filter(p => p.projectType === 'CONSTRUCTION').length
   const rentalProjects = filtered.filter(p => p.projectType === 'EQUIPMENT_RENTAL').length

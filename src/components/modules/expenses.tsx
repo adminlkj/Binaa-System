@@ -580,16 +580,16 @@ export function ExpensesModule() {
     return matchProject && matchCategory && matchSearch
   })
 
-  // Summary
-  const totalProjectExpenses = projectExpenses.reduce((s, e) => s + e.amount, 0)
-  const totalAdminExpenses = adminExpenses.reduce((s, e) => s + e.amount, 0)
-  const totalExpenses = expenses.reduce((s, e) => s + e.totalAmount, 0)
+  // Summary — wrap in Number() to avoid Prisma Decimal string-concatenation bug
+  const totalProjectExpenses = projectExpenses.reduce((s, e) => s + Number(e.amount), 0)
+  const totalAdminExpenses = adminExpenses.reduce((s, e) => s + Number(e.amount), 0)
+  const totalExpenses = expenses.reduce((s, e) => s + Number(e.totalAmount), 0)
 
   const now = new Date()
   const thisMonthTotal = expenses.filter(e => {
     const d = new Date(e.date)
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-  }).reduce((s, e) => s + e.totalAmount, 0)
+  }).reduce((s, e) => s + Number(e.totalAmount), 0)
 
   const currentCategoryOptions = activeTab === 'project' ? projectCategoryOptions : adminCategoryOptions
 
@@ -799,6 +799,7 @@ export function ExpensesModule() {
                         <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
+                        <TableHead className="text-right">{t(lang, 'إجراءات', 'Actions')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -834,6 +835,11 @@ export function ExpensesModule() {
                           <TableCell className="text-muted-foreground">{exp.reference || '—'}</TableCell>
                           <TableCell>
                             <AccountingEntryDisplay journalEntryId={exp.journalEntryId} lang={lang} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <PrintButton type="expense-report" documentId={exp.id} size="icon" variant="ghost" className="size-8" />
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -909,6 +915,7 @@ export function ExpensesModule() {
                         <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'المرجع', 'Reference')}</TableHead>
                         <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
+                        <TableHead className="text-right">{t(lang, 'إجراءات', 'Actions')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -936,6 +943,11 @@ export function ExpensesModule() {
                           <TableCell className="text-muted-foreground">{exp.reference || '—'}</TableCell>
                           <TableCell>
                             <AccountingEntryDisplay journalEntryId={exp.journalEntryId} lang={lang} />
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <PrintButton type="expense-report" documentId={exp.id} size="icon" variant="ghost" className="size-8" />
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}

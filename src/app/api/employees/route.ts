@@ -81,6 +81,16 @@ export async function POST(request: Request) {
 
     const code = `EMP-${String(nextNum).padStart(3, '0')}`
 
+    // Branch is required by schema - if not provided, fall back to first branch
+    let branchId = body.branchId
+    if (!branchId) {
+      const firstBranch = await db.branch.findFirst({ select: { id: true } })
+      if (!firstBranch) {
+        return NextResponse.json({ error: 'لا يوجد فرع مسجل. أنشئ فرعاً أولاً.' }, { status: 400 })
+      }
+      branchId = firstBranch.id
+    }
+
     const employee = await db.employee.create({
       data: {
         code,
@@ -93,7 +103,7 @@ export async function POST(request: Request) {
         hireDate: body.hireDate ? new Date(body.hireDate) : null,
         basicSalary: body.basicSalary ? parseFloat(body.basicSalary) : 0,
         status: body.status || 'ACTIVE',
-        branchId: body.branchId,
+        branchId,
         phone: body.phone || null,
         email: body.email || null,
         isActive: body.isActive !== undefined ? body.isActive : true,

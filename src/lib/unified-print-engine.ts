@@ -11,6 +11,7 @@ import {
   generatePrintHTML,
   getTemplate,
 } from '@/printing'
+import { fmtMoney as sharedFmtMoney } from '@/printing/shared/utils'
 import type { PrintDocumentType, PrintOptions, PrintSettings, DocumentTemplate } from '@/printing'
 import { generateZatcaTLV } from './zatca-qr'
 
@@ -127,7 +128,12 @@ function generateBOQBody(data: Record<string, unknown>, settings: PrintSettings,
     notes: 'Notes',
   }
 
-  const fmtMoney = (v: number) => `${v.toFixed(2)} ${currency}`
+  // Delegate to the shared fmtMoney (src/printing/shared/utils.ts) so the
+  // currency symbol image (currencySymbolImage) is rendered next to every
+  // monetary amount, with mix-blend-mode:multiply for PNG/JPG fallback.
+  // The local `currency` text variable is retained only for column-header
+  // labels like "Unit Price (ر.س)" which are labels, not monetary amounts.
+  const fmtMoney = (v: number) => sharedFmtMoney(v, settings, lang)
 
   return `
     <!-- Project Info -->
@@ -273,7 +279,12 @@ function generateChangeOrderBody(data: Record<string, unknown>, settings: PrintS
     grandTotal: 'Grand Total incl. VAT',
   }
 
-  const fmtMoney = (v: number) => `${v.toFixed(2)} ${currency}`
+  // Delegate to the shared fmtMoney (src/printing/shared/utils.ts) so the
+  // currency symbol image (currencySymbolImage) is rendered next to every
+  // monetary amount, with mix-blend-mode:multiply for PNG/JPG fallback.
+  // The local `currency` text variable is retained only for column-header
+  // labels like "Unit Price (ر.س)" which are labels, not monetary amounts.
+  const fmtMoney = (v: number) => sharedFmtMoney(v, settings, lang)
 
   return `
     <!-- Change Order Info -->
@@ -445,7 +456,12 @@ function generateEmployeeContractBody(data: Record<string, unknown>, settings: P
     } catch { return String(d) }
   }
 
-  const fmtMoney = (v: number) => `${v.toFixed(2)} ${currency}`
+  // Delegate to the shared fmtMoney (src/printing/shared/utils.ts) so the
+  // currency symbol image (currencySymbolImage) is rendered next to every
+  // monetary amount, with mix-blend-mode:multiply for PNG/JPG fallback.
+  // The local `currency` text variable is retained only for column-header
+  // labels like "Unit Price (ر.س)" which are labels, not monetary amounts.
+  const fmtMoney = (v: number) => sharedFmtMoney(v, settings, lang)
 
   return `
     <!-- Contract Info -->
@@ -779,6 +795,14 @@ function generateCustomDocument(
     .terms-title {
       font-size: 9.5px; font-weight: 700; color: #047857;
       margin-bottom: 4px;
+    }
+    /* Currency symbol image — used by fmtMoney() in shared/utils.ts.
+       Inline styles on each <img> mirror these rules for safety. */
+    .ri-currency-img {
+      height: 0.9em; width: auto;
+      vertical-align: middle; display: inline-block;
+      margin: 0 2px;
+      mix-blend-mode: multiply;
     }
     .doc-footer {
       position: absolute; bottom: 0; left: 0; right: 0;
