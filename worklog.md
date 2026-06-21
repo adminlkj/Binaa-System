@@ -970,3 +970,115 @@ Stage Summary:
 - The symbol renders in all printed documents via `getCurrencyDisplay` in `printing/shared/utils.ts` (embeds image with `mix-blend-mode:multiply`).
 - The InvoiceTemplatesTab preview no longer hard-codes "ر.س" — uses `<MoneyDisplay>`.
 - All lint errors in modified files resolved (only pre-existing `take-screenshots.mjs` error remains, unrelated).
+
+---
+Task ID: 9
+Agent: Code Agent
+Task: Make invoice template changes in Settings apply immediately to invoice; ensure header/footer/stamp appear with control over stamp position/size; ensure header/logo/footer fields save with toast feedback; show success/failure toast on every operation; remove program name from invoice; make invoice design fully customizable via templates.
+
+Work Log:
+
+**1. Prisma schema update (prisma/schema.prisma):**
+- Added 7 new fields to `CompanySetting` for full stamp placement/size control:
+  - `stampPosition` (default "after-signatures") — supports: after-signatures, after-totals, top-right, top-left, bottom-right, bottom-left, center
+  - `stampWidth` (default 140 px)
+  - `stampHeight` (default 140 px)
+  - `stampOffsetX` (default 0 px, -100..100)
+  - `stampOffsetY` (default 0 px, -100..100)
+  - `stampOpacity` (default 0.9, 0.1..1.0)
+  - `stampRotation` (default 0°, -15..15)
+- Ran `bun run db:push` to sync the schema, then `bunx prisma generate` to regenerate the Prisma client (the dev server had cached the old client, causing PrismaClientValidationError "Unknown argument `stampPosition`").
+
+**2. Company Settings API (src/app/api/company-settings/route.ts):**
+- Updated PUT handler to accept all 7 new stamp fields (with `Number()` coercion for numeric ones).
+- Updated create-branch to populate the new fields with defaults when no CompanySetting row exists yet.
+
+**3. Global Sonner Toaster (src/components/layout/providers.tsx):**
+- Imported `Toaster as SonnerToaster` from `@/components/ui/sonner` and mounted it inside the `Providers` tree with `position="top-center"`, `richColors`, `closeButton`, `dir="rtl"`, and Cairo font.
+- This was the root cause of "operations don't show success/error messages" — the toaster was never mounted.
+
+**4. Settings module (src/components/modules/settings.tsx):**
+- Added `import { toast } from 'sonner'` plus `Palette`, `Move`, `RotateCw` icons.
+- Added `Slider` import from `@/components/ui/slider`.
+- Extended `CompanySettings` interface with the 7 new stamp fields.
+- Added toast notifications to `ImageUploadField.uploadFile` (success: "تم رفع الصورة بنجاح" / error: "فشل في رفع الملف: ...").
+- Added toast notifications to `CompanySettingsTab.saveMutation`:
+  - onSuccess: "تم حفظ إعدادات الشركة بنجاح"
+  - onError: "فشل في حفظ الإعدادات: <msg>"
+- Added toast notifications to `InvoiceTemplatesTab.saveMutation`:
+  - onSuccess: "تم حفظ قالب الفاتورة بنجاح — سيتم تطبيقه فوراً على كل الفواتير"
+  - onError: "فشل في حفظ القالب: <msg>"
+- Added toast notifications to Branch/Warehouse/CostCenter create mutations (success + error messages).
+- Extended `InvoiceTemplatesTab.userEdits` and `form` state with all 7 stamp fields.
+- Added a new "تحكم في الختم (المكان والحجم)" card to InvoiceTemplatesTab containing:
+  - Stamp Position dropdown (7 positions)
+  - Stamp Width slider (60–300 px)
+  - Stamp Height slider (60–300 px)
+  - Opacity slider (10–100%)
+  - Rotation slider (-15°..15°)
+  - Offset X slider (-100..100 px)
+  - Offset Y slider (-100..100 px)
+- Updated the live mini-preview to render the stamp image (when uploaded) at the chosen position with the chosen size/opacity/rotation, instead of a fixed "ختم" placeholder circle.
+
+**5. InvoicePreview component (src/components/invoice/invoice-preview.tsx):**
+- Extended `CompanySettings` interface with headerImage, footerImage, all 5 invoice-template fields, and all 7 stamp-control fields.
+- Added derived template constants inside the component: `primaryColor`, `accentColor`, `fontFamily`, `template`, `showBankDetails`, `showSignature`, `showStamp`, and the 7 stamp-placement constants.
+- Replaced every hardcoded `emerald-600/700/800` Tailwind class in the rendered invoice with `style={{ background: primaryColor }}` / `linear-gradient(to left, primaryColor, primaryColordd, primaryColor)` so the invoice picks up the user's chosen color from Settings → Invoice Templates instantly.
+- The print button now uses `style={{ background: primaryColor, borderColor: primaryColor }}` instead of `bg-emerald-600`.
+- Added a `renderPositionedStamp()` function that absolutely positions the stamp image on the invoice page based on `stampPosition` (top-right, top-left, bottom-right, bottom-left, center), applying `stampWidth`, `stampHeight`, `stampOpacity`, `stampRotation`, `stampOffsetX`, `stampOffsetY`.
+- Added an optional `headerImage` band at the very top of the invoice (full width, max 180 px) when the user uploads one.
+- The signatures section is now conditionally rendered based on `showSignature`, and the stamp inside it is shown only when `stampPosition === 'after-signatures'` (rendered inline) or `stampPosition === 'after-totals'` (rendered between totals and signatures).
+- The footer now respects `footerImage` — when set, the uploaded footer image is rendered full-width instead of the default gradient footer.
+- Removed `PositionedStamp` inner-component pattern (which triggered the `react-hooks/static-components` lint error) by converting it to a plain `renderPositionedStamp()` function called as `{renderPositionedStamp()}`.
+
+**6. Print service (src/printing/print-service.ts):**
+- Imported nothing new — pure refactoring.
+- Added inline `lighten`/`darken`/`hexToRgba` helpers and computed `primaryDark`, `primaryDarker`, `primaryLight`, `primaryLighterRgba` from `settings.invoicePrimaryColor`.
+- Injected a `colorOverrideCSS` block into the print HTML `<style>` tag with `!important` rules that override every hardcoded emerald shade used by the rental-invoice and default-document CSS:
+  - `.ri-header`, `.ri-footer`, `.ri-header-title-box`, `.ri-total-row.grand`, `.ri-table thead tr`, `.ri-amount-words`, `.ri-btn-print`, `.ri-rental-data`, `.ri-party-card`, `.doc-header`, `.doc-footer`, `.header-doc-title-section`, etc.
+- Injected the stamp's width/height/opacity/rotation/offset as `!important` rules on `.stamp-img`.
+- Added a `fontOverrideCSS` block that applies `'${invoiceFontFamily}', 'Cairo', 'Noto Sans Arabic'` to `*` when the user picks Tajawal/Cairo/Amiri.
+- Added a `<link>` tag for the chosen Google Font when applicable.
+
+**7. Print shared headers-footers (src/printing/shared/headers-footers.ts):**
+- Removed the `<div class="page-info">بِنَاء ERP / Binaa ERP</div>` element from `generateDefaultFooter`, `generateRentalInvoiceFooter`, and `generateAccountingFooter`. Footers now show only the company name and contact info (no program branding).
+
+**8. Print shared sections (src/printing/shared/sections.ts):**
+- Rewrote `signaturesSection` to honor `settings.invoiceShowStamp` and `settings.invoiceShowSignature`:
+  - When `showSignature` is false and `showStamp` is true → renders a single-column stamp area.
+  - When `showSignature` is true and `showStamp` is true → renders the stamp inline with the company-signature box.
+  - When both are false → returns empty string.
+- Stamp `<img>` now uses inline `width`/`height`/`opacity`/`transform: rotate() translate()` from settings, instead of a fixed CSS class.
+
+**9. Unified print engine (src/lib/unified-print-engine.ts):**
+- Removed the trailing `<span>بِنَاء ERP / Binaa ERP</span>` from the footer.
+- Inside `generateCustomDocument`, derived `primaryColor`/`primaryDark`/`primaryLight`/`primaryLighter` from `settings.invoicePrimaryColor` and replaced every `#047857`/`#f0fdf4`/`#a7f3d0` hardcoded emerald shade in the CSS template with the corresponding primary/shade.
+
+**10. PrintButton (src/components/shared/print-button.tsx):**
+- Extended the `settings` object passed to `generatePrintHTML` to include `invoiceTemplate`, `invoicePrimaryColor`, `invoiceAccentColor`, `invoiceFontFamily`, `invoiceShowBankDetails`, `invoiceShowSignature`, `invoiceShowStamp`, and all 7 stamp-placement fields.
+
+**11. Print API route (src/app/api/print/route.ts):**
+- Extended `printSettings` to forward all template and stamp fields from the database row to the print engine.
+
+**12. Print Settings type (src/printing/shared/types.ts):**
+- Added 12 optional fields to `PrintSettings`: `invoiceTemplate`, `invoicePrimaryColor`, `invoiceAccentColor`, `invoiceFontFamily`, `invoiceShowBankDetails`, `invoiceShowSignature`, `invoiceShowStamp`, `stampPosition`, `stampWidth`, `stampHeight`, `stampOffsetX`, `stampOffsetY`, `stampOpacity`, `stampRotation`.
+
+**13. Lint + dev server verification:**
+- `bun run lint` passes cleanly (only the pre-existing `take-screenshots.mjs` require-import warning remains, which is a helper script not part of the app).
+- Dev server is running and the PUT /api/company-settings endpoint returns 200 (was 500 before the Prisma client regeneration).
+- Agent Browser verification:
+  - Opened Settings → Invoice Templates tab: confirmed 6 ready templates, color pickers, font selector, show-bank/signature/stamp switches, and the new stamp placement card with 7 sliders/dropdowns.
+  - Clicked "حفظ التغييرات" → toast appeared: "تم حفظ قالب الفاتورة بنجاح — سيتم تطبيقه فوراً على كل الفواتير".
+  - Opened a rental invoice detail and clicked "طباعة" → print window opened. Verified `getComputedStyle(.ri-header).background` returns `linear-gradient(135deg, rgb(0, 68, 60) 0%, rgb(0, 88, 80) 40%, rgb(15, 118, 110) 100%)` — confirming the user's emerald primary color is applied (not the original hardcoded #047857).
+  - Verified the print page footer shows only "شركة المنطقة الغربية للمقاولات | الدمام ... | 0500000000 | info@albinaa.com | ض.ر: 300123456700003" with NO "بِنَاء ERP" branding.
+  - Opened Company Settings tab → changed phone number → clicked "حفظ التغييرات" → toast appeared: "تم حفظ إعدادات الشركة بنجاح". Verified the new phone was persisted via GET /api/company-settings.
+
+Stage Summary:
+- Schema extended with 7 stamp-placement fields; Prisma client regenerated.
+- Global Sonner Toaster mounted in Providers (was missing — root cause of "no success messages").
+- All save operations across Settings now emit success/error toasts in Arabic.
+- InvoicePreview React component and the print-service HTML generator both read `invoicePrimaryColor`/`invoiceAccentColor`/`invoiceFontFamily`/`invoiceShowBankDetails`/`invoiceShowSignature`/`invoiceShowStamp` from company settings and apply them instantly — the user's Settings changes apply immediately to every invoice.
+- Full stamp control: 7 positions, width/height 60–300 px, opacity 10–100 %, rotation -15°..15°, X/Y offset -100..100 px. The stamp renders at the chosen position with the chosen size in both the React preview and the printed HTML.
+- Header/footer image uploads flow through to the rendered invoice (header band at top, footer band at bottom replacing the default gradient).
+- "بِنَاء ERP" / "Binaa ERP" branding removed from every printed document footer (headers-footers.ts and unified-print-engine.ts).
+- 6 design templates available: Classic, Modern, Minimal, Corporate, Royal, Ocean — selectable from Settings → Invoice Templates tab.

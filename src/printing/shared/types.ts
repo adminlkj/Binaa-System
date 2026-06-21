@@ -79,6 +79,22 @@ export interface PrintSettings {
   bankIban: string | null
   bankAccountName: string | null
   invoiceTerms: string | null
+  // Invoice template customization (applied to all printed invoices)
+  invoiceTemplate?: string
+  invoicePrimaryColor?: string
+  invoiceAccentColor?: string
+  invoiceFontFamily?: string
+  invoiceShowBankDetails?: boolean
+  invoiceShowSignature?: boolean
+  invoiceShowStamp?: boolean
+  // Stamp placement & size — full control from settings
+  stampPosition?: string
+  stampWidth?: number
+  stampHeight?: number
+  stampOffsetX?: number
+  stampOffsetY?: number
+  stampOpacity?: number
+  stampRotation?: number
 }
 
 /** خيارات الطباعة */

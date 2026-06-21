@@ -89,6 +89,14 @@ export async function PUT(request: Request) {
     if (body.invoiceShowBankDetails !== undefined) updateData.invoiceShowBankDetails = body.invoiceShowBankDetails
     if (body.invoiceShowSignature !== undefined) updateData.invoiceShowSignature = body.invoiceShowSignature
     if (body.invoiceShowStamp !== undefined) updateData.invoiceShowStamp = body.invoiceShowStamp
+    // Stamp placement & size controls
+    if (body.stampPosition !== undefined) updateData.stampPosition = body.stampPosition
+    if (body.stampWidth !== undefined) updateData.stampWidth = Number(body.stampWidth)
+    if (body.stampHeight !== undefined) updateData.stampHeight = Number(body.stampHeight)
+    if (body.stampOffsetX !== undefined) updateData.stampOffsetX = Number(body.stampOffsetX)
+    if (body.stampOffsetY !== undefined) updateData.stampOffsetY = Number(body.stampOffsetY)
+    if (body.stampOpacity !== undefined) updateData.stampOpacity = Number(body.stampOpacity)
+    if (body.stampRotation !== undefined) updateData.stampRotation = Number(body.stampRotation)
 
     let settings
     if (existing) {
@@ -131,6 +139,13 @@ export async function PUT(request: Request) {
           invoiceShowBankDetails: body.invoiceShowBankDetails ?? defaultSettings.invoiceShowBankDetails,
           invoiceShowSignature: body.invoiceShowSignature ?? defaultSettings.invoiceShowSignature,
           invoiceShowStamp: body.invoiceShowStamp ?? defaultSettings.invoiceShowStamp,
+          stampPosition: body.stampPosition ?? 'after-signatures',
+          stampWidth: body.stampWidth ? Number(body.stampWidth) : 140,
+          stampHeight: body.stampHeight ? Number(body.stampHeight) : 140,
+          stampOffsetX: body.stampOffsetX ? Number(body.stampOffsetX) : 0,
+          stampOffsetY: body.stampOffsetY ? Number(body.stampOffsetY) : 0,
+          stampOpacity: body.stampOpacity ? Number(body.stampOpacity) : 0.9,
+          stampRotation: body.stampRotation ? Number(body.stampRotation) : 0,
         },
       })
     }

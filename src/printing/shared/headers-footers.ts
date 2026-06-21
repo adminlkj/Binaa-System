@@ -55,9 +55,6 @@ export function generateDefaultFooter(settings: PrintSettings, lang: 'ar' | 'en'
         ${settings.email ? `<span>| ${settings.email}</span>` : ''}
         ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
       </div>
-      <div class="page-info">
-        ${lang === 'ar' ? 'بِنَاء ERP' : 'Binaa ERP'}
-      </div>
     </div>
   `
 }
@@ -111,7 +108,6 @@ export function generateRentalInvoiceFooter(settings: PrintSettings, lang: 'ar' 
         ${settings.email ? `<span>| ${settings.email}</span>` : ''}
         ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
       </div>
-      <span>${lang === 'ar' ? 'بِنَاء ERP' : 'Binaa ERP'}</span>
     </div>
   `
 }
@@ -143,7 +139,6 @@ export function generateAccountingFooter(settings: PrintSettings, lang: 'ar' | '
         ${settings.address ? `<span>| ${settings.address}</span>` : ''}
         ${settings.phone ? `<span>| ${settings.phone}</span>` : ''}
       </div>
-      <div class="page-info">${lang === 'ar' ? 'بِنَاء ERP' : 'Binaa ERP'}</div>
     </div>
   `
 }

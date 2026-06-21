@@ -96,8 +96,7 @@ export function getTemplate(type: PrintDocumentType): DocumentTemplate {
  */
 export function generatePrintHTML(options: PrintOptions): string {
   const { type, data, settings, lang = 'ar' } = options
-  const { title, subtitle } = getDocumentTitle(type, lang)
-  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+  const { title } = getDocumentTitle(type, lang)
 
   // Get the appropriate template
   const template = getTemplate(type)
@@ -111,7 +110,7 @@ export function generatePrintHTML(options: PrintOptions): string {
   // Generate header
   const header = template.hasCustomHeader && template.getCustomHeader
     ? template.getCustomHeader(settings, lang)
-    : generateDefaultHeader(settings, lang, title, subtitle)
+    : generateDefaultHeader(settings, lang, title, getDocumentTitle(type, lang).subtitle)
 
   // Generate footer
   const footer = template.hasCustomFooter && template.getCustomFooter
@@ -139,6 +138,73 @@ export function generatePrintHTML(options: PrintOptions): string {
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>`
       : ''
 
+  // === Template color override ===
+  // The user picks a primary + accent color in Settings → Invoice Templates.
+  // The print CSS uses hardcoded emerald shades by default; we override those
+  // shades here so the printed invoice reflects the user's color choice.
+  // We compute darker shades by darkening the primary color.
+  const primaryColor = settings.invoicePrimaryColor || '#0f766e'
+  const accentColor = settings.invoiceAccentColor || '#34d399'
+  // Lighten/darken helpers (hex → hex)
+  const lighten = (hex: string, amt: number) => {
+    const n = parseInt(hex.replace('#', ''), 16)
+    const r = Math.min(255, ((n >> 16) & 0xff) + amt)
+    const g = Math.min(255, ((n >> 8) & 0xff) + amt)
+    const b = Math.min(255, (n & 0xff) + amt)
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+  }
+  const darken = (hex: string, amt: number) => {
+    const n = parseInt(hex.replace('#', ''), 16)
+    const r = Math.max(0, ((n >> 16) & 0xff) - amt)
+    const g = Math.max(0, ((n >> 8) & 0xff) - amt)
+    const b = Math.max(0, (n & 0xff) - amt)
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+  }
+  const hexToRgba = (hex: string, alpha: number) => {
+    const n = parseInt(hex.replace('#', ''), 16)
+    const r = (n >> 16) & 0xff
+    const g = (n >> 8) & 0xff
+    const b = n & 0xff
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+  void accentColor // reserved for future per-element accent styling
+  const primaryDark = darken(primaryColor, 30)
+  const primaryDarker = darken(primaryColor, 50)
+  const primaryLight = lighten(primaryColor, 30)
+  const primaryLighterRgba = hexToRgba(primaryColor, 0.08)
+  // Override CSS using !important — replace every emerald shade used by the
+  // print templates with the user's chosen primary color (and its shades).
+  const colorOverrideCSS = `
+    /* === User-selected template colors (from Settings → Invoice Templates) === */
+    .ri-header, .ri-footer { background: linear-gradient(135deg, ${primaryDarker} 0%, ${primaryDark} 40%, ${primaryColor} 100%) !important; }
+    .ri-header-title-box { background: ${primaryDark} !important; }
+    .ri-total-row.grand, .ri-table thead tr { background: ${primaryColor} !important; }
+    .ri-rental-data-title, .ri-section-title, .ri-totals-box-title { color: ${primaryColor} !important; }
+    .ri-info-section { border-top: 3px solid ${primaryColor} !important; }
+    .ri-totals-box { border-color: ${primaryColor} !important; }
+    .ri-total-row.grand { background: ${primaryColor} !important; color: white !important; }
+    .ri-table thead tr th { background: ${primaryColor} !important; border-color: ${primaryDark} !important; }
+    .ri-amount-words { background: ${primaryLighterRgba} !important; border-color: ${primaryColor} !important; }
+    .ri-amount-words-label { color: ${primaryColor} !important; }
+    .ri-btn-print { background: ${primaryColor} !important; }
+    .ri-btn-print:hover { background: ${primaryDark} !important; }
+    .ri-rental-data { border-color: ${primaryLight} !important; }
+    .ri-rental-data-title { background: ${primaryLighterRgba} !important; }
+    .ri-party-card { border-color: ${primaryLight} !important; }
+    .ri-party-title { background: ${primaryColor} !important; color: white !important; }
+    .doc-header { background: ${primaryLighterRgba} !important; border-bottom: 3px solid ${primaryColor} !important; }
+    .doc-footer { background: ${primaryColor} !important; color: white !important; }
+    .doc-footer .company-info { color: white !important; }
+    .header-doc-title-section { background: ${primaryColor} !important; }
+    .header-doc-title { color: white !important; }
+    .stamp-img { max-width: ${settings.stampWidth ?? 140}px !important; max-height: ${settings.stampHeight ?? 140}px !important; opacity: ${Number(settings.stampOpacity ?? 0.9)} !important; transform: rotate(${settings.stampRotation ?? 0}deg) translate(${settings.stampOffsetX ?? 0}px, ${settings.stampOffsetY ?? 0}px) !important; }
+  `
+
+  // Font family override
+  const fontOverrideCSS = settings.invoiceFontFamily && settings.invoiceFontFamily !== 'default'
+    ? `* { font-family: '${settings.invoiceFontFamily}', 'Cairo', 'Noto Sans Arabic', sans-serif !important; }`
+    : ''
+
   return `<!DOCTYPE html>
 <html lang="${lang === 'ar' ? 'ar' : 'en'}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">
 <head>
@@ -146,8 +212,11 @@ export function generatePrintHTML(options: PrintOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${title} - ${lang === 'ar' ? settings.nameAr : settings.nameEn}</title>
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  ${settings.invoiceFontFamily && settings.invoiceFontFamily !== 'default' ? `<link href="https://fonts.googleapis.com/css2?family=${settings.invoiceFontFamily}:wght@400;500;600;700;800&display=swap" rel="stylesheet" />` : ''}
   ${extraHeadLinks}
-  <style>${css}</style>
+  <style>${css}
+  ${colorOverrideCSS}
+  ${fontOverrideCSS}</style>
 </head>
 <body>
   ${actionsBar}

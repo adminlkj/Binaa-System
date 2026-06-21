@@ -691,6 +691,31 @@ function generateCustomDocument(
   const title = lang === 'ar' ? customTemplate.titleAr : customTemplate.titleEn
   const companyName = lang === 'ar' ? settings.nameAr : settings.nameEn
 
+  // User-selected template primary color (from Settings → Invoice Templates).
+  // Falls back to the default emerald shade used elsewhere in the engine.
+  const primaryColor = settings.invoicePrimaryColor || '#047857'
+  const accentColor = settings.invoiceAccentColor || '#34d399'
+  // Compute a darker shade for borders/separators.
+  const darken = (hex: string, amt: number) => {
+    const n = parseInt(hex.replace('#', ''), 16)
+    const r = Math.max(0, ((n >> 16) & 0xff) - amt)
+    const g = Math.max(0, ((n >> 8) & 0xff) - amt)
+    const b = Math.max(0, (n & 0xff) - amt)
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+  }
+  const lighten = (hex: string, amt: number) => {
+    const n = parseInt(hex.replace('#', ''), 16)
+    const r = Math.min(255, ((n >> 16) & 0xff) + amt)
+    const g = Math.min(255, ((n >> 8) & 0xff) + amt)
+    const b = Math.min(255, (n & 0xff) + amt)
+    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`
+  }
+  const primaryDark = darken(primaryColor, 30)
+  const primaryLight = lighten(primaryColor, 100)
+  const primaryLighter = lighten(primaryColor, 140)
+  void accentColor // reserved for future per-element accent styling
+  void primaryDark
+
   const css = `
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -717,25 +742,25 @@ function generateCustomDocument(
     }
     .doc-header {
       display: flex; align-items: center; gap: 10px;
-      border-bottom: 2px solid #047857; padding-bottom: 8px; margin-bottom: 14px;
+      border-bottom: 2px solid ${primaryColor}; padding-bottom: 8px; margin-bottom: 14px;
     }
     .header-logo {
       width: 48px; height: 48px; object-fit: contain; border-radius: 4px;
     }
     .header-company { flex: 1; }
-    .header-company-name { font-size: 14px; font-weight: 700; color: #047857; }
+    .header-company-name { font-size: 14px; font-weight: 700; color: ${primaryColor}; }
     .header-company-details {
       font-size: 7.5px; color: #64748b;
       display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;
     }
     .header-doc-title-section { text-align: ${textAlign}; }
     .header-doc-title {
-      font-size: 13px; font-weight: 700; color: #047857;
-      background: #ecfdf5; padding: 4px 12px; border-radius: 4px;
+      font-size: 13px; font-weight: 700; color: ${primaryColor};
+      background: ${primaryLighter}; padding: 4px 12px; border-radius: 4px;
     }
     .section-title {
-      font-size: 9.5px; font-weight: 700; color: #047857;
-      border-bottom: 1px solid #a7f3d0; padding-bottom: 3px; margin: 10px 0 6px;
+      font-size: 9.5px; font-weight: 700; color: ${primaryColor};
+      border-bottom: 1px solid ${primaryLight}; padding-bottom: 3px; margin: 10px 0 6px;
     }
     .info-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-bottom: 8px;
@@ -747,17 +772,17 @@ function generateCustomDocument(
       width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9.5px;
     }
     .doc-table th {
-      background: #f0fdf4; color: #047857; font-weight: 600;
+      background: ${primaryLighter}; color: ${primaryColor}; font-weight: 600;
       padding: 5px 6px; text-align: ${textAlign};
-      border: 1px solid #a7f3d0; font-size: 8px;
+      border: 1px solid ${primaryLight}; font-size: 8px;
     }
     .doc-table td {
       padding: 4px 6px; border: 1px solid #e5e7eb;
       vertical-align: top;
     }
     .doc-table tfoot td {
-      background: #f0fdf4; font-weight: 700;
-      border-top: 2px solid #047857;
+      background: ${primaryLighter}; font-weight: 700;
+      border-top: 2px solid ${primaryColor};
     }
     .row-num { text-align: center; font-size: 8px; color: #9ca3af; width: 24px; }
     .amount-cell { text-align: ${amountAlign}; font-variant-numeric: tabular-nums; }
@@ -772,7 +797,7 @@ function generateCustomDocument(
       border-bottom: 1px solid #e5e7eb;
     }
     .total-row.grand {
-      background: #f0fdf4; font-weight: 700; color: #047857;
+      background: ${primaryLighter}; font-weight: 700; color: ${primaryColor};
       border-bottom: none; font-size: 10.5px;
     }
     .total-row .label { color: #374151; }
@@ -793,7 +818,7 @@ function generateCustomDocument(
       font-size: 9px; color: #374151;
     }
     .terms-title {
-      font-size: 9.5px; font-weight: 700; color: #047857;
+      font-size: 9.5px; font-weight: 700; color: ${primaryColor};
       margin-bottom: 4px;
     }
     /* Currency symbol image — used by fmtMoney() in shared/utils.ts.
@@ -818,7 +843,7 @@ function generateCustomDocument(
       padding: 6px 16px; border-radius: 6px; border: none;
       font-size: 12px; cursor: pointer; font-family: ${fontFamily};
     }
-    .print-actions button:first-child { background: #047857; color: white; }
+    .print-actions button:first-child { background: ${primaryColor}; color: white; }
     .print-actions .close-btn { background: #f1f5f9; color: #374151; }
   `
 
@@ -829,7 +854,7 @@ function generateCustomDocument(
     <div class="doc-header">
       ${settings.logoUrl
         ? `<img class="header-logo" src="${settings.logoUrl}" alt="Logo" />`
-        : '<div class="header-logo" style="display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#047857;background:#f0fdf4;">ب</div>'
+        : `<div class="header-logo" style="display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:${primaryColor};background:${primaryLighter};">ب</div>`
       }
       <div class="header-company">
         <div class="header-company-name">${companyName}</div>
@@ -853,7 +878,6 @@ function generateCustomDocument(
         ${settings.address ? ` | ${settings.address}` : ''}
         ${settings.phone ? ` | ${settings.phone}` : ''}
       </div>
-      <span>${lang === 'ar' ? 'بِنَاء ERP' : 'Binaa ERP'}</span>
     </div>
   `
 

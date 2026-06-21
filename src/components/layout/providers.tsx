@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { CompanyProvider, useCompany } from '@/contexts/company-context'
 import { useAppStore } from '@/stores/app-store'
+import { Toaster as SonnerToaster } from '@/components/ui/sonner'
 
 /**
  * CurrencySettingsInitializer
@@ -61,6 +62,18 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <TooltipProvider>
           {children}
         </TooltipProvider>
+        {/* Global toast notifications — success/error messages for every operation */}
+        <SonnerToaster
+          position="top-center"
+          richColors
+          closeButton
+          dir="rtl"
+          toastOptions={{
+            style: {
+              fontFamily: 'var(--font-cairo), Cairo, sans-serif',
+            },
+          }}
+        />
       </CompanyProvider>
     </QueryClientProvider>
   )

@@ -2,16 +2,18 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import {
   Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins,
   Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon,
-  Upload, X, Loader2, Info,
+  Upload, X, Loader2, Info, Palette, Move, RotateCw,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
+import { Slider } from '@/components/ui/slider'
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
@@ -63,6 +65,14 @@ interface CompanySettings {
   invoiceShowBankDetails?: boolean
   invoiceShowSignature?: boolean
   invoiceShowStamp?: boolean
+  // Stamp placement & size — full control via settings
+  stampPosition?: string  // after-signatures, top-right, top-left, bottom-right, bottom-left, after-totals, center
+  stampWidth?: number
+  stampHeight?: number
+  stampOffsetX?: number
+  stampOffsetY?: number
+  stampOpacity?: number  // 0.0 - 1.0
+  stampRotation?: number // -15 to 15 degrees
 }
 
 // ============ ImageUploadField Component ============
@@ -95,7 +105,9 @@ function ImageUploadField({
 
   const uploadFile = useCallback(async (file: File) => {
     if (file.size > 5 * 1024 * 1024) {
-      setError(lang === 'ar' ? 'حجم الملف يتجاوز 5 ميجابايت' : 'File size exceeds 5MB')
+      const msg = lang === 'ar' ? 'حجم الملف يتجاوز 5 ميجابايت' : 'File size exceeds 5MB'
+      setError(msg)
+      toast.error(msg)
       return
     }
     setUploading(true)
@@ -110,9 +122,12 @@ function ImageUploadField({
       }
       const data = await res.json()
       onChange(data.url)
+      toast.success(lang === 'ar' ? 'تم رفع الصورة بنجاح' : 'Image uploaded successfully')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown error'
-      setError(lang === 'ar' ? `فشل في رفع الملف: ${msg}` : `Failed to upload file: ${msg}`)
+      const fullMsg = lang === 'ar' ? `فشل في رفع الملف: ${msg}` : `Failed to upload file: ${msg}`
+      setError(fullMsg)
+      toast.error(fullMsg)
     } finally {
       setUploading(false)
     }
@@ -307,6 +322,11 @@ function CompanySettingsTab() {
       // Push the updated currency symbol image into the global store so that
       // every <MoneyDisplay /> in the system picks it up instantly.
       setCurrencySymbolImage(data.currencySymbolImage || null)
+      toast.success(lang === 'ar' ? 'تم حفظ إعدادات الشركة بنجاح' : 'Company settings saved successfully')
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      toast.error(lang === 'ar' ? `فشل في حفظ الإعدادات: ${msg}` : `Failed to save settings: ${msg}`)
     },
   })
 
@@ -683,7 +703,12 @@ function BranchDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v:
     mutationFn: (data: Record<string, unknown>) =>
       fetch('/api/branches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
         .then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['branches'] }); onOpenChange(false) },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['branches'] })
+      onOpenChange(false)
+      toast.success(lang === 'ar' ? 'تم إنشاء الفرع بنجاح' : 'Branch created successfully')
+    },
+    onError: () => toast.error(lang === 'ar' ? 'فشل في إنشاء الفرع' : 'Failed to create branch'),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -732,7 +757,12 @@ function WarehouseDialog({ open, onOpenChange, branches }: { open: boolean; onOp
     mutationFn: (data: Record<string, unknown>) =>
       fetch('/api/warehouses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
         .then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['warehouses'] }); onOpenChange(false) },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['warehouses'] })
+      onOpenChange(false)
+      toast.success(lang === 'ar' ? 'تم إنشاء المستودع بنجاح' : 'Warehouse created successfully')
+    },
+    onError: () => toast.error(lang === 'ar' ? 'فشل في إنشاء المستودع' : 'Failed to create warehouse'),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -786,7 +816,12 @@ function CostCenterDialog({ open, onOpenChange, costCenters }: { open: boolean; 
     mutationFn: (data: Record<string, unknown>) =>
       fetch('/api/cost-centers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
         .then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cost-centers'] }); onOpenChange(false) },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cost-centers'] })
+      onOpenChange(false)
+      toast.success(lang === 'ar' ? 'تم إنشاء مركز التكلفة بنجاح' : 'Cost center created successfully')
+    },
+    onError: () => toast.error(lang === 'ar' ? 'فشل في إنشاء مركز التكلفة' : 'Failed to create cost center'),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1087,6 +1122,13 @@ function InvoiceTemplatesTab() {
     invoiceShowBankDetails: boolean
     invoiceShowSignature: boolean
     invoiceShowStamp: boolean
+    stampPosition: string
+    stampWidth: number
+    stampHeight: number
+    stampOffsetX: number
+    stampOffsetY: number
+    stampOpacity: number
+    stampRotation: number
   }>>({})
   const [saving, setSaving] = useState(false)
 
@@ -1111,6 +1153,13 @@ function InvoiceTemplatesTab() {
     invoiceShowBankDetails: userEdits.invoiceShowBankDetails ?? settings?.invoiceShowBankDetails ?? true,
     invoiceShowSignature: userEdits.invoiceShowSignature ?? settings?.invoiceShowSignature ?? true,
     invoiceShowStamp: userEdits.invoiceShowStamp ?? settings?.invoiceShowStamp ?? false,
+    stampPosition: userEdits.stampPosition ?? settings?.stampPosition ?? 'after-signatures',
+    stampWidth: userEdits.stampWidth ?? settings?.stampWidth ?? 140,
+    stampHeight: userEdits.stampHeight ?? settings?.stampHeight ?? 140,
+    stampOffsetX: userEdits.stampOffsetX ?? settings?.stampOffsetX ?? 0,
+    stampOffsetY: userEdits.stampOffsetY ?? settings?.stampOffsetY ?? 0,
+    stampOpacity: userEdits.stampOpacity ?? Number(settings?.stampOpacity ?? 0.9),
+    stampRotation: userEdits.stampRotation ?? settings?.stampRotation ?? 0,
   }
 
   const setField = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => {
@@ -1133,8 +1182,13 @@ function InvoiceTemplatesTab() {
       setUserEdits({})
       queryClient.invalidateQueries({ queryKey: ['company-settings'] })
       setSaving(false)
+      toast.success(lang === 'ar' ? 'تم حفظ قالب الفاتورة بنجاح — سيتم تطبيقه فوراً على كل الفواتير' : 'Invoice template saved successfully — applied immediately to all invoices')
     },
-    onError: () => setSaving(false),
+    onError: (err) => {
+      setSaving(false)
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      toast.error(lang === 'ar' ? `فشل في حفظ القالب: ${msg}` : `Failed to save template: ${msg}`)
+    },
   })
 
   const selectedTemplate = INVOICE_TEMPLATES.find(t => t.id === form.invoiceTemplate) || INVOICE_TEMPLATES[0]
@@ -1325,6 +1379,122 @@ function InvoiceTemplatesTab() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Stamp placement & size controls — full control over stamp position/size */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Stamp className="size-4 text-emerald-600" />
+                {lang === 'ar' ? 'تحكم في الختم (المكان والحجم)' : 'Stamp Control (Position & Size)'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Stamp position selector */}
+              <div className="space-y-2">
+                <Label className="flex items-center gap-1">
+                  <Move className="size-3" />
+                  {lang === 'ar' ? 'مكان الختم' : 'Stamp Position'}
+                </Label>
+                <Select
+                  value={form.stampPosition}
+                  onValueChange={v => setField('stampPosition', v)}
+                >
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="after-signatures">{lang === 'ar' ? 'بعد التوقيعات (افتراضي)' : 'After Signatures (default)'}</SelectItem>
+                    <SelectItem value="after-totals">{lang === 'ar' ? 'بعد الإجماليات' : 'After Totals'}</SelectItem>
+                    <SelectItem value="top-right">{lang === 'ar' ? 'أعلى اليمين' : 'Top Right'}</SelectItem>
+                    <SelectItem value="top-left">{lang === 'ar' ? 'أعلى اليسار' : 'Top Left'}</SelectItem>
+                    <SelectItem value="bottom-right">{lang === 'ar' ? 'أسفل اليمين' : 'Bottom Right'}</SelectItem>
+                    <SelectItem value="bottom-left">{lang === 'ar' ? 'أسفل اليسار' : 'Bottom Left'}</SelectItem>
+                    <SelectItem value="center">{lang === 'ar' ? 'المنتصف' : 'Center'}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Stamp width & height */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">{lang === 'ar' ? `العرض: ${form.stampWidth}px` : `Width: ${form.stampWidth}px`}</Label>
+                  <Slider
+                    value={[form.stampWidth]}
+                    min={60}
+                    max={300}
+                    step={5}
+                    onValueChange={vals => setField('stampWidth', vals[0])}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">{lang === 'ar' ? `الارتفاع: ${form.stampHeight}px` : `Height: ${form.stampHeight}px`}</Label>
+                  <Slider
+                    value={[form.stampHeight]}
+                    min={60}
+                    max={300}
+                    step={5}
+                    onValueChange={vals => setField('stampHeight', vals[0])}
+                  />
+                </div>
+              </div>
+
+              {/* Opacity & rotation */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">{lang === 'ar' ? `الشفافية: ${Math.round(form.stampOpacity * 100)}%` : `Opacity: ${Math.round(form.stampOpacity * 100)}%`}</Label>
+                  <Slider
+                    value={[Math.round(form.stampOpacity * 100)]}
+                    min={10}
+                    max={100}
+                    step={5}
+                    onValueChange={vals => setField('stampOpacity', vals[0] / 100)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs flex items-center gap-1">
+                    <RotateCw className="size-3" />
+                    {lang === 'ar' ? `الدوران: ${form.stampRotation}°` : `Rotation: ${form.stampRotation}°`}
+                  </Label>
+                  <Slider
+                    value={[form.stampRotation]}
+                    min={-15}
+                    max={15}
+                    step={1}
+                    onValueChange={vals => setField('stampRotation', vals[0])}
+                  />
+                </div>
+              </div>
+
+              {/* Offset X & Y */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">{lang === 'ar' ? `إزاحة أفقية: ${form.stampOffsetX}px` : `Offset X: ${form.stampOffsetX}px`}</Label>
+                  <Slider
+                    value={[form.stampOffsetX]}
+                    min={-100}
+                    max={100}
+                    step={5}
+                    onValueChange={vals => setField('stampOffsetX', vals[0])}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">{lang === 'ar' ? `إزاحة رأسية: ${form.stampOffsetY}px` : `Offset Y: ${form.stampOffsetY}px`}</Label>
+                  <Slider
+                    value={[form.stampOffsetY]}
+                    min={-100}
+                    max={100}
+                    step={5}
+                    onValueChange={vals => setField('stampOffsetY', vals[0])}
+                  />
+                </div>
+              </div>
+
+              {/* Hint */}
+              <p className="text-xs text-muted-foreground">
+                {lang === 'ar'
+                  ? 'هذه الإعدادات تتحكم في مكان وحجم ختم الشركة على الفاتورة. احفظ التغييرات لتطبيقها فوراً.'
+                  : 'These settings control the position and size of the company stamp on the invoice. Save to apply immediately.'}
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Right: Live preview */}
@@ -1457,12 +1627,35 @@ function InvoiceTemplatesTab() {
                   </div>
                 )}
                 {form.invoiceShowStamp && (
-                  <div className="px-4 pb-3 flex justify-center">
+                  <div
+                    className="px-4 pb-3 flex"
+                    style={{
+                      justifyContent:
+                        form.stampPosition === 'top-left' || form.stampPosition === 'bottom-left' ? 'flex-start' :
+                        form.stampPosition === 'top-right' || form.stampPosition === 'bottom-right' ? 'flex-end' :
+                        'center',
+                    }}
+                  >
                     <div
-                      className="size-12 rounded-full border-2 flex items-center justify-center text-[8px] font-bold opacity-60"
-                      style={{ borderColor: form.invoiceAccentColor, color: form.invoicePrimaryColor }}
+                      className="rounded-full border-2 flex items-center justify-center text-[8px] font-bold"
+                      style={{
+                        width: `${Math.max(40, Math.min(120, form.stampWidth * 0.5))}px`,
+                        height: `${Math.max(40, Math.min(120, form.stampHeight * 0.5))}px`,
+                        borderColor: form.invoiceAccentColor,
+                        color: form.invoicePrimaryColor,
+                        opacity: form.stampOpacity,
+                        transform: `rotate(${form.stampRotation}deg) translate(${form.stampOffsetX * 0.3}px, ${form.stampOffsetY * 0.3}px)`,
+                      }}
                     >
-                      ختم
+                      {settings?.stamp ? (
+                        <img
+                          src={settings.stamp}
+                          alt="stamp preview"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      ) : (
+                        <span>ختم</span>
+                      )}
                     </div>
                   </div>
                 )}

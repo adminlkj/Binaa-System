@@ -383,6 +383,22 @@ export function PrintButton({
           bankIban: settings.bankIban || null,
           bankAccountName: settings.bankAccountName || null,
           invoiceTerms: settings.invoiceTerms || null,
+          // Invoice template customization — passed to print templates
+          invoiceTemplate: settings.invoiceTemplate || 'classic',
+          invoicePrimaryColor: settings.invoicePrimaryColor || '#0f766e',
+          invoiceAccentColor: settings.invoiceAccentColor || '#34d399',
+          invoiceFontFamily: settings.invoiceFontFamily || 'default',
+          invoiceShowBankDetails: settings.invoiceShowBankDetails ?? true,
+          invoiceShowSignature: settings.invoiceShowSignature ?? true,
+          invoiceShowStamp: settings.invoiceShowStamp ?? false,
+          // Stamp placement & size — full control
+          stampPosition: settings.stampPosition || 'after-signatures',
+          stampWidth: settings.stampWidth ?? 140,
+          stampHeight: settings.stampHeight ?? 140,
+          stampOffsetX: settings.stampOffsetX ?? 0,
+          stampOffsetY: settings.stampOffsetY ?? 0,
+          stampOpacity: Number(settings.stampOpacity ?? 0.9),
+          stampRotation: settings.stampRotation ?? 0,
         },
         lang,
       })

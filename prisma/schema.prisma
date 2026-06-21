@@ -229,13 +229,23 @@ model CompanySetting {
   useThousandSeparatorsOfficial Boolean  @default(false)
   decimalPlaces                 Int      @default(2)
   // Invoice template customization
-  invoiceTemplate               String   @default("classic") // classic, modern, minimal, corporate
+  invoiceTemplate               String   @default("classic") // classic, modern, minimal, corporate, royal, ocean
   invoicePrimaryColor           String   @default("#0f766e") // Tailwind emerald-700
   invoiceAccentColor            String   @default("#34d399") // Tailwind emerald-400
   invoiceFontFamily             String   @default("default") // default, tajawal, cairo, amiri
   invoiceShowBankDetails        Boolean  @default(true)
   invoiceShowSignature          Boolean  @default(true)
   invoiceShowStamp              Boolean  @default(false)
+  // Stamp placement & size — user has full control over where and how big
+  // the company stamp appears on the printed invoice.
+  // Positions: top-right, top-left, bottom-right, bottom-left, before-signatures, after-totals, center
+  stampPosition                 String   @default("after-signatures")
+  stampWidth                    Int      @default(140) // px
+  stampHeight                   Int      @default(140) // px
+  stampOffsetX                  Int      @default(0)    // px (+/- offset on X axis)
+  stampOffsetY                  Int      @default(0)    // px (+/- offset on Y axis)
+  stampOpacity                  Decimal  @default(0.9)  // 0.0 - 1.0
+  stampRotation                 Int      @default(0)    // degrees -15..15
   createdAt                     DateTime @default(now())
   updatedAt                     DateTime @updatedAt
 }

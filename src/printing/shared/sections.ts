@@ -48,11 +48,38 @@ export function bankInfoSection(settings: PrintSettings, lang: 'ar' | 'en', pref
 // ============ Signatures Section ============
 
 export function signaturesSection(settings: PrintSettings, lang: 'ar' | 'en', prefix = 'doc'): string {
+  // Read stamp placement/size from settings (with sensible defaults)
+  const stampW = settings.stampWidth ?? 140
+  const stampH = settings.stampHeight ?? 140
+  const stampOpacity = Number(settings.stampOpacity ?? 0.9)
+  const stampRotation = settings.stampRotation ?? 0
+  const stampOffsetX = settings.stampOffsetX ?? 0
+  const stampOffsetY = settings.stampOffsetY ?? 0
+  const showStamp = settings.invoiceShowStamp ?? false
+  const showSignature = settings.invoiceShowSignature ?? true
+  // Only render the stamp image if the user has enabled it AND it exists
+  const stampImg = showStamp && settings.stamp
+    ? `<img class="stamp-img" src="${settings.stamp}" alt="Stamp" style="width:${stampW}px;height:${stampH}px;object-fit:contain;opacity:${stampOpacity};transform:rotate(${stampRotation}deg) translate(${stampOffsetX}px,${stampOffsetY}px);" />`
+    : ''
+
+  if (!showSignature && !showStamp) return ''
+
   if (prefix === 'ri') {
+    if (!showSignature) {
+      // Only show the stamp area
+      return `
+        <div class="ri-signatures" style="grid-template-columns:1fr;">
+          <div class="ri-sign-box" style="display:flex;justify-content:center;align-items:center;min-height:${stampH + 20}px;">
+            ${stampImg}
+            <div class="sign-label">${lang === 'ar' ? 'ختم الشركة / Company Stamp' : 'Company Stamp'}</div>
+          </div>
+        </div>
+      `
+    }
     return `
       <div class="ri-signatures">
-        <div class="ri-sign-box">
-          ${settings.stamp ? `<img class="stamp-img" src="${settings.stamp}" alt="Stamp" />` : ''}
+        <div class="ri-sign-box" style="min-height:${stampH + 20}px;">
+          ${stampImg}
           <div class="sign-label">${lang === 'ar' ? 'ختم وتوقيع الشركة / Company Stamp & Signature' : 'Company Stamp & Signature'}</div>
         </div>
         <div class="ri-sign-box">
@@ -64,15 +91,17 @@ export function signaturesSection(settings: PrintSettings, lang: 'ar' | 'en', pr
 
   return `
     <div class="signatures-section">
-      <div class="stamp-area">
-        ${settings.stamp ? `<img src="${settings.stamp}" alt="${lang === 'ar' ? 'ختم' : 'Stamp'}" />` : ''}
+      <div class="stamp-area" style="min-height:${stampH + 10}px;">
+        ${stampImg}
       </div>
-      <div class="signature-box">
-        <div class="signature-line">${lang === 'ar' ? 'توقيع المدير المالي' : 'CFO Signature'}</div>
-      </div>
-      <div class="signature-box">
-        <div class="signature-line">${lang === 'ar' ? 'توقيع المدير العام' : 'GM Signature'}</div>
-      </div>
+      ${showSignature ? `
+        <div class="signature-box">
+          <div class="signature-line">${lang === 'ar' ? 'توقيع المدير المالي' : 'CFO Signature'}</div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-line">${lang === 'ar' ? 'توقيع المدير العام' : 'GM Signature'}</div>
+        </div>
+      ` : ''}
     </div>
   `
 }

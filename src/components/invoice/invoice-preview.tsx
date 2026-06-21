@@ -35,6 +35,25 @@ interface CompanySettings {
   // to every amount in the invoice.
   currencySymbolImage?: string | null
   invoiceTerms?: string | null
+  // Header & footer image uploads (full control from settings)
+  headerImage?: string | null
+  footerImage?: string | null
+  // Invoice template customization (applied immediately from settings)
+  invoiceTemplate?: string
+  invoicePrimaryColor?: string
+  invoiceAccentColor?: string
+  invoiceFontFamily?: string
+  invoiceShowBankDetails?: boolean
+  invoiceShowSignature?: boolean
+  invoiceShowStamp?: boolean
+  // Stamp placement & size — full control via settings
+  stampPosition?: string
+  stampWidth?: number
+  stampHeight?: number
+  stampOffsetX?: number
+  stampOffsetY?: number
+  stampOpacity?: number
+  stampRotation?: number
 }
 
 interface InvoiceItem {
@@ -282,6 +301,28 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
   const status = statusConfig[invoice.status] || statusConfig.DRAFT
   const invType = invoiceTypeLabels[invoice.invoiceType] || invoiceTypeLabels.TAX_INVOICE
 
+  // ===== Template settings (applied immediately from company settings) =====
+  // The user controls the entire look via the Settings → Invoice Templates tab.
+  // Changes here are saved to company_settings and picked up by every invoice.
+  const primaryColor = company.invoicePrimaryColor || '#0f766e'
+  const accentColor = company.invoiceAccentColor || '#34d399'
+  const fontFamily =
+    company.invoiceFontFamily === 'default' || !company.invoiceFontFamily
+      ? "'Cairo', 'Amiri', 'Noto Sans Arabic', sans-serif"
+      : `'${company.invoiceFontFamily}', 'Cairo', sans-serif`
+  const template = company.invoiceTemplate || 'classic'
+  const showBankDetails = company.invoiceShowBankDetails ?? true
+  const showSignature = company.invoiceShowSignature ?? true
+  const showStamp = company.invoiceShowStamp ?? false
+  // Stamp placement & size — full control
+  const stampPosition = company.stampPosition || 'after-signatures'
+  const stampWidth = company.stampWidth ?? 140
+  const stampHeight = company.stampHeight ?? 140
+  const stampOffsetX = company.stampOffsetX ?? 0
+  const stampOffsetY = company.stampOffsetY ?? 0
+  const stampOpacity = Number(company.stampOpacity ?? 0.9)
+  const stampRotation = company.stampRotation ?? 0
+
   // Derived values
   const symbolAr = getCurrencySymbolAr(company)
   const netAmount = invoice.netAmount || (invoice.subtotal - invoice.discountAmount)
@@ -323,14 +364,64 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
   // Determine if contract section should show
   const hasContractData = invoice.contractNo || invoice.contractType || invoice.contractPeriodStart || invoice.contractPeriodEnd
 
+  // Helper: render the stamp in the configured position
+  // The wrapper element uses absolute positioning for corner placements.
+  const renderPositionedStamp = () => {
+    if (!showStamp || !company.stamp) return null
+    // For corner positions we use absolute placement; for content-flow positions
+    // (after-signatures, after-totals) we render inline.
+    if (stampPosition === 'after-signatures' || stampPosition === 'after-totals') {
+      return null
+    }
+    const pos: React.CSSProperties = { position: 'absolute', zIndex: 5, pointerEvents: 'none' }
+    if (stampPosition === 'top-right') { pos.top = `${20 + stampOffsetY}px`; pos.right = `${20 - stampOffsetX}px` }
+    if (stampPosition === 'top-left') { pos.top = `${20 + stampOffsetY}px`; pos.left = `${20 + stampOffsetX}px` }
+    if (stampPosition === 'bottom-right') { pos.bottom = `${20 - stampOffsetY}px`; pos.right = `${20 - stampOffsetX}px` }
+    if (stampPosition === 'bottom-left') { pos.bottom = `${20 - stampOffsetY}px`; pos.left = `${20 + stampOffsetX}px` }
+    if (stampPosition === 'center') {
+      pos.top = '50%'; pos.left = '50%'
+      pos.transform = `translate(-50%, -50%) rotate(${stampRotation}deg) translate(${stampOffsetX}px, ${stampOffsetY}px)`
+      return (
+        <div style={pos}>
+          <img
+            src={company.stamp}
+            alt="Company Stamp"
+            style={{
+              width: `${stampWidth}px`,
+              height: `${stampHeight}px`,
+              objectFit: 'contain',
+              opacity: stampOpacity,
+            }}
+          />
+        </div>
+      )
+    }
+    return (
+      <div style={pos}>
+        <img
+          src={company.stamp}
+          alt="Company Stamp"
+          style={{
+            width: `${stampWidth}px`,
+            height: `${stampHeight}px`,
+            objectFit: 'contain',
+            opacity: stampOpacity,
+            transform: `rotate(${stampRotation}deg)`,
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className="invoice-preview-wrapper" style={{ fontFamily: "'Cairo', 'Amiri', 'Noto Sans Arabic', sans-serif" }}>
+    <div className="invoice-preview-wrapper" style={{ fontFamily }}>
       {/* Print/Close Buttons */}
       <div className="flex items-center justify-between mb-4 no-print">
         <div className="flex items-center gap-2">
           <Button
             onClick={handlePrint}
-            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+            className="gap-2"
+            style={{ background: primaryColor, borderColor: primaryColor }}
             disabled={isPrinting}
           >
             <Printer className="size-4" />
@@ -363,15 +454,33 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
       </div>
 
       {/* ===================== INVOICE DOCUMENT ===================== */}
-      <div className="invoice-document bg-white shadow-lg rounded-lg overflow-hidden" dir="rtl">
+      <div className="invoice-document bg-white shadow-lg rounded-lg overflow-hidden relative" dir="rtl" style={{ position: 'relative' }}>
+
+        {/* Optional: full-width custom header image (uploaded from Settings) */}
+        {company.headerImage && (
+          <div className="w-full" style={{ maxHeight: '180px', overflow: 'hidden' }}>
+            <img
+              src={company.headerImage}
+              alt="Invoice Header"
+              className="w-full object-cover"
+              style={{ maxHeight: '180px' }}
+            />
+          </div>
+        )}
+
+        {/* Positioned stamp (corner/center placements) */}
+        {renderPositionedStamp()}
 
         {/* ===== STATUS BAR (very top) ===== */}
-        <div className={`${status.bg} py-2 px-6 text-white text-center font-bold text-lg`}>
+        <div className="py-2 px-6 text-white text-center font-bold text-lg" style={{ background: status.bg }}>
           {status.label} — {status.labelEn}
         </div>
 
-        {/* ===== STEP 1: HEADER (Full-width emerald gradient) ===== */}
-        <div className="bg-gradient-to-l from-emerald-700 via-emerald-600 to-emerald-800 px-8 py-6">
+        {/* ===== STEP 1: HEADER (Full-width gradient using primary color from settings) ===== */}
+        <div
+          className="px-8 py-6"
+          style={{ background: `linear-gradient(to left, ${primaryColor}, ${primaryColor}dd, ${primaryColor})` }}
+        >
           <div className="flex items-center justify-between">
             {/* Logo + Company Name */}
             <div className="flex items-center gap-4">
@@ -388,7 +497,7 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
               )}
               <div>
                 <h1 className="text-2xl font-bold text-white">{company.nameAr}</h1>
-                <p className="text-base text-emerald-100" dir="ltr">{company.nameEn}</p>
+                <p className="text-base" style={{ color: accentColor }} dir="ltr">{company.nameEn}</p>
               </div>
             </div>
             {/* Invoice Type Badge */}
@@ -401,28 +510,28 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
         </div>
 
         {/* ===== STEP 2: Company Data Bar ===== */}
-        <div className="bg-emerald-50 border-b border-emerald-200 px-8 py-3">
+        <div className="border-b px-8 py-3" style={{ background: `${primaryColor}11`, borderColor: `${primaryColor}33` }}>
           <div className="text-center text-sm space-y-1.5">
-            <p className="font-semibold text-emerald-800">
+            <p className="font-semibold" style={{ color: primaryColor }}>
               {company.nameAr} | <span dir="ltr">{company.nameEn}</span>
             </p>
-            <p className="text-emerald-700">
+            <p style={{ color: `${primaryColor}cc` }}>
               السجل التجاري: <span className="font-semibold" dir="ltr">{company.commercialReg}</span>
-              <span className="mx-3 text-emerald-300">|</span>
+              <span className="mx-3" style={{ color: `${primaryColor}55` }}>|</span>
               الرقم الضريبي: <span className="font-semibold" dir="ltr">{company.taxNumber}</span>
             </p>
-            <p className="text-emerald-700">
+            <p style={{ color: `${primaryColor}cc` }}>
               الهاتف: <span className="font-semibold" dir="ltr">{company.phone}</span>
-              <span className="mx-3 text-emerald-300">|</span>
+              <span className="mx-3" style={{ color: `${primaryColor}55` }}>|</span>
               البريد الإلكتروني: <span className="font-semibold" dir="ltr">{company.email}</span>
             </p>
-            <p className="text-emerald-700">{company.address}</p>
+            <p style={{ color: `${primaryColor}cc` }}>{company.address}</p>
           </div>
         </div>
 
         {/* ===== STEP 3: Invoice Title + Number ===== */}
         <div className="bg-white border-b border-gray-200 px-8 py-5 text-center">
-          <h2 className="text-2xl font-bold text-emerald-800">{invType.ar}</h2>
+          <h2 className="text-2xl font-bold" style={{ color: primaryColor }}>{invType.ar}</h2>
           <p className="text-lg text-gray-500" dir="ltr">{invType.en}</p>
           <p className="text-3xl font-bold text-gray-900 mt-2 font-mono tracking-wide" dir="ltr">
             {invoice.invoiceNo}
@@ -438,7 +547,7 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
         <div className="grid grid-cols-2 gap-0 border-b border-gray-200">
           {/* Left Column: Invoice Information */}
           <div className="px-8 py-5 border-l border-gray-200">
-            <h3 className="text-sm font-bold text-emerald-700 mb-3 pb-1 border-b border-emerald-200">
+            <h3 className="text-sm font-bold mb-3 pb-1 border-b" style={{ color: primaryColor, borderColor: `${primaryColor}33` }}>
               معلومات الفاتورة / Invoice Information
             </h3>
             <div className="space-y-2 text-sm">
@@ -481,7 +590,7 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
 
           {/* Right Column: Client Information */}
           <div className="px-8 py-5">
-            <h3 className="text-sm font-bold text-emerald-700 mb-3 pb-1 border-b border-emerald-200">
+            <h3 className="text-sm font-bold mb-3 pb-1 border-b" style={{ color: primaryColor, borderColor: `${primaryColor}33` }}>
               بيانات العميل / Client Information
             </h3>
             <div className="space-y-2 text-sm">
@@ -627,12 +736,12 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
         <div className="px-8 py-5">
           <table className="w-full text-sm border-collapse border border-gray-300">
             <thead>
-              <tr className="bg-emerald-600 text-white">
-                <th className="py-2.5 px-3 text-center font-semibold w-10 border-l border-emerald-500">#</th>
-                <th className="py-2.5 px-3 text-right font-semibold border-l border-emerald-500">الوصف / Description</th>
-                <th className="py-2.5 px-3 text-center font-semibold w-20 border-l border-emerald-500">الكمية / Qty</th>
-                <th className="py-2.5 px-3 text-center font-semibold w-20 border-l border-emerald-500">الوحدة / Unit</th>
-                <th className="py-2.5 px-3 text-left font-semibold w-32 border-l border-emerald-500" dir="ltr">السعر / Price</th>
+              <tr className="text-white" style={{ background: primaryColor }}>
+                <th className="py-2.5 px-3 text-center font-semibold w-10 border-l" style={{ borderColor: accentColor }}>#</th>
+                <th className="py-2.5 px-3 text-right font-semibold border-l" style={{ borderColor: accentColor }}>الوصف / Description</th>
+                <th className="py-2.5 px-3 text-center font-semibold w-20 border-l" style={{ borderColor: accentColor }}>الكمية / Qty</th>
+                <th className="py-2.5 px-3 text-center font-semibold w-20 border-l" style={{ borderColor: accentColor }}>الوحدة / Unit</th>
+                <th className="py-2.5 px-3 text-left font-semibold w-32 border-l" style={{ borderColor: accentColor }} dir="ltr">السعر / Price</th>
                 <th className="py-2.5 px-3 text-left font-semibold w-32" dir="ltr">الإجمالي / Total</th>
               </tr>
             </thead>
@@ -659,11 +768,11 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
               ))}
             </tbody>
             <tfoot>
-              <tr className="border-t-2 border-gray-400 bg-emerald-50">
-                <td colSpan={5} className="py-2.5 px-3 text-left font-bold text-emerald-800">
+              <tr className="border-t-2 border-gray-400" style={{ background: `${primaryColor}11` }}>
+                <td colSpan={5} className="py-2.5 px-3 text-left font-bold" style={{ color: primaryColor }}>
                   الإجمالي / Subtotal
                 </td>
-                <td className="py-2.5 px-3 text-left font-bold text-emerald-800 font-mono" dir="ltr">
+                <td className="py-2.5 px-3 text-left font-bold font-mono" style={{ color: primaryColor }} dir="ltr">
                   <span className="inline-flex items-center gap-1">
                     {fmt(invoice.subtotal)} <InvoiceCurrencySymbol company={company} size="xs" />
                   </span>
@@ -701,8 +810,8 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
 
             {/* Totals Box - RIGHT side */}
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="bg-emerald-50 px-5 py-2 border-b border-emerald-200">
-                <h4 className="font-bold text-emerald-700 text-sm text-center">الإجماليات / Totals</h4>
+              <div className="px-5 py-2 border-b" style={{ background: `${primaryColor}11`, borderColor: `${primaryColor}33` }}>
+                <h4 className="font-bold text-sm text-center" style={{ color: primaryColor }}>الإجماليات / Totals</h4>
               </div>
               <div className="px-5 py-3 space-y-2 text-sm">
                 {/* Subtotal */}
@@ -764,10 +873,10 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                 )}
 
                 {/* Separator */}
-                <div className="border-t-2 border-emerald-600 my-1" />
+                <div className="border-t-2 my-1" style={{ borderColor: primaryColor }} />
 
                 {/* Grand Total */}
-                <div className="flex justify-between items-center bg-emerald-600 -mx-5 px-5 py-3 rounded-b-lg">
+                <div className="flex justify-between items-center -mx-5 px-5 py-3 rounded-b-lg" style={{ background: primaryColor }}>
                   <span className="text-white font-bold text-base">الإجمالي النهائي</span>
                   <span className="text-white font-bold text-lg font-mono" dir="ltr">
                     <span className="inline-flex items-center gap-1">
@@ -795,72 +904,116 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
         </div>
 
         {/* ===== STEP 9: Signatures + Company Stamp (3 columns) ===== */}
-        <div className="px-8 pb-5">
-          <div className="grid grid-cols-3 gap-6">
-            {/* Sales Rep Signature */}
-            <div className="text-center">
-              <p className="text-sm font-semibold text-gray-700">مسؤول المبيعات</p>
-              <p className="text-xs text-gray-400 mt-0.5">Sales Representative</p>
-              <div className="mt-8 border-t-2 border-gray-300 pt-2">
-                <p className="text-xs text-gray-400">التوقيع / Signature</p>
-              </div>
-            </div>
-
-            {/* Client Signature */}
-            <div className="text-center">
-              <p className="text-sm font-semibold text-gray-700">العميل</p>
-              <p className="text-xs text-gray-400 mt-0.5">Client</p>
-              <div className="mt-8 border-t-2 border-gray-300 pt-2">
-                <p className="text-xs text-gray-400">التوقيع / Signature</p>
-              </div>
-            </div>
-
-            {/* Company Stamp */}
-            <div className="text-center">
-              <p className="text-sm font-semibold text-gray-700">ختم الشركة</p>
-              <p className="text-xs text-gray-400 mt-0.5">Company Stamp</p>
-              <div className="mt-4 flex items-center justify-center">
-                {company.stamp ? (
-                  <img
-                    src={company.stamp}
-                    alt="Company Stamp"
-                    className="object-contain"
-                    style={{ maxWidth: '160px', maxHeight: '160px', minWidth: '120px', minHeight: '120px' }}
-                  />
-                ) : (
-                  <div className="w-[120px] h-[120px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                    <Stamp className="size-8 text-gray-300" />
+        {/* Signatures section is conditionally rendered based on settings (showSignature) */}
+        {/* The stamp is rendered separately based on stampPosition setting */}
+        {(showSignature || (showStamp && stampPosition === 'after-signatures')) && (
+          <div className="px-8 pb-5">
+            <div className={`grid ${showSignature && showStamp && stampPosition === 'after-signatures' ? 'grid-cols-3' : showSignature ? 'grid-cols-2' : 'grid-cols-1'} gap-6 items-start`}>
+              {/* Sales Rep Signature */}
+              {showSignature && (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-700">مسؤول المبيعات</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Sales Representative</p>
+                  <div className="mt-8 border-t-2 border-gray-300 pt-2">
+                    <p className="text-xs text-gray-400">التوقيع / Signature</p>
                   </div>
-                )}
+                </div>
+              )}
+
+              {/* Client Signature */}
+              {showSignature && (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-700">العميل</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Client</p>
+                  <div className="mt-8 border-t-2 border-gray-300 pt-2">
+                    <p className="text-xs text-gray-400">التوقيع / Signature</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Company Stamp — shown here only when stampPosition = 'after-signatures' */}
+              {showStamp && stampPosition === 'after-signatures' && (
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-gray-700">ختم الشركة</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Company Stamp</p>
+                  <div className="mt-4 flex items-center justify-center">
+                    {company.stamp ? (
+                      <img
+                        src={company.stamp}
+                        alt="Company Stamp"
+                        style={{
+                          width: `${stampWidth}px`,
+                          height: `${stampHeight}px`,
+                          objectFit: 'contain',
+                          opacity: stampOpacity,
+                          transform: `rotate(${stampRotation}deg) translate(${stampOffsetX}px, ${stampOffsetY}px)`,
+                        }}
+                      />
+                    ) : (
+                      <div className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center" style={{ width: `${stampWidth}px`, height: `${stampHeight}px` }}>
+                        <Stamp className="size-8 text-gray-300" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Stamp placed after-totals: render it between totals and signatures */}
+        {showStamp && stampPosition === 'after-totals' && company.stamp && (
+          <div className="px-8 pb-5 flex justify-center">
+            <img
+              src={company.stamp}
+              alt="Company Stamp"
+              style={{
+                width: `${stampWidth}px`,
+                height: `${stampHeight}px`,
+                objectFit: 'contain',
+                opacity: stampOpacity,
+                transform: `rotate(${stampRotation}deg) translate(${stampOffsetX}px, ${stampOffsetY}px)`,
+              }}
+            />
+          </div>
+        )}
+
+        {/* ===== STEP 10: FOOTER ===== */}
+        {/* Optional: custom footer image (uploaded from Settings) */}
+        {company.footerImage ? (
+          <div className="w-full" style={{ maxHeight: '120px', overflow: 'hidden' }}>
+            <img
+              src={company.footerImage}
+              alt="Invoice Footer"
+              className="w-full object-cover"
+              style={{ maxHeight: '120px' }}
+            />
+          </div>
+        ) : (
+          <div className="px-8 py-5" style={{ background: `linear-gradient(to left, ${primaryColor}, ${primaryColor}dd, ${primaryColor})` }}>
+            <div className="text-center">
+              <p className="text-sm font-bold text-white mb-1">
+                متوافق مع هيئة الزكاة والضريبة والجمارك
+              </p>
+              <p className="text-xs mb-3" style={{ color: accentColor }} dir="ltr">
+                ZATCA (Zakat, Tax and Customs Authority) Compliant
+              </p>
+              <div className="h-px mb-3" style={{ background: `${accentColor}55` }} />
+              <div className="flex items-center justify-center gap-4 text-xs" style={{ color: accentColor }}>
+                <span>{company.nameAr}</span>
+                <span style={{ color: `${accentColor}88` }}>|</span>
+                <span>الرقم الضريبي: <span dir="ltr">{company.taxNumber}</span></span>
+                <span style={{ color: `${accentColor}88` }}>|</span>
+                <span>التاريخ: <span dir="ltr">{fmtDate(invoice.date)}</span></span>
+              </div>
+              <div className="flex items-center justify-center gap-4 text-xs mt-1" style={{ color: accentColor }}>
+                <span className="inline-flex items-center gap-1">الإجمالي: <span dir="ltr" className="inline-flex items-center gap-1">{fmt(invoice.totalAmount)} <InvoiceCurrencySymbol company={company} size="xs" /></span></span>
+                <span style={{ color: `${accentColor}88` }}>|</span>
+                <span className="inline-flex items-center gap-1">إجمالي الضريبة: <span dir="ltr" className="inline-flex items-center gap-1">{fmt(effectiveVatAmount)} <InvoiceCurrencySymbol company={company} size="xs" /></span></span>
               </div>
             </div>
           </div>
-        </div>
-
-        {/* ===== STEP 10: FOOTER (Full-width emerald) ===== */}
-        <div className="bg-gradient-to-l from-emerald-700 via-emerald-600 to-emerald-800 px-8 py-5">
-          <div className="text-center">
-            <p className="text-sm font-bold text-white mb-1">
-              متوافق مع هيئة الزكاة والضريبة والجمارك
-            </p>
-            <p className="text-xs text-emerald-100 mb-3" dir="ltr">
-              ZATCA (Zakat, Tax and Customs Authority) Compliant
-            </p>
-            <div className="h-px bg-emerald-400/30 mb-3" />
-            <div className="flex items-center justify-center gap-4 text-xs text-emerald-100">
-              <span>{company.nameAr}</span>
-              <span className="text-emerald-300">|</span>
-              <span>الرقم الضريبي: <span dir="ltr">{company.taxNumber}</span></span>
-              <span className="text-emerald-300">|</span>
-              <span>التاريخ: <span dir="ltr">{fmtDate(invoice.date)}</span></span>
-            </div>
-            <div className="flex items-center justify-center gap-4 text-xs text-emerald-200 mt-1">
-              <span className="inline-flex items-center gap-1">الإجمالي: <span dir="ltr" className="inline-flex items-center gap-1">{fmt(invoice.totalAmount)} <InvoiceCurrencySymbol company={company} size="xs" /></span></span>
-              <span className="text-emerald-300">|</span>
-              <span className="inline-flex items-center gap-1">إجمالي الضريبة: <span dir="ltr" className="inline-flex items-center gap-1">{fmt(effectiveVatAmount)} <InvoiceCurrencySymbol company={company} size="xs" /></span></span>
-            </div>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   )
