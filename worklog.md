@@ -1428,3 +1428,89 @@ Stage Summary:
 - ✅ **التحقق عبر المتصفح:** فتحت نافذة الطباعة فعلياً، أخذت snapshot ولقطة شاشة - لا توجد أكواد CSS ظاهرة، كل المحتوى صحيح.
 - ✅ **التحقق البصري (VLM):** نموذج رؤية حاسوبية أكّد أن الصفحة نظيفة، احترافية، تحتوي على كل العناصر المتوقعة، ولا تحتوي على أي أكواد تقنية.
 - ملفات معدّلة: `src/printing/tax/VatReturn.ts` (حذف `<style>` و `</style>` من `getCSS()`).
+
+---
+Task ID: 11
+Agent: Code Agent
+Task: تحديث الملف المضغوط بأحدث نسخة من الكود (Binaa-ERP-Architecture-Overhaul.zip)
+
+Work Log:
+
+**1. تشخيص المشكلة:**
+- المستخدم لاحظ أن الملف المضغوط `Binaa-ERP-Architecture-Overhaul.zip` لم يُحدَّث منذ 20 يونيو (18:01)
+- جميع الإصلاحات الأخيرة (إصلاح الإقرار الضريبي، ألوان القوالب، إصلاح أكواد CSS في الطباعة) لم تكن مُضمَّنة في الملف
+- عدد الملفات المُعدَّلة بعد آخر تحديث للملف المضغوط: 46 ملف
+- القاعدة الذهبية للمستخدم: "بعد الانتهاء من التعديلات دائما حدث الملف المضغوط مباشرة بالتعديلات حتى لا يتم فقدانها ويبقى الملف يحتوي اخر نسخة من الكود دائما"
+
+**2. إنشاء سكربت تحديث شامل (/tmp/update-zip.sh):**
+- السكربت يجمع كل الملفات المعدَّلة في مجلد مؤقت ثم يُنشئ ملفاً مضغوطاً جديداً
+- شامل لكل الأقسام: docs, prisma, src/lib, src/app/api, src/components, src/printing, إعدادات المشروع
+
+**3. الملفات المُضمَّنة في الملف المضغوط المُحدَّث (152 ملف):**
+
+   **التوثيق (docs/):**
+   - Binaa-ERP-System-Documentation.docx
+   - CHANGELOG-Architecture-Overhaul.md
+   - generate-doc.ts
+   - SYSTEM-AUDIT-REPORT.md (في الجذر أيضاً)
+
+   **قاعدة البيانات (prisma/):**
+   - schema.prisma (آخر نسخة مع VAT return model)
+
+   **المكتبات (src/lib/):**
+   - db.ts, vat-calc.ts (جديد), auto-journal.ts, unified-print-engine.ts, zatca-qr.ts
+   - financial-mapping-engine.ts, accounting-health-check.ts, account-impact.ts, account-roles.ts
+   - accounting/engine.ts (آخر نسخة مع إصلاح reverseEntry و createJournalEntry)
+
+   **API Routes (src/app/api/):**
+   - vat/route.ts, vat/[id]/route.ts (مع إصلاح تأريخ القيود + التراجع وإعادة الإنشاء)
+   - print/route.ts (مع liveCalc للتحقق من اليومية)
+   - journal-entries/[id]/route.ts
+   - company-settings/route.ts
+   - sales-invoices/, supplier-invoices/, purchase-invoices/, expenses/
+   - client-payments/[id]/, supplier-payments/[id]/
+   - progress-claims/[id]/, rental-payments/, employees/, attendance/
+   - upload/, equipment/timesheets/[id]/generate-invoice/
+   - accounts/role-mapping/, accounts/statement/, accounts/by-role/
+   - financial-mapping/, accounting-health/, account-impact/
+
+   **المكونات (src/components/):**
+   - modules/: accounting, accounting-mapping, expenses, client-payments, supplier-payments, rental-invoices, equipment, payroll-runs, vat, settings, projects, progress-claims, sales
+   - shared/: account-selector, je-preview, accounting-entry-display, print-button
+   - invoice/invoice-preview.tsx
+   - ui/money-display.tsx
+   - layout/providers.tsx
+
+   **نظام الطباعة الكامل (src/printing/):**
+   - print-service.ts, index.ts
+   - tax/VatReturn.ts (آخر نسخة مع إصلاح اليوم لأكواد CSS)
+   - invoices/: ServiceInvoice, RentalInvoice, SupplierInvoice
+   - financial/: PaymentVoucher, SalarySlip, RentalContract
+   - accounting/: JournalEntry, TrialBalance, GeneralLedger, IncomeStatement, BalanceSheet
+   - projects/ProgressClaim, procurement/: PurchaseOrder, DeliveryOrder
+   - operations/Timesheet, reports/GenericTable, contracts/ProjectContract
+   - shared/: css, types, sections, utils, headers-footers
+
+   **إعدادات المشروع:**
+   - package.json, tsconfig.json, next.config.ts, tailwind.config.ts
+   - eslint.config.mjs, postcss.config.mjs, components.json
+   - .env.example, Caddyfile
+   - worklog.md (سجل العمل الكامل), SYSTEM-AUDIT-REPORT.md
+
+**4. التحقق من سلامة الملف المضغوط:**
+- اختبار الـ integrity: `unzip -t` → "No errors detected" ✅
+- التحقق من وجود إصلاح اليوم في VatReturn.ts: ✅ يحتوي على تعليق "يجب إرجاع CSS خام"
+- حجم الملف: 514,635 bytes (2,048,379 bytes uncompressed)
+- عدد الملفات: 152 ملف
+
+**5. الحجم النهائي:**
+- الملف القديم: 225,554 bytes (26 ملف فقط - يونيو 20)
+- الملف الجديد: 514,635 bytes (152 ملف - يونيو 21) - زيادة 128% يعكس كل الإصلاحات الأخيرة
+
+Stage Summary:
+- ✅ **تم تحديث الملف المضغوط** `Binaa-ERP-Architecture-Overhaul.zip` بأحدث نسخة من الكود
+- ✅ **152 ملف** مُضمَّن (مقارنة بـ 26 ملف في النسخة السابقة)
+- ✅ **اختبار الـ integrity نجح** - لا يوجد أي خطأ في الضغط
+- ✅ **آخر إصلاح مُضمَّن** (إصلاح أكواد CSS في VatReturn.ts بتاريخ اليوم)
+- ✅ **القاعدة الذهبية مطبَّقة**: الملف المضغوط الآن يحتوي على آخر نسخة من الكود دائماً
+- ✅ **القاعدة مُوثَّقة في السجل**: عند أي تعديل مستقبلي، يجب تحديث الملف المضغوط فوراً
