@@ -52,11 +52,13 @@ export const template: DocumentTemplate = {
 
   getCSS(lang: 'ar' | 'en'): string {
     // أضف تنسيقات مخصصة للإقرار الضريبي فوق تنسيقات المحاسبة الافتراضية
+    // ملاحظة: يجب إرجاع CSS خام فقط بدون وسوم <style> لأن print-service.ts
+    // يغلّف النتيجة في وسم <style> واحد. وضع وسوم <style> هنا يسبب تداخلاً
+    // يؤدي إلى ظهور أكواد CSS كنص داخل الصفحة المطبوعة.
     const baseCSS = getAccountingCSS(lang)
     return `
       ${baseCSS}
-      <style>
-        .vat-form { font-family: 'Cairo', 'Noto Sans Arabic', 'Tajawal', sans-serif; color: #0f172a; }
+      .vat-form { font-family: 'Cairo', 'Noto Sans Arabic', 'Tajawal', sans-serif; color: #0f172a; }
         .vat-form-title {
           text-align: center;
           font-size: 16px;
@@ -307,7 +309,6 @@ export const template: DocumentTemplate = {
           padding: 2px 0;
         }
         .vat-payment-info-row strong { color: #064e3b; }
-      </style>
     `
   },
 

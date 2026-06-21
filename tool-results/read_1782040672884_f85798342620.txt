@@ -1,0 +1,717 @@
+     1→// ============================================================================
+     2→// قالب الإقرار الضريبي - VAT Return Template (ZATCA-compliant)
+     3→// نظام بِنَاء ERP - Binaa Construction ERP
+     4→//
+     5→// مطابق لنموذج إقرار ضريبة القيمة المضافة الصادر عن هيئة الزكاة والضريبة والجمارك
+     6→// (ZATCA - Zakat, Tax and Customs Authority) في المملكة العربية السعودية.
+     7→// يتبع نفس ترقيم الحقول والتصنيفات المعتمدة دولياً للاقرارات الضريبية.
+     8→//
+     9→// يستخدم ألوان القالب المخصصة من إعدادات الشركة (invoicePrimaryColor)
+    10→// ليتطابق الإقرار مع باقي مستندات النظام بصرياً.
+    11→// ============================================================================
+    12→
+    13→import type { DocumentTemplate, PrintSettings } from '../shared/types'
+    14→import { fmtPrint, formatDate } from '../shared/utils'
+    15→import { signaturesSection } from '../shared/sections'
+    16→import { getAccountingCSS } from '../shared/css'
+    17→import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
+    18→
+    19→// ============ Color helpers ============
+    20→/**
+    21→ * يحوّل لون hex إلى نسخة بشفافية معينة (rgba).
+    22→ * يستخدم لِتوليد ألوان خلفية فاتحة من اللون الأساسي للقالب.
+    23→ */
+    24→function hexToRgba(hex: string, alpha: number): string {
+    25→  const clean = hex.replace('#', '')
+    26→  const r = parseInt(clean.substring(0, 2), 16) || 0
+    27→  const g = parseInt(clean.substring(2, 4), 16) || 0
+    28→  const b = parseInt(clean.substring(4, 6), 16) || 0
+    29→  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+    30→}
+    31→
+    32→/**
+    33→ * يولّد لوناً أغمق من اللون الأساسي (للحالات hover/active أو الحدود).
+    34→ */
+    35→function darkenHex(hex: string, factor = 0.15): string {
+    36→  const clean = hex.replace('#', '')
+    37→  const r = Math.max(0, Math.floor((parseInt(clean.substring(0, 2), 16) || 0) * (1 - factor)))
+    38→  const g = Math.max(0, Math.floor((parseInt(clean.substring(2, 4), 16) || 0) * (1 - factor)))
+    39→  const b = Math.max(0, Math.floor((parseInt(clean.substring(4, 6), 16) || 0) * (1 - factor)))
+    40→  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+    41→}
+    42→
+    43→export const template: DocumentTemplate = {
+    44→  category: 'tax',
+    45→
+    46→  requiresQR: false,
+    47→  requiresSignature: true,
+    48→  requiresBankInfo: false,
+    49→  requiresAmountInWords: false,
+    50→  hasCustomHeader: true,
+    51→  hasCustomFooter: true,
+    52→
+    53→  getCSS(lang: 'ar' | 'en'): string {
+    54→    // أضف تنسيقات مخصصة للإقرار الضريبي فوق تنسيقات المحاسبة الافتراضية
+    55→    const baseCSS = getAccountingCSS(lang)
+    56→    return `
+    57→      ${baseCSS}
+    58→      <style>
+    59→        .vat-form { font-family: 'Cairo', 'Noto Sans Arabic', 'Tajawal', sans-serif; color: #0f172a; }
+    60→        .vat-form-title {
+    61→          text-align: center;
+    62→          font-size: 16px;
+    63→          font-weight: 700;
+    64→          color: #0f172a;
+    65→          margin: 6px 0 2px 0;
+    66→          padding: 8px 0;
+    67→          border-top: 2px solid #0f172a;
+    68→          border-bottom: 2px solid #0f172a;
+    69→        }
+    70→        .vat-form-subtitle {
+    71→          text-align: center;
+    72→          font-size: 11px;
+    73→          color: #475569;
+    74→          margin-bottom: 10px;
+    75→        }
+    76→        .vat-section {
+    77→          margin-top: 10px;
+    78→          border: 1px solid #cbd5e1;
+    79→          border-radius: 4px;
+    80→          overflow: hidden;
+    81→        }
+    82→        .vat-section-header {
+    83→          color: white;
+    84→          font-size: 11px;
+    85→          font-weight: 700;
+    86→          padding: 6px 10px;
+    87→          display: flex;
+    88→          justify-content: space-between;
+    89→          align-items: center;
+    90→        }
+    91→        .vat-section-header .section-no {
+    92→          background: rgba(255,255,255,0.18);
+    93→          padding: 1px 8px;
+    94→          border-radius: 3px;
+    95→          font-size: 9.5px;
+    96→        }
+    97→        .vat-row {
+    98→          display: grid;
+    99→          grid-template-columns: 26px 1fr 130px 90px;
+   100→          align-items: center;
+   101→          padding: 5px 8px;
+   102→          border-bottom: 1px solid #e2e8f0;
+   103→          font-size: 10px;
+   104→          gap: 4px;
+   105→        }
+   106→        .vat-row:last-child { border-bottom: none; }
+   107→        .vat-row .field-no {
+   108→          background: #f1f5f9;
+   109→          color: #475569;
+   110→          font-weight: 700;
+   111→          font-size: 9.5px;
+   112→          text-align: center;
+   113→          border-radius: 3px;
+   114→          padding: 2px 0;
+   115→          font-family: 'Courier New', monospace;
+   116→        }
+   117→        .vat-row .field-label { color: #1e293b; }
+   118→        .vat-row .field-amount {
+   119→          text-align: left;
+   120→          direction: ltr;
+   121→          font-variant-numeric: tabular-nums;
+   122→          color: #334155;
+   123→        }
+   124→        .vat-row .field-vat {
+   125→          text-align: left;
+   126→          direction: ltr;
+   127→          font-variant-numeric: tabular-nums;
+   128→          color: #047857;
+   129→          font-weight: 600;
+   130→        }
+   131→        .vat-row.total-row {
+   132→          background: #f8fafc;
+   133→          font-weight: 700;
+   134→          border-top: 2px solid #1e293b;
+   135→        }
+   136→        .vat-row.total-row .field-amount,
+   137→        .vat-row.total-row .field-vat {
+   138→          font-weight: 700;
+   139→          color: #0f172a;
+   140→        }
+   141→        .vat-net-box {
+   142→          margin-top: 12px;
+   143→          border: 2px solid #1e293b;
+   144→          border-radius: 4px;
+   145→          overflow: hidden;
+   146→        }
+   147→        .vat-net-header {
+   148→          color: white;
+   149→          font-size: 11px;
+   150→          font-weight: 700;
+   151→          padding: 6px 10px;
+   152→          display: flex;
+   153→          justify-content: space-between;
+   154→        }
+   155→        .vat-net-row {
+   156→          display: grid;
+   157→          grid-template-columns: 30px 1fr 160px;
+   158→          align-items: center;
+   159→          padding: 6px 10px;
+   160→          border-bottom: 1px solid #e2e8f0;
+   161→          font-size: 10.5px;
+   162→        }
+   163→        .vat-net-row:last-child { border-bottom: none; }
+   164→        .vat-net-row .field-no {
+   165→          background: #f1f5f9;
+   166→          color: #475569;
+   167→          font-weight: 700;
+   168→          font-size: 10px;
+   169→          text-align: center;
+   170→          border-radius: 3px;
+   171→          padding: 2px 0;
+   172→          font-family: 'Courier New', monospace;
+   173→        }
+   174→        .vat-net-row.payable {
+   175→          background: #fef3c7;
+   176→        }
+   177→        .vat-net-row.refundable {
+   178→          background: #d1fae5;
+   179→        }
+   180→        .vat-net-row .field-amount {
+   181→          text-align: left;
+   182→          direction: ltr;
+   183→          font-variant-numeric: tabular-nums;
+   184→          font-weight: 700;
+   185→          font-size: 12px;
+   186→        }
+   187→        .vat-info-grid {
+   188→          display: grid;
+   189→          grid-template-columns: 1fr 1fr 1fr 1fr;
+   190→          gap: 6px;
+   191→          margin: 8px 0;
+   192→        }
+   193→        .vat-info-box {
+   194→          border: 1px solid #cbd5e1;
+   195→          border-radius: 3px;
+   196→          padding: 5px 8px;
+   197→          background: #f8fafc;
+   198→        }
+   199→        .vat-info-label {
+   200→          font-size: 9px;
+   201→          color: #64748b;
+   202→          font-weight: 600;
+   203→          text-transform: uppercase;
+   204→          margin-bottom: 2px;
+   205→        }
+   206→        .vat-info-value {
+   207→          font-size: 11px;
+   208→          color: #0f172a;
+   209→          font-weight: 700;
+   210→        }
+   211→        .vat-gl-verify {
+   212→          margin-top: 10px;
+   213→          padding: 8px 10px;
+   214→          border-radius: 4px;
+   215→          font-size: 10px;
+   216→        }
+   217→        .vat-gl-verify.matched {
+   218→          background: #d1fae5;
+   219→          border: 1px solid #6ee7b7;
+   220→          color: #065f46;
+   221→        }
+   222→        .vat-gl-verify.mismatched {
+   223→          background: #fee2e2;
+   224→          border: 1px solid #fca5a5;
+   225→          color: #991b1b;
+   226→        }
+   227→        .vat-gl-verify-header {
+   228→          display: flex;
+   229→          align-items: center;
+   230→          gap: 8px;
+   231→          margin-bottom: 6px;
+   232→          font-weight: 700;
+   233→        }
+   234→        .vat-gl-verify-icon {
+   235→          width: 18px; height: 18px;
+   236→          border-radius: 50%;
+   237→          display: flex; align-items: center; justify-content: center;
+   238→          font-weight: 700;
+   239→          font-size: 11px;
+   240→          color: white;
+   241→          flex-shrink: 0;
+   242→        }
+   243→        .vat-gl-verify.matched .vat-gl-verify-icon {
+   244→          background: #10b981;
+   245→        }
+   246→        .vat-gl-verify.mismatched .vat-gl-verify-icon {
+   247→          background: #ef4444;
+   248→        }
+   249→        .vat-gl-comparison {
+   250→          display: grid;
+   251→          grid-template-columns: 1fr 1fr 1fr;
+   252→          gap: 6px;
+   253→          margin-top: 4px;
+   254→          font-size: 9.5px;
+   255→        }
+   256→        .vat-gl-comparison-col {
+   257→          background: rgba(255,255,255,0.6);
+   258→          border-radius: 3px;
+   259→          padding: 4px 6px;
+   260→        }
+   261→        .vat-gl-comparison-label {
+   262→          font-size: 8.5px;
+   263→          color: #64748b;
+   264→          font-weight: 600;
+   265→          margin-bottom: 2px;
+   266→        }
+   267→        .vat-gl-comparison-value {
+   268→          font-weight: 700;
+   269→          direction: ltr;
+   270→          text-align: left;
+   271→          font-variant-numeric: tabular-nums;
+   272→        }
+   273→        .vat-amendment-banner {
+   274→          margin-top: 8px;
+   275→          padding: 6px 10px;
+   276→          background: #fef3c7;
+   277→          border: 1px solid #fcd34d;
+   278→          border-radius: 4px;
+   279→          font-size: 10px;
+   280→          color: #92400e;
+   281→          text-align: center;
+   282→          font-weight: 600;
+   283→        }
+   284→        .vat-cancelled-banner {
+   285→          margin-top: 8px;
+   286→          padding: 6px 10px;
+   287→          background: #fee2e2;
+   288→          border: 1px solid #fca5a5;
+   289→          border-radius: 4px;
+   290→          font-size: 10px;
+   291→          color: #991b1b;
+   292→          text-align: center;
+   293→          font-weight: 700;
+   294→        }
+   295→        .vat-payment-info {
+   296→          margin-top: 10px;
+   297→          padding: 8px 10px;
+   298→          background: #ecfdf5;
+   299→          border: 1px solid #6ee7b7;
+   300→          border-radius: 4px;
+   301→          font-size: 10px;
+   302→          color: #065f46;
+   303→        }
+   304→        .vat-payment-info-row {
+   305→          display: flex;
+   306→          justify-content: space-between;
+   307→          padding: 2px 0;
+   308→        }
+   309→        .vat-payment-info-row strong { color: #064e3b; }
+   310→      </style>
+   311→    `
+   312→  },
+   313→
+   314→  getCustomHeader(settings: PrintSettings, lang: 'ar' | 'en'): string {
+   315→    const title = lang === 'ar'
+   316→      ? 'إقرار ضريبة القيمة المضافة'
+   317→      : 'Value Added Tax (VAT) Return'
+   318→    return generateAccountingHeader(settings, lang, title)
+   319→  },
+   320→
+   321→  getCustomFooter(settings: PrintSettings, lang: 'ar' | 'en'): string {
+   322→    return generateAccountingFooter(settings, lang)
+   323→  },
+   324→
+   325→  getBody(data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en'): string {
+   326→    const year = (data.year as number) || new Date().getFullYear()
+   327→    const quarter = (data.quarter as number) || 1
+   328→    const period = (data.period as string) || `${year}-Q${quarter}`
+   329→
+   330→    // الإجماليات
+   331→    const totalSales = (data.totalSales as number) || 0
+   332→    const outputVat = (data.outputVat as number) || 0
+   333→    const totalPurchases = (data.totalPurchases as number) || 0
+   334→    const inputVat = (data.inputVat as number) || 0
+   335→    const netVat = (data.netVat as number) || 0
+   336→
+   337→    // تصنيف المبيعات (ZATCA)
+   338→    const standardRatedSales = (data.standardRatedSales as number) || 0
+   339→    const zeroRatedSales = (data.zeroRatedSales as number) || 0
+   340→    const exemptSales = (data.exemptSales as number) || 0
+   341→    const standardRatedSalesVat = (data.standardRatedSalesVat as number) || 0
+   342→
+   343→    // تصنيف المشتريات (ZATCA)
+   344→    const standardRatedPurchases = (data.standardRatedPurchases as number) || 0
+   345→    const zeroRatedPurchases = (data.zeroRatedPurchases as number) || 0
+   346→    const exemptPurchases = (data.exemptPurchases as number) || 0
+   347→    const importsSubjectToVAT = (data.importsSubjectToVAT as number) || 0
+   348→    const standardRatedPurchasesVat = (data.standardRatedPurchasesVat as number) || 0
+   349→
+   350→    // التحقق من دفتر اليومية
+   351→    const glOutputVat = (data.glOutputVat as number) || 0
+   352→    const glInputVat = (data.glInputVat as number) || 0
+   353→    const glMatch = data.glMatch as boolean
+   354→
+   355→    // الفروقات (لعرضها بوضوح في بطاقة التحقق)
+   356→    const glDiffOutput = outputVat - glOutputVat
+   357→    const glDiffInput = inputVat - glInputVat
+   358→
+   359→    // الحالة والدفع
+   360→    const status = (data.status as string) || 'DRAFT'
+   361→    const filedDate = data.filedDate as string | undefined
+   362→    const paymentDate = data.paymentDate as string | undefined
+   363→    const paymentRef = (data.paymentReference as string) || (data.paymentRef as string) || undefined
+   364→    const isAmendment = data.isAmendment as boolean
+   365→    const cancelledAt = data.cancelledAt as string | undefined
+   366→    const cancelledReason = data.cancelledReason as string
+   367→    const createdAt = data.createdAt as string | undefined
+   368→
+   369→    // ===== ألوان القالب من إعدادات الشركة =====
+   370→    // نستخدم اللون الأساسي المُختار من شاشة الإعدادات → قوالب الفاتورة
+   371→    // ليكون الإقرار متناسقاً بصرياً مع باقي مستندات النظام.
+   372→    const primaryColor = settings.invoicePrimaryColor || '#0f766e'
+   373→    const accentColor = settings.invoiceAccentColor || '#34d399'
+   374→    const primaryDark = darkenHex(primaryColor, 0.18)
+   375→    const primaryLight = hexToRgba(primaryColor, 0.08)
+   376→    const primaryLighter = hexToRgba(primaryColor, 0.04)
+   377→
+   378→    // Quarter names
+   379→    const quarterNames = lang === 'ar'
+   380→      ? ['الربع الأول', 'الربع الثاني', 'الربع الثالث', 'الربع الرابع']
+   381→      : ['First Quarter', 'Second Quarter', 'Third Quarter', 'Fourth Quarter']
+   382→    const quarterName = quarterNames[quarter - 1] || `Q${quarter}`
+   383→
+   384→    // Status labels
+   385→    const statusLabels: Record<string, { ar: string; en: string }> = {
+   386→      DRAFT: { ar: 'مسودة', en: 'Draft' },
+   387→      FILED: { ar: 'مُقر', en: 'Filed' },
+   388→      PAID: { ar: 'مدفوع', en: 'Paid' },
+   389→      CANCELLED: { ar: 'ملغي', en: 'Cancelled' },
+   390→      AMENDED: { ar: 'معدل', en: 'Amended' },
+   391→    }
+   392→    const statusLabel = statusLabels[status]?.[lang] || status
+   393→
+   394→    // صافي الضريبة: مستحق أو مسترد
+   395→    const isPayable = netVat >= 0
+   396→    const netLabel = isPayable
+   397→      ? (lang === 'ar' ? 'صافي ضريبة القيمة المضافة المستحقة' : 'Net VAT Payable')
+   398→      : (lang === 'ar' ? 'ضريبة القيمة المضافة المستحقة الاسترداد' : 'Net VAT Refundable')
+   399→
+   400→    // ===== Helpers =====
+   401→    // تصدير الأرقام بفواصل الآلاف (كالإقرارات الضريبية العالمية) بدون رمز العملة
+   402→    const fmtNum = (v: number) => fmtPrint(v)
+   403→
+   404→    // صف التصنيف
+   405→    const categoryRow = (
+   406→      fieldNo: string,
+   407→      label: string,
+   408→      amount: number,
+   409→      vat: number | null = null,
+   410→      isTotal = false
+   411→    ): string => {
+   412→      const cls = isTotal ? 'vat-row total-row' : 'vat-row'
+   413→      const vatCell = vat !== null
+   414→        ? `<div class="field-vat">${fmtNum(vat)}</div>`
+   415→        : `<div class="field-vat">—</div>`
+   416→      return `
+   417→        <div class="${cls}">
+   418→          <div class="field-no">${fieldNo}</div>
+   419→          <div class="field-label">${label}</div>
+   420→          <div class="field-amount">${fmtNum(amount)}</div>
+   421→          ${vatCell}
+   422→        </div>`
+   423→    }
+   424→
+   425→    // صف صافي الضريبة
+   426→    const netRow = (
+   427→      fieldNo: string,
+   428→      label: string,
+   429→      amount: number,
+   430→      kind: 'payable' | 'refundable' | 'normal' = 'normal'
+   431→    ): string => {
+   432→      const cls = kind === 'payable' ? 'vat-net-row payable'
+   433→        : kind === 'refundable' ? 'vat-net-row refundable'
+   434→        : 'vat-net-row'
+   435→      return `
+   436→        <div class="${cls}">
+   437→          <div class="field-no">${fieldNo}</div>
+   438→          <div class="field-label">${label}</div>
+   439→          <div class="field-amount">${fmtNum(amount)}</div>
+   440→        </div>`
+   441→    }
+   442→
+   443→    return `
+   444→      <style>
+   445→        /* تطبيق ألوان القالب المخصصة على الإقرار الضريبي */
+   446→        .vat-section-header { background: ${primaryColor} !important; }
+   447→        .vat-net-header { background: ${primaryColor} !important; }
+   448→        .vat-net-box { border-color: ${primaryDark} !important; }
+   449→        .vat-row.total-row { border-top-color: ${primaryColor} !important; }
+   450→        .vat-info-box { background: ${primaryLighter} !important; border-color: ${primaryColor}40 !important; }
+   451→        .vat-info-value { color: ${primaryDark} !important; }
+   452→        .vat-form-title { border-top-color: ${primaryColor} !important; border-bottom-color: ${primaryColor} !important; }
+   453→        .vat-row .field-no { background: ${primaryLight} !important; color: ${primaryDark} !important; }
+   454→        .vat-net-row .field-no { background: ${primaryLight} !important; color: ${primaryDark} !important; }
+   455→        .vat-net-row .field-amount { color: ${primaryDark} !important; }
+   456→        .vat-row .field-vat { color: ${primaryDark} !important; }
+   457→        @media print {
+   458→          .vat-section-header { background: ${primaryColor} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+   459→          .vat-net-header { background: ${primaryColor} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+   460→          .vat-info-box { background: ${primaryLighter} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+   461→          .vat-row .field-no { background: ${primaryLight} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+   462→        }
+   463→      </style>
+   464→      <div class="vat-form">
+   465→        <!-- عنوان النموذج -->
+   466→        <div class="vat-form-title">
+   467→          ${lang === 'ar'
+   468→            ? 'إقرار ضريبة القيمة المضافة — هيئة الزكاة والضريبة والجمارك'
+   469→            : 'Value Added Tax Return — Zakat, Tax and Customs Authority'}
+   470→        </div>
+   471→        <div class="vat-form-subtitle">
+   472→          ${lang === 'ar'
+   473→            ? 'المملكة العربية السعودية — نموذج VAT-301'
+   474→            : 'Kingdom of Saudi Arabia — Form VAT-301'}
+   475→        </div>
+   476→
+   477→        ${isAmendment ? `
+   478→          <div class="vat-amendment-banner">
+   479→            ${lang === 'ar'
+   480→              ? '⚠ هذا الإقرار تعديل لإقرار سابق تم إلغاؤه'
+   481→              : '⚠ This is an amended return replacing a cancelled one'}
+   482→          </div>
+   483→        ` : ''}
+   484→
+   485→        ${status === 'CANCELLED' ? `
+   486→          <div class="vat-cancelled-banner">
+   487→            ${lang === 'ar'
+   488→              ? `✗ تم إلغاء هذا الإقرار${cancelledReason ? ` — السبب: ${cancelledReason}` : ''}${cancelledAt ? ` — بتاريخ: ${formatDate(cancelledAt, lang)}` : ''}`
+   489→              : `✗ This return has been CANCELLED${cancelledReason ? ` — Reason: ${cancelledReason}` : ''}${cancelledAt ? ` — Date: ${formatDate(cancelledAt, lang)}` : ''}`}
+   490→          </div>
+   491→        ` : ''}
+   492→
+   493→        <!-- بيانات المنشأة -->
+   494→        <div class="vat-info-grid">
+   495→          <div class="vat-info-box">
+   496→            <div class="vat-info-label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT Number'}</div>
+   497→            <div class="vat-info-value" dir="ltr">${settings.taxNumber || '—'}</div>
+   498→          </div>
+   499→          <div class="vat-info-box">
+   500→            <div class="vat-info-label">${lang === 'ar' ? 'السجل التجاري' : 'Commercial Reg.'}</div>
+   501→            <div class="vat-info-value" dir="ltr">${settings.commercialReg || '—'}</div>
+   502→          </div>
+   503→          <div class="vat-info-box">
+   504→            <div class="vat-info-label">${lang === 'ar' ? 'فترة الإقرار' : 'Tax Period'}</div>
+   505→            <div class="vat-info-value">${quarterName} - ${year}</div>
+   506→          </div>
+   507→          <div class="vat-info-box">
+   508→            <div class="vat-info-label">${lang === 'ar' ? 'حالة الإقرار' : 'Status'}</div>
+   509→            <div class="vat-info-value">${statusLabel}</div>
+   510→          </div>
+   511→        </div>
+   512→
+   513→        <!-- ============ القسم الأول: ضريبة المخرجات (المبيعات) ============ -->
+   514→        <div class="vat-section">
+   515→          <div class="vat-section-header">
+   516→            <span>
+   517→              ${lang === 'ar'
+   518→                ? 'القسم الأول: ضريبة المخرجات (المبيعات الخاضعة للضريبة)'
+   519→                : 'Section 1: Output VAT (Taxable Sales)'}
+   520→            </span>
+   521→            <span class="section-no">${lang === 'ar' ? 'حقل 1-5' : 'Fields 1-5'}</span>
+   522→          </div>
+   523→
+   524→          ${categoryRow('1',
+   525→            lang === 'ar' ? 'إجمالي المبيعات الخاضعة للضريبة القياسية (15%)' : 'Total standard-rated sales (15%)',
+   526→            standardRatedSales,
+   527→            standardRatedSalesVat
+   528→          )}
+   529→          ${categoryRow('2',
+   530→            lang === 'ar' ? 'إجمالي المبيعات صفريه الضريبة (صادرات)' : 'Total zero-rated sales (exports)',
+   531→            zeroRatedSales,
+   532→            0
+   533→          )}
+   534→          ${categoryRow('3',
+   535→            lang === 'ar' ? 'إجمالي المبيعات المعفاة من الضريبة' : 'Total exempt sales',
+   536→            exemptSales,
+   537→            null
+   538→          )}
+   539→          ${categoryRow('4',
+   540→            lang === 'ar' ? 'إجمالي المبيعات (جميع الفئات)' : 'Total sales (all categories)',
+   541→            totalSales,
+   542→            null,
+   543→            true
+   544→          )}
+   545→          ${categoryRow('5',
+   546→            lang === 'ar' ? 'إجمالي ضريبة المخرجات المستحقة' : 'Total output VAT due',
+   547→            outputVat,
+   548→            outputVat,
+   549→            true
+   550→          )}
+   551→        </div>
+   552→
+   553→        <!-- ============ القسم الثاني: ضريبة المدخلات (المشتريات) ============ -->
+   554→        <div class="vat-section">
+   555→          <div class="vat-section-header">
+   556→            <span>
+   557→              ${lang === 'ar'
+   558→                ? 'القسم الثاني: ضريبة المدخلات (المشتريات الخاضعة للضريبة)'
+   559→                : 'Section 2: Input VAT (Taxable Purchases)'}
+   560→            </span>
+   561→            <span class="section-no">${lang === 'ar' ? 'حقل 6-10' : 'Fields 6-10'}</span>
+   562→          </div>
+   563→
+   564→          ${categoryRow('6',
+   565→            lang === 'ar' ? 'إجمالي المشتريات الخاضعة للضريبة القياسية (15%)' : 'Total standard-rated purchases (15%)',
+   566→            standardRatedPurchases,
+   567→            standardRatedPurchasesVat
+   568→          )}
+   569→          ${categoryRow('7',
+   570→            lang === 'ar' ? 'إجمالي المشتريات صفريه الضريبة' : 'Total zero-rated purchases',
+   571→            zeroRatedPurchases,
+   572→            0
+   573→          )}
+   574→          ${categoryRow('8',
+   575→            lang === 'ar' ? 'إجمالي المشتريات المعفاة من الضريبة' : 'Total exempt purchases',
+   576→            exemptPurchases,
+   577→            null
+   578→          )}
+   579→          ${categoryRow('9',
+   580→            lang === 'ar' ? 'الواردات الخاضعة للضريبة (احتساب عكسي)' : 'Imports subject to VAT (reverse charge)',
+   581→            importsSubjectToVAT,
+   582→            null
+   583→          )}
+   584→          ${categoryRow('10',
+   585→            lang === 'ar' ? 'إجمالي المشتريات (جميع الفئات)' : 'Total purchases (all categories)',
+   586→            totalPurchases,
+   587→            null,
+   588→            true
+   589→          )}
+   590→          ${categoryRow('11',
+   591→            lang === 'ar' ? 'إجمالي ضريبة المدخلات القابلة للخصم' : 'Total deductible input VAT',
+   592→            inputVat,
+   593→            inputVat,
+   594→            true
+   595→          )}
+   596→        </div>
+   597→
+   598→        <!-- ============ القسم الثالث: صافي الضريبة المستحقة ============ -->
+   599→        <div class="vat-net-box">
+   600→          <div class="vat-net-header">
+   601→            <span>
+   602→              ${lang === 'ar'
+   603→                ? 'القسم الثالث: احتساب صافي ضريبة القيمة المضافة'
+   604→                : 'Section 3: Net VAT Calculation'}
+   605→            </span>
+   606→            <span class="section-no">${lang === 'ar' ? 'حقل 12-14' : 'Fields 12-14'}</span>
+   607→          </div>
+   608→
+   609→          ${netRow('12',
+   610→            lang === 'ar' ? 'إجمالي ضريبة المخرجات (من الحقل 5)' : 'Total output VAT (from Field 5)',
+   611→            outputVat
+   612→          )}
+   613→          ${netRow('13',
+   614→            lang === 'ar' ? 'إجمالي ضريبة المدخلات (من الحقل 11)' : 'Total input VAT (from Field 11)',
+   615→            inputVat
+   616→          )}
+   617→          ${netRow('14',
+   618→            netLabel,
+   619→            Math.abs(netVat),
+   620→            isPayable ? 'payable' : 'refundable'
+   621→          )}
+   622→        </div>
+   623→
+   624→        <!-- ============ التحقق من دفتر اليومية ============ -->
+   625→        <div class="vat-gl-verify ${glMatch ? 'matched' : 'mismatched'}">
+   626→          <div class="vat-gl-verify-header">
+   627→            <div class="vat-gl-verify-icon">${glMatch ? '✓' : '!'}</div>
+   628→            <span>${lang === 'ar' ? 'التحقق من دفتر اليومية' : 'General Ledger Verification'}</span>
+   629→          </div>
+   630→          <div style="margin-bottom:6px;">
+   631→            ${glMatch
+   632→              ? (lang === 'ar'
+   633→                  ? `الأرقام متطابقة مع القيود اليومية المنشورة لهذه الفترة.`
+   634→                  : `Figures match posted journal entries for this period.`)
+   635→              : (lang === 'ar'
+   636→                  ? `يوجد اختلاف بين أرقام الإقرار ودفتر اليومية. يرجى مراجعة القيود.`
+   637→                  : `Mismatch between return figures and general ledger. Please review journal entries.`)
+   638→            }
+   639→          </div>
+   640→          <div class="vat-gl-comparison">
+   641→            <div class="vat-gl-comparison-col">
+   642→              <div class="vat-gl-comparison-label">${lang === 'ar' ? 'ضريبة المخرجات' : 'Output VAT'}</div>
+   643→              <div style="display:flex;justify-content:space-between;gap:4px;">
+   644→                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'الإقرار' : 'Return'}:</span>
+   645→                <span class="vat-gl-comparison-value">${fmtNum(outputVat)}</span>
+   646→              </div>
+   647→              <div style="display:flex;justify-content:space-between;gap:4px;">
+   648→                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'اليومية' : 'GL'}:</span>
+   649→                <span class="vat-gl-comparison-value">${fmtNum(glOutputVat)}</span>
+   650→              </div>
+   651→              <div style="display:flex;justify-content:space-between;gap:4px;border-top:1px dashed currentColor;margin-top:2px;padding-top:2px;">
+   652→                <span style="font-size:8.5px;font-weight:700;">${lang === 'ar' ? 'الفرق' : 'Diff'}:</span>
+   653→                <span class="vat-gl-comparison-value">${fmtNum(glDiffOutput)}</span>
+   654→              </div>
+   655→            </div>
+   656→            <div class="vat-gl-comparison-col">
+   657→              <div class="vat-gl-comparison-label">${lang === 'ar' ? 'ضريبة المدخلات' : 'Input VAT'}</div>
+   658→              <div style="display:flex;justify-content:space-between;gap:4px;">
+   659→                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'الإقرار' : 'Return'}:</span>
+   660→                <span class="vat-gl-comparison-value">${fmtNum(inputVat)}</span>
+   661→              </div>
+   662→              <div style="display:flex;justify-content:space-between;gap:4px;">
+   663→                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'اليومية' : 'GL'}:</span>
+   664→                <span class="vat-gl-comparison-value">${fmtNum(glInputVat)}</span>
+   665→              </div>
+   666→              <div style="display:flex;justify-content:space-between;gap:4px;border-top:1px dashed currentColor;margin-top:2px;padding-top:2px;">
+   667→                <span style="font-size:8.5px;font-weight:700;">${lang === 'ar' ? 'الفرق' : 'Diff'}:</span>
+   668→                <span class="vat-gl-comparison-value">${fmtNum(glDiffInput)}</span>
+   669→              </div>
+   670→            </div>
+   671→            <div class="vat-gl-comparison-col">
+   672→              <div class="vat-gl-comparison-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+   673→              <div style="font-weight:700;text-align:center;padding:4px 0;">
+   674→                ${glMatch
+   675→                  ? (lang === 'ar' ? '✓ متطابقة' : '✓ Matched')
+   676→                  : (lang === 'ar' ? '✗ اختلاف' : '✗ Mismatch')}
+   677→              </div>
+   678→            </div>
+   679→          </div>
+   680→        </div>
+   681→
+   682→        <!-- ============ بيانات السداد ============ -->
+   683→        ${status === 'PAID' && paymentDate ? `
+   684→          <div class="vat-payment-info">
+   685→            <div class="vat-payment-info-row">
+   686→              <span><strong>${lang === 'ar' ? 'حالة السداد:' : 'Payment Status:'}</strong> ${lang === 'ar' ? 'مدفوع' : 'Paid'}</span>
+   687→              <span><strong>${lang === 'ar' ? 'تاريخ السداد:' : 'Payment Date:'}</strong> ${formatDate(paymentDate, lang)}</span>
+   688→            </div>
+   689→            ${paymentRef ? `
+   690→              <div class="vat-payment-info-row">
+   691→                <span><strong>${lang === 'ar' ? 'رقم مرجع السداد:' : 'Payment Reference:'}</strong> <span dir="ltr">${paymentRef}</span></span>
+   692→                <span></span>
+   693→              </div>
+   694→            ` : ''}
+   695→          </div>
+   696→        ` : status === 'FILED' ? `
+   697→          <div class="vat-payment-info" style="background:#fef3c7;border-color:#fcd34d;color:#92400e;">
+   698→            <div class="vat-payment-info-row">
+   699→              <span><strong>${lang === 'ar' ? 'حالة السداد:' : 'Payment Status:'}</strong> ${lang === 'ar' ? 'غير مدفوع — بانتظار السداد' : 'Not Paid — Pending'}</span>
+   700→              <span><strong>${lang === 'ar' ? 'تاريخ التقديم:' : 'Filed Date:'}</strong> ${filedDate ? formatDate(filedDate, lang) : '—'}</span>
+   701→            </div>
+   702→          </div>
+   703→        ` : ''}
+   704→
+   705→        <!-- ============ تاريخ الإنشاء والملاحظات ============ -->
+   706→        <div style="margin-top:8px;font-size:9px;color:#64748b;text-align:center;">
+   707→          ${lang === 'ar'
+   708→            ? `تم إنشاء هذا الإقرار بتاريخ ${createdAt ? formatDate(createdAt, lang) : '—'} — جميع الأرقام محسوبة آلياً من العمليات الخاضعة للضريبة ومجمّدة عند التقديم.`
+   709→            : `This return was generated on ${createdAt ? formatDate(createdAt, lang) : '—'} — All figures are auto-calculated from taxable operations and frozen upon filing.`}
+   710→        </div>
+   711→
+   712→        ${signaturesSection(settings, lang)}
+   713→      </div>
+   714→    `
+   715→  },
+   716→}
+   717→

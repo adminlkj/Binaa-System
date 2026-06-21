@@ -1338,3 +1338,93 @@ Stage Summary:
 - ✅ **liveCalc في الطباعة**: كل من `print-button.tsx` و `print/route.ts` يستخدمان `calculateVatForQuarter` لاحتساب GL verification مباشرةً (live).
 - ✅ **إصلاح البيانات**: إعادة تسمية `JE-000NaN` → `JE-000011`، إعادة تأريخ قيود VAT، تحديث sourceType.
 - ملفات معدّلة: `src/app/api/vat/route.ts`, `src/lib/accounting/engine.ts`, `src/lib/vat-calc.ts`, `src/printing/tax/VatReturn.ts`, `src/components/shared/print-button.tsx`, `src/app/api/print/route.ts`.
+
+---
+Task ID: 10
+Agent: Code Agent
+Task: إصلاح ظهور أكواد CSS في الإقرار الضريبي المطبوع
+
+Work Log:
+
+**1. تشخيص المشكلة الجذرية:**
+- المستخدم اشتكى أن أكواد CSS تظهر كنص داخل الإقرار الضريبي المطبوع (مثل `.ri-header { background: linear-gradient(135deg, #822100 0%, #963500 40%, #b45309 100%) !important; }`)
+- فحصت `src/printing/print-service.ts` ووجدت أنه يغلّف CSS في وسم واحد:
+  ```html
+  <style>${css}
+    ${colorOverrideCSS}
+    ${fontOverrideCSS}</style>
+  ```
+- فحصت `src/printing/tax/VatReturn.ts` ووجدت أن `getCSS()` يُرجع CSS مُغلَّف في وسوم `<style>...</style>`:
+  ```typescript
+  getCSS(lang) {
+    return `
+      ${baseCSS}
+      <style>
+        .vat-form { ... }
+        ...
+      </style>
+    `
+  }
+  ```
+- **النتيجة:** وسوم `<style>` متداخلة (nested) → المتصفح يُغلق الوسم الخارجي عند أول `</style>` → كل ما بعده (colorOverrideCSS و fontOverrideCSS) يُعرض كنص عادي في الصفحة!
+
+**2. الإصلاح (src/printing/tax/VatReturn.ts):**
+- حذفت وسم `<style>` الافتتاحي من `getCSS()` (سطر 58 سابقاً)
+- حذفت وسم `</style>` الإغلاقي من `getCSS()` (سطر 312 سابقاً)
+- أضفت تعليقاً توضيحياً يشرح السبب:
+  ```typescript
+  // ملاحظة: يجب إرجاع CSS خام فقط بدون وسوم <style> لأن print-service.ts
+  // يغلّف النتيجة في وسم <style> واحد. وضع وسوم <style> هنا يسبب تداخلاً
+  // يؤدي إلى ظهور أكواد CSS كنص داخل الصفحة المطبوعة.
+  ```
+- الآن `getCSS()` يُرجع CSS خام فقط (17,090 حرف) بدون أي وسوم `<style>` - مطابق لبقية القوالب (JournalEntry, IncomeStatement, إلخ.)
+
+**3. التحقق من البنية النهائية (اختبار برمجي):**
+- اختبرت `template.getCSS('ar')`:
+  - `Has <style> tag? false` ✅
+  - `Has </style> tag? false` ✅
+- اختبرت `generatePrintHTML()` للإقرار الضريبي:
+  - `HEAD <style> open count: 1` ✅ (واحد فقط)
+  - `HEAD </style> close count: 1` ✅ (واحد فقط)
+  - `Has nested <style>: false` ✅
+  - `Text after </style> in head: ""` ✅ (لا يوجد تسريب)
+  - `Body <style> count: 1` ✅ (البلوك الـ inline في body للتنسيقات الديناميكية - HTML5 صالح)
+
+**4. الاختبار الشامل عبر المتصفح (agent-browser):**
+- فتحت `http://localhost:3000/`
+- تنقلت: المحاسبة والتقارير → ضريبة القيمة المضافة → تبويب "الإقرار الضريبي"
+- غيّرت السنة إلى 2024
+- ضغطت "عرض التفاصيل" على Q3 2024
+- ضغطت "طباعة" → فُتحت نافذة طباعة جديدة
+- أخذت snapshot للصفحة:
+  - العنوان: "إقرار ضريبة القيمة المضافة — هيئة الزكاة والضريبة والجمارك" ✅
+  - العنوان الفرعي: "المملكة العربية السعودية — نموذج VAT-301" ✅
+  - لافتة التعديل: "⚠ هذا الإقرار تعديل لإقرار سابق تم إلغاؤه" ✅
+  - 4 صناديق معلومات (الرقم الضريبي، السجل التجاري، فترة الإقرار، حالة الإقرار) ✅
+  - القسم الأول: ضريبة المخرجات - حقول 1-5 بقيم صحيحة (3,315,000.00 / 497,250.00) ✅
+  - القسم الثاني: ضريبة المدخلات - حقول 6-11 بقيم صحيحة (812,000.00 / 121,800.00) ✅
+  - القسم الثالث: صافي الضريبة - حقول 12-14 (375,450.00) ✅
+  - قسم التحقق من دفتر اليومية مع مقارنة الإقرار vs اليومية ✅
+  - **لا توجد أي أكواد CSS ظاهرة في الصفحة** ✅
+- أخذت لقطة شاشة: `verify-vat-print-after-fix.png`
+
+**5. التحقق البصري عبر VLM:**
+- استخدمت `z-ai vision` لتحليل لقطة الشاشة
+- السؤال: "هل تحتوي صفحة الإقرار المطبوعة على أكواد CSS ظاهرة؟"
+- الإجابة: "No. The page displays a tax declaration with Arabic text, numerical data, and structured sections. No visible CSS code, programming syntax, or technical text (like '.ri-header', '@media print', 'font-family', '!important') is present. The content is purely the tax form's data and layout." ✅
+- سؤال ثانٍ عن العناصر البصرية:
+  - العنوان: VAT Return title ✅
+  - رؤوس الأقسام ملوّنة (amber/brown #b45309) ✅
+  - كل الحقول الـ 14 مرئية مع المبالغ ✅
+  - قسم GL verification موجود ✅
+  - الصفحة احترافية ونظيفة ✅
+
+**6. lint:** يمر بنجاح (الخطأ الوحيد في `take-screenshots.mjs` موجود مسبقاً)
+
+Stage Summary:
+- ✅ **السبب الجذري:** وسوم `<style>` متداخلة بسبب أن `VatReturn.getCSS()` يُرجع CSS مغلَّفاً في `<style>...</style>`، بينما `print-service.ts` يُغلِّف النتيجة مرة أخرى في `<style>...</style>`. المتصفح يُغلق الوسم الخارجي عند أول `</style>`، فيتحول `colorOverrideCSS` و `fontOverrideCSS` إلى نص عادي يُعرض في الصفحة.
+- ✅ **الإصلاح:** حذف وسوم `<style>` و `</style>` من `getCSS()` في `VatReturn.ts` ليُصبح يُرجع CSS خام فقط - مطابقاً لكل القوالب الأخرى.
+- ✅ **التحقق البرمجي:** اختبرت `getCSS()` و `generatePrintHTML()` - لا يوجد تداخل في وسوم `<style>`، لا يوجد تسريب نصي بعد `</style>`.
+- ✅ **التحقق عبر المتصفح:** فتحت نافذة الطباعة فعلياً، أخذت snapshot ولقطة شاشة - لا توجد أكواد CSS ظاهرة، كل المحتوى صحيح.
+- ✅ **التحقق البصري (VLM):** نموذج رؤية حاسوبية أكّد أن الصفحة نظيفة، احترافية، تحتوي على كل العناصر المتوقعة، ولا تحتوي على أي أكواد تقنية.
+- ملفات معدّلة: `src/printing/tax/VatReturn.ts` (حذف `<style>` و `</style>` من `getCSS()`).
