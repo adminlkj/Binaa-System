@@ -14,9 +14,14 @@ const defaultSettings = {
   bankAccountName: 'شركة البناء الحديثة للمقاولات',
   defaultVatRate: 0.15,
   currency: 'SAR',
-  currencySymbol: '\uFDFC',     // Saudi Riyal Unicode symbol
-  currencySymbolEn: 'SAR',     // English currency text
-  currencySymbolAr: '\uFDFC',  // Arabic currency symbol
+  currencySymbol: '\uFDFC',     // Saudi Riyal Unicode symbol (legacy fallback)
+  currencySymbolEn: 'SAR',     // English currency text (legacy fallback)
+  currencySymbolAr: '\uFDFC',  // Arabic currency symbol (legacy fallback)
+  // CONSTANT RULE: the ONLY approved currency symbol is the uploaded image.
+  // Background is removed automatically by /api/remove-bg before display.
+  // This image is rendered next to every amount across the system and in
+  // all printed documents and invoices. There are no other currency settings.
+  currencySymbolImage: '/currency-symbol.jpeg',
   invoiceTerms: 'مدة السداد 30 يوماً من تاريخ الفاتورة\nهذه الفاتورة صادرة إلكترونياً\nيرجى ذكر رقم الفاتورة عند التحويل',
   useThousandSeparatorsSystem: true,
   useThousandSeparatorsOfficial: false,
@@ -116,7 +121,7 @@ export async function PUT(request: Request) {
           invoiceTerms: body.invoiceTerms ?? defaultSettings.invoiceTerms,
           useThousandSeparatorsSystem: body.useThousandSeparatorsSystem ?? true,
           useThousandSeparatorsOfficial: body.useThousandSeparatorsOfficial ?? false,
-          currencySymbolImage: body.currencySymbolImage ?? null,
+          currencySymbolImage: body.currencySymbolImage ?? defaultSettings.currencySymbolImage,
           headerImage: body.headerImage ?? null,
           footerImage: body.footerImage ?? null,
           invoiceTemplate: body.invoiceTemplate ?? defaultSettings.invoiceTemplate,

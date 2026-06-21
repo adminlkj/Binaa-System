@@ -1399,28 +1399,38 @@ function InvoiceTemplatesTab() {
                       <td className="px-3 py-1.5">1</td>
                       <td className="px-2 py-1.5">تأجير حفارة - 180 ساعة</td>
                       <td className="text-center px-2 py-1.5">180</td>
-                      <td className="text-left px-2 py-1.5 font-mono">923.08</td>
-                      <td className="text-left px-3 py-1.5 font-mono font-semibold">166,153.85</td>
+                      <td className="text-left px-2 py-1.5 font-mono">
+                        <MoneyDisplay value={923.08} mode="system" lang="ar" size="xs" inline />
+                      </td>
+                      <td className="text-left px-3 py-1.5 font-mono font-semibold">
+                        <MoneyDisplay value={166153.85} mode="system" lang="ar" size="xs" inline bold />
+                      </td>
                     </tr>
                   </tbody>
                 </table>
 
                 {/* Totals */}
                 <div className="px-4 py-2 space-y-1 text-[10px] border-t" style={{ borderColor: `${form.invoicePrimaryColor}22` }}>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-gray-500">المجموع الفرعي</span>
-                    <span className="font-mono">166,153.85 ر.س</span>
+                    <span className="font-mono">
+                      <MoneyDisplay value={166153.85} mode="system" lang="ar" size="xs" inline />
+                    </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between items-center">
                     <span className="text-gray-500">ضريبة القيمة المضافة (15%)</span>
-                    <span className="font-mono">24,923.08 ر.س</span>
+                    <span className="font-mono">
+                      <MoneyDisplay value={24923.08} mode="system" lang="ar" size="xs" inline />
+                    </span>
                   </div>
                   <div
                     className="flex justify-between items-center px-2 py-1.5 rounded mt-1"
                     style={{ background: `${form.invoicePrimaryColor}11` }}
                   >
                     <span className="font-bold" style={{ color: form.invoicePrimaryColor }}>الإجمالي</span>
-                    <span className="font-mono font-bold text-sm" style={{ color: form.invoicePrimaryColor }}>191,076.93 ر.س</span>
+                    <span className="font-mono font-bold text-sm" style={{ color: form.invoicePrimaryColor }}>
+                      <MoneyDisplay value={191076.93} mode="system" lang="ar" size="sm" inline bold />
+                    </span>
                   </div>
                 </div>
 

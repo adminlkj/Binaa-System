@@ -30,6 +30,10 @@ interface CompanySettings {
   currencySymbol?: string
   currencySymbolEn?: string
   currencySymbolAr?: string
+  // CONSTANT RULE: the ONLY approved currency symbol is this image.
+  // Background is removed automatically and the symbol is rendered next
+  // to every amount in the invoice.
+  currencySymbolImage?: string | null
   invoiceTerms?: string | null
 }
 
@@ -188,6 +192,86 @@ function fmtAr(num: number, company: CompanySettings): string {
 /** Format amount with currency symbol for inline display (English side) */
 function fmtEn(num: number, company: CompanySettings): string {
   return `${getCurrencySymbolEn(company)} ${fmt(num)}`
+}
+
+// ============ Invoice Currency Symbol (image-aware) ============
+/**
+ * Renders the approved currency symbol image (with background removed)
+ * next to invoice amounts. Falls back to the text <CurrencySymbol> SVG
+ * only when no image is configured.
+ *
+ * CONSTANT RULE: the uploaded image is the ONLY approved currency symbol.
+ */
+const invoiceSymbolCache = new Map<string, string>()
+function InvoiceCurrencySymbol({
+  company,
+  size = 'xs',
+  className = '',
+}: {
+  company: CompanySettings
+  size?: 'xs' | 'sm'
+  className?: string
+}) {
+  const img = company.currencySymbolImage
+  const [processed, setProcessed] = useState<string | null>(() =>
+    img ? invoiceSymbolCache.get(img) ?? null : null
+  )
+
+  useEffect(() => {
+    if (!img) return
+    // If already processed (from initial cache or a prior fetch), no work to do.
+    if (processed) return
+    let cancelled = false
+    fetch('/api/remove-bg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageUrl: img }),
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (!cancelled && data?.dataUrl) {
+          invoiceSymbolCache.set(img, data.dataUrl)
+          setProcessed(data.dataUrl)
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [img, processed])
+
+  if (img) {
+    const px = size === 'xs' ? 12 : 14
+    if (processed) {
+      return (
+        <img
+          src={processed}
+          alt="currency"
+          className={`inline-block ${className}`}
+          style={{
+            height: `${px}px`,
+            width: 'auto',
+            verticalAlign: 'middle',
+            display: 'inline-block',
+            margin: '0 2px',
+          }}
+        />
+      )
+    }
+    // Placeholder while background-removal is processing
+    return (
+      <span
+        className={`inline-block animate-pulse rounded ${className}`}
+        style={{
+          height: `${px}px`,
+          width: `${px}px`,
+          verticalAlign: 'middle',
+          backgroundColor: 'rgba(0,0,0,0.06)',
+          margin: '0 2px',
+        }}
+      />
+    )
+  }
+  // Fallback to text/SVG symbol when no image is configured
+  return <CurrencySymbol symbol={getCurrencySymbolAr(company)} size={size} className={className} />
 }
 
 // ============ Component ============
@@ -510,7 +594,9 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   <div className="flex gap-2">
                     <span className="text-amber-600">سعر الساعة:</span>
                     <span className="font-semibold text-gray-800 font-mono" dir="ltr">
-                      {fmt(invoice.hourlyRate)} <CurrencySymbol symbol={symbolAr} size="xs" />
+                      <span className="inline-flex items-center gap-1">
+                        {fmt(invoice.hourlyRate)} <InvoiceCurrencySymbol company={company} size="xs" />
+                      </span>
                     </span>
                   </div>
                 )}
@@ -560,10 +646,14 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   </td>
                   <td className="py-2.5 px-3 text-center text-gray-600 border-l border-gray-200">{item.unit || '—'}</td>
                   <td className="py-2.5 px-3 text-left text-gray-800 font-mono border-l border-gray-200" dir="ltr">
-                    {fmt(item.unitPrice)} <CurrencySymbol symbol={symbolAr} size="xs" />
+                    <span className="inline-flex items-center gap-1">
+                      {fmt(item.unitPrice)} <InvoiceCurrencySymbol company={company} size="xs" />
+                    </span>
                   </td>
                   <td className="py-2.5 px-3 text-left text-gray-900 font-semibold font-mono" dir="ltr">
-                    {fmt(item.totalPrice)} <CurrencySymbol symbol={symbolAr} size="xs" />
+                    <span className="inline-flex items-center gap-1">
+                      {fmt(item.totalPrice)} <InvoiceCurrencySymbol company={company} size="xs" />
+                    </span>
                   </td>
                 </tr>
               ))}
@@ -574,7 +664,9 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   الإجمالي / Subtotal
                 </td>
                 <td className="py-2.5 px-3 text-left font-bold text-emerald-800 font-mono" dir="ltr">
-                  {fmt(invoice.subtotal)} <CurrencySymbol symbol={symbolAr} size="xs" />
+                  <span className="inline-flex items-center gap-1">
+                    {fmt(invoice.subtotal)} <InvoiceCurrencySymbol company={company} size="xs" />
+                  </span>
                 </td>
               </tr>
             </tfoot>
@@ -617,7 +709,9 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                 <div className="flex justify-between">
                   <span className="text-gray-600">الإجمالي قبل الضريبة</span>
                   <span className="font-semibold text-gray-800 font-mono" dir="ltr">
-                    {fmtAr(invoice.subtotal, company)}
+                    <span className="inline-flex items-center gap-1">
+                      {fmt(invoice.subtotal)} <InvoiceCurrencySymbol company={company} size="xs" />
+                    </span>
                   </span>
                 </div>
 
@@ -625,7 +719,11 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                 {invoice.discountAmount > 0 && (
                   <div className="flex justify-between text-rose-600">
                     <span>الخصم {invoice.discountRate > 0 ? `(${(invoice.discountRate * 100).toFixed(0)}%)` : ''}</span>
-                    <span className="font-semibold font-mono" dir="ltr">-{fmtAr(invoice.discountAmount, company)}</span>
+                    <span className="font-semibold font-mono" dir="ltr">
+                      <span className="inline-flex items-center gap-1">
+                        -{fmt(invoice.discountAmount)} <InvoiceCurrencySymbol company={company} size="xs" />
+                      </span>
+                    </span>
                   </div>
                 )}
 
@@ -634,7 +732,9 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   <div className="flex justify-between">
                     <span className="text-gray-600">صافي المبلغ</span>
                     <span className="font-semibold text-gray-800 font-mono" dir="ltr">
-                      {fmtAr(netAmount, company)}
+                      <span className="inline-flex items-center gap-1">
+                        {fmt(netAmount)} <InvoiceCurrencySymbol company={company} size="xs" />
+                      </span>
                     </span>
                   </div>
                 )}
@@ -644,7 +744,9 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   <div className="flex justify-between text-amber-700">
                     <span>مصروف التوصيل</span>
                     <span className="font-semibold font-mono" dir="ltr">
-                      {fmtAr(deliveryAmt, company)}
+                      <span className="inline-flex items-center gap-1">
+                        {fmt(deliveryAmt)} <InvoiceCurrencySymbol company={company} size="xs" />
+                      </span>
                     </span>
                   </div>
                 )}
@@ -654,7 +756,9 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                   <div className="flex justify-between">
                     <span className="text-gray-600">ضريبة القيمة المضافة ({(invoice.vatRate * 100).toFixed(0)}%)</span>
                     <span className="font-semibold text-gray-800 font-mono" dir="ltr">
-                      {fmtAr(invoice.vatAmount, company)}
+                      <span className="inline-flex items-center gap-1">
+                        {fmt(invoice.vatAmount)} <InvoiceCurrencySymbol company={company} size="xs" />
+                      </span>
                     </span>
                   </div>
                 )}
@@ -665,8 +769,10 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
                 {/* Grand Total */}
                 <div className="flex justify-between items-center bg-emerald-600 -mx-5 px-5 py-3 rounded-b-lg">
                   <span className="text-white font-bold text-base">الإجمالي النهائي</span>
-                  <span className="text-white font-bold text-lg font-mono flex items-center gap-1" dir="ltr">
-                    {fmt(invoice.totalAmount)} <CurrencySymbol symbol={symbolAr} size="sm" className="text-white" />
+                  <span className="text-white font-bold text-lg font-mono" dir="ltr">
+                    <span className="inline-flex items-center gap-1">
+                      {fmt(invoice.totalAmount)} <InvoiceCurrencySymbol company={company} size="sm" className="text-white" />
+                    </span>
                   </span>
                 </div>
               </div>
@@ -749,9 +855,9 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
               <span>التاريخ: <span dir="ltr">{fmtDate(invoice.date)}</span></span>
             </div>
             <div className="flex items-center justify-center gap-4 text-xs text-emerald-200 mt-1">
-              <span>الإجمالي: <span dir="ltr">{fmtAr(invoice.totalAmount, company)}</span></span>
+              <span className="inline-flex items-center gap-1">الإجمالي: <span dir="ltr" className="inline-flex items-center gap-1">{fmt(invoice.totalAmount)} <InvoiceCurrencySymbol company={company} size="xs" /></span></span>
               <span className="text-emerald-300">|</span>
-              <span>إجمالي الضريبة: <span dir="ltr">{fmtAr(effectiveVatAmount, company)}</span></span>
+              <span className="inline-flex items-center gap-1">إجمالي الضريبة: <span dir="ltr" className="inline-flex items-center gap-1">{fmt(effectiveVatAmount)} <InvoiceCurrencySymbol company={company} size="xs" /></span></span>
             </div>
           </div>
         </div>
