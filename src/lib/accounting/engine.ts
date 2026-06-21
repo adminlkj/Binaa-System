@@ -420,9 +420,24 @@ export async function reverseEntry(journalEntryId: string, tx: PrismaTransaction
     throw new Error('القيد محسوب عكسه مسبقاً - يوجد قيد عكسي مرتبط بهذا القيد')
   }
 
-  // 4. Generate next entry number
-  const last = await tx.journalEntry.findFirst({ orderBy: { entryNo: 'desc' } })
-  const next = last ? parseInt(last.entryNo.replace('JE-', '')) + 1 : 1
+  // 4. Generate next sequential entry number (JE-NNNNNN format)
+  // ابحث عن آخر قيد يتبع التنسيق JE-NNNNNN فقط. القيود التلقائية تستخدم
+  // تنسيقاً مختلفاً (JE-SI-TIMESTAMP، JE-VAT-TIMESTAMP إلخ) ويجب تجاهلها
+  // عند توليد الرقم التسلسلي حتى لا نحصل على "JE-000NaN".
+  const numberedEntries = await tx.journalEntry.findMany({
+    where: { entryNo: { startsWith: 'JE-' } },
+    select: { entryNo: true },
+  })
+  let maxNum = 0
+  for (const e of numberedEntries) {
+    // extract the part after "JE-" and check if it's purely numeric
+    const tail = e.entryNo.slice(3)
+    if (/^\d+$/.test(tail)) {
+      const n = parseInt(tail, 10)
+      if (!isNaN(n) && n > maxNum) maxNum = n
+    }
+  }
+  const next = maxNum + 1
   const entryNo = `JE-${next.toString().padStart(6, '0')}`
 
   // 5. Build reversal description with "عكس" prefix

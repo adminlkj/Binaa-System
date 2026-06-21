@@ -158,6 +158,8 @@ enum VATReturnStatus {
   DRAFT
   FILED
   PAID
+  CANCELLED
+  AMENDED
 }
 
 enum EmployeeStatus {
@@ -1669,25 +1671,58 @@ model VATReturn {
   id                 String          @id @default(cuid())
   year               Int
   quarter            Int
-  period             String          @unique
+  period             String
   totalSales         Decimal         @default(0)
   outputVat          Decimal         @default(0)
   totalPurchases     Decimal         @default(0)
   inputVat           Decimal         @default(0)
   netVat             Decimal         @default(0)
-  salesInvoiceIds    String?
-  purchaseInvoiceIds String?
-  expenseIds         String?
+
+  // ZATCA-style category breakdown (Output / Sales side)
+  standardRatedSales   Decimal       @default(0) // مبيعات خاضعة للضريبة بنسبة 15%
+  zeroRatedSales       Decimal       @default(0) // مبيعات صفريه الضريبة (صادرات)
+  exemptSales          Decimal       @default(0) // مبيعات معفاة من الضريبة
+  standardRatedSalesVat Decimal      @default(0) // ضريبة المبيعات الخاضعة 15%
+
+  // ZATCA-style category breakdown (Input / Purchases side)
+  standardRatedPurchases Decimal     @default(0) // مشتريات خاضعة بنسبة 15%
+  zeroRatedPurchases     Decimal     @default(0) // مشتريات صفريه الضريبة
+  exemptPurchases        Decimal     @default(0) // مشتريات معفاة
+  importsSubjectToVAT    Decimal     @default(0) // واردات خاضعة (احتساب عكسي)
+  standardRatedPurchasesVat Decimal  @default(0) // ضريبة المشتريات الخاضعة 15%
+
+  // GL cross-check (التحقق من المطابقة لدفتر اليومية)
+  glOutputVat        Decimal         @default(0) // رصيد حساب ضريبة المخرجات من دفتر اليومية
+  glInputVat         Decimal         @default(0) // رصيد حساب ضريبة المدخلات من دفتر اليومية
+  glMatch            Boolean         @default(true) // هل تطابقت الأرقام مع دفتر اليومية؟
+
+  // Source document ID lists (JSON arrays)
+  salesInvoiceIds        String?
+  purchaseInvoiceIds     String?
+  expenseIds             String?
+  subcontractorInvoiceIds String?
+  progressClaimIds       String?
+
   status             VATReturnStatus @default(DRAFT)
   filedDate          DateTime?
   paymentDate        DateTime?
   paymentReference   String?
   journalEntryId     String?
+  paymentJournalEntryId String?
+
+  // Reversal / amendment tracking
+  cancelledAt        DateTime?
+  cancelledReason    String?
+  amendedFromId      String? // الإقرار الأصلي الذي تم تعديله
+  isAmendment        Boolean         @default(false)
+
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
 
   @@index([status])
   @@index([year, quarter])
+  @@index([period])
+  @@index([amendedFromId])
 }
 
 // ============ CLIENT PAYMENTS ============

@@ -1,77 +1,9 @@
 import { db } from '@/lib/db'
 import { serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { calculateVatForQuarter } from '@/lib/vat-calc'
 
-// PATCH: Update VAT return status and/or record payment
-// Cannot modify financial numbers (frozen snapshot)
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params
-    const body = await request.json()
-
-    const existing = await db.vATReturn.findUnique({ where: { id } })
-    if (!existing) {
-      return NextResponse.json({ error: 'الإقرار الضريبي غير موجود' }, { status: 404 })
-    }
-
-    // Validate status transitions: DRAFT → FILED → PAID
-    const validTransitions: Record<string, string[]> = {
-      DRAFT: ['FILED'],
-      FILED: ['PAID'],
-      PAID: [],
-    }
-
-    const newStatus = body.status as string | undefined
-
-    if (newStatus) {
-      const allowed = validTransitions[existing.status] || []
-      if (!allowed.includes(newStatus)) {
-        return NextResponse.json(
-          { error: `لا يمكن تغيير الحالة من ${existing.status} إلى ${newStatus}. الانتقالات المسموحة: ${allowed.join(', ') || 'لا يوجد'}` },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Build update data
-    const updateData: Record<string, unknown> = {}
-
-    if (newStatus) {
-      updateData.status = newStatus
-    }
-
-    // Filing: record filed date when transitioning to FILED
-    if (newStatus === 'FILED') {
-      updateData.filedDate = new Date()
-    }
-
-    // Payment recording (only when transitioning to PAID)
-    if (newStatus === 'PAID') {
-      if (body.paymentDate) {
-        updateData.paymentDate = new Date(body.paymentDate)
-      } else {
-        updateData.paymentDate = new Date()
-      }
-      if (body.paymentReference) {
-        updateData.paymentReference = body.paymentReference
-      }
-    }
-
-    const updated = await db.vATReturn.update({
-      where: { id },
-      data: updateData,
-    })
-
-    return NextResponse.json(serializeDecimal(updated))
-  } catch (error) {
-    console.error('Error updating VAT return:', error)
-  }
-}
-
-// GET single VAT return
+// ============ GET: Single VAT return with full breakdown ============
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -82,8 +14,55 @@ export async function GET(
     if (!vatReturn) {
       return NextResponse.json({ error: 'الإقرار الضريبي غير موجود' }, { status: 404 })
     }
-    return NextResponse.json(serializeDecimal(vatReturn))
+
+    // احسب الأرقام الحية لمقارنتها بالإقرار المجمّد
+    const liveCalc = await calculateVatForQuarter(vatReturn.year, vatReturn.quarter)
+
+    // أوجد كل الإقرارات لنفس الفترة (لمعرفة السلسلة - الملغى والمعدل)
+    const periodChain = await db.vATReturn.findMany({
+      where: { period: vatReturn.period },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        status: true,
+        isAmendment: true,
+        cancelledAt: true,
+        cancelledReason: true,
+        filedDate: true,
+        createdAt: true,
+        netVat: true,
+      },
+    })
+
+    return NextResponse.json(serializeDecimal({
+      declaration: vatReturn,
+      liveCalc: {
+        totalSales: liveCalc.totalSales,
+        outputVat: liveCalc.outputVat,
+        totalPurchases: liveCalc.totalPurchases,
+        inputVat: liveCalc.inputVat,
+        netVat: liveCalc.netVat,
+        glOutputVat: liveCalc.glOutputVat,
+        glInputVat: liveCalc.glInputVat,
+        glMatch: liveCalc.glMatch,
+        glDiffOutput: liveCalc.glDiffOutput,
+        glDiffInput: liveCalc.glDiffInput,
+        categories: liveCalc.categories,
+      },
+      breakdown: {
+        salesInvoices: liveCalc.salesInvoices,
+        progressClaims: liveCalc.progressClaims,
+        purchaseInvoices: liveCalc.purchaseInvoices,
+        subcontractorInvoices: liveCalc.subcontractorInvoices,
+        expenses: liveCalc.expenses,
+      },
+      periodChain,
+      hasChangedSinceFiling:
+        Math.abs(liveCalc.outputVat - Number(vatReturn.outputVat)) > 0.5 ||
+        Math.abs(liveCalc.inputVat - Number(vatReturn.inputVat)) > 0.5,
+    }))
   } catch (error) {
     console.error('Error fetching VAT return:', error)
+    return NextResponse.json({ error: 'فشل في تحميل الإقرار الضريبي' }, { status: 500 })
   }
 }

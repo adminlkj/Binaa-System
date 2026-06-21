@@ -1082,3 +1082,152 @@ Stage Summary:
 - Header/footer image uploads flow through to the rendered invoice (header band at top, footer band at bottom replacing the default gradient).
 - "بِنَاء ERP" / "Binaa ERP" branding removed from every printed document footer (headers-footers.ts and unified-print-engine.ts).
 - 6 design templates available: Classic, Modern, Minimal, Corporate, Royal, Ocean — selectable from Settings → Invoice Templates tab.
+
+---
+Task ID: VAT-REVAMP-1
+Agent: Code Agent (Main)
+Task: مراجعة الإقرار الضريبي وتصميمه وأزراره، التأكد من إمكانية التراجع عن الإقرار وإعادة إنشاؤه لإعادة الاحتساب، مطابقة الشكل لمواصفات هيئة الزكاة والضريبة، جعل المطبوع واضحاً ومشابهاً للاقرارات الضريبية العالمية وفقاً لمعايير المملكة، التحقق من صحة الأرقام ومطابقتها لدفتر اليومية، احتساب الأرصدة من العمليات الخاضعة للضريبة فقط، إضافة زر تصدير الإقرار بحسب الربع.
+
+Work Log:
+
+**1. تحديث Prisma Schema (prisma/schema.prisma):**
+- أضيف `CANCELLED` و `AMENDED` إلى enum `VATReturnStatus` (كان فقط DRAFT/FILED/PAID)
+- أزيل قيد `@unique` من حقل `period` للسماح بإنشاء إقرار جديد للفترة بعد إلغاء السابق
+- أضيفت حقول تصنيف ZATCA إلى `VATReturn`:
+  - للمبيعات: `standardRatedSales`, `zeroRatedSales`, `exemptSales`, `standardRatedSalesVat`
+  - للمشتريات: `standardRatedPurchases`, `zeroRatedPurchases`, `exemptPurchases`, `importsSubjectToVAT`, `standardRatedPurchasesVat`
+- أضيفت حقول التحقق من دفتر اليومية: `glOutputVat`, `glInputVat`, `glMatch`
+- أضيفت حقول تتبع التراجع: `cancelledAt`, `cancelledReason`, `amendedFromId`, `isAmendment`
+- أضيفت حقول إضافية: `subcontractorInvoiceIds`, `progressClaimIds`, `paymentJournalEntryId`
+- تم تنفيذ `bun run db:push` لمزامنة الـ schema مع قاعدة البيانات
+
+**2. إنشاء محرك احتساب الضريبة (src/lib/vat-calc.ts — جديد):**
+- دالة `classifyVatCategory(vatRate)`: تصنّف العملية حسب نسبة الضريبة (STANDARD 15% / ZERO / EXEMPT)
+- دالة `getVatGlBalance(role, startDate, endDate)`: تحسب رصيد حساب ضريبة المخرجات/المدخلات من القيود اليومية المنشورة فقط
+  - ضريبة المخرجات (liability): `credit - debit`
+  - ضريبة المدخلات (asset): `debit - credit`
+- دالة `calculateVatForQuarter(year, quarter)`: الحساب الرئيسي الذي:
+  - يستخرج كل العمليات الخاضعة للضريبة (مبيعات/مستخلصات/مشتريات/مقاولي باطن/مصروفات) في الفترة
+  - يصنّفها حسب نسبة الضريبة
+  - يحسب الإجماليات والتصنيفات
+  - يتقاطع مع دفتر اليومية ويعيد `glMatch`, `glDiffOutput`, `glDiffInput`
+  - يعيد البنود التفصيلية مع كل المعلومات اللازمة للعرض والطباعة
+
+**3. إعادة كتابة API الإقرار الضريبي (src/app/api/vat/route.ts):**
+- **GET**: يدعم `year` + `quarter` لإرجاع البيانات الكاملة (declaration, autoCalc, categories, breakdown, allDeclarationsForPeriod)
+- **POST**: ينشئ الإقرار كلقطط مجمّد:
+  - يستخدم `calculateVatForQuarter` للاحتساب
+  - يرفض الإنشاء إذا كان يوجد إقرار نشط (غير ملغى) للفترة
+  - يحدد `isAmendment=true` ويضع `amendedFromId` إذا كان يوجد إقرار ملغى للفترة
+  - يحفظ كل التصنيفات وقوائم المعرفات
+- **PATCH** يدعم 3 إجراءات:
+  - `FILE` (DRAFT→FILED): ينشئ قيد اليومية عبر `autoEntryVATDeclaration` (Dr Output VAT, Cr Input VAT, Cr/Dr VAT Due/Refund)
+  - `PAY` (FILED→PAID): ينشئ قيد السداد عبر `autoEntryVATPayment` (Dr VAT Due, Cr Bank)
+  - `REVERSE` (FILED/PAID→CANCELLED): يعكس القيود المرتبطة عبر `reverseEntry`، يسجل `cancelledAt` و `cancelledReason`
+- **DELETE** (جديد): يحذف الإقرارات في حالة DRAFT فقط (لا يمكن حذف المُقدَّم)
+
+**4. إعادة كتابة GET /api/vat/[id] (src/app/api/vat/[id]/route.ts):**
+- يعيد الإقرار الكامل + `liveCalc` (الأرقام الحية لمقارنتها بالإقرار المجمّد) + `breakdown` + `periodChain` (سلسلة الإقرارات للفترة - الملغى والمعدل)
+- أصلح bug الـ catch-block الذي كان يبتلع الأخطاء بصمت
+
+**5. تحديث print API (src/app/api/print/route.ts):**
+- تمرير كل حقول التصنيف (standardRatedSales, zeroRatedSales, exemptSales, …)
+- تمرير بيانات GL cross-check (glOutputVat, glInputVat, glMatch)
+- تمرير بيانات الحالة (status, filedDate, paymentDate, paymentReference, paymentStatus, paymentRef)
+- تمرير بيانات التراجع (isAmendment, cancelledAt, cancelledReason)
+
+**6. إعادة كتابة قالب طباعة الإقرار (src/printing/tax/VatReturn.ts):**
+- عنوان رئيسي: "إقرار ضريبة القيمة المضافة — هيئة الزكاة والضريبة والجمارك"
+- عنوان فرعي: "المملكة العربية السعودية — نموذج VAT-301"
+- لافتة تعديل تظهر عند `isAmendment=true`
+- لافتة إلغاء تظهر عند `status=CANCELLED` مع السبب والتاريخ
+- 4 صناديق معلومات: الرقم الضريبي، السجل التجاري، فترة الإقرار، حالة الإقرار
+- **3 أقسام مرقّمة** (مطابقة لنموذج هيئة الزكاة):
+  - القسم الأول: ضريبة المخرجات (حقول 1-5)
+  - القسم الثاني: ضريبة المدخلات (حقول 6-11)
+  - القسم الثالث: احتساب صافي الضريبة (حقول 12-14)
+- كل صف يعرض: رقم الحقل + الوصف + المبلغ + الضريبة
+- صف صافي الضريبة ملوّن (أصفر للمستحق، أخضر للمسترد)
+- **قسم التحقق من دفتر اليومية**: بطاقة ملوّنة (خضراء للمطابقة، حمراء للاختلاف) تعرض الأرصدة والفروقات
+- قسم بيانات السداد: يظهر فقط عند الدفع (أو لافتة صفراء "بانتظار السداد" عند التقديم)
+- التواريخ ومعلومات إضافية في الأسفل
+- قسم التوقيعات (مدير مالي + مدير عام)
+- استخدام `fmtPrint` لإظهار الأرقام بفواصل الآلاف (كالإقرارات الدولية)
+
+**7. تحديث PrintButton (src/components/shared/print-button.tsx):**
+- أضيف case `tax-declaration` في `transformDataForPrint`:
+  - يفك تغليف `declaration` من استجابة `/api/vat/[id]` (التي ترجع `{ declaration, liveCalc, breakdown, … }`)
+  - ينقل كل الحقول إلى المستوى الأعلى
+  - يحوّل الحقول الرقمية إلى Number
+
+**8. تحديث شاشة الإقرار (src/components/modules/vat.tsx):**
+- إضافة حالات جديدة إلى `statusConfig`: CANCELLED (أحمر), AMENDED (بنفسجي)
+- إضافة `StatusBadge` يدعم كل الحالات
+- إضافة `categoryLabels` للتصنيفات (خاضعة 15% / صفريه / معفاة)
+- إضافة `sourceTypeLabels` للأنواع (فاتورة مبيعات، مستخلص، إلخ)
+- إضافة مكوّن `SourceLinesCard` موحّد لعرض البنود التفصيلية مع تصنيف كل بند
+- شاشة التفاصيل تعرض الآن:
+  - 5 أزرار: طباعة، Excel، CSV، تقديم الإقرار، حذف (للمسودة)
+  - أو: طباعة، Excel، CSV، تسجيل الدفع، إلغاء وإعادة الإنشاء (للمُقر)
+  - لافتة الإلغاء (لملغي) مع السبب والتاريخ
+  - لافتة التعديل (لمعدل)
+  - بطاقة التحقق من دفتر اليومية (تعرض الإقرار vs اليومية + الفرق + حالة المطابقة)
+  - جدول تصنيف ZATCA (مبيعات: حقول 1-5، مشتريات: حقول 6-11)
+  - 3 بطاقات ملخّص (مخرجات/مدخلات/صافي)
+  - بيانات التقديم والدفع
+  - تفصيل البنود بفئاتها
+- **Dialog عكسي** مع تحذيرات وتأكيد السبب
+- كل العمليات لها toast رسائل نجاح/فشل بالعربية
+- تصدير Excel (بصيغة .xls) يتضمن: الإقرار، التصنيفات، GL verification، وكل البنود التفصيلية
+- تصدير CSV مع كل البيانات
+
+**9. إصلاح bug في reverseEntry (src/lib/accounting/engine.ts):**
+- المشكلة: `parseInt(last.entryNo.replace('JE-', ''))` كان يرجع NaN عند آخر قيد بصيغة `JE-VAT-TIMESTAMP` أو `JE-SI-TIMESTAMP`
+- كان ينتج رقم قيد عكسي `JE-000NaN`
+- الإصلاح: جلب كل القيود التي تبدأ بـ `JE-`، فلترة التي تحتوي فقط على أرقام بعد `JE-`، وإيجاد الأكبر
+- الآن رقم القيد العكسي صحيح: `JE-NNNNNN`
+
+**10. الاختبار الشامل عبر المتصفح (agent-browser):**
+- اختبرت التدفق الكامل:
+  1. عرض قائمة الإقرارات لـ 2024 → رأيت Q3 2024 (FILED) + عرض التفاصيل
+  2. ضغطت "إلغاء وإعادة الإنشاء" →Dialog ظهر → أدخلت السبب → تأكيد
+  3. ✅ الحالة تغيرت إلى CANCELLED + toast "تم إلغاء الإقرار بنجاح"
+  4. ✅ تم عكس قيد اليومية (reversal entry POSTED + original CANCELLED)
+  5. ✅ عودة لقائمة الإقرارات → Q3 2024 يظهر "إنشاء إقرار"
+  6. ضغطت "إنشاء إقرار" → ✅ تم إنشاء إقرار معدل (isAmendment=true, amendedFromId معبأ)
+  7. ✅ الأرقام صحيحة: totalSales=3,315,000, outputVat=497,250, inputVat=121,800, netVat=375,450
+  8. ✅ التصنيفات معبأة: standardRatedSales=3,315,000, standardRatedPurchases=812,000
+  9. عرض التفاصيل → رأيت:
+     - بطاقة GL Verification (مطابقة غير متطابقة بسبب نقص قيود في الفترة)
+     - جدول ZATCA بكل التصنيفات والحقول 1-14
+     - تفصيل البنود بفئاتها (8 بنود: 3 مبيعات + 2 مستخلصات + 2 مقاولي باطن + 1 مصروف)
+  10. ضغطت "تقديم الإقرار" → ✅ تم التقديم + إنشاء قيد اليومية:
+      - Dr 3110 (Output VAT) 497,250
+      - Cr 1410 (VAT Refund Receivable) 121,800
+      - Cr 3130 (VAT Due) 375,450
+  11. ضغطت "طباعة" → ✅ الإقرار المطبوع يحتوي:
+      - عنوان "إقرار ضريبة القيمة المضافة — هيئة الزكاة والضريبة والجمارك"
+      - "المملكة العربية السعودية — نموذج VAT-301"
+      - 14 حقلاً مرقّماً في 3 أقسام
+      - الأرقام الصحيحة بفواصل الآلاف (3,315,000.00)
+      - قسم التحقق من دفتر اليومية
+      - توقيعات المدير المالي والعام
+  12. ضغطت "Excel" → ✅ toast "تم تصدير ملف Excel" + تحميل الملف
+  13. ضغطت "CSV" → ✅ toast "تم تصدير ملف CSV" + تحميل الملف
+
+**11. lint:** يمر بنجاح (الخطأ الوحيد في `take-screenshots.mjs` الموجود مسبقاً)
+
+Stage Summary:
+- ✅ **التراجع وإعادة الإنشاء**: يمكن للمستخدم إلغاء أي إقرار مُقر أو مدفوع عبر زر "إلغاء وإعادة الإنشاء" مع تسجيل السبب. يتم عكس القيود المحاسبية تلقائياً. يمكن بعدها إنشاء إقرار جديد للفترة (يُعلَّم تلقائياً كـ `isAmendment=true` مع `amendedFromId` يشير للإقرار الملغى).
+- ✅ **مطابقة ZATCA**: القالب المطبوع يستخدم نفس ترقيم الحقول والتصنيفات المعتمدة من هيئة الزكاة والضريبة (نموذج VAT-301). 3 أقسام، 14 حقلاً، تصنيفات (قياسي 15% / صفري / معفى / واردات).
+- ✅ **المطبوع واضح ودولي**: استخدام `fmtPrint` (فواصل الآلاف + منزلتين عشريتين)، تخطيط نظيف بألوان مهنية، بطاقة GL verification ملوّنة، لافتات التعديل/الإلغاء، كل النصوص ثنائية اللغة.
+- ✅ **الأرقام مطابقة لدفتر اليومية**: بطاقة "التحقق من دفتر اليومية" تقارن أرقام الإقرار بأرصدة حسابات ضريبة المخرجات (3110) والمدخلات (1410) من القيود المنشورة، وتعرض الفروقات وحالة المطابقة.
+- ✅ **الاحتساب من العمليات الخاضعة فقط**: محرك `calculateVatForQuarter` يستخرج فقط الفواتير/المستخلصات/المصروفات ذات `vatAmount > 0` (أو vatAmount = 0 للصفريه)، ويصنّفها حسب `vatRate` (0.15 → STANDARD، 0 → ZERO، غير ذلك → EXEMPT).
+- ✅ **زر التصدير بحسب الربع**: شاشة التفاصيل تعرض 3 أزرار تصدير:
+  - **طباعة** (PDF عبر معاينة الطباعة) — يستخدم القالب المحدث
+  - **Excel** — تصدير .xls شامل (الإقرار + التصنيفات + GL + البنود)
+  - **CSV** — تصدير CSV شامل
+  - كل الأزرار تظهر فقط للإقرارات غير الملغاة
+- ✅ **رسائل النظام**: كل عملية تنتج toast رسالة (نجاح/فشل) بالعربية: إنشاء، تقديم، دفع، إلغاء، حذف، تصدير Excel، تصدير CSV.
+- ✅ **ربط القيود المحاسبية**: التقديم ينشئ قيد `autoEntryVATDeclaration` (Dr Output VAT, Cr Input VAT, Cr VAT Due)، والدفع ينشئ `autoEntryVATPayment` (Dr VAT Due, Cr Bank). التراجع يعكس القيدين معاً.
+- ملفات معدّلة: `prisma/schema.prisma`, `src/lib/vat-calc.ts` (جديد), `src/app/api/vat/route.ts`, `src/app/api/vat/[id]/route.ts`, `src/app/api/print/route.ts`, `src/printing/tax/VatReturn.ts`, `src/components/shared/print-button.tsx`, `src/components/modules/vat.tsx`, `src/lib/accounting/engine.ts`.

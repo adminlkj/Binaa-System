@@ -62,6 +62,33 @@ function transformDataForPrint(type: PrintDocumentType, data: Record<string, unk
   }
 
   switch (type) {
+    case 'tax-declaration': {
+      // فك تغليف الاستجابة من /api/vat/[id] التي ترجع { declaration, liveCalc, breakdown, ... }
+      // وتحويلها إلى بنية مسطحة يفهمها قالب الطباعة
+      const declaration = d.declaration as Record<string, unknown> | undefined
+      if (declaration && typeof declaration === 'object') {
+        // انسخ كل حقول الإقرار إلى المستوى الأعلى
+        for (const [k, v] of Object.entries(declaration)) {
+          if (d[k] === undefined) d[k] = v
+        }
+      }
+      // تأكد من وجود حقول الإقرار كأرقام
+      const numFields = [
+        'totalSales', 'outputVat', 'totalPurchases', 'inputVat', 'netVat',
+        'standardRatedSales', 'zeroRatedSales', 'exemptSales', 'standardRatedSalesVat',
+        'standardRatedPurchases', 'zeroRatedPurchases', 'exemptPurchases',
+        'importsSubjectToVAT', 'standardRatedPurchasesVat',
+        'glOutputVat', 'glInputVat',
+      ]
+      for (const f of numFields) {
+        if (d[f] !== undefined) d[f] = Number(d[f]) || 0
+      }
+      // تأكد من وجود السنة والربع كأرقام
+      if (d.year !== undefined) d.year = Number(d.year) || new Date().getFullYear()
+      if (d.quarter !== undefined) d.quarter = Number(d.quarter) || 1
+      break
+    }
+
     case 'service-invoice':
     case 'rental-invoice': {
       flattenClient(d)

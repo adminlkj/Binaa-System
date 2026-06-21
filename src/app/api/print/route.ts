@@ -314,11 +314,41 @@ export async function GET(request: NextRequest) {
         data = {
           year: vatReturn.year,
           quarter: vatReturn.quarter,
+          period: vatReturn.period,
+          // الإجماليات
           totalSales: Number(vatReturn.totalSales),
           outputVat: Number(vatReturn.outputVat),
           totalPurchases: Number(vatReturn.totalPurchases),
           inputVat: Number(vatReturn.inputVat),
           netVat: Number(vatReturn.netVat),
+          // تصنيف المبيعات (ZATCA)
+          standardRatedSales: Number(vatReturn.standardRatedSales),
+          zeroRatedSales: Number(vatReturn.zeroRatedSales),
+          exemptSales: Number(vatReturn.exemptSales),
+          standardRatedSalesVat: Number(vatReturn.standardRatedSalesVat),
+          // تصنيف المشتريات (ZATCA)
+          standardRatedPurchases: Number(vatReturn.standardRatedPurchases),
+          zeroRatedPurchases: Number(vatReturn.zeroRatedPurchases),
+          exemptPurchases: Number(vatReturn.exemptPurchases),
+          importsSubjectToVAT: Number(vatReturn.importsSubjectToVAT),
+          standardRatedPurchasesVat: Number(vatReturn.standardRatedPurchasesVat),
+          // التحقق من دفتر اليومية
+          glOutputVat: Number(vatReturn.glOutputVat),
+          glInputVat: Number(vatReturn.glInputVat),
+          glMatch: vatReturn.glMatch,
+          // معلومات الحالة
+          status: vatReturn.status,
+          filedDate: vatReturn.filedDate?.toISOString(),
+          paymentDate: vatReturn.paymentDate?.toISOString(),
+          paymentReference: vatReturn.paymentReference,
+          paymentStatus: vatReturn.status === 'PAID' ? 'PAID'
+            : vatReturn.status === 'FILED' ? 'NOT_PAID'
+            : undefined,
+          paymentRef: vatReturn.paymentReference || undefined,
+          isAmendment: vatReturn.isAmendment,
+          cancelledAt: vatReturn.cancelledAt?.toISOString(),
+          cancelledReason: vatReturn.cancelledReason,
+          createdAt: vatReturn.createdAt.toISOString(),
         }
       }
     } else if (type === 'journal-entry') {
