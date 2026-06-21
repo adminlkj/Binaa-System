@@ -99,6 +99,38 @@ function transformDataForPrint(type: PrintDocumentType, data: Record<string, unk
       break
     }
 
+    case 'progress-claim':
+    case 'extract': {
+      // فك تغليف بيانات المشروع والعقد والعميل من الاستجابة المتداخلة
+      // /api/progress-claims/[id] ترجع { project: { client: {...} }, contract: {...}, ... }
+      // قالب الطباعة يتوقع حقولاً مسطحة: clientName, clientAddress, clientTaxNumber, ...
+      const project = d.project as Record<string, unknown> | undefined
+      if (project && typeof project === 'object') {
+        d.projectName = d.projectName || project.name || project.nameAr || ''
+        // استخراج بيانات العميل من المشروع
+        const client = project.client as Record<string, unknown> | undefined
+        if (client && typeof client === 'object') {
+          d.clientName = d.clientName || client.name || client.nameAr || ''
+          d.clientAddress = d.clientAddress || client.address || ''
+          d.clientTaxNumber = d.clientTaxNumber || client.taxNumber || ''
+        }
+      }
+      const contract = d.contract as Record<string, unknown> | undefined
+      if (contract && typeof contract === 'object') {
+        d.contractNo = d.contractNo || contract.contractNo || ''
+        d.contractValue = d.contractValue || Number(contract.totalValue) || 0
+      }
+      // تأكد من وجود الحقول الرقمية كأرقام
+      const numFields = [
+        'amount', 'vatAmount', 'totalAmount', 'percentage',
+        'previousPercentage', 'cumulativePercentage', 'contractValue', 'vatRate',
+      ]
+      for (const f of numFields) {
+        if (d[f] !== undefined) d[f] = Number(d[f]) || 0
+      }
+      break
+    }
+
     case 'service-invoice':
     case 'rental-invoice': {
       flattenClient(d)
@@ -302,7 +334,8 @@ export function PrintButton({
         const apiMap: Record<PrintDocumentType, string> = {
           'service-invoice': `/api/sales-invoices/${documentId}`,
           'rental-invoice': `/api/sales-invoices/${documentId}`,
-          'extract': `/api/progress-claims?id=${documentId}`,
+          'extract': `/api/progress-claims/${documentId}`,
+          'progress-claim': `/api/progress-claims/${documentId}`,
           'purchase-order': `/api/purchase-orders/${documentId}`,
           'supplier-invoice': `/api/supplier-invoices/${documentId}`,
           'tax-declaration': `/api/vat/${documentId}`,

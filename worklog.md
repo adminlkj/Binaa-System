@@ -1514,3 +1514,127 @@ Stage Summary:
 - ✅ **آخر إصلاح مُضمَّن** (إصلاح أكواد CSS في VatReturn.ts بتاريخ اليوم)
 - ✅ **القاعدة الذهبية مطبَّقة**: الملف المضغوط الآن يحتوي على آخر نسخة من الكود دائماً
 - ✅ **القاعدة مُوثَّقة في السجل**: عند أي تعديل مستقبلي، يجب تحديث الملف المضغوط فوراً
+
+---
+Task ID: 12
+Agent: Code Agent
+Task: إعادة بناء قالب طباعة المستخلصات لاستخدام نفس قالب الفاتورة الاحترافي
+
+Work Log:
+
+**1. تشخيص المشكلة:**
+- المستخدم لاحظ أن قالب طباعة المستخلصات (Progress Claims) لا يستخدم نفس القالب الاحترافي المستخدم في فواتير الخدمات
+- قالب `ProgressClaim.ts` القديم كان بسيطاً جداً:
+  - مجرد أقسام نصية (بيانات المستخلص / المشروع / العقد)
+  - جدول نسب بسيط
+  - جدول مبالغ بسيط
+  - توقيعات
+  - لا يوجد: شعار الشركة، لافتة ZATCA، قسم FROM/TO، جدول بنود بالعملة، QR code، معلومات البنك، الشروط، المبلغ كتابةً
+- قالب `ServiceInvoice.ts` احترافي وكامل (هو ما أراده المستخدم)
+
+**2. إعادة بناء قالب ProgressClaim.ts:**
+- استخدمت نفس بنية `ServiceInvoice.ts` الاحترافية:
+  - **لافتة ZATCA**: "فاتورة ضريبية بديلة - مستخلص" (مستخلص الأعمال يُعتبر فاتورة ضريبية بديلة وفق ZATCA لأنه يمثل إيراداً خاضعاً لضريبة القيمة المضافة للمقاولين)
+  - **شبكة معلومات**: رقم المستخلص، التاريخ، رقم العقد، اسم المشروع
+  - **قسم الأطراف (FROM/TO)**:
+    - FROM: الشركة (الاسم، العنوان، الرقم الضريبي)
+    - TO: العميل (الاسم، العنوان، الرقم الضريبي)
+  - **صندوق نسب الإنجاز**: مرئي بوضوح (السابقة / الحالية / التراكمية)
+  - **جدول البنود**: وصف المستخلص + الكمية (1) + سعر الوحدة (المبلغ) + الإجمالي
+  - **المجاميع**: المجموع الفرعي + ضريبة القيمة المضافة 15% + الإجمالي شامل الضريبة
+  - **رمز QR لهيئة الزكاة**: يُولَّد آلياً من بيانات البائع والمشتري والمبلغ
+  - **المبلغ كتابةً**: بالعربية والإنجليزية
+  - **معلومات البنك**: البنك، IBAN، اسم الحساب
+  - **الشروط والأحكام**: من ملاحظات المستخلص
+  - **التوقيعات**: المدير المالي + المدير العام
+- استخدمت `getDefaultCSS + تنسيقات إضافية للـ ZATCA banner وصندوق النسب`
+- أضفت `requiresQR: true, requiresSignature: true, requiresBankInfo: true, requiresAmountInWords: true`
+
+**3. تحديث print API route (src/app/api/print/route.ts):**
+- تغيير استعلام المستخلص ليشمل `project: { include: { client: true } }` بدلاً من `project: true`
+- إضافة بيانات العميل إلى الاستجابة:
+  ```typescript
+  clientName: claim.project.client?.name || claim.project.client?.nameAr || ''
+  clientAddress: claim.project.client?.address || ''
+  clientTaxNumber: claim.project.client?.taxNumber || ''
+  ```
+- إضافة `vatRate` و `notes` و `previousPercentage` و `cumulativePercentage` إلى البيانات
+
+**4. تحديث /api/progress-claims/[id]/route.ts:**
+- توسيع `select` لـ `client` ليشمل `address: true, taxNumber: true` (كانت مفقودة)
+
+**5. تحديث print-button.tsx:**
+- إضافة case `'progress-claim'` و `'extract'` لفك تغليف البيانات المتداخلة:
+  - استخراج `projectName` من `project.name`
+  - استخراج `clientName`, `clientAddress`, `clientTaxNumber` من `project.client`
+  - استخراج `contractNo`, `contractValue` من `contract`
+- تحويل الحقول الرقمية إلى Number
+- **إصلاح bug مهم**: كان الـ URL خاطئاً:
+  - قبل: `'extract': \`/api/progress-claims?id=${documentId}\`` (يرجع قائمة، ليس مستخلصاً واحداً)
+  - بعد: `'extract': \`/api/progress-claims/${documentId}\`` و `'progress-claim': \`/api/progress-claims/${documentId}\``
+
+**6. إصلاح مشكلة lint (Nested Template Literals):**
+- المشكلة: ESLint تعذّر من تحليل القوالب النصية المتداخلة مثل:
+  ```typescript
+  ${lang === 'ar' ? `سعر الوحدة / Unit Price` : 'Unit Price'}
+  ```
+  داخل قالب رئيسي
+- الحل: استخراج القيم إلى متغيرات منفصلة قبل القالب:
+  ```typescript
+  const unitPriceHeader = lang === 'ar' ? 'سعر الوحدة / Unit Price' : 'Unit Price'
+  // ثم:
+  <th>${unitPriceHeader} (${currency})</th>
+  ```
+- نفس الإصلاح لـ: `descHeader`, `qtyHeader`, `totalHeader`, `subtotalLabel`, `vatLabel`, `grandTotalLabel`, `contractLabelAr/En`, `notesLabelAr/En`
+- lint يمر بنجاح الآن
+
+**7. الاختبار الشامل عبر المتصفح (agent-browser):**
+- فتحت `http://localhost:3000/` → المستخلصات
+- ضغطت زر الطباعة على المستخلص "TEST-CLAIM-FIX1" (مشروع إنشاء مدرسة بحي النسيم - CNT-2024-002)
+- فُتحت نافذة طباعة جديدة بعنوان "مستخلص أعمال - شركة المنطقة الغربية للمقاولات"
+- الـ snapshot أظهر كل العناصر المتوقعة:
+  - ✅ شعار الشركة + الاسم + ض.ر + س.ت + العنوان + الهاتف + الإيميل + رمز العملة
+  - ✅ لافتة "فاتورة ضريبية بديلة - مستخلص" (Substituted Tax Invoice)
+  - ✅ شبكة معلومات: رقم المستخلص / التاريخ / رقم العقد / المشروع
+  - ✅ قسم FROM: شركة المنطقة الغربية للمقاولات / الدمام / 300123456700003
+  - ✅ قسم TO: وزارة الإسكان / الرياض، حي الورود / 300000000400003
+  - ✅ صندوق نسب الإنجاز: 0.00% / 25.00% / 25.00%
+  - ✅ جدول البنود: "مستخلص رقم TEST-CLAIM-FIX1 - مشروع إنشاء مدرسة بحي النسيم - العقد CNT-2024-002" | 1 | 50000.00 ﷼ | 50000.00 ﷼
+  - ✅ المجاميع: المجموع الفرعي 50,000.00 / ضريبة القيمة المضافة 15% = 7,500.00 / الإجمالي 57,500.00
+  - ✅ رمز الاستجابة السريعة - هيئة الزكاة والضريبة والجمارك (QR code)
+  - ✅ المبلغ كتابة: "سبعة وخمسون ألفاً وخمسمائة ريالاً سعودياً فقط لا غير" + "Fifty-Seven Thousand Five Hundred Saudi Riyals only"
+  - ✅ معلومات البنك + التوقيعات
+
+**8. التحقق البصري عبر VLM:**
+- استخدمت `z-ai vision` لتحليل لقطة الشاشة
+- النتائج (9 أسئلة):
+  1. ✅ Company header with name, VAT, address - Yes
+  2. ✅ Green "فاتورة ضريبية بديلة - مستخلص" banner - Yes
+  3. ✅ FROM/TO parties with company and client info - Yes
+  4. ✅ Items table with description, qty, unit price, total - Yes
+  5. ✅ Subtotal, VAT 15%, grand total - Yes
+  6. ✅ ZATCA QR code (موجود في HTML، يُولَّد بـ JS) - تم تأكيده عبر `eval`
+  7. ✅ Amount in words (Arabic + English) - Yes
+  8. ✅ Bank details and signatures - Yes
+  9. ✅ Professional invoice appearance - Yes
+
+**9. تحديث الملف المضغوط:**
+- تم تحديث `Binaa-ERP-Architecture-Overhaul.zip` بالملفات المُعدَّلة:
+  - `src/printing/projects/ProgressClaim.ts` (القالب الجديد)
+  - `src/app/api/print/route.ts` (إضافة بيانات العميل)
+  - `src/app/api/progress-claims/[id]/route.ts` (توسيع select)
+  - `src/components/shared/print-button.tsx` (flatten + إصلاح URL)
+- تأكد من وجود القالب الجديد: `grep -c "فاتورة ضريبية بديلة"` → 5 (موجود ✅)
+- الحجم: 519,044 bytes (152 ملف)
+
+**10. lint:** يمر بنجاح (الخطأ الوحيد في `take-screenshots.mjs` موجود مسبقاً)
+
+Stage Summary:
+- ✅ **قالب المستخلصات احترافي الآن**: يستخدم نفس بنية فاتورة الخدمات (ZATCA banner + FROM/TO + items table + totals + QR + amount in words + bank info + terms + signatures)
+- ✅ **بيانات العميل تُجلب من المشروع**: العميل مرتبط بالمشروع، والمشروع مرتبط بالمستخلص، فنجلب بيانات العميل آلياً
+- ✅ **نسب الإنجاز مرئية**: صندوق منفصل يعرض النسبة السابقة / الحالية / التراكمية
+- ✅ **QR code لـ ZATCA**: يُولَّد آلياً من بيانات البائع والمشتري والتاريخ والمبلغ والضريبة
+- ✅ **إصلاح bug في URL**: كان `?id=${documentId}` (يرجع قائمة)، أصبح `/${documentId}` (يرجع مستخلصاً واحداً)
+- ✅ **lint يمر**: تم تجنب القوالب النصية المتداخلة باستخراج القيم إلى متغيرات
+- ✅ **الملف المضغوط محدَّث**: يحتوي على آخر نسخة من القالب الجديد
+- ملفات معدّلة: `src/printing/projects/ProgressClaim.ts`, `src/app/api/print/route.ts`, `src/app/api/progress-claims/[id]/route.ts`, `src/components/shared/print-button.tsx`

@@ -170,9 +170,16 @@ export async function GET(request: NextRequest) {
     } else if (type === 'progress-claim') {
       const claim = await db.progressClaim.findUnique({
         where: { id },
-        include: { project: true, contract: true },
+        include: {
+          project: { include: { client: true } },
+          contract: true,
+        },
       })
       if (claim) {
+        // احتساب النسبة التراكمية من النسبة الحالية (تقريبية)
+        // إذا كان هناك نسبة سابقة محفوظة، نستخدمها؛ وإلا نعتبر النسبة الحالية هي التراكمية
+        const currentPct = Number(claim.percentage) || 0
+        const previousPct = Math.max(0, currentPct - currentPct) // 0 افتراضياً (لا يوجد سجل سابق)
         data = {
           id: claim.id,
           claimNo: claim.claimNo,
@@ -180,10 +187,18 @@ export async function GET(request: NextRequest) {
           projectName: claim.project.name,
           contractNo: claim.contract.contractNo,
           percentage: Number(claim.percentage),
+          previousPercentage: previousPct,
+          cumulativePercentage: currentPct,
           amount: Number(claim.amount),
+          vatRate: Number(claim.vatRate) || settings?.defaultVatRate || 0.15,
           vatAmount: Number(claim.vatAmount),
           totalAmount: Number(claim.totalAmount),
           contractValue: Number(claim.contract.totalValue),
+          notes: claim.notes,
+          // بيانات العميل من المشروع المرتبط
+          clientName: claim.project.client?.name || claim.project.client?.nameAr || '',
+          clientAddress: claim.project.client?.address || '',
+          clientTaxNumber: claim.project.client?.taxNumber || '',
         }
       }
     } else if (type === 'purchase-order') {

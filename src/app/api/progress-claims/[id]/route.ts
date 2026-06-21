@@ -13,7 +13,7 @@ export async function GET(
     const claim = await db.progressClaim.findUnique({
       where: { id },
       include: {
-        project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true, nameAr: true, code: true } } } },
+        project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true, nameAr: true, code: true, address: true, taxNumber: true } } } },
         contract: { select: { id: true, contractNo: true, totalValue: true } },
       },
     })
