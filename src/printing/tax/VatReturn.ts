@@ -5,6 +5,9 @@
 // مطابق لنموذج إقرار ضريبة القيمة المضافة الصادر عن هيئة الزكاة والضريبة والجمارك
 // (ZATCA - Zakat, Tax and Customs Authority) في المملكة العربية السعودية.
 // يتبع نفس ترقيم الحقول والتصنيفات المعتمدة دولياً للاقرارات الضريبية.
+//
+// يستخدم ألوان القالب المخصصة من إعدادات الشركة (invoicePrimaryColor)
+// ليتطابق الإقرار مع باقي مستندات النظام بصرياً.
 // ============================================================================
 
 import type { DocumentTemplate, PrintSettings } from '../shared/types'
@@ -12,6 +15,30 @@ import { fmtPrint, formatDate } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'
 import { getAccountingCSS } from '../shared/css'
 import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
+
+// ============ Color helpers ============
+/**
+ * يحوّل لون hex إلى نسخة بشفافية معينة (rgba).
+ * يستخدم لِتوليد ألوان خلفية فاتحة من اللون الأساسي للقالب.
+ */
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '')
+  const r = parseInt(clean.substring(0, 2), 16) || 0
+  const g = parseInt(clean.substring(2, 4), 16) || 0
+  const b = parseInt(clean.substring(4, 6), 16) || 0
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+/**
+ * يولّد لوناً أغمق من اللون الأساسي (للحالات hover/active أو الحدود).
+ */
+function darkenHex(hex: string, factor = 0.15): string {
+  const clean = hex.replace('#', '')
+  const r = Math.max(0, Math.floor((parseInt(clean.substring(0, 2), 16) || 0) * (1 - factor)))
+  const g = Math.max(0, Math.floor((parseInt(clean.substring(2, 4), 16) || 0) * (1 - factor)))
+  const b = Math.max(0, Math.floor((parseInt(clean.substring(4, 6), 16) || 0) * (1 - factor)))
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`
+}
 
 export const template: DocumentTemplate = {
   category: 'tax',
@@ -53,7 +80,6 @@ export const template: DocumentTemplate = {
           overflow: hidden;
         }
         .vat-section-header {
-          background: #1e293b;
           color: white;
           font-size: 11px;
           font-weight: 700;
@@ -119,7 +145,6 @@ export const template: DocumentTemplate = {
           overflow: hidden;
         }
         .vat-net-header {
-          background: #1e293b;
           color: white;
           font-size: 11px;
           font-weight: 700;
@@ -188,9 +213,6 @@ export const template: DocumentTemplate = {
           padding: 8px 10px;
           border-radius: 4px;
           font-size: 10px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
         }
         .vat-gl-verify.matched {
           background: #d1fae5;
@@ -202,18 +224,51 @@ export const template: DocumentTemplate = {
           border: 1px solid #fca5a5;
           color: #991b1b;
         }
+        .vat-gl-verify-header {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
+          font-weight: 700;
+        }
         .vat-gl-verify-icon {
           width: 18px; height: 18px;
           border-radius: 50%;
           display: flex; align-items: center; justify-content: center;
           font-weight: 700;
           font-size: 11px;
+          color: white;
+          flex-shrink: 0;
         }
         .vat-gl-verify.matched .vat-gl-verify-icon {
-          background: #10b981; color: white;
+          background: #10b981;
         }
         .vat-gl-verify.mismatched .vat-gl-verify-icon {
-          background: #ef4444; color: white;
+          background: #ef4444;
+        }
+        .vat-gl-comparison {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 6px;
+          margin-top: 4px;
+          font-size: 9.5px;
+        }
+        .vat-gl-comparison-col {
+          background: rgba(255,255,255,0.6);
+          border-radius: 3px;
+          padding: 4px 6px;
+        }
+        .vat-gl-comparison-label {
+          font-size: 8.5px;
+          color: #64748b;
+          font-weight: 600;
+          margin-bottom: 2px;
+        }
+        .vat-gl-comparison-value {
+          font-weight: 700;
+          direction: ltr;
+          text-align: left;
+          font-variant-numeric: tabular-nums;
         }
         .vat-amendment-banner {
           margin-top: 8px;
@@ -252,10 +307,6 @@ export const template: DocumentTemplate = {
           padding: 2px 0;
         }
         .vat-payment-info-row strong { color: #064e3b; }
-        @media print {
-          .vat-form { font-size: 10px; }
-          .vat-section-header { background: #1e293b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        }
       </style>
     `
   },
@@ -301,6 +352,10 @@ export const template: DocumentTemplate = {
     const glInputVat = (data.glInputVat as number) || 0
     const glMatch = data.glMatch as boolean
 
+    // الفروقات (لعرضها بوضوح في بطاقة التحقق)
+    const glDiffOutput = outputVat - glOutputVat
+    const glDiffInput = inputVat - glInputVat
+
     // الحالة والدفع
     const status = (data.status as string) || 'DRAFT'
     const filedDate = data.filedDate as string | undefined
@@ -310,6 +365,15 @@ export const template: DocumentTemplate = {
     const cancelledAt = data.cancelledAt as string | undefined
     const cancelledReason = data.cancelledReason as string
     const createdAt = data.createdAt as string | undefined
+
+    // ===== ألوان القالب من إعدادات الشركة =====
+    // نستخدم اللون الأساسي المُختار من شاشة الإعدادات → قوالب الفاتورة
+    // ليكون الإقرار متناسقاً بصرياً مع باقي مستندات النظام.
+    const primaryColor = settings.invoicePrimaryColor || '#0f766e'
+    const accentColor = settings.invoiceAccentColor || '#34d399'
+    const primaryDark = darkenHex(primaryColor, 0.18)
+    const primaryLight = hexToRgba(primaryColor, 0.08)
+    const primaryLighter = hexToRgba(primaryColor, 0.04)
 
     // Quarter names
     const quarterNames = lang === 'ar'
@@ -377,6 +441,26 @@ export const template: DocumentTemplate = {
     }
 
     return `
+      <style>
+        /* تطبيق ألوان القالب المخصصة على الإقرار الضريبي */
+        .vat-section-header { background: ${primaryColor} !important; }
+        .vat-net-header { background: ${primaryColor} !important; }
+        .vat-net-box { border-color: ${primaryDark} !important; }
+        .vat-row.total-row { border-top-color: ${primaryColor} !important; }
+        .vat-info-box { background: ${primaryLighter} !important; border-color: ${primaryColor}40 !important; }
+        .vat-info-value { color: ${primaryDark} !important; }
+        .vat-form-title { border-top-color: ${primaryColor} !important; border-bottom-color: ${primaryColor} !important; }
+        .vat-row .field-no { background: ${primaryLight} !important; color: ${primaryDark} !important; }
+        .vat-net-row .field-no { background: ${primaryLight} !important; color: ${primaryDark} !important; }
+        .vat-net-row .field-amount { color: ${primaryDark} !important; }
+        .vat-row .field-vat { color: ${primaryDark} !important; }
+        @media print {
+          .vat-section-header { background: ${primaryColor} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .vat-net-header { background: ${primaryColor} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .vat-info-box { background: ${primaryLighter} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .vat-row .field-no { background: ${primaryLight} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        }
+      </style>
       <div class="vat-form">
         <!-- عنوان النموذج -->
         <div class="vat-form-title">
@@ -539,17 +623,59 @@ export const template: DocumentTemplate = {
 
         <!-- ============ التحقق من دفتر اليومية ============ -->
         <div class="vat-gl-verify ${glMatch ? 'matched' : 'mismatched'}">
-          <div class="vat-gl-verify-icon">${glMatch ? '✓' : '!'}</div>
-          <div>
-            <strong>${lang === 'ar' ? 'التحقق من دفتر اليومية:' : 'General Ledger Verification:'}</strong>
+          <div class="vat-gl-verify-header">
+            <div class="vat-gl-verify-icon">${glMatch ? '✓' : '!'}</div>
+            <span>${lang === 'ar' ? 'التحقق من دفتر اليومية' : 'General Ledger Verification'}</span>
+          </div>
+          <div style="margin-bottom:6px;">
             ${glMatch
               ? (lang === 'ar'
-                  ? ` الأرقام متطابقة مع القيود اليومية المنشورة. ضريبة المخرجات: ${fmtNum(glOutputVat)} — ضريبة المدخلات: ${fmtNum(glInputVat)}.`
-                  : ` Figures match posted journal entries. Output VAT: ${fmtNum(glOutputVat)} — Input VAT: ${fmtNum(glInputVat)}.`)
+                  ? `الأرقام متطابقة مع القيود اليومية المنشورة لهذه الفترة.`
+                  : `Figures match posted journal entries for this period.`)
               : (lang === 'ar'
-                  ? ` يوجد اختلاف بين أرقام الإقرار ودفتر اليومية. ضريبة المخرجات في اليومية: ${fmtNum(glOutputVat)} — ضريبة المدخلات في اليومية: ${fmtNum(glInputVat)}. يرجى مراجعة القيود.`
-                  : ` Mismatch between return figures and general ledger. GL Output VAT: ${fmtNum(glOutputVat)} — GL Input VAT: ${fmtNum(glInputVat)}. Please review journal entries.`)
+                  ? `يوجد اختلاف بين أرقام الإقرار ودفتر اليومية. يرجى مراجعة القيود.`
+                  : `Mismatch between return figures and general ledger. Please review journal entries.`)
             }
+          </div>
+          <div class="vat-gl-comparison">
+            <div class="vat-gl-comparison-col">
+              <div class="vat-gl-comparison-label">${lang === 'ar' ? 'ضريبة المخرجات' : 'Output VAT'}</div>
+              <div style="display:flex;justify-content:space-between;gap:4px;">
+                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'الإقرار' : 'Return'}:</span>
+                <span class="vat-gl-comparison-value">${fmtNum(outputVat)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;gap:4px;">
+                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'اليومية' : 'GL'}:</span>
+                <span class="vat-gl-comparison-value">${fmtNum(glOutputVat)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;gap:4px;border-top:1px dashed currentColor;margin-top:2px;padding-top:2px;">
+                <span style="font-size:8.5px;font-weight:700;">${lang === 'ar' ? 'الفرق' : 'Diff'}:</span>
+                <span class="vat-gl-comparison-value">${fmtNum(glDiffOutput)}</span>
+              </div>
+            </div>
+            <div class="vat-gl-comparison-col">
+              <div class="vat-gl-comparison-label">${lang === 'ar' ? 'ضريبة المدخلات' : 'Input VAT'}</div>
+              <div style="display:flex;justify-content:space-between;gap:4px;">
+                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'الإقرار' : 'Return'}:</span>
+                <span class="vat-gl-comparison-value">${fmtNum(inputVat)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;gap:4px;">
+                <span style="font-size:8.5px;color:#64748b;">${lang === 'ar' ? 'اليومية' : 'GL'}:</span>
+                <span class="vat-gl-comparison-value">${fmtNum(glInputVat)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;gap:4px;border-top:1px dashed currentColor;margin-top:2px;padding-top:2px;">
+                <span style="font-size:8.5px;font-weight:700;">${lang === 'ar' ? 'الفرق' : 'Diff'}:</span>
+                <span class="vat-gl-comparison-value">${fmtNum(glDiffInput)}</span>
+              </div>
+            </div>
+            <div class="vat-gl-comparison-col">
+              <div class="vat-gl-comparison-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+              <div style="font-weight:700;text-align:center;padding:4px 0;">
+                ${glMatch
+                  ? (lang === 'ar' ? '✓ متطابقة' : '✓ Matched')
+                  : (lang === 'ar' ? '✗ اختلاف' : '✗ Mismatch')}
+              </div>
+            </div>
           </div>
         </div>
 

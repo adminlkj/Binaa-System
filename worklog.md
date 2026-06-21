@@ -1231,3 +1231,110 @@ Stage Summary:
 - ✅ **رسائل النظام**: كل عملية تنتج toast رسالة (نجاح/فشل) بالعربية: إنشاء، تقديم، دفع، إلغاء، حذف، تصدير Excel، تصدير CSV.
 - ✅ **ربط القيود المحاسبية**: التقديم ينشئ قيد `autoEntryVATDeclaration` (Dr Output VAT, Cr Input VAT, Cr VAT Due)، والدفع ينشئ `autoEntryVATPayment` (Dr VAT Due, Cr Bank). التراجع يعكس القيدين معاً.
 - ملفات معدّلة: `prisma/schema.prisma`, `src/lib/vat-calc.ts` (جديد), `src/app/api/vat/route.ts`, `src/app/api/vat/[id]/route.ts`, `src/app/api/print/route.ts`, `src/printing/tax/VatReturn.ts`, `src/components/shared/print-button.tsx`, `src/components/modules/vat.tsx`, `src/lib/accounting/engine.ts`.
+
+---
+Task ID: 9
+Agent: Code Agent
+Task: إصلاح الإقرار الضريبي - تسريب أرصدة GL عبر الفترات + قوالب الألوان + التحقق من اليومية
+
+Work Log:
+
+**1. تشخيص المشكلة الجذرية:**
+- فحصت قاعدة البيانات ووجدت أن إقرارات Q2 2026 تظهر glOutputVat=497,250 (تسرب من Q3 2024!)
+- السبب: قيود الإقرار الضريبي كانت تُؤرَّخ بتاريخ اليوم (`new Date()`) بدلاً من تاريخ نهاية الفترة
+- مثال: إقرار Q3 2024 المُقدَّم اليوم → القيد بتاريخ 2026-06-21 → يظهر في GL لـ Q2 2026
+- كما اكتشفت أن `createJournalEntry` لا يحفظ `sourceType` و `sourceId` (كانت NULL دائماً)
+- وُجد قيد بـ `JE-000NaN` (من bug سابق لم يُصلح بالكامل)
+
+**2. إصلاح تأريخ قيود الإقرار الضريبي (src/app/api/vat/route.ts):**
+- أضفت دالة `getPeriodEndDate(year, quarter)` تُرجع آخر يوم في الربع
+- FILE action: `date: getPeriodEndDate(existing.year, existing.quarter)` بدلاً من `new Date()`
+- مثال: إقرار Q3 2024 → القيد بتاريخ 2024-09-30 23:59:59 (وليس تاريخ التقديم)
+- هذا يضمن أن القيد يظهر في دفتر اليومية للفترة الصحيحة فقط
+
+**3. إصلاح `createJournalEntry` لحفظ sourceType/sourceId (src/lib/accounting/engine.ts):**
+- المشكلة: الدالة كانت تحفظ فقط `entryNo, date, description, status, lines`
+- لم تكن تحفظ `descriptionAr, sourceType, sourceId, isSystem`
+- الإصلاح: إضافة جميع الحقول الناقصة إلى `data` في `client.journalEntry.create()`
+- الآن قيود VAT_DECLARATION و VAT_PAYMENT تُعلَّم correctly لاستخدامها في التحقق
+
+**4. إصلاح GL balance لاستثناء قيود الإقفال (src/lib/vat-calc.ts):**
+- المشكلة: `getVatGlBalance` كانت تحسب كل القيود بما فيها قيد الإقرار نفسه
+- قيد الإقرار يُغلق حساب VAT_OUTPUT (Dr) و VAT_INPUT (Cr) → الرصيد يصبح 0 بعد التقديم
+- الإصلاح: استثناء قيود `VAT_DECLARATION` و `VAT_PAYMENT` وقيود العكس المرتبطة
+- `NOT: { OR: [{ sourceType: 'VAT_DECLARATION' }, { sourceType: 'VAT_PAYMENT' }, { entryNo: { startsWith: 'JE-VAT-' } }, ...] }`
+- الآن التحقق يقارن الضريبة من الفواتير مع الضريبة المرحّلة من الفواتير (وليس قيد الإقفال)
+
+**5. إصلاح البيانات الموجودة (سكربت إصلاح):**
+- أعيدت تسمية `JE-000NaN` → `JE-000011`
+- إعادة تأريخ قيود VAT لـ Q3 2024 من 2026-06-21 إلى 2024-09-30 (تاريخ نهاية الفترة)
+- تحديث sourceType/sourceId لقيود VAT الموجودة
+- حذف الإقرارات الفاسدة (Q2 2026 و Q3 2024 amended) بإرصدة GL خاطئة
+- بعد الإصلاح: Q3 2024 → outputVat=497,250, glOutputVat=497,250, glMatch=true ✅
+
+**6. تحديث قالب الطباعة (src/printing/tax/VatReturn.ts):**
+- أضفت دالتين مساعدتين: `hexToRgba(hex, alpha)` و `darkenHex(hex, factor)`
+- استخدام `settings.invoicePrimaryColor` (من إعدادات الشركة) لكل العناصر:
+  - `.vat-section-header` background
+  - `.vat-net-header` background
+  - `.vat-net-box` border-color
+  - `.vat-info-box` background و border
+  - `.vat-info-value` color
+  - `.vat-form-title` border colors
+  - `.vat-row .field-no` background و color
+  - `.vat-net-row .field-no` و `.field-amount` و `.field-vat`
+- أضفت `@media print` لضمان طباعة الألوان (`-webkit-print-color-adjust: exact`)
+- بطاقة GL verification محسّنة بشكل كبير:
+  - 3 أعمدة: ضريبة المخرجات | ضريبة المدخلات | الحالة
+  - كل عمود يعرض: الإقرار، اليومية، الفرق
+  - أيقونة دائرية (✓ أخضر / ! أحمر) مع رأس البطاقة
+  - رسالة واضحة للمطابقة أو الاختلاف
+
+**7. تحديث print-button.tsx لاستخدام liveCalc:**
+- في تحويل `tax-declaration`: استخدم `liveCalc.glOutputVat`, `liveCalc.glInputVat`, `liveCalc.glMatch`
+- بدلاً من القيم المجمّدة في `declaration`
+- هذا يضمن أن التحقق من اليومية يعرض الأرصدة الحية (المُحتسبة الآن) وليس القديمة
+
+**8. تحديث print API route (src/app/api/print/route.ts):**
+- إضافة `import { calculateVatForQuarter } from '@/lib/vat-calc'`
+- لـ type `vat-return`: استدعاء `calculateVatForQuarter(vatReturn.year, vatReturn.quarter)`
+- استخدام `liveCalc.glOutputVat, liveCalc.glInputVat, liveCalc.glMatch` بدلاً من القيم المجمّدة
+- الأرقام الإجمالية (totalSales, outputVat, ...) تبقى مجمّدة من الإقرار
+
+**9. الاختبار الشامل عبر المتصفح (agent-browser):**
+- اختبرت التدفق الكامل لـ Q3 2024:
+  1. ✅ عرض قائمة الإقرارات لـ 2024 → Q3 2024 يظهر "عرض التفاصيل"
+  2. ✅ عرض التفاصيل → بطاقة GL verification: متطابقة (497,250 = 497,250)
+  3. ✅ ضغطت "تقديم الإقرار" → الحالة تغيرت إلى FILED + أزرار "تسجيل الدفع" و "إلغاء وإعادة الإنشاء"
+  4. ✅ القيد الجديد (JE-VAT-...) بتاريخ 2024-09-30 (وليس اليوم!)
+  5. ✅ ضغطت "إلغاء وإعادة الإنشاء" → Dialog مع تحذيرات وسبب الإلغاء
+  6. ✅ تأكيد الإلغاء → toast "تم إنشاء الإقرار..." → عودة للقائمة
+  7. ✅ Q3 2024 يظهر "إنشاء إقرار" (الإقرار السابق ملغي)
+  8. ✅ ضغطت "إنشاء إقرار" → toast نجاح + Q3 2024 يظهر "عرض التفاصيل"
+  9. ✅ الإقرار الجديد معلَّم كـ "تعديل لإقرار سابق تم إلغاؤه"
+  10. ✅ ضغطت "طباعة" → صفحة الطباعة:
+      - عنوان: "إقرار ضريبة القيمة المضافة — هيئة الزكاة والضريبة والجمارك"
+      - عنوان فرعي: "المملكة العربية السعودية — نموذج VAT-301"
+      - لافتة: "⚠ هذا الإقرار تعديل لإقرار سابق تم إلغاؤه"
+      - 14 حقلاً في 3 أقسام مع الأرقام الصحيحة بفواصل الآلاف
+      - بطاقة GL verification مع مقارنة شاملة (الإقرار vs اليومية vs الفرق)
+      - الألوان: #b45309 (من إعدادات القالب) مطبقة على كل العناصر ✅
+
+**10. التحقق البصري عبر VLM:**
+- استخدمت `z-ai vision` لتحليل لقطة الشاشة
+- النتيجة: "1) Yes, section headers use amber/brown (#b45309). 2) Yes, the GL verification section shows a matched status with green. 3) Yes, all numbers are visible and formatted with thousand separators. 4) Yes, it looks professional."
+
+**11. lint:** يمر بنجاح (الخطأ الوحيد في `take-screenshots.mjs` موجود مسبقاً)
+
+Stage Summary:
+- ✅ **التراجع وإعادة الإنشاء يعمل بشكل صحيح**: إلغاء الإقرار + عكس القيود + إنشاء إقرار معدل جديد. تم اختباره فعلياً عبر المتصفح.
+- ✅ **تأريخ القيود بالفترة الصحيحة**: قيود VAT_DECLARATION الآن بتاريخ نهاية الفترة (مثل 2024-09-30 لـ Q3 2024) بدلاً من تاريخ اليوم. هذا يمنع تسريب الأرصدة عبر الفترات.
+- ✅ **مطابقة ZATCA**: القالب المطبوع يستخدم نفس ترقيم الحقول (1-14) والتصنيفات (قياسي/صفري/معفى/واردات) المعتمدة من هيئة الزكاة. 3 أقسام واضحة.
+- ✅ **المطبوع واضح ودولي**: استخدام `fmtPrint` (فواصل الآلاف + منزلتين عشريتين)، تخطيط نظيف بألوان مهنية، بطاقة GL verification ملوّنة بـ 3 أعمدة.
+- ✅ **الألوان مطابقة لإعدادات القالب**: العنوان الرئيسي `invoicePrimaryColor` (#b45309) مطبق على: رؤوس الأقسام، صناديق المعلومات، أرقام الحقول، صافي الضريبة، الحدود.
+- ✅ **GL verification شامل**: يعرض الإقرار + اليومية + الفرق لكل من المخرجات والمدخلات + حالة المطابقة (✓/!) في 3 أعمدة.
+- ✅ **استثناء قيود الإقفال**: `getVatGlBalance` الآن تستثني قيود `VAT_DECLARATION` و `VAT_PAYMENT` وقيود العكس، لكي يقارن التحقق الضريبة من الفواتير فقط.
+- ✅ **حفظ sourceType/sourceId**: `createJournalEntry` الآن يحفظ جميع حقول القالب بما فيها `sourceType, sourceId, descriptionAr, isSystem`.
+- ✅ **liveCalc في الطباعة**: كل من `print-button.tsx` و `print/route.ts` يستخدمان `calculateVatForQuarter` لاحتساب GL verification مباشرةً (live).
+- ✅ **إصلاح البيانات**: إعادة تسمية `JE-000NaN` → `JE-000011`، إعادة تأريخ قيود VAT، تحديث sourceType.
+- ملفات معدّلة: `src/app/api/vat/route.ts`, `src/lib/accounting/engine.ts`, `src/lib/vat-calc.ts`, `src/printing/tax/VatReturn.ts`, `src/components/shared/print-button.tsx`, `src/app/api/print/route.ts`.

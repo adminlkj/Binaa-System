@@ -102,6 +102,11 @@ export function classifyVatCategory(vatRate: number): 'STANDARD' | 'ZERO' | 'EXE
  * يحسب رصيد حساب ضريبة القيمة المضافة من دفتر اليومية
  * (القيود المنشورة فقط) خلال فترة محددة.
  *
+ * ❗ مهم: تستثني هذه الدالة قيود الإقرار الضريبي نفسها (VAT_DECLARATION و VAT_PAYMENT)
+ *    لأنها قيود إقفال تنقل الرصيد من حساب الضريبة إلى حساب الضريبة المستحقة.
+ *    الهدف هو مقارنة الضريبة المحتسبة من الفواتير مع الضريبة المرحّلة من الفواتير
+ *    (وليس مع قيد الإقرار الذي يُغلق الحساب).
+ *
  * ضريبة المخرجات (VAT_OUTPUT): حساب liability برصيد دائن طبيعي.
  *   الرصيد = إجمالي الائتمان - إجمالي المدين خلال الفترة.
  *
@@ -127,6 +132,18 @@ export async function getVatGlBalance(
       journalEntry: {
         status: 'POSTED',
         date: { gte: startDate, lte: endDate },
+        // ❗ استثنِ قيود الإقرار الضريبي والسداد (قيود الإقفال)
+        //    حتى لا تتأثر أرصدة التحقق بقيد الإقرار نفسه.
+        NOT: {
+          OR: [
+            { sourceType: 'VAT_DECLARATION' },
+            { sourceType: 'VAT_PAYMENT' },
+            { entryNo: { startsWith: 'JE-VAT-' } },
+            { entryNo: { startsWith: 'JE-VTP-' } },
+            // استثنِ أيضاً قيود العكس المرتبطة بإقرارات الضريبة
+            { isReversal: true, description: { contains: 'VAT' } },
+          ],
+        },
       },
     },
     select: { debit: true, credit: true },

@@ -8,6 +8,7 @@ import {
 } from '@/lib/unified-print-engine'
 import { generateZatcaQR } from '@/lib/zatca-qr'
 import { db } from '@/lib/db'
+import { calculateVatForQuarter } from '@/lib/vat-calc'
 
 /**
  * GET /api/print?type=<type>&id=<id>&format=<html|json>
@@ -311,31 +312,35 @@ export async function GET(request: NextRequest) {
     } else if (type === 'vat-return') {
       const vatReturn = await db.vATReturn.findUnique({ where: { id } })
       if (vatReturn) {
+        // ❗ احتسب قيم GL (التحقق من دفتر اليومية) مباشرةً (live) بدلاً من القيم المجمّدة.
+        //    القيم المجمّدة قد تكون قديمة إذا تغيرت القيود بعد إنشاء الإقرار.
+        //    الأرقام الإجمالية (totalSales, outputVat, ...) تبقى مجمّدة كما هي.
+        const liveCalc = await calculateVatForQuarter(vatReturn.year, vatReturn.quarter)
         data = {
           year: vatReturn.year,
           quarter: vatReturn.quarter,
           period: vatReturn.period,
-          // الإجماليات
+          // الإجماليات (مجمّدة من الإقرار)
           totalSales: Number(vatReturn.totalSales),
           outputVat: Number(vatReturn.outputVat),
           totalPurchases: Number(vatReturn.totalPurchases),
           inputVat: Number(vatReturn.inputVat),
           netVat: Number(vatReturn.netVat),
-          // تصنيف المبيعات (ZATCA)
+          // تصنيف المبيعات (ZATCA) — مجمّدة
           standardRatedSales: Number(vatReturn.standardRatedSales),
           zeroRatedSales: Number(vatReturn.zeroRatedSales),
           exemptSales: Number(vatReturn.exemptSales),
           standardRatedSalesVat: Number(vatReturn.standardRatedSalesVat),
-          // تصنيف المشتريات (ZATCA)
+          // تصنيف المشتريات (ZATCA) — مجمّدة
           standardRatedPurchases: Number(vatReturn.standardRatedPurchases),
           zeroRatedPurchases: Number(vatReturn.zeroRatedPurchases),
           exemptPurchases: Number(vatReturn.exemptPurchases),
           importsSubjectToVAT: Number(vatReturn.importsSubjectToVAT),
           standardRatedPurchasesVat: Number(vatReturn.standardRatedPurchasesVat),
-          // التحقق من دفتر اليومية
-          glOutputVat: Number(vatReturn.glOutputVat),
-          glInputVat: Number(vatReturn.glInputVat),
-          glMatch: vatReturn.glMatch,
+          // التحقق من دفتر اليومية — قيم حية (live) من القيود المنشورة للفترة
+          glOutputVat: liveCalc.glOutputVat,
+          glInputVat: liveCalc.glInputVat,
+          glMatch: liveCalc.glMatch,
           // معلومات الحالة
           status: vatReturn.status,
           filedDate: vatReturn.filedDate?.toISOString(),

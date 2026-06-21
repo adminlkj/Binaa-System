@@ -72,6 +72,16 @@ function transformDataForPrint(type: PrintDocumentType, data: Record<string, unk
           if (d[k] === undefined) d[k] = v
         }
       }
+      // ❗ استخدم قيم liveCalc للتحقق من دفتر اليومية (GL) بدلاً من القيم المجمّدة.
+      //    القيم المجمّدة قد تكون قديمة إذا تغيرت القيود بعد إنشاء الإقرار.
+      //    liveCalc يحتسب الأرصدة الحية من القيود المنشورة للفترة.
+      const liveCalc = d.liveCalc as Record<string, unknown> | undefined
+      if (liveCalc && typeof liveCalc === 'object') {
+        // اكتب فوق قيم GL بقيم liveCalc (الحية)
+        d.glOutputVat = liveCalc.glOutputVat
+        d.glInputVat = liveCalc.glInputVat
+        d.glMatch = liveCalc.glMatch
+      }
       // تأكد من وجود حقول الإقرار كأرقام
       const numFields = [
         'totalSales', 'outputVat', 'totalPurchases', 'inputVat', 'netVat',

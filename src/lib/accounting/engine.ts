@@ -510,7 +510,11 @@ export async function createJournalEntry(template: JournalEntryTemplate, tx?: Pr
       entryNo: template.entryNo,
       date: template.date,
       description: template.description,
+      descriptionAr: template.descriptionAr,
       status: 'POSTED', // Auto-entries are posted immediately
+      sourceType: template.sourceType,
+      sourceId: template.sourceId,
+      isSystem: true,
       lines: {
         create: await Promise.all(
           template.lines.map(async (line) => {

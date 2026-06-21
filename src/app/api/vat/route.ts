@@ -9,6 +9,21 @@ import {
   type PrismaTransaction,
 } from '@/lib/accounting/engine'
 
+// ============ Helper: Period end date ============
+/**
+ * يحسب تاريخ نهاية الفترة الضريبية (آخر يوم في الربع).
+ * ضروري لِتأريخ قيود الإقرار الضريبي بتاريخ الفترة المعنية،
+ * حتى تظهر القيود في دفتر اليومية للفترة الصحيحة عند التحقق.
+ *
+ * مثال: getPeriodEndDate(2024, 3) → 2024-09-30 23:59:59
+ */
+function getPeriodEndDate(year: number, quarter: number): Date {
+  // نهاية الربع = آخر يوم في الشهر الثالث للربع
+  const endMonth = quarter * 3 // 3, 6, 9, 12
+  // new Date(year, monthIndex+1, 0) → آخر يوم في الشهر السابق
+  return new Date(year, endMonth, 0, 23, 59, 59, 999)
+}
+
 // ============ GET: List VAT returns with optional breakdown ============
 export async function GET(request: Request) {
   try {
@@ -215,6 +230,9 @@ export async function PATCH(request: Request) {
       // استخدم معاملة لضمان atomicity بين القيد والتحديث
       const vatReturn = await db.$transaction(async (tx: PrismaTransaction) => {
         // أنشئ قيد الإقرار الضريبي تلقائياً
+        // ❗ مهم: تأريخ القيد بتاريخ نهاية الفترة الضريبية (وليس تاريخ اليوم)
+        //    حتى يظهر القيد في دفتر اليومية للفترة الصحيحة عند التحقق من المطابقة.
+        //    مثال: إقرار Q3 2024 → القيد بتاريخ 2024-09-30 (وليس تاريخ التقديم).
         let journalEntryId: string | null = null
         try {
           const je = await autoEntryVATDeclaration({
@@ -222,7 +240,7 @@ export async function PATCH(request: Request) {
             outputVat: toNumber(existing.outputVat),
             inputVat: toNumber(existing.inputVat),
             netVat: toNumber(existing.netVat),
-            date: new Date(),
+            date: getPeriodEndDate(existing.year, existing.quarter),
           }, tx)
           journalEntryId = je.id
         } catch (e) {
