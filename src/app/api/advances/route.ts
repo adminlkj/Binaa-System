@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const advances = await db.employeeAdvance.findMany({
       include: {
-        employee: { select: { id: true, code: true, name: true, position: true } },
+        employee: { select: { id: true, code: true, name: true, profession: true } },
       },
       orderBy: { date: 'desc' },
     })
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
         description: body.description || null,
       },
       include: {
-        employee: { select: { id: true, code: true, name: true, position: true } },
+        employee: { select: { id: true, code: true, name: true, profession: true } },
       },
     })
 
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     const updatedAdvance = await db.employeeAdvance.findUnique({
       where: { id: advance.id },
       include: {
-        employee: { select: { id: true, code: true, name: true, position: true } },
+        employee: { select: { id: true, code: true, name: true, profession: true } },
       },
     })
 
@@ -82,7 +82,7 @@ export async function PUT(request: Request) {
     const existing = await db.employeeAdvance.findUnique({
       where: { id },
       include: {
-        employee: { select: { id: true, code: true, name: true, position: true } },
+        employee: { select: { id: true, code: true, name: true, profession: true } },
       },
     })
 
@@ -100,7 +100,7 @@ export async function PUT(request: Request) {
         status: newStatus,
       },
       include: {
-        employee: { select: { id: true, code: true, name: true, position: true } },
+        employee: { select: { id: true, code: true, name: true, profession: true } },
       },
     })
 

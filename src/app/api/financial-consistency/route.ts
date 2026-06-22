@@ -4,29 +4,38 @@
 // ============================================================================
 
 import { NextResponse } from 'next/server'
-import { validateFinancialConsistency } from '@/lib/accounting/engine'
+import { validateFinancialConsistency } from '@/lib/accounting/consistency'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const issues = await validateFinancialConsistency()
+    const result = await validateFinancialConsistency()
 
     const summary = {
-      totalIssues: issues.length,
-      criticalIssues: issues.filter(i => i.severity === 'CRITICAL').length,
-      warnings: issues.filter(i => i.severity === 'WARNING').length,
-      missingJournalEntries: issues.filter(i => i.type === 'MISSING_JOURNAL_ENTRY').length,
-      unbalancedEntries: issues.filter(i => i.type === 'UNBALANCED_ENTRY').length,
-      brokenReferences: issues.filter(i => i.type === 'BROKEN_REFERENCE').length,
+      totalIssues: result.issues.length,
+      criticalIssues: result.issues.filter(i => i.severity === 'CRITICAL').length,
+      warnings: result.issues.filter(i => i.severity === 'WARNING').length,
+      missingJournalEntries: result.issues.filter(i => i.type === 'MISSING_JOURNAL_ENTRY').length,
+      unbalancedEntries: result.issues.filter(i => i.type === 'UNBALANCED_ENTRY').length,
+      brokenReferences: result.issues.filter(i => i.type === 'BROKEN_REFERENCE').length,
+      totalRules: result.totalRules,
+      passedRules: result.passedRules,
+      score: result.score,
+      rules: result.results,
     }
 
     return NextResponse.json({
       summary,
-      issues,
-      isHealthy: issues.filter(i => i.severity === 'CRITICAL').length === 0,
+      issues: result.issues,
+      isHealthy: summary.criticalIssues === 0,
       checkedAt: new Date().toISOString(),
     })
   } catch (error: unknown) {
     console.error('Error validating financial consistency:', error)
-    return NextResponse.json({ error: 'Failed to validate consistency' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Failed to validate consistency', details: error instanceof Error ? error.message : 'Unknown' },
+      { status: 500 }
+    )
   }
 }

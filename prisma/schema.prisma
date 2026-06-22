@@ -311,6 +311,7 @@ model CostCenter {
   children     CostCenter[]  @relation("CostCenterHierarchy")
   journalLines JournalLine[]
   expenses     Expense[]
+  costEntries  CostEntry[]
 
   @@index([parentId])
   @@index([isActive])
@@ -402,6 +403,7 @@ model Client {
   rentalContracts EquipmentRental[]
   deliveryOrders  EquipmentDeliveryOrder[]
   clientPayments  ClientPayment[]
+  customerAdvances CustomerAdvance[]
 
   @@index([isActive])
 }
@@ -453,6 +455,10 @@ model Subcontractor {
 
   invoices  SubcontractorInvoice[]
   contracts SubcontractorContract[]
+  // ── Phase 2 relations ──
+  advances   SubcontractorAdvance[]
+  retentions SubcontractorRetention[]
+  payments   SubcontractorPayment[]
 
   @@index([isActive])
 }
@@ -639,6 +645,25 @@ model Project {
   equipmentOperations    EquipmentOperation[]
   salaries               Salary[]
   deliveryOrders         EquipmentDeliveryOrder[]
+  // ── Phase 1-2 relations ──
+  wbsElements            WBSElement[]
+  activities             Activity[]
+  costEntries            CostEntry[]
+  projectLedger          ProjectLedger[]
+  commitments            Commitment[]
+  subcontractorAdvances  SubcontractorAdvance[]
+  subcontractorRetentions SubcontractorRetention[]
+  measurements           Measurement[]
+  wipEntries             WIPEntry[]
+  wipAdjustments         WIPAdjustment[]
+  projectBudgets         ProjectBudget[]
+  projectForecasts       ProjectForecast[]
+  lossProvisions         LossProvision[]
+  customerAdvances       CustomerAdvance[]
+  estimatedTotalCost     Decimal?  @default(0)
+  committedCost          Decimal?  @default(0)
+  actualCost             Decimal?  @default(0)
+  progressPercent        Decimal?  @default(0)
 
   @@index([branchId])
   @@index([clientId])
@@ -787,6 +812,11 @@ model BOQItem {
   updatedAt   DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  // ── Phase 2 relations ──
+  wbsElement   WBSElement?   @relation(fields: [wbsElementId], references: [id])
+  measurements Measurement[]
+  claimItems   ClaimItem[]
+  wbsElementId String?
 
   @@index([projectId])
   @@index([code])
@@ -813,10 +843,17 @@ model ProgressClaim {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   deletedAt      DateTime?
+  // ── Phase 2 fields ──
+  certifiedAmount   Decimal? @default(0)
+  retentionAmount   Decimal? @default(0)
+  advanceDeduction  Decimal? @default(0)
 
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Restrict)
   contract     Contract      @relation(fields: [contractId], references: [id], onDelete: Restrict)
   salesInvoice SalesInvoice?
+  // ── Phase 2 relations ──
+  items        ClaimItem[]
+  certification ClaimCertification?
 
   @@index([projectId])
   @@index([contractId])
@@ -1155,6 +1192,8 @@ model SubcontractorInvoice {
 
   subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
   project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  // ── Phase 2 relations ──
+  payments     SubcontractorPayment[]
 
   @@index([subcontractorId])
   @@index([projectId])
@@ -1573,6 +1612,7 @@ model InventoryItem {
   updatedAt     DateTime          @updatedAt
 
   warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  stockMovements StockMovement[]
 
   @@index([warehouseId])
   @@index([category])
@@ -2009,4 +2049,545 @@ model PeriodClosing {
   @@unique([year, month, type])
   @@index([status])
   @@index([year, month])
+}
+
+// ============================================================================
+// Phase 1-2 — IFRS 15 + Project Controls + Subcontractor Lifecycle Models
+// ============================================================================
+
+// ── WBS (Work Breakdown Structure) ──────────────────────────────────────
+model WBSElement {
+  id          String   @id @default(cuid())
+  code        String
+  projectId   String
+  parentId    String?
+  level       Int      @default(1)
+  name        String
+  elementType String   @default("WORK_PACKAGE") // PROJECT, PHASE, DELIVERABLE, WORK_PACKAGE
+  weight      Decimal  @default(0) // weight in % for progress calc
+  status      String   @default("ACTIVE") // ACTIVE, COMPLETED, CANCELLED, ON_HOLD
+  startDate   DateTime?
+  endDate     DateTime?
+  progress    Decimal  @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent      WBSElement?  @relation("WBSHierarchy", fields: [parentId], references: [id])
+  children    WBSElement[] @relation("WBSHierarchy")
+  costEntries CostEntry[]
+  costCodeBudgets CostCodeBudget[]
+  projectLedger ProjectLedger[]
+  activities  Activity[]
+  boqItems    BOQItem[]
+  measurements Measurement[]
+  claimItems  ClaimItem[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@index([parentId])
+}
+
+// ── Cost Codes ──────────────────────────────────────────────────────────
+model CostCode {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  category  String   // LABOR, MATERIAL, EQUIPMENT, SUBCONTRACTOR, OVERHEAD, INDIRECT
+  parentId  String?
+  level     Int      @default(1)
+  unit      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent        CostCode?         @relation("CostCodeHierarchy", fields: [parentId], references: [id])
+  children      CostCode[]        @relation("CostCodeHierarchy")
+  costEntries   CostEntry[]
+  costCodeBudgets CostCodeBudget[]
+  projectLedger ProjectLedger[]
+
+  @@index([category])
+  @@index([parentId])
+}
+
+// ── Activities (Schedule Activities) ─────────────────────────────────────
+model Activity {
+  id               String   @id @default(cuid())
+  code             String
+  projectId        String
+  wbsElementId     String?
+  name             String
+  activityType     String   @default("CONSTRUCTION") // CONSTRUCTION, ENGINEERING, PROCUREMENT, COMMISSIONING
+  status           String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED, ON_HOLD
+  startDate        DateTime?
+  endDate          DateTime?
+  plannedQuantity  Decimal  @default(0)
+  actualQuantity   Decimal  @default(0)
+  progress         Decimal  @default(0)
+  weight           Decimal  @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id])
+  costEntries CostEntry[]
+
+  @@unique([projectId, code])
+  @@index([projectId])
+  @@index([wbsElementId])
+}
+
+// ── Cost Entry (Unified Cost Collection) ────────────────────────────────
+model CostEntry {
+  id              String   @id @default(cuid())
+  projectId       String
+  wbsElementId    String?
+  costCodeId      String?
+  activityId      String?
+  costCenterId    String?
+  costType        String   // MATERIALS, LABOR, EQUIPMENT, SUBCONTRACTOR, OVERHEAD, INDIRECT
+  sourceType      String   // GRN, EXPENSE, SUBCONTRACTOR_INVOICE, LABOR_COST, EQUIPMENT_COST, SALARY, MANUAL, JOURNAL
+  sourceId        String?
+  sourceDocument  String?
+  description     String
+  quantity        Decimal  @default(0)
+  unit            String?
+  unitCost        Decimal  @default(0)
+  amount          Decimal
+  date            DateTime
+  periodYear      Int
+  periodMonth     Int
+  isCommitted     Boolean  @default(false)
+  journalEntryId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id])
+  costCode   CostCode?    @relation(fields: [costCodeId], references: [id])
+  activity   Activity?    @relation(fields: [activityId], references: [id])
+  costCenter CostCenter?  @relation(fields: [costCenterId], references: [id])
+
+  @@index([projectId, date])
+  @@index([costType])
+  @@index([sourceType, sourceId])
+  @@index([wbsElementId, costCodeId])
+}
+
+// ── Cost Code Budget (WBS × CostCode matrix) ────────────────────────────
+model CostCodeBudget {
+  id             String   @id @default(cuid())
+  projectId      String
+  wbsElementId   String
+  costCodeId     String
+  budgetAmount   Decimal  @default(0)
+  committedAmount Decimal @default(0)
+  actualAmount   Decimal  @default(0)
+  earnedAmount   Decimal  @default(0)
+  forecastAmount Decimal  @default(0)
+  variance       Decimal  @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  wbsElement WBSElement @relation(fields: [wbsElementId], references: [id], onDelete: Cascade)
+  costCode   CostCode   @relation(fields: [costCodeId], references: [id], onDelete: Cascade)
+
+  @@unique([wbsElementId, costCodeId])
+  @@index([projectId])
+}
+
+// ── Project Ledger (Single Source of Truth) ─────────────────────────────
+model ProjectLedger {
+  id             String   @id @default(cuid())
+  projectId      String
+  wbsElementId   String?
+  costCodeId     String?
+  activityId     String?
+  ledgerType     String   // COST, REVENUE, WIP, CONTRACT_ASSET, CONTRACT_LIABILITY, RETENTION, ADVANCE, COMMITMENT, CASH
+  entryDate      DateTime
+  description    String?
+  debit          Decimal  @default(0)
+  credit         Decimal  @default(0)
+  runningBalance Decimal  @default(0)
+  reference      String?
+  journalEntryId String?
+  sourceType     String?
+  sourceId       String?
+  createdAt      DateTime @default(now())
+
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id])
+  costCode   CostCode?    @relation(fields: [costCodeId], references: [id])
+
+  @@index([projectId, entryDate])
+  @@index([ledgerType])
+}
+
+// ── Commitment Accounting (PO + Subcontract open commitments) ────────────
+model Commitment {
+  id                  String    @id @default(cuid())
+  commitmentNo        String    @unique
+  projectId           String
+  commitmentType      String    // PURCHASE_ORDER, SUBCONTRACT, SERVICE_CONTRACT
+  vendorId            String?
+  description         String?
+  committedAmount     Decimal
+  invoicedAmount      Decimal   @default(0)
+  receivedAmount      Decimal   @default(0)
+  remainingCommitment Decimal   @default(0)
+  commitmentDate      DateTime
+  status              String    @default("OPEN") // OPEN, PARTIALLY_INVOICED, FULLY_INVOICED, CANCELLED
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines   CommitmentLine[]
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model CommitmentLine {
+  id            String   @id @default(cuid())
+  commitmentId  String
+  wbsElementId  String?
+  costCodeId    String?
+  description   String?
+  quantity      Decimal  @default(0)
+  unitPrice     Decimal  @default(0)
+  lineAmount    Decimal  @default(0)
+  createdAt     DateTime @default(now())
+
+  commitment Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+
+  @@index([commitmentId])
+}
+
+// ── Subcontractor Lifecycle (Advance / Retention / Payment) ─────────────
+model SubcontractorAdvance {
+  id                String   @id @default(cuid())
+  advanceNo         String   @unique
+  subcontractorId   String
+  projectId         String
+  contractId        String?
+  date              DateTime
+  amount            Decimal
+  deductionPercent Decimal  @default(0)
+  recoveryMethod    String   @default("PER_CERTIFICATE") // PER_CERTIFICATE, FIXED, LUMP_SUM
+  status            String   @default("PENDING") // PENDING, PARTIALLY_SETTLED, SETTLED, CANCELLED
+  recoveredAmount   Decimal  @default(0)
+  notes             String?
+  journalEntryId    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([subcontractorId])
+  @@index([projectId])
+}
+
+model SubcontractorRetention {
+  id                  String   @id @default(cuid())
+  retentionNo         String   @unique
+  subcontractorId     String
+  projectId           String
+  subcontractorInvoiceId String?
+  date                DateTime
+  withheldAmount      Decimal
+  releasedAmount      Decimal  @default(0)
+  status              String   @default("WITHHELD") // WITHHELD, PARTIALLY_RELEASED, FULLY_RELEASED
+  releaseDate         DateTime?
+  notes               String?
+  journalEntryId      String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([subcontractorId])
+  @@index([projectId])
+}
+
+model SubcontractorPayment {
+  id                    String   @id @default(cuid())
+  paymentNo             String   @unique
+  subcontractorId       String
+  subcontractorInvoiceId String?
+  paymentDate           DateTime
+  paymentMethod         String   @default("BANK_TRANSFER") // CASH, BANK_TRANSFER, CHEQUE
+  bankAccountId         String?
+  chequeNo              String?
+  amount                Decimal
+  status                String   @default("PENDING") // PENDING, APPROVED, PAID, CANCELLED
+  notes                 String?
+  journalEntryId        String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  subcontractor       Subcontractor       @relation(fields: [subcontractorId], references: [id])
+  subcontractorInvoice SubcontractorInvoice? @relation(fields: [subcontractorInvoiceId], references: [id])
+
+  @@index([subcontractorId])
+  @@index([subcontractorInvoiceId])
+}
+
+// ── Claim Items + Measurements + Certifications (IFRS 15 chain) ─────────
+model ClaimItem {
+  id                String   @id @default(cuid())
+  claimId           String
+  boqItemId         String?
+  wbsElementId      String?
+  description       String
+  unit              String?
+  previousQuantity  Decimal  @default(0)
+  currentQuantity   Decimal  @default(0)
+  cumulativeQuantity Decimal @default(0)
+  unitPrice         Decimal  @default(0)
+  totalAmount       Decimal  @default(0)
+  retentionPercent  Decimal  @default(0)
+  retentionAmount   Decimal  @default(0)
+  advanceDeduction  Decimal  @default(0)
+  penaltyAmount     Decimal  @default(0)
+  otherDeductions   Decimal  @default(0)
+  netAmount         Decimal  @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  claim       ProgressClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  boqItem     BOQItem?      @relation(fields: [boqItemId], references: [id])
+  wbsElement  WBSElement?   @relation(fields: [wbsElementId], references: [id])
+  measurement Measurement?
+
+  @@index([claimId])
+}
+
+model Measurement {
+  id                 String   @id @default(cuid())
+  code               String   @unique
+  projectId          String
+  wbsElementId       String?
+  boqItemId          String?
+  claimItemId        String?  @unique
+  description        String
+  measurementDate    DateTime
+  measuredBy         String?
+  surveyorName       String?
+  contractQuantity   Decimal  @default(0)
+  previousQuantity   Decimal  @default(0)
+  currentQuantity    Decimal  @default(0)
+  cumulativeQuantity Decimal  @default(0)
+  rejectedQuantity   Decimal  @default(0)
+  unit               String?
+  unitRate           Decimal  @default(0)
+  previousAmount     Decimal  @default(0)
+  currentAmount      Decimal  @default(0)
+  cumulativeAmount   Decimal  @default(0)
+  status             String   @default("DRAFT") // DRAFT, SUBMITTED, CERTIFIED, REJECTED
+  certifiedQuantity  Decimal  @default(0)
+  certifiedAmount    Decimal  @default(0)
+  certifiedDate      DateTime?
+  certifiedBy        String?
+  rejectionReason    String?
+  notes              String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  wbsElement WBSElement? @relation(fields: [wbsElementId], references: [id])
+  boqItem    BOQItem?    @relation(fields: [boqItemId], references: [id])
+  claimItem  ClaimItem?  @relation(fields: [claimItemId], references: [id])
+
+  @@index([projectId])
+  @@index([status])
+}
+
+model ClaimCertification {
+  id                  String   @id @default(cuid())
+  claimId             String   @unique
+  certifiedBy         String?
+  certificationDate   DateTime
+  claimedAmount       Decimal  @default(0)
+  certifiedAmount     Decimal  @default(0)
+  deductedAmount      Decimal  @default(0)
+  retentionAmount     Decimal  @default(0)
+  advanceDeduction    Decimal  @default(0)
+  penaltyAmount       Decimal  @default(0)
+  otherDeductions     Decimal  @default(0)
+  netPayable          Decimal  @default(0)
+  status              String   @default("CERTIFIED") // PENDING, CERTIFIED, REJECTED
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  claim ProgressClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+}
+
+// ── WIP Entries (IFRS 15 Work in Progress) ──────────────────────────────
+model WIPEntry {
+  id             String   @id @default(cuid())
+  projectId      String
+  wbsElementId   String?
+  entryDate      DateTime
+  costsIncurred  Decimal  @default(0)
+  progressPercent Decimal @default(0)
+  revenueRecognized Decimal @default(0)
+  grossProfit    Decimal  @default(0)
+  journalEntryId String?
+  createdAt      DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, entryDate])
+}
+
+model WIPAdjustment {
+  id             String   @id @default(cuid())
+  projectId      String
+  adjustmentDate DateTime
+  adjustmentType String   // LOSS_PROVISION, REVERSAL, RESTATEMENT
+  amount         Decimal
+  reason         String?
+  journalEntryId String?
+  createdAt      DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ── Project Budget & Forecast (EVM) ─────────────────────────────────────
+model ProjectBudget {
+  id            String   @id @default(cuid())
+  projectId     String
+  budgetType    String   @default("ORIGINAL") // ORIGINAL, REVISED, SUPPLEMENTARY
+  totalAmount   Decimal  @default(0)
+  approvedDate  DateTime
+  approvedBy    String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  project Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  lines   ProjectBudgetLine[]
+
+  @@index([projectId])
+}
+
+model ProjectBudgetLine {
+  id            String   @id @default(cuid())
+  budgetId      String
+  wbsElementId  String?
+  costCodeId    String?
+  description   String?
+  amount        Decimal  @default(0)
+  createdAt     DateTime @default(now())
+
+  budget ProjectBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+
+  @@index([budgetId])
+}
+
+model ProjectForecast {
+  id                  String   @id @default(cuid())
+  projectId           String
+  forecastDate        DateTime
+  contractValue       Decimal  @default(0)
+  estimatedTotalCost  Decimal  @default(0)
+  costsIncurredToDate Decimal  @default(0)
+  costsToComplete     Decimal  @default(0)
+  expectedProfit      Decimal  @default(0)
+  expectedLoss        Decimal  @default(0)
+  status              String   @default("ACTIVE") // ACTIVE, ARCHIVED
+  // EVM metrics
+  pv                  Decimal  @default(0)
+  ev                  Decimal  @default(0)
+  ac                  Decimal  @default(0)
+  bac                 Decimal  @default(0)
+  etc                 Decimal  @default(0)
+  eac                 Decimal  @default(0)
+  vac                 Decimal  @default(0)
+  cpi                 Decimal  @default(0)
+  spi                 Decimal  @default(0)
+  cv                  Decimal  @default(0)
+  sv                  Decimal  @default(0)
+  percentComplete     Decimal  @default(0)
+  percentSpent        Decimal  @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+}
+
+model LossProvision {
+  id            String   @id @default(cuid())
+  projectId     String
+  provisionDate DateTime
+  amount        Decimal
+  reason        String?
+  status        String   @default("ACTIVE") // ACTIVE, REVERSED
+  journalEntryId String?
+  createdAt     DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ── Customer Advance & Recovery ─────────────────────────────────────────
+model CustomerAdvance {
+  id               String   @id @default(cuid())
+  clientId         String
+  projectId        String?
+  advanceNo        String   @unique
+  date             DateTime
+  amount           Decimal
+  recoveredAmount  Decimal  @default(0)
+  status           String   @default("ACTIVE") // ACTIVE, FULLY_RECOVERED, CANCELLED
+  notes            String?
+  journalEntryId   String?
+  createdAt        DateTime @default(now())
+
+  client  Client   @relation(fields: [clientId], references: [id])
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([projectId])
+}
+
+model AdvanceRecovery {
+  id               String   @id @default(cuid())
+  customerAdvanceId String
+  invoiceId        String?
+  date             DateTime
+  amount           Decimal
+  notes            String?
+  journalEntryId   String?
+  createdAt        DateTime @default(now())
+
+  @@index([customerAdvanceId])
+}
+
+// ── Stock Movements (Inventory) ─────────────────────────────────────────
+model StockMovement {
+  id            String   @id @default(cuid())
+  inventoryItemId String
+  movementType  String   // RECEIPT, ISSUE, TRANSFER, ADJUSTMENT, RETURN
+  quantity      Decimal
+  unitCost      Decimal  @default(0)
+  totalAmount   Decimal  @default(0)
+  movementDate  DateTime
+  reference     String?
+  journalEntryId String?
+  createdAt     DateTime @default(now())
+
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId])
+  @@index([movementDate])
 }
