@@ -59,7 +59,7 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
     const from = new Date(dateFrom)
     const invoicesBefore = invoices.filter((i) => new Date(i.date) < from)
     const paymentsBefore = payments.filter((p) => new Date(p.date) < from)
-    operationalOpeningBalance = invoicesBefore.reduce((s, i) => s + i.totalAmount, 0) - paymentsBefore.reduce((s, p) => s + p.amount, 0)
+    operationalOpeningBalance = invoicesBefore.reduce((s, i) => s + Number(i.totalAmount || 0), 0) - paymentsBefore.reduce((s, p) => s + Number(p.amount || 0), 0)
   }
 
   // Build statement lines (operational - descriptive detail)
@@ -126,8 +126,8 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
     })
   }
 
-  const totalRevenues = filteredInvoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalCosts = filteredPayments.reduce((s, p) => s + p.amount, 0)
+  const totalRevenues = filteredInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
+  const totalCosts = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
   const profit = totalRevenues - totalCosts
 
   // ===== GL-based book balance (رصيد دفتري) =====
@@ -204,7 +204,7 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
     const invoicesBefore = invoices.filter((i) => new Date(i.date) < from)
     const paymentsBefore = payments.filter((p) => new Date(p.date) < from)
     // For vendors: invoices are credits (we owe), payments are debits (we pay)
-    operationalOpeningBalance = invoicesBefore.reduce((s, i) => s + i.totalAmount, 0) - paymentsBefore.reduce((s, p) => s + p.amount, 0)
+    operationalOpeningBalance = invoicesBefore.reduce((s, i) => s + Number(i.totalAmount || 0), 0) - paymentsBefore.reduce((s, p) => s + Number(p.amount || 0), 0)
   }
 
   const filteredInvoices = dateFrom || dateTo
@@ -268,8 +268,8 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
     })
   }
 
-  const totalRevenues = filteredPayments.reduce((s, p) => s + p.amount, 0)
-  const totalCosts = filteredInvoices.reduce((s, i) => s + i.totalAmount, 0)
+  const totalRevenues = filteredPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const totalCosts = filteredInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
 
   // ===== GL-based book balance (رصيد دفتري) =====
   const apAccounts = await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])
@@ -568,11 +568,11 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
   }
 
   // Operational totals (descriptive)
-  const operationalTotalRevenues = rentals.reduce((s, r) => s + (r.totalAmount || r.monthlyRate), 0)
+  const operationalTotalRevenues = rentals.reduce((s, r) => s + (Number(r.totalAmount || 0) || Number(r.monthlyRate || 0)), 0)
   const operationalTotalCosts =
-    expenses.reduce((s, e) => s + e.amount, 0) +
+    expenses.reduce((s, e) => s + Number(e.amount || 0), 0) +
     fuelLogs.reduce((s, f) => s + f.totalCost, 0) +
-    maintenance.reduce((s, m) => s + m.cost, 0)
+    maintenance.reduce((s, m) => s + Number(m.cost || 0), 0)
 
   const profit = operationalTotalRevenues - operationalTotalCosts
 

@@ -316,15 +316,15 @@ export function SupplierPaymentsModule() {
   const currentMonth = new Date().getMonth()
   const currentYear = new Date().getFullYear()
 
-  const totalPayments = payments.reduce((sum, p) => sum + p.amount, 0)
+  const totalPayments = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
   const paymentsToday = payments.filter(p => {
     const d = new Date(p.date)
     return d.toISOString().split('T')[0] === today
-  }).reduce((sum, p) => sum + p.amount, 0)
+  }).reduce((sum, p) => sum + Number(p.amount || 0), 0)
   const paymentsThisMonth = payments.filter(p => {
     const d = new Date(p.date)
     return d.getMonth() === currentMonth && d.getFullYear() === currentYear
-  }).reduce((sum, p) => sum + p.amount, 0)
+  }).reduce((sum, p) => sum + Number(p.amount || 0), 0)
 
   const handleExport = () => {
     const columns: CSVColumn[] = [

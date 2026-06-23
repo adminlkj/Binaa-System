@@ -252,7 +252,7 @@ export function PettyCashModule() {
   })
 
   // Summary
-  const totalBalance = filtered.reduce((s, e) => s + e.amount, 0)
+  const totalBalance = filtered.reduce((s, e) => s + Number(e.amount || 0), 0)
 
   // CSV export
   const handleExport = () => {

@@ -125,8 +125,8 @@ export async function GET(request: Request) {
     const currentAssetAccounts = groupAccountsByPrefix(allAccounts, ['1'])
     const nonCurrentAssetAccounts = groupAccountsByPrefix(allAccounts, ['2'])
 
-    const totalCurrentAssets = r4(currentAssetAccounts.reduce((s, a) => s + a.balance, 0))
-    const totalNonCurrentAssets = r4(nonCurrentAssetAccounts.reduce((s, a) => s + a.balance, 0))
+    const totalCurrentAssets = r4(currentAssetAccounts.reduce((s, a) => s + Number(a.balance || 0), 0))
+    const totalNonCurrentAssets = r4(nonCurrentAssetAccounts.reduce((s, a) => s + Number(a.balance || 0), 0))
     const totalAssets = r4(totalCurrentAssets + totalNonCurrentAssets)
 
     // ---- Liabilities ----
@@ -134,21 +134,21 @@ export async function GET(request: Request) {
     const currentLiabilityAccounts = groupAccountsByPrefix(allAccounts, ['3'])
     const nonCurrentLiabilityAccounts = groupAccountsByPrefix(allAccounts, ['4'])
 
-    const totalCurrentLiabilities = r4(currentLiabilityAccounts.reduce((s, a) => s + a.balance, 0))
-    const totalNonCurrentLiabilities = r4(nonCurrentLiabilityAccounts.reduce((s, a) => s + a.balance, 0))
+    const totalCurrentLiabilities = r4(currentLiabilityAccounts.reduce((s, a) => s + Number(a.balance || 0), 0))
+    const totalNonCurrentLiabilities = r4(nonCurrentLiabilityAccounts.reduce((s, a) => s + Number(a.balance || 0), 0))
     const totalLiabilities = r4(totalCurrentLiabilities + totalNonCurrentLiabilities)
 
     // ---- Equity ----
     // Equity (5xxx)
     const equityAccounts = groupAccountsByPrefix(allAccounts, ['5'])
-    const totalEquityAccounts = r4(equityAccounts.reduce((s, a) => s + a.balance, 0))
+    const totalEquityAccounts = r4(equityAccounts.reduce((s, a) => s + Number(a.balance || 0), 0))
 
     // ---- Current Year Earnings (Net Income) ----
     // Revenue (6xxx) - Expenses (7xxx + 8xxx)
     const revenueAccounts = allAccounts.filter(a => a.code.startsWith('6'))
     const expenseAccounts = allAccounts.filter(a => a.code.startsWith('7') || a.code.startsWith('8'))
-    const totalRevenue = r4(revenueAccounts.reduce((s, a) => s + a.balance, 0))
-    const totalExpenses = r4(expenseAccounts.reduce((s, a) => s + a.balance, 0))
+    const totalRevenue = r4(revenueAccounts.reduce((s, a) => s + Number(a.balance || 0), 0))
+    const totalExpenses = r4(expenseAccounts.reduce((s, a) => s + Number(a.balance || 0), 0))
     const currentYearEarnings = r4(totalRevenue - totalExpenses)
 
     const totalEquity = r4(totalEquityAccounts + currentYearEarnings)

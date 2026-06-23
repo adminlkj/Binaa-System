@@ -26,7 +26,7 @@ export async function GET() {
             },
           })
           // Bank accounts are ASSET (debit normal)
-          balance = lines.reduce((s, l) => s + l.debit - l.credit, 0)
+          balance = lines.reduce((s, l) => s + Number(l.debit || 0) - Number(l.credit || 0), 0)
         }
 
         return {

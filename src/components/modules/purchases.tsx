@@ -462,7 +462,7 @@ function GRBasedInvoiceDialog({
   )
 
   // Financial amounts are computed from GR items (READ-ONLY)
-  const subtotal = useMemo(() => selectedGR?.items.reduce((s, i) => s + i.totalPrice, 0) ?? 0, [selectedGR])
+  const subtotal = useMemo(() => selectedGR?.items.reduce((s, i) => s + Number(i.totalPrice || 0), 0) ?? 0, [selectedGR])
   const vatRate = 0.15
   const vatAmount = subtotal * vatRate
   const totalAmount = subtotal + vatAmount
@@ -717,9 +717,9 @@ export function PurchasesModule() {
 
   // Summary
   const totalPR = purchaseRequests.length
-  const totalPO = purchaseOrders.reduce((s, o) => s + o.totalAmount, 0)
-  const totalPI = purchaseInvoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalPIPaid = purchaseInvoices.reduce((s, i) => s + i.paidAmount, 0)
+  const totalPO = purchaseOrders.reduce((s, o) => s + Number(o.totalAmount || 0), 0)
+  const totalPI = purchaseInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
+  const totalPIPaid = purchaseInvoices.reduce((s, i) => s + Number(i.paidAmount || 0), 0)
 
   const refetchAll = () => { refetchPR(); refetchPO(); refetchPI() }
 

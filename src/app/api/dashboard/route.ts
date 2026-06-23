@@ -267,7 +267,7 @@ export async function GET() {
     }
 
     const projectProfitability = projects.map(p => {
-      const contractValue = p.contractValue || p.contracts.reduce((s, c) => s + c.totalValue, 0)
+      const contractValue = p.contractValue || p.contracts.reduce((s, c) => s + Number(c.totalValue || 0), 0)
       const glData = projectGLMap.get(p.code) || { revenue: 0, costs: 0 }
       const totalRevenue = glData.revenue
       const totalCosts = glData.costs
@@ -376,8 +376,8 @@ export async function GET() {
       entryNo: e.entryNo,
       date: e.date.toISOString(),
       description: e.description,
-      totalDebit: e.lines.reduce((s, l) => s + l.debit, 0),
-      totalCredit: e.lines.reduce((s, l) => s + l.credit, 0),
+      totalDebit: e.lines.reduce((s, l) => s + Number(l.debit || 0), 0),
+      totalCredit: e.lines.reduce((s, l) => s + Number(l.credit || 0), 0),
       sourceType: e.sourceType,
     }))
 

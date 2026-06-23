@@ -175,7 +175,7 @@ export function FuelModule() {
   })
 
   const totalLiters = filtered.reduce((sum, f) => sum + (f.liters ?? 0), 0)
-  const totalCost = filtered.reduce((sum, f) => sum + (f.totalCost ?? 0), 0)
+  const totalCost = filtered.reduce((sum, f) => sum + (Number(f.totalCost || 0)), 0)
 
   const printData = useMemo(() => ({
     columns: [

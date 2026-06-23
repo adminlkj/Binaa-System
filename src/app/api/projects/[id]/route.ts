@@ -117,14 +117,14 @@ export async function GET(
 
     // Compute cost sheet for "كرت المشروع"
     const contractValue = project.contractValue || 0
-    const progressClaimsTotal = project.progressClaims.reduce((sum, c) => sum + c.amount, 0)
-    const salesInvoicesTotal = project.salesInvoices.reduce((sum, si) => sum + si.totalAmount, 0)
-    const purchases = project.purchaseInvoices.reduce((sum, p) => sum + p.totalAmount, 0)
-    const subcontractors = project.subcontractorInvoices.reduce((sum, s) => sum + s.totalAmount, 0)
-    const labor = project.laborCosts.reduce((sum, l) => sum + l.totalAmount, 0)
-    const equipment = project.equipmentCosts.reduce((sum, e) => sum + e.amount, 0) +
-      project.equipmentUsages.reduce((sum, e) => sum + e.cost, 0)
-    const projectExpenses = project.expenses.reduce((sum, e) => sum + e.totalAmount, 0)
+    const progressClaimsTotal = project.progressClaims.reduce((sum, c) => sum + Number(c.amount || 0), 0)
+    const salesInvoicesTotal = project.salesInvoices.reduce((sum, si) => sum + Number(si.totalAmount || 0), 0)
+    const purchases = project.purchaseInvoices.reduce((sum, p) => sum + Number(p.totalAmount || 0), 0)
+    const subcontractors = project.subcontractorInvoices.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0)
+    const labor = project.laborCosts.reduce((sum, l) => sum + Number(l.totalAmount || 0), 0)
+    const equipment = project.equipmentCosts.reduce((sum, e) => sum + Number(e.amount || 0), 0) +
+      project.equipmentUsages.reduce((sum, e) => sum + Number(e.cost || 0), 0)
+    const projectExpenses = project.expenses.reduce((sum, e) => sum + Number(e.totalAmount || 0), 0)
     const totalCosts = purchases + subcontractors + labor + equipment + projectExpenses
     const totalRevenue = progressClaimsTotal + salesInvoicesTotal
     const profit = totalRevenue - totalCosts
@@ -133,7 +133,7 @@ export async function GET(
     // Service invoices (non-extract based)
     const serviceInvoicesTotal = project.salesInvoices
       .filter(si => si.sourceType === 'TIMESHEET')
-      .reduce((sum, si) => sum + si.totalAmount, 0)
+      .reduce((sum, si) => sum + Number(si.totalAmount || 0), 0)
 
     const costSheet = {
       contractValue,

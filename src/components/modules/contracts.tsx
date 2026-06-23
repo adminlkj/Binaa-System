@@ -814,7 +814,7 @@ export function ContractsModule() {
     return matchSearch && matchStatus
   }), [contracts, search, statusFilter])
 
-  const totalContractValue = useMemo(() => filtered.reduce((s, c) => s + c.totalValue, 0), [filtered])
+  const totalContractValue = useMemo(() => filtered.reduce((s, c) => s + Number(c.totalValue || 0), 0), [filtered])
   const activeContractsCount = useMemo(() => filtered.filter(c => c.status === 'ACTIVE').length, [filtered])
   const uniqueProjects = useMemo(() => new Set(filtered.map(c => c.project?.id || c.projectId)).size, [filtered])
 

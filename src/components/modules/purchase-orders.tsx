@@ -596,7 +596,7 @@ export function PurchaseOrdersModule() {
     return matchSearch && matchStatus
   })
 
-  const totalPOAmount = purchaseOrders.reduce((s, o) => s + (o.totalAmount ?? 0), 0)
+  const totalPOAmount = purchaseOrders.reduce((s, o) => s + (Number(o.totalAmount || 0)), 0)
   const approvedCount = purchaseOrders.filter(o => o.status === 'APPROVED').length
   const pendingCount = purchaseOrders.filter(o => o.status === 'PENDING_APPROVAL' || o.status === 'DRAFT').length
 

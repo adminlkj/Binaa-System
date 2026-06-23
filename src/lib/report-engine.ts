@@ -296,7 +296,7 @@ export async function getTrialBalance(range?: DateRange): Promise<{
       totalCredit,
       totalNetDebit,
       totalNetCredit,
-      isBalanced: Math.abs(totalNetDebit - totalNetCredit) < 0.01,
+      isBalanced: Math.abs(totalDebit - totalCredit) < 0.01,
     },
   }
 }
@@ -350,27 +350,57 @@ export interface BalanceSheetData {
   equity: { accounts: AccountBalance[]; total: number }
   totalLiabilitiesAndEquity: number
   isBalanced: boolean
+  /** Net income for the current period (revenue - expenses), shown as "Current Year Earnings" in equity */
+  currentYearEarnings: number
 }
 
 export async function getBalanceSheet(asOfDate?: Date): Promise<BalanceSheetData> {
   const range: DateRange = asOfDate ? { to: asOfDate } : {}
-  const [assets, liabilities, equity] = await Promise.all([
+  const [assets, liabilities, equity, income] = await Promise.all([
     getAccountBalancesByType(['ASSET'], range),
     getAccountBalancesByType(['LIABILITY'], range),
     getAccountBalancesByType(['EQUITY'], range),
+    getIncomeStatement(range),
   ])
 
   const totalAssets = assets.reduce((s, a) => s + a.balance, 0)
   const totalLiabilities = liabilities.reduce((s, a) => s + a.balance, 0)
-  const totalEquity = equity.reduce((s, a) => s + a.balance, 0)
+
+  // Net income (revenue - expenses) for the period must be included in equity
+  // as "Current Year Earnings" until formally closed at period end.
+  // This is required by the accounting equation: Assets = Liabilities + Equity
+  // where Equity = Contributed Capital + Retained Earnings + Current Period Net Income.
+  const currentYearEarnings = income.netIncome
+
+  // Append a synthetic "Current Year Earnings" equity row so the user sees it.
+  // (If an account 5300 "أرباح/خسائر السنة الحالية" already has posted lines,
+  // those are shown separately — this synthetic row is the unclosed P&L balance.)
+  const equityWithEarnings: AccountBalance[] = [...equity]
+  if (Math.abs(currentYearEarnings) > 0.005) {
+    equityWithEarnings.push({
+      accountId: '__current_year_earnings__',
+      code: '5300',
+      name: 'Current Year Earnings (Unclosed P&L)',
+      nameAr: 'أرباح (خسائر) السنة الحالية - غير مُقفلة',
+      type: 'EQUITY',
+      accountRole: 'CURRENT_YEAR_EARNINGS',
+      activityType: 'BOTH',
+      totalDebit: currentYearEarnings < 0 ? Math.abs(currentYearEarnings) : 0,
+      totalCredit: currentYearEarnings > 0 ? currentYearEarnings : 0,
+      balance: currentYearEarnings, // equity is credit-normal, so positive net income = positive balance
+    })
+  }
+
+  const totalEquity = equityWithEarnings.reduce((s, a) => s + a.balance, 0)
   const totalLiabilitiesAndEquity = totalLiabilities + totalEquity
 
   return {
     assets: { accounts: assets, total: totalAssets },
     liabilities: { accounts: liabilities, total: totalLiabilities },
-    equity: { accounts: equity, total: totalEquity },
+    equity: { accounts: equityWithEarnings, total: totalEquity },
     totalLiabilitiesAndEquity,
     isBalanced: Math.abs(totalAssets - totalLiabilitiesAndEquity) < 0.01,
+    currentYearEarnings,
   }
 }
 

@@ -178,7 +178,7 @@ function AddPaymentDialog({
   // Selected invoice
   const selectedInvoice = invoices.find(inv => inv.id === invoiceId)
   const remainingBalance = selectedInvoice
-    ? (selectedInvoice.totalAmount ?? 0) - (selectedInvoice.paidAmount ?? 0)
+    ? (Number(selectedInvoice.totalAmount || 0)) - (Number(selectedInvoice.paidAmount || 0))
     : 0
 
   // Auto-fill amount when invoice is selected
@@ -750,9 +750,9 @@ export function ClientPaymentsModule() {
   }, [payments, search, clientFilter, receivedInFilter])
 
   // Stats
-  const totalPayments = filtered.reduce((s, p) => s + p.amount, 0)
-  const treasuryPayments = filtered.filter(p => p.receivedIn === 'TREASURY').reduce((s, p) => s + p.amount, 0)
-  const bankPayments = filtered.filter(p => p.receivedIn === 'BANK').reduce((s, p) => s + p.amount, 0)
+  const totalPayments = filtered.reduce((s, p) => s + Number(p.amount || 0), 0)
+  const treasuryPayments = filtered.filter(p => p.receivedIn === 'TREASURY').reduce((s, p) => s + Number(p.amount || 0), 0)
+  const bankPayments = filtered.filter(p => p.receivedIn === 'BANK').reduce((s, p) => s + Number(p.amount || 0), 0)
 
   // CSV Export
   const handleExport = () => {

@@ -178,7 +178,7 @@ export function EquipmentMaintenanceModule() {
     return r.equipment.name.toLowerCase().includes(s) || r.description.toLowerCase().includes(s) || (r.supplier?.name.toLowerCase().includes(s))
   })
 
-  const totalCost = filtered.reduce((sum, r) => sum + (r.cost ?? 0), 0)
+  const totalCost = filtered.reduce((sum, r) => sum + (Number(r.cost || 0)), 0)
 
   const printData = useMemo(() => ({
     columns: [

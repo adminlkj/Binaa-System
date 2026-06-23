@@ -455,7 +455,7 @@ export function GoodsReceiptModule() {
   })
 
   const totalReceived = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + (i.quantityReceived ?? 0), 0), 0)
-  const totalAmount = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + (i.totalPrice ?? 0), 0), 0)
+  const totalAmount = receipts.reduce((s, r) => s + r.items.reduce((si, i) => si + Number(i.totalPrice || 0), 0), 0)
 
   const filtered = receipts.filter(r => {
     const matchSearch = !search || (r.receiptNo || '').toLowerCase().includes(search.toLowerCase()) || (r.supplier?.name || '').toLowerCase().includes(search.toLowerCase())

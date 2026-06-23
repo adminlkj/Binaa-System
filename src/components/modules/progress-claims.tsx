@@ -132,7 +132,7 @@ function CreateClaimPage({
       const data = await res.json()
       return data.map((c: { id: string; contractNo: string; totalValue: number | string; value: number | string }) => ({
         id: c.id, contractNo: c.contractNo,
-        totalValue: typeof c.totalValue === 'string' ? parseFloat(c.totalValue) : (c.totalValue ?? 0),
+        totalValue: typeof c.totalValue === 'string' ? parseFloat(c.totalValue) : (Number(c.totalValue || 0)),
         value: typeof c.value === 'string' ? parseFloat(c.value) : (c.value ?? 0),
       }))
     },
@@ -367,9 +367,9 @@ export function ProgressClaimsModule() {
     // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [claims])
 
-  const totalClaimedAmount = filtered.reduce((s, c) => s + Number(c.totalAmount ?? 0), 0)
-  const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + Number(c.totalAmount ?? 0), 0)
-  const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + Number(c.totalAmount ?? 0), 0)
+  const totalClaimedAmount = filtered.reduce((s, c) => s + Number(Number(c.totalAmount || 0)), 0)
+  const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + Number(Number(c.totalAmount || 0)), 0)
+  const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + Number(Number(c.totalAmount || 0)), 0)
 
   // Counters
   const invoicedCount = filtered.filter(c => c.invoiced).length

@@ -120,8 +120,8 @@ export async function GET(request: Request) {
         })
       : []
 
-    const totalInvoiced = r4(salesInvoices.reduce((s, i) => s + i.totalAmount, 0))
-    const totalCollected = r4(clientPayments.reduce((s, p) => s + p.amount, 0))
+    const totalInvoiced = r4(salesInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0))
+    const totalCollected = r4(clientPayments.reduce((s, p) => s + Number(p.amount || 0), 0))
 
     // ---- COSTS ----
 
@@ -273,13 +273,13 @@ export async function GET(request: Request) {
     // Categorize costs
     const materialsCost = r4(purchaseInvoices
       .filter(pi => !pi.expenseCategory || ['CONSUMABLES', 'SERVICES'].includes(pi.expenseCategory))
-      .reduce((s, pi) => s + pi.totalAmount, 0))
+      .reduce((s, pi) => s + Number(pi.totalAmount || 0), 0))
 
-    const equipmentCostTotal = r4(equipmentCosts.reduce((s, e) => s + e.amount, 0))
+    const equipmentCostTotal = r4(equipmentCosts.reduce((s, e) => s + Number(e.amount || 0), 0))
 
-    const subcontractorsCost = r4(subcontractorInvoices.reduce((s, si) => s + si.totalAmount, 0))
+    const subcontractorsCost = r4(subcontractorInvoices.reduce((s, si) => s + Number(si.totalAmount || 0), 0))
 
-    const laborCostTotal = r4(laborCosts.reduce((s, l) => s + l.totalAmount, 0))
+    const laborCostTotal = r4(laborCosts.reduce((s, l) => s + Number(l.totalAmount || 0), 0))
 
     const salariesCost = r4(salaries.reduce((s, sal) => s + sal.netSalary, 0))
 
@@ -287,11 +287,11 @@ export async function GET(request: Request) {
 
     const maintenanceCost = r4(expenses
       .filter(e => e.category === 'MAINTENANCE')
-      .reduce((s, e) => s + e.totalAmount, 0))
+      .reduce((s, e) => s + Number(e.totalAmount || 0), 0))
 
     const otherCost = r4(expenses
       .filter(e => e.category !== 'MAINTENANCE')
-      .reduce((s, e) => s + e.totalAmount, 0))
+      .reduce((s, e) => s + Number(e.totalAmount || 0), 0))
 
     const totalCosts = r4(
       materialsCost + equipmentCostTotal + subcontractorsCost +
@@ -336,7 +336,7 @@ export async function GET(request: Request) {
         })),
         totalInvoiced,
         totalCollected,
-        totalClaims: r4(progressClaims.reduce((s, c) => s + c.totalAmount, 0)),
+        totalClaims: r4(progressClaims.reduce((s, c) => s + Number(c.totalAmount || 0), 0)),
       },
       costs: {
         materials: {

@@ -746,7 +746,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
   const expenseTotal = project.expenses.reduce((s, e) => s + (Number(e.totalAmount) || 0), 0)
   const laborTotal = project.laborCosts.reduce((s, l) => s + (Number(l.totalAmount) || 0), 0)
   const equipmentTotal = project.equipmentCosts.reduce((s, e) => s + (Number(e.amount) || 0), 0) +
-    project.equipmentUsages.reduce((s, e) => s + (e.cost ?? 0), 0)
+    project.equipmentUsages.reduce((s, e) => s + (Number(e.cost || 0)), 0)
   const subcontractorTotal = project.subcontractorInvoices.reduce((s, si) => s + (Number(si.totalAmount) || 0), 0)
 
   const categories = [
@@ -870,7 +870,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
                 <TableRow className="bg-orange-50 font-bold">
                   <TableCell colSpan={3}>{t('الإجمالي', 'Total')}</TableCell>
                   <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + (Number(e.amount) || 0), 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
-                  <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + e.vatAmount, 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
+                  <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + Number(e.vatAmount || 0), 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell><MoneyDisplay value={expenseTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                 </TableRow>
               </TableBody>
@@ -1033,7 +1033,7 @@ function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'e
 
   const extractsTotal = project.progressClaims.reduce((s, c) => s + (Number(c.totalAmount) || 0), 0)
   const invoicesTotal = project.salesInvoices.reduce((s, si) => s + (Number(si.totalAmount) || 0), 0)
-  const paidTotal = project.salesInvoices.reduce((s, si) => s + (si.paidAmount ?? 0), 0)
+  const paidTotal = project.salesInvoices.reduce((s, si) => s + (Number(si.paidAmount || 0)), 0)
   const collectionsTotal = project.salesInvoices.reduce((s, si) =>
     s + si.clientPayments.reduce((ps, cp) => ps + (Number(cp.amount) || 0), 0), 0)
 

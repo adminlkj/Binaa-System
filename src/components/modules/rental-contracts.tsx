@@ -1330,7 +1330,7 @@ function ContractDetailView({
   }
 
   const timesheets = contract.timesheets || []
-  const totalTimesheetAmount = timesheets.reduce((s, ts) => s + (ts.totalAmount ?? 0), 0)
+  const totalTimesheetAmount = timesheets.reduce((s, ts) => s + Number(ts.totalAmount || 0), 0)
   const totalWorkedHours = timesheets.reduce((s, ts) => s + (ts.workedHours ?? 0), 0)
 
   const pricingLabel = pricingTypeOptions.find(p => p.value === contract.pricingType)

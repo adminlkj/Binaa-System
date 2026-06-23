@@ -38,10 +38,10 @@ export async function GET(request: NextRequest) {
     // Calculate bank statement balance
     const deposits = transactions
       .filter((t) => t.transactionType === 'DEPOSIT')
-      .reduce((s, t) => s + t.amount, 0)
+      .reduce((s, t) => s + Number(t.amount || 0), 0)
     const withdrawals = transactions
       .filter((t) => t.transactionType === 'WITHDRAWAL')
-      .reduce((s, t) => s + t.amount, 0)
+      .reduce((s, t) => s + Number(t.amount || 0), 0)
     const bankStatementBalance = deposits - withdrawals
 
     // Calculate book balance from journal lines
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         },
       })
       // Bank accounts are ASSET (debit normal)
-      bookBalance = lines.reduce((s, l) => s + l.debit - l.credit, 0)
+      bookBalance = lines.reduce((s, l) => s + Number(l.debit || 0) - Number(l.credit || 0), 0)
     }
 
     // Check for existing reconciliation
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
           },
         },
       })
-      bookBalance = lines.reduce((s, l) => s + l.debit - l.credit, 0)
+      bookBalance = lines.reduce((s, l) => s + Number(l.debit || 0) - Number(l.credit || 0), 0)
     }
 
     const bankBal = Number(bankBalance) || 0

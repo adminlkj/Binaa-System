@@ -860,20 +860,20 @@ function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onB
     const operatorLogs = equipment.operatorLogs || []
 
     // Revenue
-    const totalRentalRevenue = rentals.reduce((s, r) => s + r.totalAmount, 0)
+    const totalRentalRevenue = rentals.reduce((s, r) => s + Number(r.totalAmount || 0), 0)
     const totalOperatingHours = timesheets.reduce((s, ts) => s + ts.operatingHours, 0)
     const totalUsageHours = usages.reduce((s, u) => s + u.hours, 0)
     const totalOperationHours = operatorLogs.reduce((s, o) => s + o.hours, 0)
     const allHours = totalOperatingHours + totalUsageHours + totalOperationHours
 
     // Costs
-    const totalUsageCost = usages.reduce((s, u) => s + u.cost, 0)
-    const totalMaintenanceCost = maintenance.reduce((s, m) => s + m.cost, 0)
-    const totalFuelCost = fuelLogs.reduce((s, f) => s + f.totalCost, 0)
-    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
+    const totalUsageCost = usages.reduce((s, u) => s + Number(u.cost || 0), 0)
+    const totalMaintenanceCost = maintenance.reduce((s, m) => s + Number(m.cost || 0), 0)
+    const totalFuelCost = fuelLogs.reduce((s, f) => s + Number(f.totalCost || 0), 0)
+    const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0)
     const totalOperatingCost = operatorLogs.reduce((s, o) => s + (o.hours * (equipment.hourlyRate || 0)), 0)
-    const totalTransportCost = expenses.filter(e => e.category === 'TRANSPORT' || e.category === 'DELIVERY').reduce((s, e) => s + e.amount, 0)
-    const driverCosts = expenses.filter(e => e.category === 'DRIVERS').reduce((s, e) => s + e.amount, 0)
+    const totalTransportCost = expenses.filter(e => e.category === 'TRANSPORT' || e.category === 'DELIVERY').reduce((s, e) => s + Number(e.amount || 0), 0)
+    const driverCosts = expenses.filter(e => e.category === 'DRIVERS').reduce((s, e) => s + Number(e.amount || 0), 0)
 
     // Depreciation (simplified: purchase price / 10 years, or monthly rate)
     const depreciationPerYear = equipment.purchasePrice / 10

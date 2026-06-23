@@ -83,7 +83,7 @@ export async function GET(request: Request) {
         }
         costBreakdown[key].amount += toNumber(line.debit) - toNumber(line.credit)
       }
-      costFromJournal = Object.values(costBreakdown).reduce((sum, c) => sum + c.amount, 0)
+      costFromJournal = Object.values(costBreakdown).reduce((sum, c) => sum + Number(c.amount || 0), 0)
     }
 
     // ========== الإيرادات من الفواتير (طريقة بديلة) ==========

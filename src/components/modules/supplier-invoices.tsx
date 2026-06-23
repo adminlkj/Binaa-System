@@ -104,7 +104,7 @@ function InvoiceCreateView({ onBack }: { onBack: () => void }) {
 
   const subtotal = useMemo(() => {
     if (!selectedGR) return 0
-    return selectedGR.items.reduce((s, i) => s + i.totalPrice, 0)
+    return selectedGR.items.reduce((s, i) => s + Number(i.totalPrice || 0), 0)
   }, [selectedGR])
 
   const vatRate = 0.15
@@ -470,8 +470,8 @@ export function SupplierInvoicesModule() {
     onError: () => toast.error(t('فشل في الحذف', 'Failed to delete', lang)),
   })
 
-  const totalAmount = invoices.reduce((s, i) => s + i.totalAmount, 0)
-  const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
+  const totalAmount = invoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
+  const totalPaid = invoices.reduce((s, i) => s + Number(i.paidAmount || 0), 0)
   const paidCount = invoices.filter(i => i.status === 'PAID').length
 
   const filtered = invoices.filter(i => {

@@ -110,11 +110,11 @@ export async function GET() {
     }
 
     // Sum totals by type
-    const totalAssets = accountsByType.ASSET.reduce((sum, a) => sum + a.balance, 0)
-    const totalLiabilities = accountsByType.LIABILITY.reduce((sum, a) => sum + a.balance, 0)
-    const totalEquity = accountsByType.EQUITY.reduce((sum, a) => sum + a.balance, 0)
-    const totalRevenue = accountsByType.REVENUE.reduce((sum, a) => sum + a.balance, 0)
-    const totalExpenses = accountsByType.EXPENSE.reduce((sum, a) => sum + a.balance, 0)
+    const totalAssets = accountsByType.ASSET.reduce((sum, a) => sum + Number(a.balance || 0), 0)
+    const totalLiabilities = accountsByType.LIABILITY.reduce((sum, a) => sum + Number(a.balance || 0), 0)
+    const totalEquity = accountsByType.EQUITY.reduce((sum, a) => sum + Number(a.balance || 0), 0)
+    const totalRevenue = accountsByType.REVENUE.reduce((sum, a) => sum + Number(a.balance || 0), 0)
+    const totalExpenses = accountsByType.EXPENSE.reduce((sum, a) => sum + Number(a.balance || 0), 0)
     const netIncome = totalRevenue - totalExpenses
 
     // Specific account balances (from role-resolved codes, using pre-fetched data)

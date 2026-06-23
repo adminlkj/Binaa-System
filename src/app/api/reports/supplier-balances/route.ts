@@ -29,8 +29,8 @@ export async function GET() {
     })
 
     const supplierBalances = suppliers.map(supplier => {
-      const totalPurchased = supplier.purchaseInvoices.reduce((s, i) => s + i.totalAmount, 0)
-      const totalPaid = supplier.supplierPayments.reduce((s, p) => s + p.amount, 0)
+      const totalPurchased = supplier.purchaseInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
+      const totalPaid = supplier.supplierPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
       const balanceOwed = totalPurchased - totalPaid
 
       // Aging analysis on unpaid invoices
@@ -41,7 +41,7 @@ export async function GET() {
       let aging90plus = 0
 
       for (const inv of supplier.purchaseInvoices) {
-        const remaining = inv.totalAmount - inv.paidAmount
+        const remaining = Number(inv.totalAmount || 0) - Number(inv.paidAmount || 0)
         if (remaining <= 0) continue
 
         if (inv.dueDate && new Date(inv.dueDate) < now) {

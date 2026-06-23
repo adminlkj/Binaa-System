@@ -268,8 +268,8 @@ async function getBalanceSheet(dateTo: string | null) {
   // Calculate current year profit for equity
   const revenueAccounts = Object.values(accountBalances).filter((a) => a.type === 'REVENUE')
   const expenseAccounts = Object.values(accountBalances).filter((a) => a.type === 'EXPENSE')
-  const totalRev = revenueAccounts.reduce((s, a) => s + a.balance, 0)
-  const totalExp = expenseAccounts.reduce((s, a) => s + a.balance, 0)
+  const totalRev = revenueAccounts.reduce((s, a) => s + Number(a.balance || 0), 0)
+  const totalExp = expenseAccounts.reduce((s, a) => s + Number(a.balance || 0), 0)
   const currentYearProfit = totalRev - totalExp
 
   // Add current year profit to equity

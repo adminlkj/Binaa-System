@@ -32,11 +32,11 @@ export async function GET() {
 
     const paymentsByClient: Record<string, number> = {}
     for (const p of clientPayments) {
-      paymentsByClient[p.clientId] = (paymentsByClient[p.clientId] || 0) + p.amount
+      paymentsByClient[p.clientId] = (paymentsByClient[p.clientId] || 0) + Number(p.amount || 0)
     }
 
     const clientBalances = clients.map(client => {
-      const totalInvoiced = client.salesInvoices.reduce((s, i) => s + i.totalAmount, 0)
+      const totalInvoiced = client.salesInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
       const totalPaid = paymentsByClient[client.id] || 0
       const balanceReceivable = totalInvoiced - totalPaid
 
@@ -48,7 +48,7 @@ export async function GET() {
       let aging90plus = 0
 
       for (const inv of client.salesInvoices) {
-        const remaining = inv.totalAmount - inv.paidAmount
+        const remaining = Number(inv.totalAmount || 0) - Number(inv.paidAmount || 0)
         if (remaining <= 0) continue
 
         if (inv.dueDate && new Date(inv.dueDate) < now) {

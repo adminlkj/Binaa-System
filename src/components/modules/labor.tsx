@@ -250,9 +250,9 @@ export function LaborModule() {
   })
 
   // Summary
-  const totalLabor = laborCosts.reduce((s, l) => s + (l.totalAmount ?? 0), 0)
+  const totalLabor = laborCosts.reduce((s, l) => s + Number(l.totalAmount || 0), 0)
   const totalWorkers = laborCosts.reduce((s, l) => s + (l.workers ?? 0), 0)
-  const avgDailyRate = laborCosts.length > 0 ? laborCosts.reduce((s, l) => s + (l.dailyRate ?? 0), 0) / laborCosts.length : 0
+  const avgDailyRate = laborCosts.length > 0 ? laborCosts.reduce((s, l) => s + Number(l.dailyRate || 0), 0) / laborCosts.length : 0
 
   // CSV export
   const handleExport = () => {

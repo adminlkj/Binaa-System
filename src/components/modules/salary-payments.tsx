@@ -142,7 +142,7 @@ function CreatePaymentDialog({ open, onOpenChange, payrollRuns }: {
     : null
 
   const totalPaidSoFar = selectedRun
-    ? selectedRun.salaryPayments.reduce((sum, p) => sum + p.amount, 0)
+    ? selectedRun.salaryPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
     : 0
   const remaining = selectedRun ? selectedRun.totalNet - totalPaidSoFar : 0
 
@@ -403,13 +403,13 @@ export function SalaryPaymentsModule() {
   }, [payments, search, paymentMethodFilter])
 
   // Summary calculations
-  const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0)
+  const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0)
   const approvedRunsCount = allPayrollRuns.filter(
     r => r.status === 'APPROVED' || r.status === 'PARTIALLY_PAID'
   ).length
   // Calculate total remaining across all approved/partially paid runs
   const totalRemaining = eligiblePayrollRuns.reduce((sum, run) => {
-    const paidForRun = (run as PayrollRunOption).salaryPayments?.reduce((s, p) => s + p.amount, 0) || 0
+    const paidForRun = (run as PayrollRunOption).salaryPayments?.reduce((s, p) => s + Number(p.amount || 0), 0) || 0
     return sum + (run.totalNet - paidForRun)
   }, 0)
 

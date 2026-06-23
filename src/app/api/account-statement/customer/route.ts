@@ -151,8 +151,8 @@ export async function GET(request: Request) {
         },
         select: { amount: true },
       })
-      const totalPrevInvoiced = prevInvoices.reduce((s, i) => s + i.totalAmount, 0)
-      const totalPrevPaid = prevPayments.reduce((s, p) => s + p.amount, 0)
+      const totalPrevInvoiced = prevInvoices.reduce((s, i) => s + Number(i.totalAmount || 0), 0)
+      const totalPrevPaid = prevPayments.reduce((s, p) => s + Number(p.amount || 0), 0)
       openingBalance = r4(totalPrevInvoiced - totalPrevPaid)
     }
 
@@ -164,8 +164,8 @@ export async function GET(request: Request) {
     }
 
     // Calculate totals
-    const totalInvoiced = r4(lines.filter(l => l.type === 'INVOICE').reduce((s, l) => s + l.debit, 0))
-    const totalPaid = r4(lines.filter(l => l.type === 'PAYMENT').reduce((s, l) => s + l.credit, 0))
+    const totalInvoiced = r4(lines.filter(l => l.type === 'INVOICE').reduce((s, l) => s + Number(l.debit || 0), 0))
+    const totalPaid = r4(lines.filter(l => l.type === 'PAYMENT').reduce((s, l) => s + Number(l.credit || 0), 0))
     const closingBalance = r4(openingBalance + totalInvoiced - totalPaid)
 
     return NextResponse.json({

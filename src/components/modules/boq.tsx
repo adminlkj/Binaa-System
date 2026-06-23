@@ -276,7 +276,7 @@ export function BOQModule() {
     return groups
   }, [filtered, lang])
 
-  const grandTotal = filtered.reduce((s, i) => s + (i.totalPrice ?? 0), 0)
+  const grandTotal = filtered.reduce((s, i) => s + Number(i.totalPrice || 0), 0)
 
   // CSV Export
   const handleExport = () => {
@@ -420,7 +420,7 @@ export function BOQModule() {
                 </TableHeader>
                 <TableBody>
                   {Object.entries(grouped).map(([category, categoryItems]) => {
-                    const categoryTotal = categoryItems.reduce((s, i) => s + (i.totalPrice ?? 0), 0)
+                    const categoryTotal = categoryItems.reduce((s, i) => s + Number(i.totalPrice || 0), 0)
                     return (
                       <React.Fragment key={category}>
                         <TableRow className="bg-emerald-50 hover:bg-emerald-50">

@@ -1871,3 +1871,62 @@ Stage Summary:
 - ✅ **سكربت قابل لإعادة الاستخدام**: `update-zip.sh` — يُشغَّل بعد كل تعديل
 - ✅ **قاعدة دائمة للمستقبل**: بعد أي تعديل على الكود، يجب تشغيل `bash update-zip.sh` فوراً لتحديث الأرشيف. هذا إلزامي لكل agent مستقبلي.
 - ✅ **التحقق من الاكتمال**: جميع ملفات 23 يونيو (report-engine, financial-statements-tab, 9 report APIs, table-print-export, schema محدّث) موجودة في الأرشيف
+
+---
+Task ID: REPORTS-BALANCE-DECIMAL-COMPREHENSIVE-FIX
+Agent: Main Agent
+Task: مراجعة شاملة لكل التقارير والقيود والعمليات + إصلاح أي معلومات خاطئة أو غير متوازنة
+
+Work Log:
+
+**1. تشخيص عدم توازن الميزانية:**
+- المستخدم أبلغ: الميزانية "⚠ غير متوازنة" — الأصول 1,328,406.98 ≠ الخصوم 401,523.08 + حقوق الملكية 0.00
+- فحص قاعدة البيانات: 7 حسابات EQUITY موجودة (5000-5600) ولكن 0 قيود مرحلة عليها!
+- السبب الجذري: النظام يرحّل الإيرادات والمصروفات كقيود، لكن صافي الدخل (926,883.90) لا يُقفل تلقائياً في حقوق الملكية
+- المعادلة المحاسبية مكسورة: الأصول (1,328,406.98) ≠ الخصوم (401,523.08) + حقوق الملكية (0.00)
+- الفرق = 926,883.90 = صافي الدخل غير المُقفل
+
+**2. إصلاح محرك التقارير (`src/lib/report-engine.ts`):**
+- `getBalanceSheet`: إضافة منطق "أرباح السنة الحالية غير المُقفلة" (Current Year Earnings) كصف حقوق ملكية اصطناعي
+- حساب صافي الدخل من قائمة الدخل وإضافته لحقوق الملكية
+- إضافة حقل `currentYearEarnings` في `BalanceSheetData`
+- إصلاح `getTrialBalance`: `isBalanced` كان يتحقق من `totalNetDebit == totalNetCredit` (خطأ) — صُحّح للتحقق من `totalDebit == totalCredit` (الصحيح)
+
+**3. إصلاح أخطاء Decimal في API routes (49 موقعاً):**
+- `client-balances/route.ts`: totalInvoiced كان `'00191076.935175007762501035000000483000483000'` → 3,485,826.93
+- `supplier-balances/route.ts`: نفس النوع من الفساد → 1,428,035.44
+- `account-statement/route.ts` (9 مواقع), `account-statement/customer/route.ts` (4), `account-statement/supplier/route.ts` (4)
+- `financial-summary/route.ts` (5), `financial-statements/balance-sheet/route.ts` (7), `financial-statements/income/route.ts` (1)
+- `dashboard/route.ts` (3), `reports/project-profitability/route.ts` (1), `resource-distribution/project-costs/[projectId]/route.ts` (5)
+- `financial-reports/route.ts` (2), `bank-reconciliation/route.ts` (2), `projects/[id]/route.ts` (8)
+- `bank-accounts/route.ts`, `bank-reconciliation/route.ts`: إصلاح `s + l.debit - l.credit` → `s + Number(l.debit || 0) - Number(l.credit || 0)`
+
+**4. إصلاح أخطاء Decimal في Components (53 موقعاً):**
+- `contracts.tsx`: totalContractValue كان `109,250,032,200,005,170,000.00` → 9,487,500.00
+- `boq.tsx`: grandTotal كان `975,000,875,000,240,000,000,000...` → 6,019,500.00
+- `equipment.tsx` (7 مواقع), `vat.tsx` (4), `purchases.tsx` (4), `client-payments.tsx` (3+2), `advances.tsx` (2+1)
+- `petty-cash.tsx`, `salary-payments.tsx` (3), `projects.tsx` (1+2), `supplier-invoices.tsx` (3), `goods-receipt.tsx` (1)
+- `service-invoices.tsx` (6+1), `rental-invoices.tsx` (8), `rental-payments.tsx`, `rental-contracts.tsx` (1)
+- `purchase-orders.tsx` (1), `progress-claims.tsx` (4), `equipment-maintenance.tsx` (1), `fuel.tsx` (1), `labor.tsx` (2)
+- `equipment-operations.tsx`: getOpCost → Number() + Number()
+- `supplier-payments.tsx` (3)
+
+**5. التحقق الشامل النهائي:**
+- ✅ الميزانية: متوازنة (الأصول 1,328,406.98 = الخصوم 401,523.08 + حقوق الملكية 926,883.90)
+- ✅ ميزان المراجعة: متوازن (مدين 2,318,272.81 = دائن 2,318,272.81)
+- ✅ قائمة الدخل: إيرادات 1,006,153.85 / مصروفات 79,269.95 / صافي الدخل 926,883.90
+- ✅ أرصدة العملاء: 3,485,826.93 (كانت 483,000,674,076.94 — فساد اختفى!)
+- ✅ أرصدة الموردين: 1,428,035.44
+- ✅ مطابقة الضريبة: 139,032.59 مستحقة
+- ✅ مراكز التكلفة: 5,000 (تتدفق من القيود المرحّلة)
+- ✅ الأعمال تحت التنفيذ: 8,495,000 قيمة العقد
+- ✅ lint نظيف
+- ✅ معاينة المتصفح: الميزانية تظهر "✓ متوازنة"
+
+Stage Summary:
+- ✅ **المعادلة المحاسبية متوازنة**: الأصول = الخصوم + حقوق الملكية (شاملة صافي الدخل للسنة الحالية)
+- ✅ **ميزان المراجعة متوازن**: مدين = دائن (2,318,272.81)
+- ✅ **102+ خطأ Decimal تم إصلاحها** عبر 25+ ملف (API routes + components)
+- ✅ **جميع القوائم المالية التسع** تعرض أرقاماً صحيحة من القيود المرحّلة فقط
+- ✅ **مصدر واحد للحقيقة**: جميع التقارير تقرأ من `JournalLine WHERE status='POSTED'` فقط
+- ملفات مُعدَّلة: `src/lib/report-engine.ts`, 15 API routes, 20+ components

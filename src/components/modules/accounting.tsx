@@ -504,8 +504,8 @@ function AccountTransactionsDialog({ account, open, onClose }: {
 
   if (!account) return null
   const entries = data?.entries || []
-  const totalDebit = entries.reduce((s, e) => s + e.debit, 0)
-  const totalCredit = entries.reduce((s, e) => s + e.credit, 0)
+  const totalDebit = entries.reduce((s, e) => s + Number(e.debit || 0), 0)
+  const totalCredit = entries.reduce((s, e) => s + Number(e.credit || 0), 0)
 
   return (
     <Dialog open={open} onOpenChange={onClose}>

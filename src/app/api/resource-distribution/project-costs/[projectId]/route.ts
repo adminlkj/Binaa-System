@@ -32,7 +32,7 @@ export async function GET(
 
     // 2. Equipment costs (from EquipmentCost table)
     const equipmentCosts = await db.equipmentCost.findMany({ where: { projectId } })
-    const equipmentCostTotal = equipmentCosts.reduce((sum, c) => sum + c.amount, 0)
+    const equipmentCostTotal = equipmentCosts.reduce((sum, c) => sum + Number(c.amount || 0), 0)
 
     // 3. Equipment operations (from EquipmentOperation linked to project)
     const equipmentOperations = await db.equipmentOperation.findMany({
@@ -60,18 +60,18 @@ export async function GET(
           where: { equipmentId: { in: equipmentIds } },
         })
       : []
-    const maintenanceCostTotal = maintenanceRecords.reduce((sum, m) => sum + m.cost, 0)
+    const maintenanceCostTotal = maintenanceRecords.reduce((sum, m) => sum + Number(m.cost || 0), 0)
 
     // 6. Subcontractor costs (from SubcontractorInvoice linked to project)
     const subcontractorInvoices = await db.subcontractorInvoice.findMany({
       where: { projectId },
       include: { subcontractor: { select: { name: true } } },
     })
-    const subcontractorCostTotal = subcontractorInvoices.reduce((sum, inv) => sum + inv.amount, 0)
+    const subcontractorCostTotal = subcontractorInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0)
 
     // 7. Labor costs (from LaborCost linked to project)
     const laborCosts = await db.laborCost.findMany({ where: { projectId } })
-    const laborCostTotal = laborCosts.reduce((sum, lc) => sum + lc.totalAmount, 0)
+    const laborCostTotal = laborCosts.reduce((sum, lc) => sum + Number(lc.totalAmount || 0), 0)
 
     // 8. Salary costs (from Salary where employee has allocation to project)
     const employeeAllocations = await db.resourceAllocation.findMany({
@@ -92,7 +92,7 @@ export async function GET(
 
     // 9. Project expenses (from Expense linked to project)
     const expenses = await db.expense.findMany({ where: { projectId } })
-    const expenseTotal = expenses.reduce((sum, e) => sum + e.totalAmount, 0)
+    const expenseTotal = expenses.reduce((sum, e) => sum + Number(e.totalAmount || 0), 0)
 
     // Total project cost
     const totalCost = materialCosts + equipmentCostTotal + equipmentOperationTotal + fuelCostTotal + maintenanceCostTotal + subcontractorCostTotal + laborCostTotal + salaryCostTotal + expenseTotal

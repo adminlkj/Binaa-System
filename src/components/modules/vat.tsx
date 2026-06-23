@@ -124,10 +124,10 @@ function VATSummaryTab({ vatReturns }: { vatReturns: VATDeclaration[] }) {
   const summary = useMemo(() => {
     // عدّ فقط الإقرارات النشطة (ليست ملغاة) في الإجماليات
     const active = vatReturns.filter(v => v.status !== 'CANCELLED')
-    const totalOutputVat = active.reduce((s, v) => s + v.outputVat, 0)
-    const totalInputVat = active.reduce((s, v) => s + v.inputVat, 0)
-    const totalSales = active.reduce((s, v) => s + v.totalSales, 0)
-    const totalPurchases = active.reduce((s, v) => s + v.totalPurchases, 0)
+    const totalOutputVat = active.reduce((s, v) => s + Number(v.outputVat || 0), 0)
+    const totalInputVat = active.reduce((s, v) => s + Number(v.inputVat || 0), 0)
+    const totalSales = active.reduce((s, v) => s + Number(v.totalSales || 0), 0)
+    const totalPurchases = active.reduce((s, v) => s + Number(v.totalPurchases || 0), 0)
     const netVat = totalOutputVat - totalInputVat
     return { totalOutputVat, totalInputVat, totalSales, totalPurchases, netVat }
   }, [vatReturns])

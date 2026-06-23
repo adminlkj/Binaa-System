@@ -85,7 +85,7 @@ async function getAccountBalancesByPrefix(
 
 // Helper: sum balances from an array of account details
 function sumBalances(accounts: { balance: number }[]): number {
-  return r4(accounts.reduce((sum, a) => sum + a.balance, 0))
+  return r4(accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0))
 }
 
 // GET /api/financial-statements/income?dateFrom=...&dateTo=...

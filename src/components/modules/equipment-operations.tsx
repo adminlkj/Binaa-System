@@ -190,10 +190,10 @@ export function EquipmentOperationsModule() {
   })
 
   // Calculate cost per operation
-  const getOpCost = (op: EquipmentOperation) => op.hours * (op.equipment.hourlyRate || 0)
+  const getOpCost = (op: EquipmentOperation) => Number(op.hours || 0) * Number(op.equipment.hourlyRate || 0)
 
   const totalCost = filtered.reduce((sum, op) => sum + getOpCost(op), 0)
-  const totalHours = filtered.reduce((sum, op) => sum + (op.hours ?? 0), 0)
+  const totalHours = filtered.reduce((sum, op) => sum + Number(op.hours || 0), 0)
 
   const printData = {
     columns: [

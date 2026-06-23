@@ -234,9 +234,9 @@ export function AdvancesModule() {
   })
 
   // Summary
-  const totalAdvances = advances.reduce((s, a) => s + a.amount, 0)
-  const totalSettled = advances.reduce((s, a) => s + a.settledAmount, 0)
-  const pendingAmount = advances.filter(a => a.status === 'PENDING').reduce((s, a) => s + (a.amount - a.settledAmount), 0)
+  const totalAdvances = advances.reduce((s, a) => s + Number(a.amount || 0), 0)
+  const totalSettled = advances.reduce((s, a) => s + Number(a.settledAmount || 0), 0)
+  const pendingAmount = advances.filter(a => a.status === 'PENDING').reduce((s, a) => s + (Number(a.amount || 0) - Number(a.settledAmount || 0)), 0)
 
   return (
     <ModuleLayout

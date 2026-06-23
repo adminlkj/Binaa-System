@@ -490,7 +490,7 @@ export function RentalPaymentsModule() {
   }, [payments, search])
 
   // Stats
-  const totalPayments = filtered.reduce((s, p) => s + p.amount, 0)
+  const totalPayments = filtered.reduce((s, p) => s + Number(p.amount || 0), 0)
   const avgPayment = filtered.length > 0 ? totalPayments / filtered.length : 0
 
   // CSV export
