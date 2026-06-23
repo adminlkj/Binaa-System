@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { getDefaultAccountByRole } from '@/lib/account-roles'
 
 export async function GET(request: Request) {
   try {
@@ -67,6 +68,26 @@ export async function POST(request: Request) {
     const year = body.year
     const paymentMethod = body.paymentMethod || 'BANK'
     const notes = body.notes || null
+    // Optional: explicit paying account (from AccountSelector). Falls back to default role lookup.
+    const payingAccountId = body.payingAccountId || null
+    const payingAccountCode = body.payingAccountCode || null
+    const payingAccountName = body.payingAccountName || null
+
+    // Resolve the credit (cash/bank) account code: caller-provided > role lookup > hardcoded fallback
+    const resolveCreditAccount = async (tx?: PrismaTransaction) => {
+      if (payingAccountCode) {
+        return { code: payingAccountCode, name: payingAccountName || 'الحساب المحدد' }
+      }
+      const role = paymentMethod === 'BANK' ? 'BANK' : 'CASH'
+      const acc = await getDefaultAccountByRole(role, tx as any)
+      if (acc) {
+        return { code: acc.code, name: acc.nameAr || acc.name }
+      }
+      // Last-resort hardcoded fallback (preserves legacy behaviour)
+      return paymentMethod === 'BANK'
+        ? { code: '1120', name: 'البنك' }
+        : { code: '1110', name: 'الصندوق (الخزينة)' }
+    }
 
     // Validate required fields
     if (!employeeId) {
@@ -138,8 +159,7 @@ export async function POST(request: Request) {
         })
 
         // Create accounting journal entry
-        const creditAccountCode = paymentMethod === 'BANK' ? '1121' : '1110'
-        const creditAccountName = paymentMethod === 'BANK' ? 'بنك الراجحي' : 'الصندوق (الخزينة)'
+        const creditAccount = await resolveCreditAccount(tx)
 
         try {
           const entry = await createJournalEntry({
@@ -149,7 +169,7 @@ export async function POST(request: Request) {
             descriptionAr: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
             lines: [
               { accountCode: '3310', debit: netSalary, credit: 0, description: 'رواتب مستحقة' },
-              { accountCode: creditAccountCode, debit: 0, credit: netSalary, description: creditAccountName },
+              { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
             ],
             sourceType: 'SALARY_PAYMENT',
             sourceId: salary.id,
@@ -206,8 +226,7 @@ export async function POST(request: Request) {
 
         // Create journal entry
         const netSalary = Number(salary.netSalary)
-        const creditAccountCode = paymentMethod === 'BANK' ? '1121' : '1110'
-        const creditAccountName = paymentMethod === 'BANK' ? 'بنك الراجحي' : 'الصندوق (الخزينة)'
+        const creditAccount = await resolveCreditAccount(tx)
 
         try {
           const entry = await createJournalEntry({
@@ -217,7 +236,7 @@ export async function POST(request: Request) {
             descriptionAr: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
             lines: [
               { accountCode: '3310', debit: netSalary, credit: 0, description: 'رواتب مستحقة' },
-              { accountCode: creditAccountCode, debit: 0, credit: netSalary, description: creditAccountName },
+              { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
             ],
             sourceType: 'SALARY_PAYMENT',
             sourceId: salary.id,

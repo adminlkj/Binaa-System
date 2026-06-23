@@ -103,8 +103,10 @@ export async function GET(request: Request) {
         nameAr: a.nameAr,
         type: a.type,
         parentId: a.parentId,
+        parentCode: a.parentCode,
         isActive: a.isActive,
         activityType: a.activityType,
+        accountRole: a.accountRole,
         isSystem: a.isSystem,
         allowPosting: a.allowPosting,
         level: a.level,
@@ -232,6 +234,18 @@ export async function POST(request: Request) {
       )
     }
 
+    // Validate accountRole if provided (must be a known role key)
+    if (body.accountRole && body.accountRole !== '') {
+      const { ACCOUNT_ROLES } = await import('@/lib/account-roles')
+      const validRoles = Object.keys(ACCOUNT_ROLES)
+      if (!validRoles.includes(body.accountRole)) {
+        return NextResponse.json(
+          { error: `دور الحساب غير صالح: ${body.accountRole}. الأدوار المسموحة: ${validRoles.join(', ')}` },
+          { status: 400 }
+        )
+      }
+    }
+
     const account = await db.account.create({
       data: {
         code,
@@ -242,6 +256,9 @@ export async function POST(request: Request) {
         parentCode: body.parentCode || null,
         isActive: true,
         activityType: body.activityType || null,
+        // Allow setting the functional role at creation time so the new account
+        // immediately appears in the relevant operation screens (BANK, CASH, …)
+        accountRole: body.accountRole || null,
         isSystem: body.isSystem ?? false,
         allowPosting: body.allowPosting ?? true,
         level: body.level ?? 0,

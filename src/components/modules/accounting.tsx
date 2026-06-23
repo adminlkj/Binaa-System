@@ -38,12 +38,14 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { TablePrintExportButtons, type PrintColumn, type PrintInfoItem, type PrintTotalItem } from '@/components/shared/table-print-export'
+import { CreateAccountDialog, type AccountFormData } from '@/components/shared/create-account-dialog'
 
 // ============ Types ============
 interface Account {
   id: string; code: string; name: string; nameAr: string | null
-  type: string; parentId: string | null; isActive: boolean
-  activityType: string | null; isSystem: boolean; allowPosting: boolean
+  type: string; parentId: string | null; parentCode: string | null; isActive: boolean
+  activityType: string | null; accountRole: string | null
+  isSystem: boolean; allowPosting: boolean
   level: number; description: string | null; descriptionAr: string | null
   parent: { id: string; code: string; name: string; nameAr: string | null } | null
   children: { id: string; code: string; name: string; nameAr: string | null }[]
@@ -852,6 +854,8 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   onViewLedger: (accountCode: string) => void
 }) {
   const { lang } = useAppStore()
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
   const [activityFilter, setActivityFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
@@ -866,6 +870,12 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   const [statementOpen, setStatementOpen] = useState(false)
   const [transactionsAccount, setTransactionsAccount] = useState<Account | null>(null)
   const [transactionsOpen, setTransactionsOpen] = useState(false)
+
+  // Create / Edit account dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [editDialogAccount, setEditDialogAccount] = useState<AccountFormData | null>(null)
+  const [presetParentId, setPresetParentId] = useState<string>('')
+  const [presetType, setPresetType] = useState<string>('')
 
   const allParentIds = useMemo(() => {
     const ids = new Set<string>()
@@ -940,6 +950,62 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
 
   const typeSummary = useMemo(() => { const s: Record<string, number> = {}; accounts.forEach(a => { s[a.type] = (s[a.type] || 0) + 1 }); return s }, [accounts])
 
+  // ---------- Account CRUD handlers ----------
+  const openCreateDialog = (parentId?: string, type?: string) => {
+    setEditDialogAccount(null)
+    setPresetParentId(parentId || '')
+    setPresetType(type || '')
+    setCreateDialogOpen(true)
+  }
+
+  const openEditDialog = (account: Account) => {
+    setEditDialogAccount({
+      id: account.id,
+      code: account.code,
+      name: account.name,
+      nameAr: account.nameAr || '',
+      type: account.type,
+      parentId: account.parentId || '',
+      accountRole: account.accountRole || '',
+      activityType: account.activityType || 'BOTH',
+      allowPosting: account.allowPosting,
+      description: account.description || '',
+      descriptionAr: account.descriptionAr || '',
+    })
+    setPresetParentId('')
+    setPresetType('')
+    setCreateDialogOpen(true)
+  }
+
+  const handleToggleActive = async (account: Account) => {
+    const newActive = !account.isActive
+    try {
+      const res = await fetch(`/api/accounts/${account.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: newActive }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed')
+      }
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['financial-mapping-overview'] })
+      toast({
+        title: t('تم', 'Done', lang),
+        description: newActive
+          ? t('تم تفعيل الحساب', 'Account activated', lang)
+          : t('تم تعطيل الحساب', 'Account deactivated', lang),
+      })
+    } catch (err) {
+      toast({
+        title: t('خطأ', 'Error', lang),
+        description: err instanceof Error ? err.message : t('فشل التحديث', 'Update failed'),
+        variant: 'destructive',
+      })
+    }
+  }
+
   if (isLoading) return <TableSkeleton />
   if (accounts.length === 0) {
     return (
@@ -1010,9 +1076,24 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
               {isInitializing ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
               {t('تحديث', 'Re-initialize', lang)}
             </Button>
+            <Button size="sm" onClick={() => openCreateDialog()} className="gap-2 text-xs h-9 bg-emerald-600 hover:bg-emerald-700">
+              <PlusCircle className="size-3.5" />
+              {t('حساب جديد', 'New Account', lang)}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* Info banner: explains how new accounts flow into operations */}
+      <div className="flex items-start gap-2 p-3 rounded-md bg-teal-50 border border-teal-200">
+        <Info className="size-4 text-teal-600 mt-0.5 shrink-0" />
+        <p className="text-xs text-teal-800 leading-relaxed">
+          {t(
+            'عند إنشاء حساب جديد وربطه بدور وظيفي (مثل: البنوك، النقدية، ذمم العملاء، ذمم الموردين...) سيظهر هذا الحساب تلقائياً في شاشة "ربط الحسابات" وضمن كل العمليات المرتبطة بهذا الدور (الدفع، التحصيل، السداد، الفواتير، المصروفات...). مثال: إضافة حساب بنكي جديد بدور "BANK" → سيظهر فوراً في قائمة البنوك عند تسجيل دفعة مورد أو تحصيل عميل أو صرف مصروف.',
+            'When you create a new account and assign it a functional role (e.g. BANK, CASH, CUSTOMER_AR, SUPPLIER_AP...), it will automatically appear in the "Role Mapping" screen and in every operation linked to that role (payments, collections, invoices, expenses...). Example: add a new bank account with role "BANK" → it instantly shows up in the bank list when recording a supplier payment, client collection, or expense payment.'
+          )}
+        </p>
+      </div>
 
       {/* Print + Export buttons for the chart of accounts table */}
       <div className="flex justify-end">
@@ -1090,26 +1171,36 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
                   const hasChildren = childMap.has(a.id) && (childMap.get(a.id)?.length || 0) > 0
                   const isExpanded = expandedIds.has(a.id)
                   return (
-                    <TableRow key={a.id} className={`cursor-pointer hover:bg-emerald-50/30 ${a.displayLevel === 0 ? 'bg-gray-50/50 font-semibold' : ''} ${a.isSystem ? 'bg-amber-50/30' : ''}`}
+                    <TableRow key={a.id} className={`cursor-pointer hover:bg-emerald-50/30 ${a.displayLevel === 0 ? 'bg-gray-50/50 font-semibold' : ''} ${a.isSystem ? 'bg-amber-50/30' : ''} ${!a.isActive ? 'opacity-50' : ''}`}
                       onClick={() => { setSelectedAccount(a); setDetailOpen(true) }}>
                       <TableCell>
                         <div className="flex items-center" style={{ paddingLeft: `${a.displayLevel * 24}px` }}>
                           {hasChildren && <button onClick={(e) => { e.stopPropagation(); toggleExpand(a.id) }} className="mr-1 p-0.5 hover:bg-gray-200 rounded">{isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}</button>}
                           {!hasChildren && a.displayLevel > 0 && <span className="text-gray-300 mr-1 ml-1 text-xs">└</span>}
                           <span className="font-mono text-sm">{a.code}</span>
+                          {a.accountRole && (
+                            <Badge variant="outline" className="ml-2 text-[10px] gap-1 bg-emerald-50 text-emerald-700 border-emerald-200 px-1 py-0">
+                              <Link2 className="size-2.5" />{a.accountRole}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className={a.displayLevel === 0 ? 'font-bold' : ''}>
-                          {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className={a.displayLevel === 0 ? 'font-bold' : ''}>
+                            {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+                          </span>
+                          {!a.isActive && (
+                            <span className="text-[10px] text-rose-600 font-medium">{t('معطّل', 'Inactive', lang)}</span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell><TypeBadge type={a.type} lang={lang} /></TableCell>
                       <TableCell><ActivityBadge activityType={a.activityType} lang={lang} /></TableCell>
                       <TableCell><MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
                       <TableCell className="text-center">{formatNumber(a.entryCount)}</TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 flex-wrap">
                           <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={(e) => { e.stopPropagation(); setStatementAccount(a); setStatementOpen(true) }}>
                             <FileSearch className="size-3.5" />{t('كشف', 'Stmt', lang)}
                           </Button>
@@ -1118,6 +1209,18 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
                           </Button>
                           <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-purple-700 hover:text-purple-800 hover:bg-purple-50" onClick={(e) => { e.stopPropagation(); setTransactionsAccount(a); setTransactionsOpen(true) }}>
                             <List className="size-3.5" />{t('حركات', 'Txns', lang)}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50" onClick={(e) => { e.stopPropagation(); openEditDialog(a) }} title={t('تعديل', 'Edit', lang)}>
+                            <Pencil className="size-3.5" />{t('تعديل', 'Edit', lang)}
+                          </Button>
+                          {!hasChildren && (
+                            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs text-amber-700 hover:text-amber-800 hover:bg-amber-50" onClick={(e) => { e.stopPropagation(); openCreateDialog(a.id, a.type) }} title={t('إضافة فرعي', 'Add Child', lang)}>
+                              <PlusCircle className="size-3.5" />{t('فرعي', 'Child', lang)}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" className={`h-7 gap-1 text-xs ${a.isActive ? 'text-rose-700 hover:text-rose-800 hover:bg-rose-50' : 'text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50'}`} onClick={(e) => { e.stopPropagation(); handleToggleActive(a) }} title={a.isActive ? t('تعطيل', 'Deactivate', lang) : t('تفعيل', 'Activate', lang)}>
+                            {a.isActive ? <XCircle className="size-3.5" /> : <CheckCircle2 className="size-3.5" />}
+                            {a.isActive ? t('تعطيل', 'Disable', lang) : t('تفعيل', 'Enable', lang)}
                           </Button>
                         </div>
                       </TableCell>
@@ -1133,6 +1236,19 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
       <AccountDetailDialog account={selectedAccount} open={detailOpen} onClose={() => setDetailOpen(false)} />
       <AccountStatementDialog account={statementAccount} open={statementOpen} onClose={() => setStatementOpen(false)} />
       <AccountTransactionsDialog account={transactionsAccount} open={transactionsOpen} onClose={() => setTransactionsOpen(false)} />
+
+      <CreateAccountDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        initialAccount={editDialogAccount}
+        presetParentId={presetParentId}
+        presetType={presetType}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['accounts'] })
+          queryClient.invalidateQueries({ queryKey: ['financial-mapping-overview'] })
+          queryClient.invalidateQueries({ queryKey: ['accounts-by-role'] })
+        }}
+      />
     </div>
   )
 }
@@ -1155,6 +1271,10 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState('')
 
+  // Create-account-for-role dialog state
+  const [createForRole, setCreateForRole] = useState<string>('')
+  const [createRoleDialogOpen, setCreateRoleDialogOpen] = useState(false)
+
   const { data: overviewData, isLoading, isError, refetch } = useQuery<{ overview: RoleOverviewItem[] }>({
     queryKey: ['financial-mapping-overview'],
     queryFn: async () => {
@@ -1170,6 +1290,12 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
     () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
     [accounts]
   )
+
+  // Open the create-account dialog pre-set with a role
+  const openCreateForRole = (role: string) => {
+    setCreateForRole(role)
+    setCreateRoleDialogOpen(true)
+  }
 
   const updateMutation = useMutation({
     mutationFn: async ({ accountId, accountRole }: { accountId: string; accountRole: string }) => {
@@ -1387,9 +1513,22 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => handleEdit(mapping.role)}>
-                          <Pencil className="size-3" />{t('تعديل', 'Edit', lang)}
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => handleEdit(mapping.role)}>
+                            <Pencil className="size-3" />{t('تعديل', 'Edit', lang)}
+                          </Button>
+                          {!mapping.isMapped && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 gap-1 text-xs bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                              onClick={() => openCreateForRole(mapping.role)}
+                              title={t('إنشاء حساب جديد لهذا الدور', 'Create a new account for this role', lang)}
+                            >
+                              <PlusCircle className="size-3" />{t('إنشاء حساب', 'Create Account', lang)}
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -1399,6 +1538,17 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
           </CardContent>
         </Card>
       ))}
+
+      {/* Educational banner: how new accounts link to operations */}
+      <div className="flex items-start gap-2 p-3 rounded-md bg-teal-50 border border-teal-200">
+        <Info className="size-4 text-teal-600 mt-0.5 shrink-0" />
+        <p className="text-xs text-teal-800 leading-relaxed">
+          {t(
+            'كل دور في هذه الشاشة يقابله نوع عملية محدد في النظام. عند ربط حساب بدور معين أو إنشاء حساب جديد لهذا الدور، يظهر الحساب تلقائياً في كل الشاشات والنماذج التي تستخدم هذا الدور. على سبيل المثال: الأدوار CASH و BANK تظهر في شاشات (تحصيل العملاء، سداد الموردين، صرف المصروفات، سداد الرواتب). ويمكن إنشاء عدة حسابات بنفس الدور (مثل عدة بنوك) وستظهر كلها في القائمة المنسدلة للاختيار عند تنفيذ العملية.',
+            'Each role in this screen corresponds to a specific operation type in the system. When you link an account to a role or create a new account for that role, the account automatically appears in every screen and form that uses this role. For example: CASH and BANK roles appear in (client collections, supplier payments, expense payments, salary payments). You can create multiple accounts with the same role (e.g. multiple banks) and they will all appear in the dropdown list when performing the operation.'
+          )}
+        </p>
+      </div>
 
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
         <DialogContent className="max-w-md">
@@ -1440,6 +1590,18 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Create-account-for-role dialog */}
+      <CreateAccountDialog
+        open={createRoleDialogOpen}
+        onOpenChange={setCreateRoleDialogOpen}
+        presetRole={createForRole}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['accounts'] })
+          queryClient.invalidateQueries({ queryKey: ['financial-mapping-overview'] })
+          queryClient.invalidateQueries({ queryKey: ['accounts-by-role'] })
+        }}
+      />
     </div>
   )
 }

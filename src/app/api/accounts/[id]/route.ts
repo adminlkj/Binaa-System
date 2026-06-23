@@ -145,6 +145,31 @@ export async function PUT(
     if (body.description !== undefined) updateData.description = body.description || null
     if (body.descriptionAr !== undefined) updateData.descriptionAr = body.descriptionAr || null
 
+    // Allow moving the account to a different parent (re-parenting)
+    if (body.parentId !== undefined) {
+      if (body.parentId === '' || body.parentId === null) {
+        updateData.parentId = null
+        updateData.parentCode = null
+      } else {
+        // Validate the new parent exists and is not the same account (avoid self-loop)
+        if (body.parentId === id) {
+          return NextResponse.json(
+            { error: 'لا يمكن أن يكون الحساب أبًا لنفسه' },
+            { status: 400 }
+          )
+        }
+        const newParent = await db.account.findUnique({ where: { id: body.parentId } })
+        if (!newParent) {
+          return NextResponse.json(
+            { error: 'الحساب الأب الجديد غير موجود' },
+            { status: 400 }
+          )
+        }
+        updateData.parentId = newParent.id
+        updateData.parentCode = newParent.code
+      }
+    }
+
     const updated = await db.account.update({
       where: { id },
       data: updateData,
