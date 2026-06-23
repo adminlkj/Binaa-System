@@ -238,7 +238,7 @@ export type SubModuleKey =
   // Admin
   | 'users' | 'permissions' | 'workflow' | 'settings'
   // Reports
-  | 'report-projects' | 'report-rental' | 'report-finance' | 'report-purchases' | 'report-clients' | 'report-tax'
+  | 'report-projects' | 'report-rental' | 'report-finance' | 'report-statements' | 'report-purchases' | 'report-clients' | 'report-tax'
   // Rental
   | 'rental-contracts' | 'rental-delivery-orders' | 'rental-timesheets' | 'rental-invoices' | 'rental-collections'
   // Warehouses
@@ -268,6 +268,7 @@ export const subModuleLabels: Record<SubModuleKey, { ar: string; en: string }> =
   'report-projects': { ar: 'تقارير المشاريع', en: 'Project Reports' },
   'report-rental': { ar: 'تقارير التأجير', en: 'Rental Reports' },
   'report-finance': { ar: 'التقارير المالية', en: 'Financial Reports' },
+  'report-statements': { ar: 'القوائم المالية', en: 'Financial Statements' },
   'report-purchases': { ar: 'تقارير المشتريات', en: 'Purchase Reports' },
   'report-clients': { ar: 'تقارير العملاء', en: 'Client Reports' },
   'report-tax': { ar: 'تقارير الضريبة', en: 'Tax Reports' },

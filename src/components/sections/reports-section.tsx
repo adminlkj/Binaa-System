@@ -2,7 +2,7 @@
 
 import React from 'react'
 import {
-  Building2, Wallet, Truck, ShoppingCart, Users, Percent,
+  Building2, Wallet, Truck, ShoppingCart, Users, Percent, BookOpen,
 } from 'lucide-react'
 import {
   useAppStore,
@@ -15,6 +15,7 @@ import { ReportsModule } from '@/components/modules/reports'
 // ============ Tab Definitions ============
 
 const reportsTabs: { key: SubModuleKey; icon: React.ElementType; label: { ar: string; en: string } }[] = [
+  { key: 'report-statements', icon: BookOpen, label: { ar: 'القوائم المالية', en: 'Financial Statements' } },
   { key: 'report-projects', icon: Building2, label: { ar: 'تقارير المشاريع', en: 'Project Reports' } },
   { key: 'report-rental', icon: Truck, label: { ar: 'تقارير التأجير', en: 'Rental Reports' } },
   { key: 'report-finance', icon: Wallet, label: { ar: 'التقارير المالية', en: 'Financial Reports' } },

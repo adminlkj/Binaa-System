@@ -2,11 +2,6 @@ import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { toNumber } from '@/lib/decimal'
 import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
-import {
-  getBalanceSheet as getEngineBalanceSheet,
-  getIncomeStatement as getEngineIncomeStatement,
-  type DateRange,
-} from '@/lib/report-engine'
 
 // Normal balance mapping by account type
 const NORMAL_BALANCE: Record<string, 'DEBIT' | 'CREDIT'> = {
@@ -186,7 +181,7 @@ export async function GET(request: Request) {
         const glBalances = await getProjectGLBalances(projectIds)
 
         const data = projects.map(p => {
-          const contractValue = p.contracts.reduce((s, c) => s + toNumber(c.totalValue), 0)
+          const contractValue = p.contracts.reduce((s, c) => s + c.totalValue, 0)
           const gl = glBalances.get(p.id) || { revenue: 0, costs: 0 }
           return {
             id: p.id, code: p.code, name: p.name, status: p.status,
@@ -224,8 +219,8 @@ export async function GET(request: Request) {
         const glExpenseTotal = await getGLBalanceByType('EXPENSE')
 
         const byCategory: Record<string, number> = {}
-        expenses.forEach(e => { byCategory[e.category] = (byCategory[e.category] || 0) + toNumber(e.amount) })
-        const totalExpenses = expenses.reduce((s, e) => s + toNumber(e.amount), 0)
+        expenses.forEach(e => { byCategory[e.category] = (byCategory[e.category] || 0) + e.amount })
+        const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
         return NextResponse.json({ expenses, byCategory, totalExpenses, glExpenseTotal })
       }
 
@@ -243,8 +238,8 @@ export async function GET(request: Request) {
         // GL-based revenue total for verification
         const glRevenueTotal = await getGLBalanceByType('REVENUE')
 
-        const totalSales = invoices.reduce((s, i) => s + toNumber(i.totalAmount), 0)
-        const totalPaid = invoices.reduce((s, i) => s + toNumber(i.paidAmount), 0)
+        const totalSales = invoices.reduce((s, i) => s + i.totalAmount, 0)
+        const totalPaid = invoices.reduce((s, i) => s + i.paidAmount, 0)
         return NextResponse.json({ invoices, totalSales, totalPaid, totalOutstanding: totalSales - totalPaid, glRevenueTotal })
       }
 
@@ -268,9 +263,9 @@ export async function GET(request: Request) {
         const apCodes = (await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])).map(a => a.code)
         const glPayableTotal = await getGLBalanceForCodes(apCodes.length > 0 ? apCodes : ['3210', '3220'])
 
-        const totalPOs = pos.reduce((s, p) => s + toNumber(p.totalAmount), 0)
-        const totalPIs = pis.reduce((s, p) => s + toNumber(p.totalAmount), 0)
-        const totalPaid = pis.reduce((s, p) => s + toNumber(p.paidAmount), 0)
+        const totalPOs = pos.reduce((s, p) => s + p.totalAmount, 0)
+        const totalPIs = pis.reduce((s, p) => s + p.totalAmount, 0)
+        const totalPaid = pis.reduce((s, p) => s + p.paidAmount, 0)
         return NextResponse.json({ purchaseOrders: pos, purchaseInvoices: pis, totalPOs, totalPIs, totalPaid, totalOutstanding: totalPIs - totalPaid, glPayableTotal })
       }
 
@@ -282,56 +277,53 @@ export async function GET(request: Request) {
           },
           orderBy: { code: 'asc' },
         })
-        const totalValue = items.reduce((s, i) => s + (toNumber(i.quantity) * toNumber(i.purchasePrice)), 0)
+        const totalValue = items.reduce((s, i) => s + (i.quantity * i.purchasePrice), 0)
         const lowStock = items.filter(i => i.quantity <= i.minQuantity)
         return NextResponse.json({ items, totalValue, lowStockCount: lowStock.length, totalItems: items.length })
       }
 
       case 'balance-sheet': {
-        const dateFrom = searchParams.get('dateFrom')
-        const dateTo = searchParams.get('dateTo')
-        const range: DateRange | undefined = (dateFrom || dateTo) ? {
-          from: dateFrom ? new Date(dateFrom) : undefined,
-          to: dateTo ? new Date(dateTo) : undefined,
-        } : undefined
-        const bs = await getEngineBalanceSheet(range?.to)
-        // Flatten for backward-compatible response shape
-        const accounts = [
-          ...bs.assets.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
-          ...bs.liabilities.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
-          ...bs.equity.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
-        ]
-        return NextResponse.json({
-          accounts,
-          totalAssets: bs.assets.total,
-          totalLiabilities: bs.liabilities.total,
-          totalEquity: bs.equity.total,
-          isBalanced: bs.isBalanced,
-          source: 'posted-journal-entries',
+        const accounts = await db.account.findMany({
+          where: { type: { in: ['ASSET', 'LIABILITY', 'EQUITY'] }, isActive: true },
+          include: {
+            journalLines: {
+              where: { journalEntry: { status: 'POSTED' } },
+            },
+          },
+          orderBy: { code: 'asc' },
         })
+        const data = accounts.map(a => {
+          const debit = a.journalLines.reduce((s, l) => s + l.debit, 0)
+          const credit = a.journalLines.reduce((s, l) => s + l.credit, 0)
+          const balance = a.type === 'ASSET' ? debit - credit : credit - debit
+          return { id: a.id, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance }
+        })
+        const totalAssets = data.filter(a => a.type === 'ASSET').reduce((s, a) => s + a.balance, 0)
+        const totalLiabilities = data.filter(a => a.type === 'LIABILITY').reduce((s, a) => s + a.balance, 0)
+        const totalEquity = data.filter(a => a.type === 'EQUITY').reduce((s, a) => s + a.balance, 0)
+        return NextResponse.json({ accounts: data, totalAssets, totalLiabilities, totalEquity })
       }
 
       case 'income-statement': {
-        const dateFrom = searchParams.get('dateFrom')
-        const dateTo = searchParams.get('dateTo')
-        const range: DateRange | undefined = (dateFrom || dateTo) ? {
-          from: dateFrom ? new Date(dateFrom) : undefined,
-          to: dateTo ? new Date(dateTo) : undefined,
-        } : undefined
-        const is = await getEngineIncomeStatement(range)
-        const accounts = [
-          ...is.revenue.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
-          ...is.expenses.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
-        ]
-        return NextResponse.json({
-          accounts,
-          totalRevenue: is.revenue.total,
-          totalExpenses: is.expenses.total,
-          netIncome: is.netIncome,
-          grossProfit: is.grossProfit,
-          netProfitMargin: is.netProfitMargin,
-          source: 'posted-journal-entries',
+        const accounts = await db.account.findMany({
+          where: { type: { in: ['REVENUE', 'EXPENSE'] }, isActive: true },
+          include: {
+            journalLines: {
+              where: { journalEntry: { status: 'POSTED' } },
+            },
+          },
+          orderBy: { code: 'asc' },
         })
+        const data = accounts.map(a => {
+          const debit = a.journalLines.reduce((s, l) => s + l.debit, 0)
+          const credit = a.journalLines.reduce((s, l) => s + l.credit, 0)
+          const balance = a.type === 'REVENUE' ? credit - debit : debit - credit
+          return { id: a.id, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance }
+        })
+        const totalRevenue = data.filter(a => a.type === 'REVENUE').reduce((s, a) => s + a.balance, 0)
+        const totalExpenses = data.filter(a => a.type === 'EXPENSE').reduce((s, a) => s + a.balance, 0)
+        const netIncome = totalRevenue - totalExpenses
+        return NextResponse.json({ accounts: data, totalRevenue, totalExpenses, netIncome })
       }
 
       case 'project-card': {
@@ -348,7 +340,7 @@ export async function GET(request: Request) {
         const glBalances = await getProjectGLBalances(projectIds)
 
         const projectCards = projects.map(p => {
-          const contractValue = p.contracts.reduce((s, c) => s + toNumber(c.totalValue), 0)
+          const contractValue = p.contracts.reduce((s, c) => s + c.totalValue, 0)
           const gl = glBalances.get(p.id) || { revenue: 0, costs: 0 }
           const issuedExtracts = gl.revenue  // GL-based
           const totalCost = gl.costs  // GL-based
@@ -396,8 +388,8 @@ export async function GET(request: Request) {
         const constructionProjectCount = constructionProjects.length
         const constructionActiveProjectCount = constructionProjects.filter(p => p.status === 'ACTIVE').length
         const constructionTotalContractValue = constructionProjects.reduce((s, p) => {
-          const cv = p.contracts.reduce((s2, c) => s2 + toNumber(c.totalValue), 0)
-          return s + (cv > 0 ? cv : toNumber(p.contractValue))
+          const cv = p.contracts.reduce((s2, c) => s2 + c.totalValue, 0)
+          return s + (cv > 0 ? cv : p.contractValue)
         }, 0)
 
         // GL-based construction revenue and costs
@@ -570,7 +562,7 @@ export async function GET(request: Request) {
         }
 
         const projectProfitability = projects.map(p => {
-          const contractValue = p.contracts.reduce((s, c) => s + toNumber(c.totalValue), 0) || toNumber(p.contractValue)
+          const contractValue = p.contracts.reduce((s, c) => s + c.totalValue, 0) || p.contractValue
           const gl = glBalances.get(p.id) || { revenue: 0, costs: 0 }
           const breakdown = projectExpenseBreakdown.get(p.id) || new Map<string, number>()
 
@@ -639,14 +631,14 @@ export async function GET(request: Request) {
         ])
 
         const equipmentUtilization = equipment.map(eq => {
-          const totalHoursRented = eq.operatorLogs.reduce((s, o) => s + toNumber(o.hours), 0)
+          const totalHoursRented = eq.operatorLogs.reduce((s, o) => s + o.hours, 0)
           const revenueGenerated = eq.rentals.reduce((s, r) => {
-            const rate = toNumber(r.hourlyRate) || toNumber(eq.hourlyRate)
-            return s + (rate * totalHoursRented) + toNumber(r.deliveryFees)
+            const rate = r.hourlyRate || eq.hourlyRate
+            return s + (rate * totalHoursRented) + (r.deliveryFees || 0)
           }, 0)
-          const maintenanceCosts = eq.maintenance.reduce((s, m) => s + toNumber(m.cost), 0)
-          const fuelCosts = eq.fuelLogs.reduce((s, f) => s + toNumber(f.totalCost), 0)
-          const operationCosts = eq.usages.reduce((s, u) => s + toNumber(u.cost), 0)
+          const maintenanceCosts = eq.maintenance.reduce((s, m) => s + m.cost, 0)
+          const fuelCosts = eq.fuelLogs.reduce((s, f) => s + f.totalCost, 0)
+          const operationCosts = eq.usages.reduce((s, u) => s + u.cost, 0)
           const totalCosts = maintenanceCosts + fuelCosts + operationCosts
           const netProfit = revenueGenerated - totalCosts
           return {
@@ -685,7 +677,7 @@ export async function GET(request: Request) {
           if (!byClient[cid]) {
             byClient[cid] = { id: cid, code: inv.client.code, name: inv.client.name, nameAr: inv.client.nameAr, revenue: 0, invoiceCount: 0 }
           }
-          byClient[cid].revenue += toNumber(inv.totalAmount)
+          byClient[cid].revenue += inv.totalAmount
           byClient[cid].invoiceCount += 1
         }
         const clients = Object.values(byClient)
@@ -731,13 +723,13 @@ export async function GET(request: Request) {
           // By supplier
           const sid = inv.supplier?.id || 'unknown'
           if (!bySupplier[sid]) bySupplier[sid] = { id: sid, code: inv.supplier?.code || '', name: inv.supplier?.name || 'Unknown', total: 0, invoiceCount: 0 }
-          bySupplier[sid].total += toNumber(inv.totalAmount)
+          bySupplier[sid].total += inv.totalAmount
           bySupplier[sid].invoiceCount += 1
           // By project
           if (inv.project) {
             const pid = inv.project.id
             if (!byProject[pid]) byProject[pid] = { id: pid, code: inv.project.code, name: inv.project.name, projectType: inv.project.projectType, total: 0, invoiceCount: 0 }
-            byProject[pid].total += toNumber(inv.totalAmount)
+            byProject[pid].total += inv.totalAmount
             byProject[pid].invoiceCount += 1
           }
         }
@@ -746,7 +738,7 @@ export async function GET(request: Request) {
         const apCodes = (await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])).map(a => a.code)
         const glPayableTotal = await getGLBalanceForCodes(apCodes.length > 0 ? apCodes : ['3210', '3220'])
 
-        const totalPurchases = supplierInvoices.reduce((s, i) => s + toNumber(i.totalAmount), 0)
+        const totalPurchases = supplierInvoices.reduce((s, i) => s + i.totalAmount, 0)
         return NextResponse.json({ bySupplier: Object.values(bySupplier), byProject: Object.values(byProject), totalPurchases, invoiceCount: supplierInvoices.length, glPayableTotal })
       }
 
@@ -779,17 +771,17 @@ export async function GET(request: Request) {
 
           for (const line of revenueLines) {
             const month = new Date(line.journalEntry.date).toISOString().slice(0, 7)
-            if (!monthlyData[month]) monthlyData[month] = { month, construction: 0, rental: 0 }
+            if (!monthlyDataonth]) monthlyDataonth] = { month, construction: 0, rental: 0 }
             const amount = toNumber(line.credit) - toNumber(line.debit)
             const activityType = line.account.activityType
             if (activityType === 'CONSTRUCTION') {
-              monthlyData[month].construction += amount
+              monthlyDataonth].construction += amount
             } else if (activityType === 'EQUIPMENT_RENTAL') {
-              monthlyData[month].rental += amount
+              monthlyDataonth].rental += amount
             } else {
               // BOTH or null: split proportionally or add to both
-              monthlyData[month].construction += amount / 2
-              monthlyData[month].rental += amount / 2
+              monthlyDataonth].construction += amount / 2
+              monthlyDataonth].rental += amount / 2
             }
           }
         }
@@ -890,11 +882,11 @@ export async function GET(request: Request) {
 
           for (const line of cashLines) {
             const month = new Date(line.journalEntry.date).toISOString().slice(0, 7)
-            if (!monthlyData[month]) monthlyData[month] = { month, inflows: 0, outflows: 0 }
+            if (!monthlyDataonth]) monthlyDataonth] = { month, inflows: 0, outflows: 0 }
             const debit = toNumber(line.debit)
             const credit = toNumber(line.credit)
-            monthlyData[month].inflows += debit
-            monthlyData[month].outflows += credit
+            monthlyDataonth].inflows += debit
+            monthlyDataonth].outflows += credit
           }
         }
 

@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { useAppStore, formatNumber, formatDate } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
+import { FinancialStatementsTab } from '@/components/modules/financial-statements-tab'
 import { PrintButton } from '@/components/shared/print-button'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { toast } from 'sonner'
@@ -1181,18 +1182,29 @@ function TaxReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 // MAIN REPORTS MODULE
 // ========================================================
 export function ReportsModule() {
-  const { activeSubModule, lang } = useAppStore()
+  const { lang } = useAppStore()
+  const [activeTab, setActiveTab] = useState('report-statements')
 
-  // Map activeSubModule to the corresponding tab component
+  const tabConfig: { value: string; label: { ar: string; en: string }; icon: React.ElementType }[] = [
+    { value: 'report-statements', label: { ar: 'القوائم المالية', en: 'Financial Statements' }, icon: BookOpen },
+    { value: 'report-projects', label: { ar: 'تقارير المشاريع', en: 'Project Reports' }, icon: Building2 },
+    { value: 'report-rental', label: { ar: 'تقارير التأجير', en: 'Rental Reports' }, icon: Truck },
+    { value: 'report-finance', label: { ar: 'التقارير المالية', en: 'Financial Reports' }, icon: Wallet },
+    { value: 'report-purchases', label: { ar: 'تقارير المشتريات', en: 'Purchase Reports' }, icon: ShoppingCart },
+    { value: 'report-clients', label: { ar: 'تقارير العملاء', en: 'Client Reports' }, icon: Users },
+    { value: 'report-tax', label: { ar: 'تقارير الضريبة', en: 'Tax Reports' }, icon: Percent },
+  ]
+
   const renderTab = () => {
-    switch (activeSubModule) {
+    switch (activeTab) {
+      case 'report-statements': return <FinancialStatementsTab lang={lang} />
       case 'report-projects': return <ProjectReportsTab lang={lang} />
       case 'report-rental': return <RentalReportsTab lang={lang} />
       case 'report-finance': return <FinancialReportsTab lang={lang} />
       case 'report-purchases': return <PurchaseReportsTab lang={lang} />
       case 'report-clients': return <ClientReportsTab lang={lang} />
       case 'report-tax': return <TaxReportsTab lang={lang} />
-      default: return <ProjectReportsTab lang={lang} />
+      default: return <FinancialStatementsTab lang={lang} />
     }
   }
 
@@ -1201,7 +1213,19 @@ export function ReportsModule() {
       title={{ ar: 'التقارير', en: 'Reports' }}
       subtitle={{ ar: 'تقارير شاملة للمشاريع والتأجير والمالية', en: 'Comprehensive reports for projects, rental, and finance' }}
     >
-      {renderTab()}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="overflow-x-auto">
+          <TabsList className="flex w-max min-w-full">
+            {tabConfig.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value} className="gap-1 text-xs whitespace-nowrap px-3">
+                <tab.icon className="size-3.5" />
+                {tab.label[lang]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+      </Tabs>
+      <div className="mt-4">{renderTab()}</div>
     </ModuleLayout>
   )
 }

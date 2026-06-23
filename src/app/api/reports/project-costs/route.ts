@@ -1,11 +1,17 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { toNumber } from '@/lib/decimal'
+import { getProjectCostBreakdown } from '@/lib/report-engine'
 
 // GET: Project Cost Sheet Report
+// المصدر الحقيقي الوحيد: القيود اليومية المرحّلة (JournalEntry.status = 'POSTED')
+// مع عرض القيمة التعاقدية والربح من بيانات العقد
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
+    const dateFrom = searchParams.get('dateFrom')
+    const dateTo = searchParams.get('dateTo')
 
     if (!projectId) {
       return NextResponse.json({ error: 'يرجى تحديد المشروع' }, { status: 400 })
@@ -14,7 +20,7 @@ export async function GET(request: Request) {
     const project = await db.project.findUnique({
       where: { id: projectId },
       include: {
-        client: { select: { name: true } },
+        client: { select: { name: true, nameAr: true } },
         contracts: { select: { contractNo: true, totalValue: true, status: true } },
       },
     })
@@ -23,112 +29,42 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
     }
 
-    // ===== Materials: from Goods Receipt items with destination=PROJECT =====
-    const goodsReceiptItems = await db.goodsReceiptItem.findMany({
-      where: {
-        destination: 'PROJECT',
-        goodsReceipt: { projectId: projectId },
-      },
-      select: { totalPrice: true },
-    })
-    const materialsFromGR = goodsReceiptItems.reduce((s, i) => s + i.totalPrice, 0)
+    const range = (dateFrom || dateTo) ? {
+      from: dateFrom ? new Date(dateFrom) : undefined,
+      to: dateTo ? new Date(dateTo) : undefined,
+    } : undefined
 
-    // Also from purchase invoices linked to project
-    const purchaseInvoiceItems = await db.purchaseInvoice.findMany({
-      where: { projectId: projectId, status: { not: 'CANCELLED' } },
-      select: { subtotal: true, vatAmount: true },
-    })
-    const materialsFromPI = purchaseInvoiceItems.reduce((s, i) => s + i.subtotal, 0)
-    const inputVatFromPI = purchaseInvoiceItems.reduce((s, i) => s + i.vatAmount, 0)
+    // ===== المصدر الحقيقي: القيود المرحّلة عبر مركز التكلفة =====
+    const gl = await getProjectCostBreakdown(projectId, range)
 
-    const materials = materialsFromGR + materialsFromPI
+    // ===== تجميع التكاليف حسب الدور المحاسبي =====
+    const r = (role: string) => gl.byRole.get(role) || 0
 
-    // ===== Equipment Operations =====
-    const equipOps = await db.equipmentOperation.findMany({
-      where: { projectId: projectId },
-      include: { equipment: { select: { hourlyRate: true } } },
-    })
-    const equipmentOperations = equipOps.reduce((s, op) => {
-      const rate = op.equipment?.hourlyRate || 0
-      return s + (rate * op.hours)
-    }, 0)
+    const materials = r('PROJECT_COST')
+    const subcontractors = r('SUBCONTRACTOR_COST')
+    const labor = r('PAYROLL_EXPENSE')
+    const salaries = r('PAYROLL_EXPENSE') // رواتب = نفس بند الأجور
+    const equipmentFuel = r('FUEL_EXPENSE')
+    const equipmentMaintenance = r('MAINTENANCE_EXPENSE')
+    const equipmentOperations = r('DRIVER_EXPENSE') + r('TRANSPORT_EXPENSE') + r('RENTAL_DEPRECIATION')
+    const projectExpenses = r('ADMIN_EXPENSE') + r('GOSI_EXPENSE') + r('DEPRECIATION_EXPENSE') + r('ZAKAT_EXPENSE') + r('OTHER')
 
-    // ===== Equipment Maintenance (equipment allocated to project) =====
-    const resourceAllocations = await db.resourceAllocation.findMany({
-      where: { projectId: projectId, resourceType: 'EQUIPMENT' },
-      select: { resourceId: true },
-    })
-    const equipmentIds = resourceAllocations.map(r => r.resourceId)
-    const maintenanceRecords = await db.equipmentMaintenance.findMany({
-      where: { equipmentId: { in: equipmentIds } },
-      select: { cost: true },
-    })
-    const equipmentMaintenance = maintenanceRecords.reduce((s, m) => s + m.cost, 0)
+    const totalCost = gl.total
+    const revenueFromJournal = gl.revenue
 
-    // ===== Equipment Fuel =====
-    const fuelLogs = await db.equipmentFuelLog.findMany({
-      where: { projectId: projectId },
-      select: { totalCost: true },
-    })
-    const equipmentFuel = fuelLogs.reduce((s, f) => s + f.totalCost, 0)
+    // ===== قيمة العقد من بيانات العقد (ليست تقريراً مالياً، بل قيمة تعاقدية) =====
+    const contractValue = toNumber(project.contractValue) ||
+      project.contracts
+        .filter(c => c.status === 'ACTIVE' || c.status === 'DRAFT')
+        .reduce((s, c) => s + toNumber(c.totalValue), 0)
 
-    // ===== Subcontractors =====
-    const subInvoices = await db.subcontractorInvoice.findMany({
-      where: { projectId: projectId, status: { not: 'CANCELLED' } },
-      select: { amount: true, vatAmount: true },
-    })
-    const subcontractors = subInvoices.reduce((s, i) => s + i.amount, 0)
-    const inputVatFromSub = subInvoices.reduce((s, i) => s + i.vatAmount, 0)
+    const grossProfit = (revenueFromJournal > 0 ? revenueFromJournal : contractValue) - totalCost
+    const profitMarginBase = revenueFromJournal > 0 ? revenueFromJournal : contractValue
+    const profitMargin = profitMarginBase > 0 ? (grossProfit / profitMarginBase) * 100 : 0
 
-    // ===== Labor Costs =====
-    const laborCosts = await db.laborCost.findMany({
-      where: { projectId: projectId },
-      select: { totalAmount: true },
-    })
-    const labor = laborCosts.reduce((s, l) => s + l.totalAmount, 0)
-
-    // ===== Salaries (employees allocated to project) =====
-    const employeeAllocations = await db.resourceAllocation.findMany({
-      where: { projectId: projectId, resourceType: 'EMPLOYEE' },
-      select: { resourceId: true },
-    })
-    const employeeIds = employeeAllocations.map(r => r.resourceId)
-    const salaryRecords = await db.salary.findMany({
-      where: { employeeId: { in: employeeIds }, status: { in: ['APPROVED', 'PAID'] } },
-      select: { netSalary: true },
-    })
-    const salaries = salaryRecords.reduce((s, sal) => s + sal.netSalary, 0)
-
-    // ===== Project Expenses =====
-    const expenses = await db.expense.findMany({
-      where: { projectId: projectId },
-      select: { amount: true, vatAmount: true },
-    })
-    const projectExpenses = expenses.reduce((s, e) => s + e.amount, 0)
-    const inputVatFromExpenses = expenses.reduce((s, e) => s + (e.vatAmount || 0), 0)
-
-    // ===== Equipment Costs (from EquipmentCost model) =====
-    const equipCosts = await db.equipmentCost.findMany({
-      where: { projectId: projectId },
-      select: { amount: true },
-    })
-    const equipmentCosts = equipCosts.reduce((s, e) => s + e.amount, 0)
-
-    // ===== Equipment Usage (from EquipmentUsage model) =====
-    const equipUsages = await db.equipmentUsage.findMany({
-      where: { projectId: projectId },
-      select: { cost: true },
-    })
-    const equipmentUsages = equipUsages.reduce((s, e) => s + e.cost, 0)
-
-    // ===== Totals =====
-    const totalCost = materials + equipmentOperations + equipmentMaintenance + equipmentFuel +
-      subcontractors + labor + salaries + projectExpenses + equipmentCosts + equipmentUsages
-
-    const contractValue = project.contractValue || project.contracts.reduce((s, c) => s + c.totalValue, 0)
-    const grossProfit = contractValue - totalCost
-    const profitMargin = contractValue > 0 ? (grossProfit / contractValue) * 100 : 0
-    const inputVat = inputVatFromPI + inputVatFromSub + inputVatFromExpenses
+    // ===== الضريبة من القيود المرحّلة =====
+    const vatInput = await getProjectVAT(projectId, range, 'VAT_INPUT')
+    const inputVat = vatInput
 
     return NextResponse.json({
       project: {
@@ -137,7 +73,7 @@ export async function GET(request: Request) {
         name: project.name,
         nameAr: project.nameAr,
         status: project.status,
-        clientName: project.client.name,
+        clientName: project.client.nameAr || project.client.name,
         contractValue,
       },
       costs: {
@@ -149,17 +85,63 @@ export async function GET(request: Request) {
         labor,
         salaries,
         projectExpenses,
-        equipmentCosts,
-        equipmentUsages,
+        equipmentCosts: 0, // مُدمج في equipmentOperations
+        equipmentUsages: 0, // مُدمج في equipmentOperations
       },
       totalCost,
       contractValue,
+      revenueFromJournal,
       grossProfit,
-      profitMargin,
+      profitMargin: Math.round(profitMargin * 100) / 100,
       inputVat,
+      costCenterId: gl.costCenterId,
+      source: 'posted-journal-entries',
     })
   } catch (error) {
     console.error('Error generating project cost report:', error)
     return NextResponse.json({ error: 'فشل في إنشاء تقرير تكاليف المشروع' }, { status: 500 })
   }
+}
+
+/** احسب ضريبة المدخلات/المخرجات للمشروع من القيود المرحّلة */
+async function getProjectVAT(
+  projectId: string,
+  range: { from?: Date; to?: Date } | undefined,
+  role: 'VAT_INPUT' | 'VAT_OUTPUT'
+): Promise<number> {
+  const ccMap = await db.costCenter.findFirst({
+    where: { code: { equals: (await db.project.findUnique({ where: { id: projectId }, select: { code: true } }))?.code } },
+    select: { id: true },
+  })
+  if (!ccMap) return 0
+
+  const accounts = await db.account.findMany({
+    where: { accountRole: role, isActive: true },
+    select: { id: true, type: true },
+  })
+  if (accounts.length === 0) return 0
+
+  const agg = await db.journalLine.aggregate({
+    _sum: { debit: true, credit: true },
+    where: {
+      deletedAt: null,
+      accountId: { in: accounts.map(a => a.id) },
+      costCenterId: ccMap.id,
+      journalEntry: {
+        status: 'POSTED',
+        deletedAt: null,
+        ...(range && (range.from || range.to) && {
+          date: {
+            ...(range.from && { gte: range.from }),
+            ...(range.to && { lte: range.to }),
+          },
+        }),
+      },
+    },
+  })
+
+  const d = toNumber(agg._sum.debit)
+  const c = toNumber(agg._sum.credit)
+  // VAT_INPUT is ASSET (debit normal), VAT_OUTPUT is LIABILITY (credit normal)
+  return role === 'VAT_INPUT' ? (d - c) : (c - d)
 }

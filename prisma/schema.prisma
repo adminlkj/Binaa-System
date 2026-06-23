@@ -312,6 +312,7 @@ model CostCenter {
   journalLines JournalLine[]
   expenses     Expense[]
   costEntries  CostEntry[]
+  projects     Project[]
 
   @@index([parentId])
   @@index([isActive])
@@ -610,6 +611,7 @@ model Project {
   location      String?
   branchId      String
   clientId      String
+  costCenterId  String?       // مركز التكلفة المرتبط للمشروع — رابط مباشر لقيود اليومية
   projectType   ProjectType   @default(CONSTRUCTION)
   startDate     DateTime
   endDate       DateTime?
@@ -621,6 +623,7 @@ model Project {
 
   branch                 Branch                   @relation(fields: [branchId], references: [id])
   client                 Client                   @relation(fields: [clientId], references: [id])
+  costCenter             CostCenter?              @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   contracts              Contract[]
   boqItems               BOQItem[]
   changeOrders           ChangeOrder[]
@@ -667,6 +670,7 @@ model Project {
 
   @@index([branchId])
   @@index([clientId])
+  @@index([costCenterId])
   @@index([status])
   @@index([projectType])
   @@index([clientId, status])
