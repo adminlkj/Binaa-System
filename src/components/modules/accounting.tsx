@@ -37,6 +37,7 @@ import { useToast } from '@/hooks/use-toast'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
+import { TablePrintExportButtons, type PrintColumn, type PrintInfoItem, type PrintTotalItem } from '@/components/shared/table-print-export'
 
 // ============ Types ============
 interface Account {
@@ -1013,6 +1014,62 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
         </CardContent>
       </Card>
 
+      {/* Print + Export buttons for the chart of accounts table */}
+      <div className="flex justify-end">
+        <TablePrintExportButtons
+          title={{ ar: 'شجرة الحسابات', en: 'Chart of Accounts' }}
+          columns={[
+            { key: 'code', label: t('الكود', 'Code', lang) },
+            { key: 'name', label: t('اسم الحساب', 'Account Name', lang) },
+            { key: 'type', label: t('النوع', 'Type', lang) },
+            { key: 'activityType', label: t('النشاط', 'Activity', lang) },
+            { key: 'balance', label: t('الرصيد', 'Balance', lang), align: 'amount', type: 'amount' },
+            { key: 'entryCount', label: t('القيود', 'Entries', lang) },
+          ]}
+          rows={flatAccounts.map(a => ({
+            code: a.code,
+            name: lang === 'ar' && a.nameAr ? a.nameAr : a.name,
+            type: t(typeConfig[a.type]?.label?.ar || a.type, typeConfig[a.type]?.label?.en || a.type, lang),
+            activityType: a.activityType === 'CONSTRUCTION' ? t('مشاريع', 'Construction', lang)
+              : a.activityType === 'EQUIPMENT_RENTAL' ? t('تأجير', 'Rental', lang)
+              : a.activityType === 'BOTH' ? t('مشترك', 'Both', lang)
+              : t('غير محدد', 'Unspecified', lang),
+            balance: a.balance,
+            entryCount: a.entryCount,
+          }))}
+          csvColumns={[
+            { key: 'code', label: t('الكود', 'Code', lang) },
+            { key: 'name', label: t('اسم الحساب', 'Account Name', lang) },
+            { key: 'nameEn', label: t('الاسم الإنجليزي', 'English Name', lang) },
+            { key: 'type', label: t('النوع', 'Type', lang) },
+            { key: 'activityType', label: t('النشاط', 'Activity', lang) },
+            { key: 'balance', label: t('الرصيد', 'Balance', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+            { key: 'entryCount', label: t('القيود', 'Entries', lang) },
+            { key: 'isActive', label: t('الحالة', 'Status', lang), format: (v) => v ? t('نشط', 'Active', lang) : t('معطّل', 'Inactive', lang) },
+          ]}
+          csvRows={flatAccounts.map(a => ({
+            code: a.code,
+            name: lang === 'ar' && a.nameAr ? a.nameAr : a.name,
+            nameEn: a.name,
+            type: a.type,
+            activityType: a.activityType || '',
+            balance: a.balance,
+            entryCount: a.entryCount,
+            isActive: a.isActive,
+          }))}
+          csvFilename="chart-of-accounts"
+          infoItems={[
+            { label: t('إجمالي الحسابات', 'Total Accounts', lang), value: String(accounts.length) },
+            { label: t('المعرضة حالياً', 'Currently Shown', lang), value: String(flatAccounts.length) },
+            { label: t('تاريخ الطباعة', 'Print Date', lang), value: new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') },
+          ]}
+          totals={[
+            { label: t('إجمالي القيود', 'Total Entries', lang), value: flatAccounts.reduce((s, a) => s + a.entryCount, 0) },
+          ]}
+          disabled={flatAccounts.length === 0}
+        />
+      </div>
+
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
@@ -1178,6 +1235,56 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
         <SummaryCard title={t('مرتبط', 'Mapped', lang)} value={mappedCount} icon={CheckCircle2} color="emerald" lang={lang} isMoney={false} />
         <SummaryCard title={t('غير مربوط', 'Unmapped', lang)} value={unmappedCount} icon={AlertTriangle} color="rose" lang={lang} isMoney={false} />
         <SummaryCard title={t('حسابات فرعية', 'Child Accounts', lang)} value={overview.reduce((s, m) => s + m.childAccounts, 0)} icon={TreePine} color="purple" lang={lang} isMoney={false} />
+      </div>
+
+      <div className="flex justify-end">
+        <TablePrintExportButtons
+          title={{ ar: 'ربط الحسابات بالنظام', en: 'Role Mapping' }}
+          columns={[
+            { key: 'role', label: t('الدور', 'Role', lang) },
+            { key: 'label', label: t('الوصف', 'Description', lang) },
+            { key: 'parentAccount', label: t('الحساب الأب', 'Parent Account', lang) },
+            { key: 'childAccounts', label: t('الحسابات الفرعية', 'Child Accounts', lang) },
+            { key: 'status', label: t('الحالة', 'Status', lang) },
+            { key: 'operations', label: t('العمليات', 'Operations', lang) },
+          ]}
+          rows={overview.map(m => ({
+            role: m.role,
+            label: lang === 'ar' ? m.labelAr : m.labelEn,
+            parentAccount: m.accounts.length > 0 ? `${m.accounts[0].code} - ${lang === 'ar' && m.accounts[0].nameAr ? m.accounts[0].nameAr : m.accounts[0].name}` : t('غير مربوط', 'Unmapped', lang),
+            childAccounts: m.childAccountList.map(c => `${c.code}`).join(', ') || (m.postingAccounts > 0 ? t('حساب تفصيلي', 'Posting', lang) : '—'),
+            status: m.isMapped ? t('مربوط', 'Mapped', lang) : t('غير مربوط', 'Unmapped', lang),
+            operations: m.operations.map(op => (lang === 'ar' ? op.labelAr : op.labelEn)).join(', '),
+          }))}
+          csvColumns={[
+            { key: 'role', label: 'Role' },
+            { key: 'labelAr', label: t('الوصف (عربي)', 'Label (Ar)', lang) },
+            { key: 'labelEn', label: t('الوصف (إنجليزي)', 'Label (En)', lang) },
+            { key: 'parentAccountCode', label: t('كود الحساب', 'Account Code', lang) },
+            { key: 'parentAccountName', label: t('اسم الحساب', 'Account Name', lang) },
+            { key: 'childAccounts', label: t('الحسابات الفرعية', 'Child Accounts', lang) },
+            { key: 'status', label: t('الحالة', 'Status', lang) },
+            { key: 'operations', label: t('العمليات', 'Operations', lang) },
+          ]}
+          csvRows={overview.map(m => ({
+            role: m.role,
+            labelAr: m.labelAr,
+            labelEn: m.labelEn,
+            parentAccountCode: m.accounts[0]?.code || '',
+            parentAccountName: m.accounts[0] ? (lang === 'ar' && m.accounts[0].nameAr ? m.accounts[0].nameAr : m.accounts[0].name) : '',
+            childAccounts: m.childAccountList.map(c => c.code).join('; '),
+            status: m.isMapped ? 'Mapped' : 'Unmapped',
+            operations: m.operations.map(op => op.operationType).join('; '),
+          }))}
+          csvFilename="role-mapping"
+          infoItems={[
+            { label: t('إجمالي الأدوار', 'Total Roles', lang), value: String(overview.length) },
+            { label: t('مرتبط', 'Mapped', lang), value: String(mappedCount) },
+            { label: t('غير مربوط', 'Unmapped', lang), value: String(unmappedCount) },
+            { label: t('تاريخ الطباعة', 'Print Date', lang), value: new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') },
+          ]}
+          disabled={overview.length === 0}
+        />
       </div>
 
       {isLoading ? <TableSkeleton /> : isError ? (
@@ -1455,12 +1562,67 @@ function FinancialMappingEngineTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <SectionTitle icon={Zap} title={{ ar: 'محرك الربط المحاسبي', en: 'Financial Mapping Engine' }} lang={lang} />
-        <Button variant="outline" size="sm" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending} className="gap-1">
-          {seedMutation.isPending ? <RefreshCw className="size-3.5 animate-spin" /> : <Database className="size-3.5" />}
-          {t('تهيئة الربط', 'Seed Mappings', lang)}
-        </Button>
+        <div className="flex items-center gap-2">
+          <TablePrintExportButtons
+            title={{ ar: 'محرك الربط المحاسبي', en: 'Financial Mapping Engine' }}
+            columns={[
+              { key: 'operationType', label: t('نوع العملية', 'Operation', lang) },
+              { key: 'label', label: t('الوصف', 'Description', lang) },
+              { key: 'debitRoles', label: t('أدوار مدين', 'Debit Roles', lang) },
+              { key: 'debitAccounts', label: t('الحسابات المدينة', 'Debit Accounts', lang) },
+              { key: 'creditRoles', label: t('أدوار دائن', 'Credit Roles', lang) },
+              { key: 'creditAccounts', label: t('الحسابات الدائنة', 'Credit Accounts', lang) },
+              { key: 'status', label: t('الحالة', 'Status', lang) },
+            ]}
+            rows={mappings.map(m => {
+              const allRoles = [...m.debitRoles, ...m.creditRoles]
+              const allMapped = allRoles.every(r => isRoleMapped(r))
+              return {
+                operationType: m.operationType,
+                label: lang === 'ar' ? m.labelAr : m.labelEn,
+                debitRoles: m.debitRoles.map(r => getRoleLabel(r)).join(', '),
+                debitAccounts: m.debitRoles.map(r => getRoleAccountName(r) || t('غير مربوط', 'Unmapped', lang)).join('; '),
+                creditRoles: m.creditRoles.map(r => getRoleLabel(r)).join(', '),
+                creditAccounts: m.creditRoles.map(r => getRoleAccountName(r) || t('غير مربوط', 'Unmapped', lang)).join('; '),
+                status: allMapped ? t('مكتمل', 'Complete', lang) : t('ناقص', 'Incomplete', lang),
+              }
+            })}
+            csvColumns={[
+              { key: 'operationType', label: 'Operation Type' },
+              { key: 'labelAr', label: t('الوصف (عربي)', 'Label (Ar)', lang) },
+              { key: 'labelEn', label: t('الوصف (إنجليزي)', 'Label (En)', lang) },
+              { key: 'debitRoles', label: t('أدوار مدين', 'Debit Roles', lang) },
+              { key: 'creditRoles', label: t('أدوار دائن', 'Credit Roles', lang) },
+              { key: 'status', label: t('الحالة', 'Status', lang) },
+            ]}
+            csvRows={mappings.map(m => {
+              const allRoles = [...m.debitRoles, ...m.creditRoles]
+              const allMapped = allRoles.every(r => isRoleMapped(r))
+              return {
+                operationType: m.operationType,
+                labelAr: m.labelAr,
+                labelEn: m.labelEn,
+                debitRoles: m.debitRoles.join('; '),
+                creditRoles: m.creditRoles.join('; '),
+                status: allMapped ? 'Complete' : 'Incomplete',
+              }
+            })}
+            csvFilename="financial-mapping-engine"
+            infoItems={[
+              { label: t('إجمالي العمليات', 'Total Operations', lang), value: String(mappings.length) },
+              { label: t('مكتملة', 'Complete', lang), value: String(mappings.filter(m => [...m.debitRoles, ...m.creditRoles].every(r => isRoleMapped(r))).length) },
+              { label: t('ناقصة', 'Incomplete', lang), value: String(mappings.filter(m => ![...m.debitRoles, ...m.creditRoles].every(r => isRoleMapped(r))).length) },
+              { label: t('تاريخ الطباعة', 'Print Date', lang), value: new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') },
+            ]}
+            disabled={mappings.length === 0}
+          />
+          <Button variant="outline" size="sm" onClick={() => seedMutation.mutate()} disabled={seedMutation.isPending} className="gap-1">
+            {seedMutation.isPending ? <RefreshCw className="size-3.5 animate-spin" /> : <Database className="size-3.5" />}
+            {t('تهيئة الربط', 'Seed Mappings', lang)}
+          </Button>
+        </div>
       </div>
 
       {isLoading ? <TableSkeleton /> : isError ? (
@@ -1696,6 +1858,63 @@ function AccountImpactTab() {
   return (
     <div className="space-y-4">
       <SectionTitle icon={Activity} title={{ ar: 'أثر الحسابات على النظام', en: 'Account Impact Analysis' }} lang={lang} />
+
+      <div className="flex justify-end">
+        <TablePrintExportButtons
+          title={{ ar: 'أثر الحسابات على النظام', en: 'Account Impact Analysis' }}
+          columns={[
+            { key: 'code', label: t('الكود', 'Code', lang) },
+            { key: 'name', label: t('اسم الحساب', 'Account Name', lang) },
+            { key: 'type', label: t('النوع', 'Type', lang) },
+            { key: 'roleLabel', label: t('الدور', 'Role', lang) },
+            { key: 'allowPosting', label: t('تفصيلي', 'Posting', lang) },
+            { key: 'journalLineCount', label: t('بنود القيود', 'Journal Lines', lang) },
+            { key: 'childCount', label: t('الحسابات الفرعية', 'Children', lang) },
+            { key: 'hasUsage', label: t('مستخدم', 'Used', lang) },
+          ]}
+          rows={filteredSummary.map(a => ({
+            code: a.code,
+            name: a.name,
+            type: t(typeConfig[a.type]?.label?.ar || a.type, typeConfig[a.type]?.label?.en || a.type, lang),
+            roleLabel: a.roleLabel || '—',
+            allowPosting: a.allowPosting ? t('نعم', 'Yes', lang) : t('لا', 'No', lang),
+            journalLineCount: a.journalLineCount,
+            childCount: a.childCount,
+            hasUsage: a.hasUsage ? t('نعم', 'Yes', lang) : t('لا', 'No', lang),
+          }))}
+          csvColumns={[
+            { key: 'code', label: t('الكود', 'Code', lang) },
+            { key: 'name', label: t('اسم الحساب', 'Account Name', lang) },
+            { key: 'type', label: t('النوع', 'Type', lang) },
+            { key: 'roleLabel', label: t('الدور', 'Role', lang) },
+            { key: 'allowPosting', label: t('تفصيلي', 'Posting', lang) },
+            { key: 'journalLineCount', label: t('بنود القيود', 'Journal Lines', lang) },
+            { key: 'childCount', label: t('الحسابات الفرعية', 'Children', lang) },
+            { key: 'hasUsage', label: t('مستخدم', 'Used', lang) },
+          ]}
+          csvRows={filteredSummary.map(a => ({
+            code: a.code,
+            name: a.name,
+            type: a.type,
+            roleLabel: a.roleLabel || '',
+            allowPosting: a.allowPosting ? 'Yes' : 'No',
+            journalLineCount: a.journalLineCount,
+            childCount: a.childCount,
+            hasUsage: a.hasUsage ? 'Yes' : 'No',
+          }))}
+          csvFilename="account-impact"
+          infoItems={[
+            { label: t('إجمالي الحسابات', 'Total Accounts', lang), value: String(summary.length) },
+            { label: t('حسابات مستخدمة', 'Used Accounts', lang), value: String(accountsWithUsage) },
+            { label: t('حسابات بأدوار', 'With Roles', lang), value: String(accountsWithRole) },
+            { label: t('تاريخ الطباعة', 'Print Date', lang), value: new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') },
+          ]}
+          totals={[
+            { label: t('إجمالي بنود القيود', 'Total Journal Lines', lang), value: filteredSummary.reduce((s, a) => s + (Number(a.journalLineCount) || 0), 0) },
+          ]}
+          disabled={filteredSummary.length === 0}
+        />
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SummaryCard title={t('إجمالي الحسابات', 'Total Accounts', lang)} value={summary.length} icon={Database} color="teal" lang={lang} isMoney={false} />
@@ -1961,12 +2180,60 @@ function HealthCheckTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <SectionTitle icon={Stethoscope} title={{ ar: 'فحص السلامة المحاسبي', en: 'Accounting Health Check' }} lang={lang} />
-        <Button onClick={() => runCheckMutation.mutate()} disabled={runCheckMutation.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
-          {runCheckMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Stethoscope className="size-4" />}
-          {t('فحص الآن', 'Run Check', lang)}
-        </Button>
+        <div className="flex items-center gap-2">
+          <TablePrintExportButtons
+            title={{ ar: 'تقرير فحص السلامة المحاسبي', en: 'Accounting Health Check Report' }}
+            columns={[
+              { key: 'checkId', label: t('معرّف الفحص', 'Check ID', lang) },
+              { key: 'checkName', label: t('اسم الفحص', 'Check Name', lang) },
+              { key: 'severity', label: t('الخطورة', 'Severity', lang) },
+              { key: 'passed', label: t('النتيجة', 'Result', lang) },
+              { key: 'message', label: t('الرسالة', 'Message', lang) },
+            ]}
+            rows={report?.checks?.map(check => ({
+              checkId: check.checkId,
+              checkName: lang === 'ar' ? check.checkNameAr : check.checkNameEn,
+              severity: check.severity === 'error' ? t('خطأ', 'Error', lang)
+                : check.severity === 'warning' ? t('تحذير', 'Warning', lang)
+                : t('معلومات', 'Info', lang),
+              passed: check.passed ? t('ناجح', 'Passed', lang) : t('فاشل', 'Failed', lang),
+              message: lang === 'ar' ? check.messageAr : check.messageEn,
+            })) || []}
+            csvColumns={[
+              { key: 'checkId', label: t('معرّف الفحص', 'Check ID', lang) },
+              { key: 'checkNameAr', label: t('اسم الفحص (عربي)', 'Check Name (Ar)', lang) },
+              { key: 'checkNameEn', label: t('اسم الفحص (إنجليزي)', 'Check Name (En)', lang) },
+              { key: 'severity', label: t('الخطورة', 'Severity', lang) },
+              { key: 'passed', label: t('النتيجة', 'Result', lang), format: (v) => v ? 'Passed' : 'Failed' },
+              { key: 'messageAr', label: t('الرسالة (عربي)', 'Message (Ar)', lang) },
+              { key: 'messageEn', label: t('الرسالة (إنجليزي)', 'Message (En)', lang) },
+            ]}
+            csvRows={report?.checks?.map(check => ({
+              checkId: check.checkId,
+              checkNameAr: check.checkNameAr,
+              checkNameEn: check.checkNameEn,
+              severity: check.severity,
+              passed: check.passed,
+              messageAr: check.messageAr,
+              messageEn: check.messageEn,
+            })) || []}
+            csvFilename="accounting-health-check"
+            infoItems={[
+              { label: t('درجة السلامة', 'Health Score', lang), value: `${summary?.score ?? '—'}%` },
+              { label: t('فحوصات ناجحة', 'Passed', lang), value: String(report?.passedChecks ?? '—') },
+              { label: t('تحذيرات', 'Warnings', lang), value: String(summary?.warnings ?? '—') },
+              { label: t('أخطاء', 'Errors', lang), value: String(summary?.errors ?? '—') },
+              { label: t('تاريخ الفحص', 'Check Date', lang), value: summary?.lastChecked ? formatDate(summary.lastChecked, lang) : '—' },
+            ]}
+            disabled={!report?.checks || report.checks.length === 0}
+          />
+          <Button onClick={() => runCheckMutation.mutate()} disabled={runCheckMutation.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+            {runCheckMutation.isPending ? <RefreshCw className="size-4 animate-spin" /> : <Stethoscope className="size-4" />}
+            {t('فحص الآن', 'Run Check', lang)}
+          </Button>
+        </div>
       </div>
 
       {/* Health Score */}
@@ -2196,16 +2463,71 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-2">
         <h3 className="text-base font-bold flex items-center gap-2">
           <FileText className="size-5 text-emerald-600" />
           {t('القيود اليومية', 'Journal Entries', lang)}
           <Badge variant="outline" className="text-xs">{filtered.length} / {entries.length}</Badge>
         </h3>
-        <Button onClick={() => setCreateDialogOpen(true)} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
-          <PlusCircle className="size-4" />
-          {t('قيد يدوي جديد', 'New Manual Entry', lang)}
-        </Button>
+        <div className="flex items-center gap-2">
+          <TablePrintExportButtons
+            title={{ ar: 'قيود اليومية', en: 'Journal Entries' }}
+            columns={[
+              { key: 'entryNo', label: t('رقم القيد', 'Entry No', lang) },
+              { key: 'date', label: t('التاريخ', 'Date', lang) },
+              { key: 'description', label: t('الوصف', 'Description', lang) },
+              { key: 'sourceType', label: t('المصدر', 'Source', lang) },
+              { key: 'totalDebit', label: t('مدين', 'Debit', lang), align: 'amount', type: 'amount' },
+              { key: 'totalCredit', label: t('دائن', 'Credit', lang), align: 'amount', type: 'amount' },
+              { key: 'status', label: t('الحالة', 'Status', lang) },
+            ]}
+            rows={filtered.map(entry => ({
+              entryNo: entry.entryNo,
+              date: formatDate(entry.date, lang),
+              description: entry.description || '—',
+              sourceType: entry.sourceType ? (sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType) : '—',
+              totalDebit: entry.totalDebit,
+              totalCredit: entry.totalCredit,
+              status: entry.status === 'POSTED' ? t('مرحّل', 'Posted', lang)
+                : entry.status === 'DRAFT' ? t('مسودة', 'Draft', lang)
+                : entry.status === 'CANCELLED' ? t('ملغي', 'Cancelled', lang)
+                : entry.status,
+            }))}
+            csvColumns={[
+              { key: 'entryNo', label: t('رقم القيد', 'Entry No', lang) },
+              { key: 'date', label: t('التاريخ', 'Date', lang) },
+              { key: 'description', label: t('الوصف', 'Description', lang) },
+              { key: 'sourceType', label: t('المصدر', 'Source', lang) },
+              { key: 'totalDebit', label: t('مدين', 'Debit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+              { key: 'totalCredit', label: t('دائن', 'Credit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+              { key: 'status', label: t('الحالة', 'Status', lang) },
+            ]}
+            csvRows={filtered.map(entry => ({
+              entryNo: entry.entryNo,
+              date: entry.date,
+              description: entry.description || '',
+              sourceType: entry.sourceType || '',
+              totalDebit: entry.totalDebit,
+              totalCredit: entry.totalCredit,
+              status: entry.status,
+            }))}
+            csvFilename="journal-entries"
+            infoItems={[
+              { label: t('إجمالي القيود', 'Total Entries', lang), value: String(entries.length) },
+              { label: t('المعرضة', 'Shown', lang), value: String(filtered.length) },
+              { label: t('تاريخ الطباعة', 'Print Date', lang), value: new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') },
+            ]}
+            totals={[
+              { label: t('إجمالي مدين', 'Total Debit', lang), value: filtered.reduce((s, e) => s + (Number(e.totalDebit) || 0), 0), isGrand: true },
+              { label: t('إجمالي دائن', 'Total Credit', lang), value: filtered.reduce((s, e) => s + (Number(e.totalCredit) || 0), 0), isGrand: true },
+            ]}
+            disabled={filtered.length === 0}
+          />
+          <Button onClick={() => setCreateDialogOpen(true)} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+            <PlusCircle className="size-4" />
+            {t('قيد يدوي جديد', 'New Manual Entry', lang)}
+          </Button>
+        </div>
       </div>
 
       <Card className="bg-gray-50/50">
@@ -2478,6 +2800,59 @@ function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; 
         </CardContent>
       </Card>
 
+      {statement && (
+        <div className="flex justify-end">
+          <TablePrintExportButtons
+            title={{ ar: `دفتر الأستاذ - ${selectedAccount}`, en: `General Ledger - ${selectedAccount}` }}
+            columns={[
+              { key: 'date', label: t('التاريخ', 'Date', lang) },
+              { key: 'entryNo', label: t('رقم القيد', 'Entry No', lang) },
+              { key: 'description', label: t('البيان', 'Description', lang) },
+              { key: 'debit', label: t('مدين', 'Debit', lang), align: 'amount', type: 'amount' },
+              { key: 'credit', label: t('دائن', 'Credit', lang), align: 'amount', type: 'amount' },
+              { key: 'balance', label: t('الرصيد', 'Balance', lang), align: 'amount', type: 'amount' },
+            ]}
+            rows={(statement.lines || []).map(line => ({
+              date: formatDate(line.date, lang),
+              entryNo: line.entryNo,
+              description: line.description || '—',
+              debit: line.debit,
+              credit: line.credit,
+              balance: line.balance,
+            }))}
+            csvColumns={[
+              { key: 'date', label: t('التاريخ', 'Date', lang) },
+              { key: 'entryNo', label: t('رقم القيد', 'Entry No', lang) },
+              { key: 'description', label: t('البيان', 'Description', lang) },
+              { key: 'debit', label: t('مدين', 'Debit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+              { key: 'credit', label: t('دائن', 'Credit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+              { key: 'balance', label: t('الرصيد', 'Balance', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+            ]}
+            csvRows={(statement.lines || []).map(line => ({
+              date: line.date,
+              entryNo: line.entryNo,
+              description: line.description || '',
+              debit: line.debit,
+              credit: line.credit,
+              balance: line.balance,
+            }))}
+            csvFilename={`general-ledger-${selectedAccount}`}
+            infoItems={[
+              { label: t('الحساب', 'Account', lang), value: `${statement.account?.code || selectedAccount} - ${lang === 'ar' && statement.account?.nameAr ? statement.account.nameAr : (statement.account?.name || '')}` },
+              { label: t('من تاريخ', 'From', lang), value: statement.dateFrom ? formatDate(statement.dateFrom, lang) : '—' },
+              { label: t('إلى تاريخ', 'To', lang), value: statement.dateTo ? formatDate(statement.dateTo, lang) : '—' },
+              { label: t('الرصيد الافتتاحي', 'Opening', lang), value: (Number(statement.openingBalance) || 0).toFixed(2) },
+              { label: t('الرصيد الختامي', 'Closing', lang), value: (Number(statement.closingBalance) || 0).toFixed(2) },
+            ]}
+            totals={[
+              { label: t('إجمالي مدين', 'Total Debit', lang), value: Number(statement.totalDebit) || 0, isGrand: true },
+              { label: t('إجمالي دائن', 'Total Credit', lang), value: Number(statement.totalCredit) || 0, isGrand: true },
+            ]}
+            disabled={!statement.lines || statement.lines.length === 0}
+          />
+        </div>
+      )}
+
       {!selectedAccount ? (
         <div className="flex flex-col items-center gap-3 py-10"><BookOpen className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر حساباً', 'Select an account', lang)}</p></div>
       ) : isLoading ? <TableSkeleton /> : isError ? (
@@ -2584,6 +2959,66 @@ function TrialBalanceTab() {
           </div>
         </CardContent>
       </Card>
+
+      {generated && items.length > 0 && (
+        <div className="flex justify-end">
+          <TablePrintExportButtons
+            title={{ ar: 'ميزان المراجعة', en: 'Trial Balance' }}
+            columns={[
+              { key: 'code', label: t('كود الحساب', 'Account Code', lang) },
+              { key: 'name', label: t('اسم الحساب', 'Account Name', lang) },
+              { key: 'type', label: t('النوع', 'Type', lang) },
+              { key: 'totalDebit', label: t('مدين', 'Debit', lang), align: 'amount', type: 'amount' },
+              { key: 'totalCredit', label: t('دائن', 'Credit', lang), align: 'amount', type: 'amount' },
+              { key: 'netDebit', label: t('صافي مدين', 'Net Debit', lang), align: 'amount', type: 'amount' },
+              { key: 'netCredit', label: t('صافي دائن', 'Net Credit', lang), align: 'amount', type: 'amount' },
+            ]}
+            rows={items.map(item => ({
+              code: item.account.code,
+              name: lang === 'ar' && item.account.nameAr ? item.account.nameAr : item.account.name,
+              type: t(typeConfig[item.account.type]?.label?.ar || item.account.type, typeConfig[item.account.type]?.label?.en || item.account.type, lang),
+              totalDebit: item.totalDebit,
+              totalCredit: item.totalCredit,
+              netDebit: item.netDebit,
+              netCredit: item.netCredit,
+            }))}
+            csvColumns={[
+              { key: 'code', label: t('كود الحساب', 'Account Code', lang) },
+              { key: 'name', label: t('اسم الحساب', 'Account Name', lang) },
+              { key: 'type', label: t('النوع', 'Type', lang) },
+              { key: 'totalDebit', label: t('مدين', 'Debit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+              { key: 'totalCredit', label: t('دائن', 'Credit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+              { key: 'netDebit', label: t('صافي مدين', 'Net Debit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+              { key: 'netCredit', label: t('صافي دائن', 'Net Credit', lang), format: (v) => (Number(v) || 0).toFixed(2) },
+            ]}
+            csvRows={items.map(item => ({
+              code: item.account.code,
+              name: lang === 'ar' && item.account.nameAr ? item.account.nameAr : item.account.name,
+              type: item.account.type,
+              totalDebit: item.totalDebit,
+              totalCredit: item.totalCredit,
+              netDebit: item.netDebit,
+              netCredit: item.netCredit,
+            }))}
+            csvFilename="trial-balance"
+            infoItems={[
+              { label: t('من تاريخ', 'From', lang), value: dateFrom ? formatDate(dateFrom, lang) : '—' },
+              { label: t('إلى تاريخ', 'To', lang), value: dateTo ? formatDate(dateTo, lang) : '—' },
+              { label: t('عدد الحسابات', 'Accounts Count', lang), value: String(items.length) },
+              { label: t('تاريخ الطباعة', 'Print Date', lang), value: new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US') },
+            ]}
+            totals={[
+              { label: t('إجمالي الأصول', 'Total Assets', lang), value: totalAssets },
+              { label: t('إجمالي الخصوم', 'Total Liabilities', lang), value: totalLiabilities },
+              { label: t('حقوق الملكية', 'Equity', lang), value: totalEquity },
+              { label: t('الإيرادات', 'Revenue', lang), value: totalRevenue },
+              { label: t('المصروفات', 'Expenses', lang), value: totalExpenses },
+              { label: t('إجمالي مدين', 'Total Debit', lang), value: totalDebit, isGrand: true },
+              { label: t('إجمالي دائن', 'Total Credit', lang), value: totalCredit, isGrand: true },
+            ]}
+          />
+        </div>
+      )}
 
       {generated && isLoading ? <TableSkeleton /> : generated && isError ? (
         <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>

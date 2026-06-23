@@ -1,0 +1,502 @@
+  2068→
+  2069→// ============ Tab 6: Journal Entries ============
+  2070→function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
+  2071→  entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void; accounts: Account[]
+  2072→}) {
+  2073→  const { lang } = useAppStore()
+  2074→  const { toast } = useToast()
+  2075→  const queryClient = useQueryClient()
+  2076→  const [statusFilter, setStatusFilter] = useState('all')
+  2077→  const [sourceFilter, setSourceFilter] = useState('all')
+  2078→  const [searchTerm, setSearchTerm] = useState('')
+  2079→  const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
+  2080→  const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  2081→  const [creating, setCreating] = useState(false)
+  2082→
+  2083→  // ===== Manual JE form state =====
+  2084→  const [formDate, setFormDate] = useState(new Date().toISOString().slice(0, 10))
+  2085→  const [formDescription, setFormDescription] = useState('')
+  2086→  const [formDebitAccountCode, setFormDebitAccountCode] = useState('')
+  2087→  const [formCreditAccountCode, setFormCreditAccountCode] = useState('')
+  2088→  const [formAmount, setFormAmount] = useState('')
+  2089→  const [formPostImmediately, setFormPostImmediately] = useState(true)
+  2090→
+  2091→  const filtered = useMemo(() => {
+  2092→    let list = entries
+  2093→    if (statusFilter !== 'all') list = list.filter(e => e.status === statusFilter)
+  2094→    if (sourceFilter !== 'all') list = list.filter(e => e.sourceType === sourceFilter)
+  2095→    if (searchTerm) {
+  2096→      const term = searchTerm.toLowerCase()
+  2097→      list = list.filter(e => e.entryNo.toLowerCase().includes(term) || (e.description && e.description.toLowerCase().includes(term)))
+  2098→    }
+  2099→    return list
+  2100→  }, [entries, statusFilter, sourceFilter, searchTerm])
+  2101→
+  2102→  // Posting accounts for dropdowns (declared before any conditional return so hooks run in order)
+  2103→  const postingAccounts = useMemo(
+  2104→    () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
+  2105→    [accounts]
+  2106→  )
+  2107→
+  2108→  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} accounts={accounts} onEntryChanged={(updated) => setSelectedEntry(updated)} />
+  2109→
+  2110→  const resetForm = () => {
+  2111→    setFormDate(new Date().toISOString().slice(0, 10))
+  2112→    setFormDescription('')
+  2113→    setFormDebitAccountCode('')
+  2114→    setFormCreditAccountCode('')
+  2115→    setFormAmount('')
+  2116→    setFormPostImmediately(true)
+  2117→  }
+  2118→
+  2119→  const handleCreateJE = async () => {
+  2120→    // Validate
+  2121→    if (!formDate || !formDebitAccountCode || !formCreditAccountCode || !formAmount) {
+  2122→      toast({
+  2123→        title: t('حقول ناقصة', 'Missing fields', lang),
+  2124→        description: t('يرجى تعبئة التاريخ والحساب المدين والحساب الدائن والمبلغ', 'Please fill date, debit account, credit account, and amount', lang),
+  2125→        variant: 'destructive',
+  2126→      })
+  2127→      return
+  2128→    }
+  2129→    if (formDebitAccountCode === formCreditAccountCode) {
+  2130→      toast({
+  2131→        title: t('خطأ', 'Error', lang),
+  2132→        description: t('لا يمكن أن يكون الحساب المدين والدائن نفس الحساب', 'Debit and credit accounts cannot be the same', lang),
+  2133→        variant: 'destructive',
+  2134→      })
+  2135→      return
+  2136→    }
+  2137→    const amount = parseFloat(formAmount)
+  2138→    if (isNaN(amount) || amount <= 0) {
+  2139→      toast({
+  2140→        title: t('مبلغ غير صالح', 'Invalid amount', lang),
+  2141→        description: t('المبلغ يجب أن يكون رقماً موجباً', 'Amount must be a positive number', lang),
+  2142→        variant: 'destructive',
+  2143→      })
+  2144→      return
+  2145→    }
+  2146→
+  2147→    setCreating(true)
+  2148→    try {
+  2149→      // Generate entry number — use a unique placeholder; backend may also auto-generate
+  2150→      const entryNo = `JE-MAN-${Date.now().toString().slice(-8)}`
+  2151→
+  2152→      const res = await fetch('/api/journal-entries', {
+  2153→        method: 'POST',
+  2154→        headers: { 'Content-Type': 'application/json' },
+  2155→        body: JSON.stringify({
+  2156→          entryNo,
+  2157→          date: formDate,
+  2158→          description: formDescription || t('قيد يدوي', 'Manual journal entry', lang),
+  2159→          status: formPostImmediately ? 'POSTED' : 'DRAFT',
+  2160→          sourceType: 'MANUAL',
+  2161→          lines: [
+  2162→            { accountCode: formDebitAccountCode, debit: amount, credit: 0, description: formDescription || null },
+  2163→            { accountCode: formCreditAccountCode, debit: 0, credit: amount, description: formDescription || null },
+  2164→          ],
+  2165→        }),
+  2166→      })
+  2167→      if (!res.ok) {
+  2168→        const err = await res.json().catch(() => ({}))
+  2169→        throw new Error(err.error || `HTTP ${res.status}`)
+  2170→      }
+  2171→      const created = await res.json()
+  2172→      toast({
+  2173→        title: t('تم إنشاء القيد', 'Entry Created', lang),
+  2174→        description: t(
+  2175→          `تم إنشاء القيد ${created.entryNo} بحالة ${formPostImmediately ? 'مرحّل' : 'مسودة'}.`,
+  2176→          `Entry ${created.entryNo} created with status ${formPostImmediately ? 'POSTED' : 'DRAFT'}.`,
+  2177→          lang
+  2178→        ),
+  2179→      })
+  2180→      queryClient.invalidateQueries({ queryKey: ['journal-entries'] })
+  2181→      queryClient.invalidateQueries({ queryKey: ['trial-balance'] })
+  2182→      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+  2183→      resetForm()
+  2184→      setCreateDialogOpen(false)
+  2185→      refetch()
+  2186→    } catch (e) {
+  2187→      toast({
+  2188→        title: t('خطأ', 'Error', lang),
+  2189→        description: e instanceof Error ? e.message : t('فشل في إنشاء القيد', 'Failed to create entry', lang),
+  2190→        variant: 'destructive',
+  2191→      })
+  2192→    } finally {
+  2193→      setCreating(false)
+  2194→    }
+  2195→  }
+  2196→
+  2197→  return (
+  2198→    <div className="space-y-4">
+  2199→      <div className="flex justify-between items-center">
+  2200→        <h3 className="text-base font-bold flex items-center gap-2">
+  2201→          <FileText className="size-5 text-emerald-600" />
+  2202→          {t('القيود اليومية', 'Journal Entries', lang)}
+  2203→          <Badge variant="outline" className="text-xs">{filtered.length} / {entries.length}</Badge>
+  2204→        </h3>
+  2205→        <Button onClick={() => setCreateDialogOpen(true)} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+  2206→          <PlusCircle className="size-4" />
+  2207→          {t('قيد يدوي جديد', 'New Manual Entry', lang)}
+  2208→        </Button>
+  2209→      </div>
+  2210→
+  2211→      <Card className="bg-gray-50/50">
+  2212→        <CardContent className="p-4">
+  2213→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  2214→            <div className="space-y-1 flex-1 min-w-[120px]">
+  2215→              <Label className="text-xs">{t('الحالة', 'Status', lang)}</Label>
+  2216→              <Select value={statusFilter} onValueChange={setStatusFilter}>
+  2217→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  2218→                <SelectContent>
+  2219→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+  2220→                  <SelectItem value="POSTED">{t('مرحّل', 'Posted', lang)}</SelectItem>
+  2221→                  <SelectItem value="DRAFT">{t('مسودة', 'Draft', lang)}</SelectItem>
+  2222→                  <SelectItem value="CANCELLED">{t('ملغي', 'Cancelled', lang)}</SelectItem>
+  2223→                </SelectContent>
+  2224→              </Select>
+  2225→            </div>
+  2226→            <div className="space-y-1 flex-1 min-w-[150px]">
+  2227→              <Label className="text-xs">{t('المصدر', 'Source', lang)}</Label>
+  2228→              <Select value={sourceFilter} onValueChange={setSourceFilter}>
+  2229→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+  2230→                <SelectContent>
+  2231→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+  2232→                  {Object.entries(sourceTypeLabels).map(([key, label]) => (
+  2233→                    <SelectItem key={key} value={key}>{label[lang]}</SelectItem>
+  2234→                  ))}
+  2235→                </SelectContent>
+  2236→              </Select>
+  2237→            </div>
+  2238→            <div className="space-y-1 flex-1 min-w-[180px]">
+  2239→              <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+  2240→              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث برقم القيد أو الوصف...', 'Search by entry no or description...', lang)} className="h-9" />
+  2241→            </div>
+  2242→          </div>
+  2243→        </CardContent>
+  2244→      </Card>
+  2245→
+  2246→      {isLoading ? <TableSkeleton /> : isError ? (
+  2247→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+  2248→      ) : filtered.length === 0 ? (
+  2249→        <div className="flex flex-col items-center gap-3 py-10"><FileText className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('لا توجد قيود', 'No journal entries found', lang)}</p></div>
+  2250→      ) : (
+  2251→        <Card>
+  2252→          <CardContent className="p-0">
+  2253→            <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+  2254→              <Table>
+  2255→                <TableHeader>
+  2256→                  <TableRow>
+  2257→                    <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+  2258→                    <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  2259→                    <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+  2260→                    <TableHead className="text-right">{t('المصدر', 'Source', lang)}</TableHead>
+  2261→                    <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  2262→                    <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  2263→                    <TableHead className="text-right">{t('الحالة', 'Status', lang)}</TableHead>
+  2264→                  </TableRow>
+  2265→                </TableHeader>
+  2266→                <TableBody>
+  2267→                  {filtered.map(entry => (
+  2268→                    <TableRow key={entry.id} className="cursor-pointer hover:bg-emerald-50/30" onClick={() => setSelectedEntry(entry)}>
+  2269→                      <TableCell className="font-mono font-medium">{entry.entryNo}</TableCell>
+  2270→                      <TableCell>{formatDate(entry.date, lang)}</TableCell>
+  2271→                      <TableCell>{entry.description || '—'}</TableCell>
+  2272→                      <TableCell>{entry.sourceType ? (sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType) : '—'}</TableCell>
+  2273→                      <TableCell><MoneyDisplay value={entry.totalDebit} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+  2274→                      <TableCell><MoneyDisplay value={entry.totalCredit} lang={lang} size="sm" className="text-rose-700" /></TableCell>
+  2275→                      <TableCell><JEStatusBadge status={entry.status} lang={lang} /></TableCell>
+  2276→                    </TableRow>
+  2277→                  ))}
+  2278→                </TableBody>
+  2279→              </Table>
+  2280→            </div>
+  2281→          </CardContent>
+  2282→        </Card>
+  2283→      )}
+  2284→
+  2285→      {/* ===== Create Manual Journal Entry Dialog ===== */}
+  2286→      <Dialog open={createDialogOpen} onOpenChange={(open) => { setCreateDialogOpen(open); if (!open) resetForm() }}>
+  2287→        <DialogContent className="max-w-2xl">
+  2288→          <DialogHeader>
+  2289→            <DialogTitle className="flex items-center gap-2">
+  2290→              <PlusCircle className="size-5 text-emerald-600" />
+  2291→              {t('إنشاء قيد يدوي', 'Create Manual Journal Entry', lang)}
+  2292→            </DialogTitle>
+  2293→            <DialogDescription>
+  2294→              {t(
+  2295→                'القيد يجب أن يكون متوازناً (المدين = الدائن). سيتم إنشاء قيد بسيط من بندّين. للقيود المعقدة استخدم وحدة المصروفات أو الفواتير.',
+  2296→                'Entry must be balanced (Debit = Credit). A simple two-line entry will be created. For complex entries use Expenses or Invoices modules.',
+  2297→                lang
+  2298→              )}
+  2299→            </DialogDescription>
+  2300→          </DialogHeader>
+  2301→
+  2302→          <div className="grid grid-cols-2 gap-3">
+  2303→            <div className="space-y-1 col-span-1">
+  2304→              <Label className="text-xs">{t('التاريخ', 'Date', lang)} *</Label>
+  2305→              <Input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="h-9" />
+  2306→            </div>
+  2307→            <div className="space-y-1 col-span-1">
+  2308→              <Label className="text-xs">{t('المبلغ', 'Amount', lang)} *</Label>
+  2309→              <Input type="number" step="0.01" min="0" value={formAmount} onChange={e => setFormAmount(e.target.value)} placeholder="0.00" className="h-9" />
+  2310→            </div>
+  2311→            <div className="space-y-1 col-span-2">
+  2312→              <Label className="text-xs">{t('الوصف', 'Description', lang)}</Label>
+  2313→              <Input value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder={t('وصف القيد...', 'Entry description...', lang)} className="h-9" />
+  2314→            </div>
+  2315→            <div className="space-y-1 col-span-2 sm:col-span-1">
+  2316→              <Label className="text-xs">{t('الحساب المدين', 'Debit Account', lang)} *</Label>
+  2317→              <Select value={formDebitAccountCode} onValueChange={setFormDebitAccountCode}>
+  2318→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب المدين', 'Select debit account', lang)} /></SelectTrigger>
+  2319→                <SelectContent className="max-h-72">
+  2320→                  {postingAccounts.map(a => (
+  2321→                    <SelectItem key={a.code} value={a.code}>
+  2322→                      <span className="font-mono">{a.code}</span> - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+  2323→                    </SelectItem>
+  2324→                  ))}
+  2325→                </SelectContent>
+  2326→              </Select>
+  2327→            </div>
+  2328→            <div className="space-y-1 col-span-2 sm:col-span-1">
+  2329→              <Label className="text-xs">{t('الحساب الدائن', 'Credit Account', lang)} *</Label>
+  2330→              <Select value={formCreditAccountCode} onValueChange={setFormCreditAccountCode}>
+  2331→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب الدائن', 'Select credit account', lang)} /></SelectTrigger>
+  2332→                <SelectContent className="max-h-72">
+  2333→                  {postingAccounts.map(a => (
+  2334→                    <SelectItem key={a.code} value={a.code}>
+  2335→                      <span className="font-mono">{a.code}</span> - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+  2336→                    </SelectItem>
+  2337→                  ))}
+  2338→                </SelectContent>
+  2339→              </Select>
+  2340→            </div>
+  2341→          </div>
+  2342→
+  2343→          {/* Live preview */}
+  2344→          {formDebitAccountCode && formCreditAccountCode && formAmount && !isNaN(parseFloat(formAmount)) && (
+  2345→            <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3">
+  2346→              <p className="text-xs font-semibold text-emerald-800 mb-2">{t('معاينة القيد', 'Entry Preview', lang)}</p>
+  2347→              <Table>
+  2348→                <TableHeader>
+  2349→                  <TableRow>
+  2350→                    <TableHead className="text-right h-8 text-xs">{t('الحساب', 'Account', lang)}</TableHead>
+  2351→                    <TableHead className="text-right h-8 text-xs">{t('مدين', 'Debit', lang)}</TableHead>
+  2352→                    <TableHead className="text-right h-8 text-xs">{t('دائن', 'Credit', lang)}</TableHead>
+  2353→                  </TableRow>
+  2354→                </TableHeader>
+  2355→                <TableBody>
+  2356→                  <TableRow className="h-8">
+  2357→                    <TableCell className="text-xs font-mono">{formDebitAccountCode}</TableCell>
+  2358→                    <TableCell className="text-xs text-emerald-700">{parseFloat(formAmount).toFixed(2)}</TableCell>
+  2359→                    <TableCell className="text-xs">—</TableCell>
+  2360→                  </TableRow>
+  2361→                  <TableRow className="h-8">
+  2362→                    <TableCell className="text-xs font-mono">{formCreditAccountCode}</TableCell>
+  2363→                    <TableCell className="text-xs">—</TableCell>
+  2364→                    <TableCell className="text-xs text-rose-700">{parseFloat(formAmount).toFixed(2)}</TableCell>
+  2365→                  </TableRow>
+  2366→                  <TableRow className="h-8 bg-gray-100 font-bold">
+  2367→                    <TableCell className="text-xs">{t('الإجمالي', 'Total', lang)}</TableCell>
+  2368→                    <TableCell className="text-xs text-emerald-800">{parseFloat(formAmount).toFixed(2)}</TableCell>
+  2369→                    <TableCell className="text-xs text-rose-800">{parseFloat(formAmount).toFixed(2)}</TableCell>
+  2370→                  </TableRow>
+  2371→                </TableBody>
+  2372→              </Table>
+  2373→              <p className="text-[10px] text-emerald-700 mt-2 flex items-center gap-1">
+  2374→                <CheckCircle2 className="size-3" />
+  2375→                {t('القيد متوازن ✓', 'Entry is balanced ✓', lang)}
+  2376→              </p>
+  2377→            </div>
+  2378→          )}
+  2379→
+  2380→          <div className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
+  2381→            <input
+  2382→              type="checkbox"
+  2383→              id="post-immediately"
+  2384→              checked={formPostImmediately}
+  2385→              onChange={e => setFormPostImmediately(e.target.checked)}
+  2386→              className="size-4"
+  2387→            />
+  2388→            <label htmlFor="post-immediately" className="cursor-pointer">
+  2389→              {t(
+  2390→                'ترحيل القيد فوراً (POSTED). إذا تم إلغاء هذا الخيار سيتم إنشاء القيد كمسودة (DRAFT) ولن يظهر في ميزان المراجعة حتى يتم ترحيله.',
+  2391→                'Post entry immediately (POSTED). If unchecked, the entry will be created as DRAFT and will not appear in Trial Balance until posted.',
+  2392→                lang
+  2393→              )}
+  2394→            </label>
+  2395→          </div>
+  2396→
+  2397→          <DialogFooter>
+  2398→            <Button variant="outline" onClick={() => { setCreateDialogOpen(false); resetForm() }} disabled={creating}>
+  2399→              {t('إلغاء', 'Cancel', lang)}
+  2400→            </Button>
+  2401→            <Button onClick={handleCreateJE} disabled={creating} className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+  2402→              <CheckCircle2 className="size-4" />
+  2403→              {creating ? t('جاري الحفظ...', 'Saving...', lang) : t('حفظ القيد', 'Save Entry', lang)}
+  2404→            </Button>
+  2405→          </DialogFooter>
+  2406→        </DialogContent>
+  2407→      </Dialog>
+  2408→    </div>
+  2409→  )
+  2410→}
+  2411→
+  2412→// ============ Tab 7: General Ledger ============
+  2413→function GeneralLedgerTab({ accounts, preselectedCode }: { accounts: Account[]; preselectedCode?: string }) {
+  2414→  const { lang } = useAppStore()
+  2415→  const [selectedAccount, setSelectedAccount] = useState(preselectedCode || '')
+  2416→  const [dateFrom, setDateFrom] = useState('')
+  2417→  const [dateTo, setDateTo] = useState('')
+  2418→
+  2419→  React.useEffect(() => {
+  2420→    if (preselectedCode) setSelectedAccount(preselectedCode)
+  2421→  }, [preselectedCode])
+  2422→
+  2423→  const postingAccounts = useMemo(
+  2424→    () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
+  2425→    [accounts]
+  2426→  )
+  2427→
+  2428→  const { data, isLoading, isError, refetch } = useQuery<AccountStatementData | null>({
+  2429→    queryKey: ['general-ledger', selectedAccount, dateFrom, dateTo],
+  2430→    queryFn: async () => {
+  2431→      if (!selectedAccount) return null
+  2432→      const account = accounts.find(a => a.code === selectedAccount)
+  2433→      if (!account) return null
+  2434→      const params = new URLSearchParams({ accountId: account.id })
+  2435→      if (dateFrom) params.set('dateFrom', dateFrom)
+  2436→      if (dateTo) params.set('dateTo', dateTo)
+  2437→      const res = await fetch(`/api/accounts/statement?${params}`)
+  2438→      if (!res.ok) throw new Error()
+  2439→      return res.json()
+  2440→    },
+  2441→    enabled: !!selectedAccount,
+  2442→  })
+  2443→
+  2444→  const statement = data as AccountStatementData | null
+  2445→
+  2446→  return (
+  2447→    <div className="space-y-4">
+  2448→      <SectionTitle icon={BookOpen} title={{ ar: 'دفتر الأستاذ العام', en: 'General Ledger' }} lang={lang} />
+  2449→
+  2450→      <Card className="bg-gray-50/50">
+  2451→        <CardContent className="p-4">
+  2452→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+  2453→            <div className="space-y-1 flex-1 min-w-[200px]">
+  2454→              <Label className="text-xs">{t('الحساب', 'Account', lang)}</Label>
+  2455→              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+  2456→                <SelectTrigger className="h-9"><SelectValue placeholder={t('اختر الحساب...', 'Select account...', lang)} /></SelectTrigger>
+  2457→                <SelectContent>
+  2458→                  {postingAccounts.map(a => (
+  2459→                    <SelectItem key={a.id} value={a.code}>
+  2460→                      {a.code} - {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+  2461→                    </SelectItem>
+  2462→                  ))}
+  2463→                </SelectContent>
+  2464→              </Select>
+  2465→            </div>
+  2466→            <div className="space-y-1">
+  2467→              <Label className="text-xs">{t('من تاريخ', 'From Date', lang)}</Label>
+  2468→              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" />
+  2469→            </div>
+  2470→            <div className="space-y-1">
+  2471→              <Label className="text-xs">{t('إلى تاريخ', 'To Date', lang)}</Label>
+  2472→              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
+  2473→            </div>
+  2474→            <Button variant="outline" size="sm" onClick={() => refetch()} className="h-9 gap-1">
+  2475→              <RefreshCw className="size-3.5" />{t('عرض', 'Show', lang)}
+  2476→            </Button>
+  2477→          </div>
+  2478→        </CardContent>
+  2479→      </Card>
+  2480→
+  2481→      {!selectedAccount ? (
+  2482→        <div className="flex flex-col items-center gap-3 py-10"><BookOpen className="size-12 text-gray-300" /><p className="text-muted-foreground">{t('اختر حساباً', 'Select an account', lang)}</p></div>
+  2483→      ) : isLoading ? <TableSkeleton /> : isError ? (
+  2484→        <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+  2485→      ) : statement ? (
+  2486→        <>
+  2487→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  2488→            <Card className="bg-sky-50 border-sky-200"><CardContent className="p-3 text-center"><p className="text-xs text-sky-600">{t('الرصيد الافتتاحي', 'Opening Balance', lang)}</p><MoneyDisplay value={statement.openingBalance} lang={lang} bold className={statement.openingBalance >= 0 ? 'text-sky-700' : 'text-rose-700'} /></CardContent></Card>
+  2489→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي مدين', 'Total Debit', lang)}</p><MoneyDisplay value={statement.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+  2490→            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('إجمالي دائن', 'Total Credit', lang)}</p><MoneyDisplay value={statement.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+  2491→            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('الرصيد الختامي', 'Closing Balance', lang)}</p><MoneyDisplay value={statement.closingBalance} lang={lang} bold className={statement.closingBalance >= 0 ? 'text-purple-700' : 'text-rose-700'} /></CardContent></Card>
+  2492→          </div>
+  2493→          <Card>
+  2494→            <CardContent className="p-0">
+  2495→              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+  2496→                <Table>
+  2497→                  <TableHeader>
+  2498→                    <TableRow>
+  2499→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+  2500→                      <TableHead className="text-right">{t('رقم القيد', 'Entry No', lang)}</TableHead>
+  2501→                      <TableHead className="text-right">{t('البيان', 'Description', lang)}</TableHead>
+  2502→                      <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+  2503→                      <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+  2504→                      <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+  2505→                    </TableRow>
+  2506→                  </TableHeader>
+  2507→                  <TableBody>
+  2508→                    {statement.lines.length === 0 ? (
+  2509→                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">{t('لا توجد حركات', 'No transactions found', lang)}</TableCell></TableRow>
+  2510→                    ) : statement.lines.map((line, idx) => (
+  2511→                      <TableRow key={idx}>
+  2512→                        <TableCell>{formatDate(line.date, lang)}</TableCell>
+  2513→                        <TableCell className="font-mono">{line.entryNo}</TableCell>
+  2514→                        <TableCell>{line.description || '—'}</TableCell>
+  2515→                        <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+  2516→                        <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+  2517→                        <TableCell className="font-semibold"><MoneyDisplay value={line.balance} lang={lang} size="sm" bold className={line.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
+  2518→                      </TableRow>
+  2519→                    ))}
+  2520→                  </TableBody>
+  2521→                </Table>
+  2522→              </div>
+  2523→            </CardContent>
+  2524→          </Card>
+  2525→        </>
+  2526→      ) : null}
+  2527→    </div>
+  2528→  )
+  2529→}
+  2530→
+  2531→// ============ Tab 8: Trial Balance ============
+  2532→function TrialBalanceTab() {
+  2533→  const { lang } = useAppStore()
+  2534→  const [dateFrom, setDateFrom] = useState('')
+  2535→  const [dateTo, setDateTo] = useState('')
+  2536→  const [generated, setGenerated] = useState(false)
+  2537→
+  2538→  const { data, isLoading, isError, refetch } = useQuery({
+  2539→    queryKey: ['trial-balance', dateFrom, dateTo],
+  2540→    queryFn: async () => {
+  2541→      const params = new URLSearchParams()
+  2542→      if (dateFrom) params.set('dateFrom', dateFrom)
+  2543→      if (dateTo) params.set('dateTo', dateTo)
+  2544→      const res = await fetch(`/api/trial-balance?${params}`)
+  2545→      if (!res.ok) throw new Error()
+  2546→      return res.json()
+  2547→    },
+  2548→    enabled: generated,
+  2549→  })
+  2550→
+  2551→  const itemsRaw = data?.items || data?.data || data?.rows || (Array.isArray(data) ? data : [])
+  2552→  const items = (Array.isArray(itemsRaw) ? itemsRaw : []) as TrialBalanceItem[]
+  2553→  const totalDebit = items.reduce((s, i) => s + (Number(i.totalDebit) || 0), 0)
+  2554→  const totalCredit = items.reduce((s, i) => s + (Number(i.totalCredit) || 0), 0)
+  2555→  const totalNetDebit = items.reduce((s, i) => s + (Number(i.netDebit) || 0), 0)
+  2556→  const totalNetCredit = items.reduce((s, i) => s + (Number(i.netCredit) || 0), 0)
+  2557→
+  2558→  const totalAssets = items.filter(i => i.account?.type === 'ASSET').reduce((s, i) => s + (Number(i.netDebit) || 0) - (Number(i.netCredit) || 0), 0)
+  2559→  const totalLiabilities = items.filter(i => i.account?.type === 'LIABILITY').reduce((s, i) => s + (Number(i.netCredit) || 0) - (Number(i.netDebit) || 0), 0)
+  2560→  const totalEquity = items.filter(i => i.account?.type === 'EQUITY').reduce((s, i) => s + (Number(i.netCredit) || 0) - (Number(i.netDebit) || 0), 0)
+  2561→  const totalRevenue = items.filter(i => i.account?.type === 'REVENUE').reduce((s, i) => s + (Number(i.netCredit) || 0) - (Number(i.netDebit) || 0), 0)
+  2562→  const totalExpenses = items.filter(i => i.account?.type === 'EXPENSE').reduce((s, i) => s + (Number(i.netDebit) || 0) - (Number(i.netCredit) || 0), 0)
+  2563→
+  2564→  const handleGenerate = () => { setGenerated(true); refetch() }
+  2565→
+  2566→  return (
+  2567→    <div className="space-y-4">
+
+[showing lines 2068-2567 of 2764; use offset=2568 with limit to continue reading]
