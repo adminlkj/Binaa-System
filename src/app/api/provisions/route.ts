@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
 
 // Type-to-account mapping for provisions
 const PROVISION_TYPE_ACCOUNT_MAP: Record<string, { expenseCode: string; provisionCode: string; name: string }> = {
@@ -58,39 +59,23 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Create a journal entry: Dr Expense Account / Cr Provision Account
+    // Create a journal entry via the unbreakable guard: Dr Expense Account / Cr Provision Account
     let journalEntryId: string | null = null
 
     if (expenseAccount && provisionAccount) {
-      const entry = await db.journalEntry.create({
-        data: {
-          entryNo: `JE-PROV-${Date.now()}`,
-          date: new Date(startDate),
-          description: `Provision for ${name} (${type})`,
-          status: 'POSTED',
-          sourceType: 'PROVISION',
-          sourceId: provision.id,
-          lines: {
-            create: [
-              {
-                accountId: expenseAccount.id,
-                debit: amount,
-                credit: 0,
-                description: `Provision expense - ${name}`,
-              },
-              {
-                accountId: provisionAccount.id,
-                debit: 0,
-                credit: amount,
-                description: `Provision liability - ${name}`,
-              },
-            ],
-          },
-        },
+      const entry = await postJournalEntry({
+        entryNo: await getNextEntryNo(),
+        date: new Date(startDate),
+        description: `Provision for ${name} (${type})`,
+        sourceType: 'PROVISION',
+        sourceId: provision.id,
+        lines: [
+          { accountId: expenseAccount.id, debit: amount, credit: 0, description: `Provision expense - ${name}` },
+          { accountId: provisionAccount.id, debit: 0, credit: amount, description: `Provision liability - ${name}` },
+        ],
       })
       journalEntryId = entry.id
 
-      // Update provision with journal entry reference
       await db.provision.update({
         where: { id: provision.id },
         data: { journalEntryId },

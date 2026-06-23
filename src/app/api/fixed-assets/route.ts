@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
 
 export async function GET() {
   try {
@@ -102,36 +103,20 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Create acquisition journal entry: Dr Fixed Asset Account / Cr Cash or Bank
+    // Create acquisition journal entry via the unbreakable guard: Dr Fixed Asset / Cr Cash
     if (cashAccount) {
-      const entry = await db.journalEntry.create({
-        data: {
-          entryNo: `JE-FA-${Date.now()}`,
-          date: new Date(acquisitionDate),
-          description: `Acquisition of fixed asset ${assetCode} - ${name}`,
-          status: 'POSTED',
-          sourceType: 'FIXED_ASSET',
-          sourceId: fixedAsset.id,
-          lines: {
-            create: [
-              {
-                accountId: assetAccount.id,
-                debit: cost,
-                credit: 0,
-                description: `Acquisition of ${name}`,
-              },
-              {
-                accountId: cashAccount.id,
-                debit: 0,
-                credit: cost,
-                description: `Payment for ${name}`,
-              },
-            ],
-          },
-        },
+      const entry = await postJournalEntry({
+        entryNo: await getNextEntryNo(),
+        date: new Date(acquisitionDate),
+        description: `Acquisition of fixed asset ${assetCode} - ${name}`,
+        sourceType: 'FIXED_ASSET',
+        sourceId: fixedAsset.id,
+        lines: [
+          { accountId: assetAccount.id, debit: cost, credit: 0, description: `Acquisition of ${name}` },
+          { accountId: cashAccount.id, debit: 0, credit: cost, description: `Payment for ${name}` },
+        ],
       })
 
-      // Update fixed asset with journal entry reference
       await db.fixedAsset.update({
         where: { id: fixedAsset.id },
         data: { journalEntryId: entry.id },

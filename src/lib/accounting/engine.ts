@@ -16,6 +16,11 @@ import {
   resolvePaymentAccountCode,
   AccountRole,
 } from '@/lib/account-roles'
+import {
+  postJournalEntry as guardedPost,
+  reverseJournalEntry as guardedReverse,
+  getNextEntryNo as guardedNextNo,
+} from '@/lib/accounting/guard'
 
 // Transaction client type - used for $transaction callbacks
 export type PrismaTransaction = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]
@@ -391,149 +396,36 @@ export async function initializeChartOfAccounts() {
  * @throws Error if entry not found, not POSTED, or already reversed
  */
 export async function reverseEntry(journalEntryId: string, tx: PrismaTransaction) {
-  // 1. Find the original entry with its lines (exclude soft-deleted entries/lines)
-  const originalEntry = await tx.journalEntry.findUnique({
-    where: { id: journalEntryId, deletedAt: null },
-    include: { lines: { where: { deletedAt: null } } },
-  })
-
-  if (!originalEntry) {
-    throw new Error(`القيد المحاسبي غير موجود: ${journalEntryId}`)
-  }
-
-  // 2. Check that the entry is POSTED (not DRAFT or CANCELLED)
-  if (originalEntry.status !== 'POSTED') {
-    throw new Error(
-      `لا يمكن عكس قيد بحالة ${originalEntry.status} - يجب أن يكون القيد مرحّلاً (POSTED)`
-    )
-  }
-
-  // 3. Check that it hasn't already been reversed
-  if (originalEntry.isReversal) {
-    throw new Error('لا يمكن عكس قيد عكسي - القيود العكسية لا يمكن عكسها')
-  }
-
-  const existingReversal = await tx.journalEntry.findFirst({
-    where: { reversedEntryId: journalEntryId, deletedAt: null },
-  })
-  if (existingReversal) {
-    throw new Error('القيد محسوب عكسه مسبقاً - يوجد قيد عكسي مرتبط بهذا القيد')
-  }
-
-  // 4. Generate next sequential entry number (JE-NNNNNN format)
-  // ابحث عن آخر قيد يتبع التنسيق JE-NNNNNN فقط. القيود التلقائية تستخدم
-  // تنسيقاً مختلفاً (JE-SI-TIMESTAMP، JE-VAT-TIMESTAMP إلخ) ويجب تجاهلها
-  // عند توليد الرقم التسلسلي حتى لا نحصل على "JE-000NaN".
-  const numberedEntries = await tx.journalEntry.findMany({
-    where: { entryNo: { startsWith: 'JE-' } },
-    select: { entryNo: true },
-  })
-  let maxNum = 0
-  for (const e of numberedEntries) {
-    // extract the part after "JE-" and check if it's purely numeric
-    const tail = e.entryNo.slice(3)
-    if (/^\d+$/.test(tail)) {
-      const n = parseInt(tail, 10)
-      if (!isNaN(n) && n > maxNum) maxNum = n
-    }
-  }
-  const next = maxNum + 1
-  const entryNo = `JE-${next.toString().padStart(6, '0')}`
-
-  // 5. Build reversal description with "عكس" prefix
-  const reversalDescription = originalEntry.description
-    ? `عكس - ${originalEntry.description}`
-    : 'عكس قيد محاسبي'
-
-  // 6. Create the reversal entry with flipped debit/credit lines
-  const reversalEntry = await tx.journalEntry.create({
-    data: {
-      entryNo,
-      date: originalEntry.date,
-      description: reversalDescription,
-      status: 'POSTED',
-      sourceType: originalEntry.sourceType,
-      sourceId: originalEntry.sourceId,
-      isReversal: true,
-      reversedEntryId: originalEntry.id,
-      isSystem: true,
-      lines: {
-        create: originalEntry.lines.map((line) => ({
-          accountId: line.accountId,
-          costCenterId: line.costCenterId,
-          // Flip debit and credit
-          debit: line.credit,
-          credit: line.debit,
-          description: line.description
-            ? `عكس - ${line.description}`
-            : 'عكس بند قيد',
-        })),
-      },
-    },
-    include: { lines: true },
-  })
-
-  // 7. Update the original entry status to CANCELLED
-  await tx.journalEntry.update({
-    where: { id: originalEntry.id },
-    data: { status: 'CANCELLED' },
-  })
-
-  return reversalEntry
+  // Delegate to the unbreakable guard — all R1-R12 rules enforced centrally.
+  return guardedReverse(journalEntryId, tx)
 }
 
+
 // ============ JOURNAL ENTRY CREATION ============
+//
+// هذه الدالة الآن مجرد proxy لـ postJournalEntry في guard.ts.
+// كل التحققات الصارمة (R1-R12) تُفرض في طبقة الحارس ولا يمكن تجاوزها.
+// لا يجوز لأي كود في النظام أن يستدعي db.journalEntry.create مباشرةً.
 
 export async function createJournalEntry(template: JournalEntryTemplate, tx?: PrismaTransaction) {
-  const client = tx || db
-  // Validate: total debits must equal total credits
-  const totalDebit = template.lines.reduce((sum, l) => sum + l.debit, 0)
-  const totalCredit = template.lines.reduce((sum, l) => sum + l.credit, 0)
-
-  if (Math.abs(totalDebit - totalCredit) > 0.01) {
-    throw new Error(
-      `Journal entry not balanced: Debits=${totalDebit}, Credits=${totalCredit}, Diff=${Math.abs(totalDebit - totalCredit)}`
-    )
-  }
-
-  // Ensure all referenced accounts exist
-  for (const line of template.lines) {
-    const account = await getAccountByCode(line.accountCode, tx)
-    if (!account) {
-      throw new Error(`Account not found: ${line.accountCode}`)
-    }
-  }
-
-  // Create the journal entry with lines
-  const entry = await client.journalEntry.create({
-    data: {
+  return guardedPost(
+    {
       entryNo: template.entryNo,
       date: template.date,
       description: template.description,
       descriptionAr: template.descriptionAr,
-      status: 'POSTED', // Auto-entries are posted immediately
       sourceType: template.sourceType,
       sourceId: template.sourceId,
-      isSystem: true,
-      lines: {
-        create: await Promise.all(
-          template.lines.map(async (line) => {
-            const account = await getAccountByCode(line.accountCode, tx)
-            return {
-              accountId: account!.id,
-              costCenterId: line.costCenterId,
-              debit: line.debit,
-              credit: line.credit,
-              description: line.description,
-            };
-          })
-        ),
-      },
+      lines: template.lines.map((l) => ({
+        accountCode: l.accountCode,
+        debit: l.debit,
+        credit: l.credit,
+        costCenterId: l.costCenterId,
+        description: l.description,
+      })),
     },
-    include: { lines: true },
-  })
-
-  return entry
+    tx
+  )
 }
 
 // ============ AUTO-ENTRY FUNCTIONS ============

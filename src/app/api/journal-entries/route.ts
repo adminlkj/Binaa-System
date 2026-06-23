@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
 
 export async function GET(request: Request) {
   try {
@@ -86,88 +87,38 @@ export async function GET(request: Request) {
   }
 }
 
-// POST - Create manual journal entry with balance validation
+// POST - Create manual journal entry
+// كل القيود تُنشأ عبر postJournalEntry من guard.ts — لا استثناءات.
+// القواعد R1-R12 تُفرض مركزياً ولا يمكن كسرها.
 export async function POST(request: Request) {
   try {
     const body = await request.json()
 
-    // Validate required fields
-    if (!body.entryNo || !body.date || !body.lines || !Array.isArray(body.lines) || body.lines.length === 0) {
+    // Basic field presence (deeper validation in the guard)
+    if (!body.date || !body.lines || !Array.isArray(body.lines) || body.lines.length === 0) {
       return NextResponse.json(
-        { error: 'رقم القيد والتاريخ والبنود مطلوبة' },
+        { error: 'التاريخ والبنود مطلوبة' },
         { status: 400 }
       )
     }
 
-    // Rule 1: Validate balanced entry - total debits must equal total credits
-    const totalDebit = body.lines.reduce((sum: number, l: { debit?: number }) => sum + (l.debit || 0), 0)
-    const totalCredit = body.lines.reduce((sum: number, l: { credit?: number }) => sum + (l.credit || 0), 0)
+    // Generate entryNo if not provided
+    const entryNo = body.entryNo || await getNextEntryNo()
 
-    if (Math.abs(totalDebit - totalCredit) > 0.01) {
-      return NextResponse.json(
-        { error: 'لا يمكن ترحيل قيد غير متوازن - مجموع المدين يجب أن يساوي مجموع الدائن', totalDebit, totalCredit },
-        { status: 400 }
-      )
-    }
-
-    // Validate each line has an account and at least one side has a value
-    for (const line of body.lines as { accountCode?: string; accountId?: string; debit?: number; credit?: number }[]) {
-      if (!line.accountCode && !line.accountId) {
-        return NextResponse.json(
-          { error: 'كل بند يجب أن يكون مرتبطاً بحساب' },
-          { status: 400 }
-        )
-      }
-      if ((line.debit || 0) === 0 && (line.credit || 0) === 0) {
-        return NextResponse.json(
-          { error: 'كل بند يجب أن يحتوي على قيمة مدين أو دائن' },
-          { status: 400 }
-        )
-      }
-    }
-
-    // Resolve account IDs from codes if needed
-    const resolvedLines = await Promise.all(
-      (body.lines as { accountCode?: string; accountId?: string; debit?: number; credit?: number; description?: string; costCenterId?: string }[]).map(async (line) => {
-        let accountId = line.accountId
-        if (!accountId && line.accountCode) {
-          const account = await db.account.findUnique({ where: { code: line.accountCode } })
-          if (!account) {
-            throw new Error(`الحساب غير موجود: ${line.accountCode}`)
-          }
-          accountId = account.id
-        }
-        return {
-          accountId: accountId!,
-          debit: line.debit || 0,
-          credit: line.credit || 0,
-          description: line.description || null,
-          costCenterId: line.costCenterId || null,
-        }
-      })
-    )
-
-    // Create the journal entry
-    const entry = await db.journalEntry.create({
-      data: {
-        entryNo: body.entryNo,
-        date: new Date(body.date),
-        description: body.description || null,
-        status: body.status || 'DRAFT',
-        sourceType: body.sourceType || 'MANUAL',
-        sourceId: body.sourceId || null,
-        lines: {
-          create: resolvedLines,
-        },
-      },
-      include: {
-        lines: {
-          include: {
-            account: { select: { id: true, code: true, name: true, nameAr: true, type: true } },
-          },
-          orderBy: { id: 'asc' },
-        },
-      },
+    const entry = await postJournalEntry({
+      entryNo,
+      date: body.date,
+      description: body.description || null,
+      sourceType: body.sourceType || 'MANUAL',
+      sourceId: body.sourceId || null,
+      lines: body.lines.map((l: { accountCode?: string; accountId?: string; debit?: number; credit?: number; description?: string; costCenterId?: string }) => ({
+        accountCode: l.accountCode,
+        accountId: l.accountId,
+        debit: l.debit || 0,
+        credit: l.credit || 0,
+        description: l.description,
+        costCenterId: l.costCenterId,
+      })),
     })
 
     const computedDebit = entry.lines.reduce((s, l) => s + toNumber(l.debit), 0)
@@ -179,6 +130,12 @@ export async function POST(request: Request) {
       totalCredit: computedCredit,
     }), { status: 201 })
   } catch (error) {
+    if (error instanceof AccountingGuardError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code, details: error.details },
+        { status: 400 }
+      )
+    }
     console.error('[API] Failed to create journal entry:', error)
     const message = error instanceof Error ? error.message : 'فشل في إنشاء القيد المحاسبي'
     return NextResponse.json(

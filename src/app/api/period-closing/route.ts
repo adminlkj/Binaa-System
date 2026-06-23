@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import type { PrismaTransaction } from '@/lib/accounting/engine'
+import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
 
 export async function GET() {
   try {
@@ -140,21 +141,22 @@ async function closePeriod(year: number, month: number, type: string) {
         })
       }
 
-      // Create the closing journal entry
+      // Create the closing journal entry via the unbreakable guard
       if (jeLines.length > 0) {
-        const entry = await tx.journalEntry.create({
-          data: {
-            entryNo: `JE-YE-${year}-${Date.now()}`,
-            date: closingDate,
-            description: `Year-end closing for ${year}`,
-            status: 'POSTED',
-            sourceType: 'PERIOD_CLOSING',
-            isReversal: false,
-            lines: {
-              create: jeLines,
-            },
-          },
-        })
+        const entry = await postJournalEntry({
+          entryNo: await getNextEntryNo(tx),
+          date: closingDate,
+          description: `Year-end closing for ${year}`,
+          sourceType: 'PERIOD_CLOSING',
+          sourceId: `YE-${year}`,
+          lines: jeLines.filter(l => (l.debit || 0) > 0 || (l.credit || 0) > 0).map(l => ({
+            accountId: l.accountId,
+            debit: l.debit || 0,
+            credit: l.credit || 0,
+            description: l.description,
+          })),
+          skipPeriodGuard: true,
+        }, tx)
         closingEntryId = entry.id
       }
     }
@@ -204,28 +206,25 @@ async function reopenPeriod(year: number, month: number, type: string) {
       })
 
       if (closingEntry) {
-        // Create a reversal entry
-        const reversalLines = closingEntry.lines.map((line) => ({
-          accountId: line.accountId,
-          debit: line.credit,
-          credit: line.debit,
-          description: `Reversal of closing entry - ${line.description || ''}`,
-        }))
+        // Create a reversal entry via the unbreakable guard
+        const reversalLines = closingEntry.lines
+          .filter(line => Number(line.debit) > 0 || Number(line.credit) > 0)
+          .map((line) => ({
+            accountId: line.accountId,
+            debit: Number(line.credit),
+            credit: Number(line.debit),
+            description: `Reversal of closing entry - ${line.description || ''}`,
+          }))
 
-        await tx.journalEntry.create({
-          data: {
-            entryNo: `JE-REV-${year}-${month}-${Date.now()}`,
-            date: new Date(),
-            description: `Reversal of period closing for ${year}/${month}`,
-            status: 'POSTED',
-            sourceType: 'PERIOD_REOPENING',
-            isReversal: true,
-            reversedEntryId: existing.closingEntryId,
-            lines: {
-              create: reversalLines,
-            },
-          },
-        })
+        await postJournalEntry({
+          entryNo: await getNextEntryNo(tx),
+          date: new Date(),
+          description: `Reversal of period closing for ${year}/${month}`,
+          sourceType: 'PERIOD_REOPENING',
+          sourceId: `REOPEN-${year}-${month}`,
+          lines: reversalLines,
+          skipPeriodGuard: true,
+        }, tx)
       }
     }
 

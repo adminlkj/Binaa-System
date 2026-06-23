@@ -27,19 +27,20 @@ export async function assertPeriodOpen(date: Date, tx?: TxClient): Promise<void>
   }
 
   // 2) ابحث عن PeriodClosing records (سنوي أو شهري)
+  //    schema field is `type` (MONTHLY/YEARLY) and `month` (1-12)
   const year = date.getFullYear()
   const month = date.getMonth() + 1
   const closing = await client.periodClosing.findFirst({
     where: {
       OR: [
-        { periodType: 'YEARLY', year },
-        { periodType: 'MONTHLY', year, periodNo: month },
+        { type: 'YEARLY', year },
+        { type: 'MONTHLY', year, month },
       ],
       status: 'CLOSED',
     },
   })
   if (closing) {
-    throw new Error(`الفترة مغلقة بإقفال صريح (${closing.periodType} ${year}/${month}) — لا يمكن الترحيل`)
+    throw new Error(`الفترة مغلقة بإقفال صريح (${closing.type} ${year}/${month}) — لا يمكن الترحيل`)
   }
 }
 

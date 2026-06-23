@@ -2101,3 +2101,92 @@ Stage Summary:
 - ✅ **بيانات نظيفة**: حُذفت القيود الوهمية/المكررة، أُنشئت قيود الافتتاح والتحصيل
 - ملفات مُعدَّلة: `src/lib/report-engine.ts`, `src/lib/accounting/engine.ts` (3 دوال), `src/app/api/financial-statements/income/route.ts`, 33 ملف API/lib (فلتر deletedAt), `scripts/fix-accounting-data.ts` (جديد)
 - تم تحديث Binaa-ERP-System.zip (1.4MB)
+
+---
+Task ID: UNBREAKABLE-ACCOUNTING-GUARD
+Agent: Main Agent (Information Systems Engineer)
+Task: بناء الحارس المحاسبي غير القابل للكسر + إفراض القواعد R1-R12 + اختبار حقيقي فعلي
+
+Work Log:
+
+**1. تدقيق البيانات الحالية (اختبار حقيقي):**
+- أنشأت `scripts/audit-db.ts` — سكريبت تدقيق محاسبي شامل
+- النتائج قبل الإصلاح: 11 قيد مرحّل، 0 غير متوازن، ميزان متوازن 1,940,772.81=1,940,772.81
+- المعادلة محترمة: أصول 1,201,806.98 = خصوم 94,923.08 + حقوق ملكية 1,106,883.90
+- لا أرصدة سالبة غير طبيعية، لا بنود لها مدين ودائن معاً
+
+**2. بناء الحارس المحاسبي `src/lib/accounting/guard.ts`:**
+- أنشأت طبقة إفراض موحدة مع 12 قاعدة ذهبية (R1-R12)
+- `assertJournalEntryValid()` — تتحقق من كل القواعد قبل أي كتابة
+- `postJournalEntry()` — النقطة الوحيدة لإنشاء قيد مرحّل
+- `reverseJournalEntry()` — النقطة الوحيدة لعكس قيد (تبقي الأصل POSTED)
+- `getNextEntryNo()` — مولّد الأرقام الفريدة
+- `accountingHealthCheck()` — فحص السلامة على البيانات الفعلية (5 فحوص)
+
+**3. إعادة توجيه كل مسارات إنشاء القيود عبر الحارس:**
+- `src/lib/accounting/engine.ts`: `createJournalEntry` و `reverseEntry` أصبحتا proxies
+- `src/lib/auto-journal.ts`: 6 دوال (SalesInvoice, PurchaseInvoice, ClientPayment, SupplierPayment, Expense, ProgressClaim) أعيدت كتابتها بالكامل لتمرّ عبر `postJournalEntry`
+- `src/app/api/journal-entries/route.ts`: POST أُعيد كتابته لاستخدام `postJournalEntry` مع التقاط `AccountingGuardError`
+- `src/app/api/fixed-assets/route.ts`: قيد اقتناء الأصل عبر الحارس
+- `src/app/api/fixed-assets/depreciate/route.ts`: قيد الإهلاك عبر الحارس
+- `src/app/api/provisions/route.ts`: قيد المخصصات عبر الحارس
+- `src/app/api/period-closing/route.ts`: قيدا الإقفال وإعادة الفتح عبر الحارس (مع `skipPeriodGuard: true`)
+
+**4. إصلاح ثغرات في الـ schema والـ period-guard:**
+- `src/lib/accounting/period-guard.ts`: كان يستخدم `periodType` و `periodNo` (غير موجودين في الـ schema) → أصلحته إلى `type` و `month`
+- `src/lib/accounting/guard.ts`: أزلت `descriptionAr` (غير موجود في JournalEntry model)
+- أصلحت فحص البنود اليتيمة (كان يستخدم `account: null` غير مدعوم في Prisma)
+
+**5. إصلاح جوهري في منطق العكس (R12):**
+- المشكلة: العكس كان يُلغي القيد الأصلي (CANCELLED) فيختفي من الميزان، لكن قيد العكس يبقى POSTED فيُحدث أرصدة وهمية
+- الحل: إبقاء القيد الأصلي POSTED، وقيد العكس POSTED، فيNetoutان إلى صفر في الميزان
+- هذا هو المعيار المحاسبي الصحيح (reversal = separate dated transaction that negates)
+- أصلحت البيانات: أعدت ترحيل JE-000015 و JE-000016 (كانا CANCELLED)
+
+**6. اختبار حقيقي فعلي (ليس نظرياً):**
+
+أ. **اختبار كسر الحارس — 5 محاولات، كلها رُفضت:**
+   - TEST 1: قيد غير متوازن (مدين 1000 ≠ دائن 500) → رُفض `NOT_BALANCED` ✓
+   - TEST 2: قيد ببند واحد → رُفض `MIN_LINES` ✓
+   - TEST 3: بند له مدين ودائن معاً → رُفض `LINE_BOTH_SIDES` ✓
+   - TEST 4: حساب غير موجود (9999) → رُفض `ACCOUNT_NOT_FOUND` ✓
+   - TEST 5: بند بقيمة صفر → رُفض `LINE_ZERO` ✓
+
+ب. **اختبار قيد صحيح — قُبل بنجاح:**
+   - JE-000015: قيد يدوي (مصروف نثاث 5000 / بنك 5000) → POSTED ✓
+   - تأثيره على الميزان: 8210 ظهر في المدين، 1120 نقص 5000، الميزان بقي متوازن ✓
+
+ج. **اختبار دورة كاملة — إنشاء مصروف:**
+   - أنشأت مصروف 1500 + ضريبة 225 = 1725 عبر `POST /api/expenses`
+   - القيد التلقائي JE-000016 أُنشأ عبر الحارس تلقائياً
+   - البنود: Dr 7110 (مصروف) 1500 / Dr 1410 (ض.مدخلات) 225 / Cr 1110 (نقدية) 1725
+   - كل الاتجاهات صحيحة، متوازن 1725=1725، POSTED ✓
+
+د. **اختبار العكس:**
+   - عكست JE-000015 → أنشأ JE-000018 (عكسي)
+   - عكست JE-000016 → أنشأ JE-000017 (عكسي)
+   - الميزان عاد نظيفاً: كل الأرصدة الصافية عادت لما كانت، المتوازن محترم ✓
+
+هـ. **فحص السلامة النهائي:**
+   - `GET /api/accounting-guard/health` → `healthy: true`
+   - 5/5 فحوص تمر: توازن القيود، لا مدين ودائن معاً، الميزان متوازن، المعادلة محترمة، لا بنود يتيمة
+
+**7. وثيقة القواعد:**
+- أنشأت `ACCOUNTING-RULES.md` — مرجع دائم للقواعد R1-R12 والمحظورات
+- تشمل: خريطة الملفات، نقاط الإفراض، التحقق المستمر
+
+**8. فحص الـ Agent Browser:**
+- فتحت الصفحة الرئيسية: لا أخطاء console أو hydration
+- تنقلت لقسم المحاسبة → تبويب قيود اليومية: 14 قيد تُعرض بشكل صحيح
+- كل قيد يعرض مدين/دائن متوازنين
+
+Stage Summary:
+- ✅ **الحارس المحاسبي غير القابل للكسر** منشور في `src/lib/accounting/guard.ts` (R1-R12)
+- ✅ **كل مسارات إنشاء القيود** تمرّ عبر الحارس (engine, auto-journal, 4 APIs)
+- ✅ **5 محاولات كسر** رُفضت بنجاح (اختبار حقيقي فعلي)
+- ✅ **دورة كاملة** (إنشاء مصروف → قيد تلقائي → عكس) تعمل بشكل مثالي
+- ✅ **المعادلة المحاسبية محترمة**: أصول 1,201,806.98 = خصوم 94,923.08 + حقوق ملكية 1,106,883.90
+- ✅ **ميزان المراجعة متوازن**: مدين 1,954,222.81 = دائن 1,954,222.81 (بعد قيود الاختبار وعكسها)
+- ✅ **5/5 فحوص سلامة تمر** عبر `/api/accounting-guard/health`
+- ✅ **lint نظيف**: 0 أخطاء
+- ملفات مُعدَّلة: `src/lib/accounting/guard.ts` (جديد), `src/lib/accounting/engine.ts`, `src/lib/accounting/period-guard.ts`, `src/lib/auto-journal.ts` (إعادة كتابة كاملة), `src/app/api/journal-entries/route.ts`, `src/app/api/fixed-assets/route.ts`, `src/app/api/fixed-assets/depreciate/route.ts`, `src/app/api/provisions/route.ts`, `src/app/api/period-closing/route.ts`, `src/app/api/accounting-guard/health/route.ts` (جديد), `ACCOUNTING-RULES.md` (جديد), `scripts/audit-db.ts` (جديد)

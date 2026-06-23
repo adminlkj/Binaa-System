@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import type { PrismaTransaction } from '@/lib/accounting/engine'
+import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,35 +67,20 @@ export async function POST(request: NextRequest) {
 
         let journalEntryId: string | null = null
 
-        // Create journal entry: Dr Depreciation Expense / Cr Accumulated Depreciation
+        // Create journal entry via the unbreakable guard: Dr Depreciation Expense / Cr Accumulated Depreciation
         if (depExpenseAccount && accumDepAccount) {
           const depDate = new Date(year, month - 1, 28) // Last day of the month
-          const entry = await tx.journalEntry.create({
-            data: {
-              entryNo: `JE-DEP-${year}${month}-${Date.now()}-${asset.assetCode}`,
-              date: depDate,
-              description: `Depreciation for ${asset.name} (${asset.assetCode}) - ${year}/${month}`,
-              status: 'POSTED',
-              sourceType: 'ASSET_DEPRECIATION',
-              sourceId: asset.id,
-              lines: {
-                create: [
-                  {
-                    accountId: depExpenseAccount.id,
-                    debit: monthlyDepreciation,
-                    credit: 0,
-                    description: `Depreciation expense - ${asset.name}`,
-                  },
-                  {
-                    accountId: accumDepAccount.id,
-                    debit: 0,
-                    credit: monthlyDepreciation,
-                    description: `Accumulated depreciation - ${asset.name}`,
-                  },
-                ],
-              },
-            },
-          })
+          const entry = await postJournalEntry({
+            entryNo: await getNextEntryNo(tx),
+            date: depDate,
+            description: `Depreciation for ${asset.name} (${asset.assetCode}) - ${year}/${month}`,
+            sourceType: 'ASSET_DEPRECIATION',
+            sourceId: asset.id,
+            lines: [
+              { accountId: depExpenseAccount.id, debit: monthlyDepreciation, credit: 0, description: `Depreciation expense - ${asset.name}` },
+              { accountId: accumDepAccount.id, debit: 0, credit: monthlyDepreciation, description: `Accumulated depreciation - ${asset.name}` },
+            ],
+          }, tx)
           journalEntryId = entry.id
         }
 
