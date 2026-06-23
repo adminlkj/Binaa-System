@@ -141,8 +141,8 @@ export async function PUT(request: Request) {
     if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
       await db.$transaction(async (tx: PrismaTransaction) => {
         const originalEntry = await tx.journalEntry.findUnique({
-          where: { id: existing.journalEntryId! },
-          include: { lines: true },
+          where: { id: existing.journalEntryId!, deletedAt: null },
+          include: { lines: { where: { deletedAt: null } } },
         })
 
         if (originalEntry) {

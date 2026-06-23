@@ -22,7 +22,8 @@ export async function GET() {
           const lines = await db.journalLine.findMany({
             where: {
               accountId: account.accountId,
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
           })
           // Bank accounts are ASSET (debit normal)

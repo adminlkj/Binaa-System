@@ -23,7 +23,8 @@ export async function GET() {
       by: ['accountId'],
       _sum: { debit: true, credit: true },
       where: {
-        journalEntry: { status: 'POSTED' },
+        deletedAt: null,
+        journalEntry: { status: 'POSTED', deletedAt: null },
       },
     })
 

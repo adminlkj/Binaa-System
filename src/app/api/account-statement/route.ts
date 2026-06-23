@@ -142,7 +142,7 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
 
   let bookBalance = 0
   if (arAccounts.length > 0) {
-    const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+    const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
     if (dateFrom || dateTo) {
       jeWhere.date = {}
       if (dateFrom) jeWhere.date.gte = new Date(dateFrom)
@@ -153,6 +153,7 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
       _sum: { debit: true, credit: true },
       where: {
         accountId: { in: arAccounts.map(a => a.id) },
+        deletedAt: null,
         ...(clientCostCenter ? { costCenterId: clientCostCenter.id } : {}),
         journalEntry: jeWhere,
       },
@@ -282,7 +283,7 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
 
   let bookBalance = 0
   if (apAccounts.length > 0) {
-    const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+    const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
     if (dateFrom || dateTo) {
       jeWhere.date = {}
       if (dateFrom) jeWhere.date.gte = new Date(dateFrom)
@@ -293,6 +294,7 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
       _sum: { debit: true, credit: true },
       where: {
         accountId: { in: apAccounts.map(a => a.id) },
+        deletedAt: null,
         ...(supplierCostCenter ? { costCenterId: supplierCostCenter.id } : {}),
         journalEntry: jeWhere,
       },
@@ -337,16 +339,17 @@ async function getProjectStatement(entityId: string, dateFrom: string | null, da
   if (dateFrom) dateFilter.gte = new Date(dateFrom)
   if (dateTo) dateFilter.lte = new Date(dateTo)
 
-  const journalWhere: Record<string, unknown> = {}
+  const journalWhere: Record<string, unknown> = { deletedAt: null }
   if (costCenter) journalWhere.costCenterId = costCenter.id
 
   if (dateFrom || dateTo) {
     journalWhere.journalEntry = {
       status: 'POSTED',
+      deletedAt: null,
       date: dateFilter,
     }
   } else {
-    journalWhere.journalEntry = { status: 'POSTED' }
+    journalWhere.journalEntry = { status: 'POSTED', deletedAt: null }
   }
 
   // Query ALL JournalLines with that costCenterId (REVENUE + EXPENSE only)

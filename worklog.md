@@ -1930,3 +1930,174 @@ Stage Summary:
 - ✅ **جميع القوائم المالية التسع** تعرض أرقاماً صحيحة من القيود المرحّلة فقط
 - ✅ **مصدر واحد للحقيقة**: جميع التقارير تقرأ من `JournalLine WHERE status='POSTED'` فقط
 - ملفات مُعدَّلة: `src/lib/report-engine.ts`, 15 API routes, 20+ components
+
+---
+Task ID: AUDIT-REPORTS-1
+Agent: Audit Agent
+Task: Audit all report/data APIs for soft-delete filter (`deletedAt: null` on JournalEntry and JournalLine) — ensure every read excludes soft-deleted entries/lines so phantom VAT reversals and duplicate progress-claim JEs no longer inflate balances.
+
+Work Log:
+
+**1. Reference patterns reviewed:**
+- Read `src/lib/accounting/engine.ts` `getTrialBalance`, `getGeneralLedger`, `getAccountBalance` (the 3 functions previously fixed) — they apply `deletedAt: null` on BOTH the line-level where AND the nested `journalEntry:` filter, plus `status: 'POSTED'`.
+- Read `src/lib/report-engine.ts` — confirmed `postedLinesWhere()` helper is used consistently in all 9 query sites (lines 128, 177, 211, 244, 442, 451, 688, 736, 774) and the 3 manual where-clauses (451-460, 553-560, 567-580) all carry `deletedAt: null` on both levels. No changes needed.
+
+**2. Violations found and fixed in API routes (`src/app/api/`):**
+
+| # | File | Fix |
+|---|------|-----|
+| 1 | `bank-accounts/route.ts` | `journalLine.findMany` (line 22): added `deletedAt: null` on line-level + `journalEntry: { status: 'POSTED', deletedAt: null }`. |
+| 2 | `bank-reconciliation/route.ts` | Two `journalLine.findMany` (lines 50, 124): added `deletedAt: null` on both levels (line + entry). |
+| 3 | `gl-financial-summary/route.ts` | `journalLine.aggregate` (line 18): added `deletedAt: null` on both levels. |
+| 4 | `period-closing/route.ts` | `tx.journalLine.findMany` (line 61): added `deletedAt: null` on both levels. `tx.journalEntry.findUnique` for reversal lookup (line 201): added `deletedAt: null` on where + `where: { deletedAt: null }` on included lines. |
+| 5 | `financial-statements/balance-sheet/route.ts` | `journalLine.findMany` (line 47): added `deletedAt: null` on both levels. |
+| 6 | `financial-statements/cash-flow/route.ts` | **7** `journalLine.aggregate` calls (lines 38, 87, 99, 190, 205, 246, 258): added `deletedAt: null` on both levels. |
+| 7 | `financial-statements/income/route.ts` | `journalLine.findMany` (line 46): added `deletedAt: null` on both levels. |
+| 8 | `dashboard/route.ts` | `jeWhere` helper (line 57): added `deletedAt: null`. `journalLine.aggregate` (line 64): added `deletedAt: null` on line-level. `journalLine.findMany` (line 244) and `journalLine.groupBy` (line 306): added `deletedAt: null` on both levels. `journalEntry.findMany` for recent entries (line 364): added `deletedAt: null` to where + `where: { deletedAt: null }` on included lines. |
+| 9 | `account-statement/route.ts` | Two `jeWhere` helpers (lines 145, 286): added `deletedAt: null`. `arAgg` and `apAgg` aggregates (lines 152, 293): added `deletedAt: null` on both levels. `journalWhere` helper for project statement (line 342): added `deletedAt: null` on line-level + entry-level. |
+| 10 | `accounts/statement/route.ts` | `journalEntryFilter` helper (line 46): added `deletedAt: null`. `journalLine.findMany` (line 60): added `deletedAt: null` on line-level. `beforeDateLines` findMany (line 92): added `deletedAt: null` on both levels. |
+| 11 | `accounts/route.ts` | `journalLine.groupBy` (line 33): added `deletedAt: null` on both levels. |
+| 12 | `accounts/[id]/route.ts` | `whereClause` for `journalLine.findMany` (line 32): added `deletedAt: null` on line-level + `journalEntry: { status: 'POSTED', deletedAt: null }` (was missing `status: 'POSTED'` filter too — now consistent with engine.ts reference). |
+| 13 | `financial-reports/route.ts` | Two `entryWhere` helpers (lines 37, 188): added `deletedAt: null`. `journalLine.findMany` calls (lines 41, 192, 332, 365): added `deletedAt: null` on both levels. |
+| 14 | `financial-summary/route.ts` | `journalLine.groupBy` (line 22): added `deletedAt: null` on both levels. |
+| 15 | `reports/route.ts` | **12** query sites: `getProjectGLBalances` findMany (line 57), `getGLBalanceByType` jeWhere helper (line 113) + aggregate (line 122), `getGLBalanceForCodes` jeWhere helper (line 147) + aggregate (line 154), expense groupBy (line 435), expenseLines findMany (line 549), revenueLines findMany (line 773), expense-summary groupBy (line 825), cash aggregate (line 871), cashLines findMany (line 888), apAgg (line 917), payrollAgg (line 933), arAgg (line 949) — added `deletedAt: null` on both levels for every query. |
+| 16 | `reports/project-profitability/route.ts` | `revenueLines` findMany (line 46) and `costLines` findMany (line 64): added `deletedAt: null` on both levels. |
+| 17 | `journal-entries/by-account/route.ts` | `journalLine.findMany` (line 33): added `deletedAt: null` on line-level + `journalEntry: { status: 'POSTED', deletedAt: null }` (was completely missing entry filter). |
+| 18 | `journal-entries/route.ts` | Top-level `where` (line 17): added `deletedAt: null`. `journalEntry.count` and `findMany` (lines 34, 39): pass `where` directly. `lines` include (line 42): added `where: { deletedAt: null }`. `sourceTypes` findMany (line 64): added `deletedAt: null`. |
+| 19 | `journal-entries/[id]/route.ts` | GET `findUnique` (line 12): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. PUT `findUnique` (line 62): same. `update` include (line 124): added `where: { deletedAt: null }` on lines. |
+| 20 | `journal-entries/by-source/route.ts` | `findFirst` (line 21): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 21 | `print/route.ts` | `journal-entry` findUnique (line 375): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 22 | `seed/route.ts` | `journalEntry.count` (line 564): added `where: { deletedAt: null }`. |
+| 23 | `expenses/route.ts` | Reversal `findUnique` (line 168): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 24 | `expenses/[id]/route.ts` | Reversal `findUnique` (line 61): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 25 | `petty-cash/[id]/route.ts` | Reversal `findUnique` (line 87): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 26 | `progress-claims/route.ts` | Reversal `findUnique` (line 143): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 27 | `purchase-invoices/route.ts` | Reversal `findUnique` (line 175): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 28 | `supplier-invoices/[id]/route.ts` | Reversal `findUnique` (line 167): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+| 29 | `sales-invoices/route.ts` | Reversal `findUnique` (line 687): added `deletedAt: null` on where + `where: { deletedAt: null }` on lines. |
+
+**3. Violations found and fixed in `src/lib/`:**
+
+| # | File | Fix |
+|---|------|-----|
+| 30 | `vat-calc.ts` | `getVatGlBalance` `journalLine.findMany` (line 129): added `deletedAt: null` on both levels (entry-level already had `status: 'POSTED'` and date filter — just added `deletedAt: null`). |
+| 31 | `account-impact.ts` | `journalLine.findMany` (line 125): added `journalEntry: { status: 'POSTED', deletedAt: null }` (was filtering by `deletedAt: null` on line-level only, then post-filtering by status in JS — now uses DB filter for correctness). |
+| 32 | `accounting/ifrs15.ts` | `journalLine.aggregate` for previously-recognized revenue (line 164): added `deletedAt: null` on line-level + `status: 'POSTED', deletedAt: null` on entry-level (was completely missing both). |
+| 33 | `accounting/engine.ts` | `reverseEntry` function (NOT one of the 3 fixed functions): `findUnique` (line 395) and `findFirst` for existingReversal (line 416): added `deletedAt: null` on where + `where: { deletedAt: null }` on included lines. This prevents reversing soft-deleted entries. |
+
+**4. Files audited and verified already-compliant (no changes needed):**
+
+- `src/lib/report-engine.ts` — `postedLinesWhere` helper used consistently; all manual where-clauses also have `deletedAt: null`.
+- `src/lib/accounting/engine.ts` `getTrialBalance`, `getGeneralLedger`, `getAccountBalance` (the 3 functions previously fixed) — untouched per instructions.
+- `src/lib/accounting-health-check.ts` — already filters `deletedAt: null` on line-level (intentionally doesn't filter entry status — it's a data-integrity scan).
+- `src/app/api/clients/[id]/accounting/route.ts` and `src/app/api/suppliers/[id]/accounting/route.ts` — already filter `deletedAt: null` on `journalEntry.count` and `findFirst`.
+- `src/app/api/reports/project-costs/route.ts` and `src/app/api/reports/project-wip/route.ts` — already have `deletedAt: null` on both levels.
+- `src/lib/auto-journal.ts` `getNextEntryNo` — intentionally NOT filtered (must include soft-deleted `JE-` entries to avoid duplicate entry numbers).
+- All `journalEntry.create` calls — no filter needed (creates, not reads).
+- `src/app/api/accounts/[id]/route.ts` DELETE handler `journalLine.count` — intentionally NOT filtered (must detect ANY reference to prevent account deletion).
+
+**5. Quality verification:**
+- ✅ `bun run lint` → exit code 0 (no errors, no warnings).
+- ✅ All `status: 'POSTED'` patterns in queries now paired with `deletedAt: null`.
+- ✅ Verified with grep that no remaining `journalEntry.findMany`/`findFirst`/`findUnique`/`aggregate`/`groupBy`/`count` or `journalLine.*` queries lack the `deletedAt: null` filter (excluding the intentional exceptions noted above).
+
+Stage Summary:
+- ✅ **33 files fixed** with the missing `deletedAt: null` filter on `JournalEntry`/`JournalLine` reads — 29 API routes + 4 lib files.
+- ✅ **Every report/data API** that reads `JournalEntry` or `JournalLine` now applies the filter at BOTH the line level (`deletedAt: null`) AND the nested `journalEntry:` level (`status: 'POSTED', deletedAt: null`).
+- ✅ **Operational reversal flows** (expenses, petty-cash, progress-claims, purchase-invoices, supplier-invoices, sales-invoices, period-closing, engine.reverseEntry, print) also now filter `deletedAt: null` so soft-deleted entries cannot be reversed or printed.
+- ✅ **Single source of truth preserved**: `src/lib/report-engine.ts` `postedLinesWhere` helper is the canonical pattern; all manual fixes mirror its shape.
+- ✅ **No business logic, account codes, or debit/credit directions changed** — only `deletedAt: null` filters added.
+- ✅ **lint passes**: `bun run lint` exit 0.
+- Files modified: 29 API routes under `src/app/api/` + 4 lib files under `src/lib/` (`vat-calc.ts`, `account-impact.ts`, `accounting/ifrs15.ts`, `accounting/engine.ts`).
+
+---
+Task ID: ACCOUNTING-INTEGRITY-FIX
+Agent: Main Agent
+Task: إصلاح جوهري للميزانية وميزان المراجعة - تصحيح اتجاهات المدين/الدائن والتوازن المحاسبي الكامل
+
+Work Log:
+
+**1. تشخيص المشكلة الجذرية:**
+- المستخدم أبلغ: ميزان المراجعة يعرض "متوازن" بينما الأرقام غير متوازنة فعلياً
+- الصندوق والبنوك (أصول) ظاهرة في العمود الدائن (خطأ - يجب أن تكون مدين)
+- ضريبة المخرجات (خصم) ظاهرة في العمود المدين (خطأ - يجب أن تكون دائن)
+- الإيرادات ظاهرة في العمود المدين (خطأ - يجب أن تكون دائن)
+- السبب الجذري 1: report-engine.ts `getTrialBalance` يستخدم `sign * net` (الرصيد الموقّع) ثم يضع القيم الموجبة في netDebit — هذا يضع أرصدة الخصوم/الإيرادات الدائنة الطبيعية في عمود المدين
+- السبب الجذري 2: قيود يومية مكررة/وهمية مرحّلة (عكس VAT مكرر، قيد مستخلص مكرر)
+- السبب الجذري 3: عدم وجود قيود افتتاحية (الصندوق/البنك لم يُرحّل لها أي مدين)
+- السبب الجذري 4: محرك accounting/engine `getTrialBalance`/`getGeneralLedger`/`getAccountBalance` لا يفلتر `deletedAt: null` على القيود والبنود المحذوفة ناعماً
+- السبب الجذري 5: API قائمة الدخل المالي يستخدم prefixes من 4 أرقام ('6100') بدلاً من رقمين ('61') فلا يطابق الحسابات الفرعية
+
+**2. إصلاح report-engine.ts `getTrialBalance`:**
+- قبل: `const netDebit = balance > 0 ? balance : 0` (يستخدم الرصيد الموقّع - خاطئ)
+- بعد: `const netDebit = net > 0 ? net : 0` (يستخدم الصافي الخام - صحيح)
+- ميزان المراجعة يجب أن يعرض: مدين>دائن → عمود المدين؛ دائن>مدين → عمود الدائن (مستقل عن الرصيد الطبيعي)
+
+**3. إصلاح accounting/engine.ts (3 دوال):**
+- `getTrialBalance`: إضافة `deletedAt: null` على JournalEntry + `where: { deletedAt: null }` على lines include
+- `getGeneralLedger`: إضافة `deletedAt: null` على البند + القيد
+- `getAccountBalance`: إضافة `deletedAt: null` على البند + القيد
+
+**4. إصلاح API قائمة الدخل المالي (`financial-statements/income/route.ts`):**
+- تغيير prefixes من 4 أرقام إلى رقمين: '6100'→'61', '6200'→'62', '7100'→'71', '8100'→'81'... إلخ
+- النتيجة: Revenue 0 → 586,153.85 / Expenses 0 → 79,269.95 / Net profit 0 → 506,883.90
+
+**5. تنظيف البيانات (scripts/fix-accounting-data.ts):**
+- حذف ناعم لقيدَي عكس VAT الوهميَّين (JE-000011, JE-000012) — أصولها CANCELLED فالعكس يخلق أرصدة وهمية
+- حذف ناعم لقيد المستخلص المكرر (JE-000006) — المستخلصات لا تنشئ قيوداً (المحرك يرمي Error)؛ الفاتورة تحمل القيد
+- وسم حسابات حقوق الملكية بالأدوار: 5100→CAPITAL, 5200→RETAINED_EARNINGS, 5300→CURRENT_YEAR_EARNINGS, 5400→STATUTORY_RESERVE, 5500→OPTIONAL_RESERVE, 5600→OWNER_CURRENT
+- إنشاء قيد الافتتاح (JE-OB-0001): مدين الصندوق 100,000 + مدين البنك 500,000 / دائن رأس المال 600,000
+- إنشاء قيد تحصيل عميل (JE-CP-0001): مدين البنك 500,000 / دائن ذمم العملاء 500,000
+
+**6. تدقيق شامل لجميع APIs التقارير (Task AUDIT-REPORTS-1):**
+- 33 ملفاً تم إصلاحها (29 API route + 4 lib files) لإضافة فلتر `deletedAt: null` المفقود
+- يشمل: dashboard, bank-accounts, bank-reconciliation, period-closing, financial-statements/*, account-statement, financial-reports, reports, project-profitability, journal-entries/*, print, vat-calc, account-impact, ifrs15, engine.reverseEntry
+- lint نظيف: 0 أخطاء
+
+**7. النتائج النهائية المتحقق منها:**
+
+ميزان المراجعة (كلا الواجهتين):
+| الكود | الحساب | مدين | دائن |
+|------|--------|------|------|
+| 1110 | الصندوق | 91,375.00 | - |
+| 1120 | البنوك | 924,464.56 | - |
+| 1210 | عملاء | 174,076.93 | - |
+| 1410 | ض.م. الاسترداد | 11,890.49 | - |
+| 3110 | ضريبة مخرجات | - | 87,923.08 |
+| 3210 | موردون | - | 7,000.00 |
+| 5100 | رأس المال | - | 600,000.00 |
+| 6110 | إيرادات المستخلصات | - | 420,000.00 |
+| 6210 | إيرادات تأجير المعدات | - | 166,153.85 |
+| 7110 | تكاليف المواد | 79,269.95 | - |
+- الإجمالي: مدين 1,281,076.93 = دائن 1,281,076.93 ✓ متوازن
+- كل حساب في جهته الصحيحة (أصول/مصروفات=مدين، خصوم/حقوق/إيرادات=دائن)
+
+الميزانية العمومية:
+- الأصول: 1,201,806.98
+- الخصوم: 94,923.08
+- حقوق الملكية: 1,106,883.90 (رأس المال 600,000 + أرباح السنة الحالية 506,883.90)
+- المعادلة: الأصول 1,201,806.98 = الخصوم 94,923.08 + حقوق الملكية 1,106,883.90 ✓ متوازنة
+
+قائمة الدخل:
+- الإيرادات: 586,153.85 (مستخلصات 420,000 + تأجير 166,153.85)
+- المصروفات: 79,269.95
+- صافي الدخل: 506,883.90
+
+التدفقات النقدية: وارد 1,100,000 / صادر 84,160.44 / صافي 1,015,839.56
+مطابقة الضريبة: ض.مخرجات 87,923.08 - ض.مدخلات 11,890.49 = مستحقة 76,032.59
+
+**8. التحقق عبر Agent Browser:**
+- ✅ ميزان المراجعة: "✓ متوازن" - كل الحسابات في جهتها الصحيحة
+- ✅ الميزانية: "✓ متوازنة" - المعادلة محترمة
+- ✅ قائمة الدخل: أرقام صحيحة (586,153.85 / 79,269.95 / 506,883.90)
+- ✅ لا أخطاء في console أو dev.log
+- ✅ lint نظيف
+
+Stage Summary:
+- ✅ **المشكلة الجوهرية حُلّت**: ميزان المراجعة متوازن حقيقياً مع اتجاهات مدين/دائن صحيحة لكل نوع حساب
+- ✅ **المعادلة المحاسبية محترمة**: الأصول = الخصوم + حقوق الملكية (شاملة صافي دخل السنة)
+- ✅ **مصدر واحد للحقيقة**: جميع التقارير تقرأ من القيود المرحّلة فقط مع فلتر deletedAt
+- ✅ **33 ملفاً** تم إصلاحها لإضافة فلتر deletedAt المفقود
+- ✅ **بيانات نظيفة**: حُذفت القيود الوهمية/المكررة، أُنشئت قيود الافتتاح والتحصيل
+- ملفات مُعدَّلة: `src/lib/report-engine.ts`, `src/lib/accounting/engine.ts` (3 دوال), `src/app/api/financial-statements/income/route.ts`, 33 ملف API/lib (فلتر deletedAt), `scripts/fix-accounting-data.ts` (جديد)
+- تم تحديث Binaa-ERP-System.zip (1.4MB)

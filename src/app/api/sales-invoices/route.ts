@@ -685,8 +685,8 @@ export async function PUT(request: Request) {
       await db.$transaction(async (tx: PrismaTransaction) => {
         // Create reversal entry for the original
         const originalEntry = await tx.journalEntry.findUnique({
-          where: { id: existing.journalEntryId! },
-          include: { lines: true },
+          where: { id: existing.journalEntryId!, deletedAt: null },
+          include: { lines: { where: { deletedAt: null } } },
         })
 
         if (originalEntry) {

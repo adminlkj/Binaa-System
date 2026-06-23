@@ -59,8 +59,8 @@ export async function DELETE(
     await db.$transaction(async (tx: PrismaTransaction) => {
       if (existing.journalEntryId) {
         const originalEntry = await tx.journalEntry.findUnique({
-          where: { id: existing.journalEntryId },
-          include: { lines: true },
+          where: { id: existing.journalEntryId, deletedAt: null },
+          include: { lines: { where: { deletedAt: null } } },
         })
 
         if (originalEntry) {

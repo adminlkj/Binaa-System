@@ -561,7 +561,7 @@ export async function POST() {
 
     // Get final account count
     const finalAccountCount = await db.account.count()
-    const finalJournalEntryCount = await db.journalEntry.count()
+    const finalJournalEntryCount = await db.journalEntry.count({ where: { deletedAt: null } })
 
     return NextResponse.json({
       success: true,

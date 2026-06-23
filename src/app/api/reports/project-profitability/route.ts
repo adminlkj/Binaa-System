@@ -46,8 +46,10 @@ export async function GET(request: Request) {
       const revenueLines = await db.journalLine.findMany({
         where: {
           costCenterId: project.costCenterId,
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             ...dateFilter,
           },
           account: {
@@ -62,8 +64,10 @@ export async function GET(request: Request) {
       const costLines = await db.journalLine.findMany({
         where: {
           costCenterId: project.costCenterId,
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             ...dateFilter,
           },
           account: {

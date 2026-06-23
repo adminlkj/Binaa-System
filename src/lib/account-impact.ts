@@ -126,6 +126,7 @@ export async function getAccountImpact(accountId: string): Promise<AccountImpact
     where: {
       accountId: account.id,
       deletedAt: null,
+      journalEntry: { status: 'POSTED', deletedAt: null },
     },
     include: {
       journalEntry: {

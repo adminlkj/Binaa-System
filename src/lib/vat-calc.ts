@@ -129,8 +129,10 @@ export async function getVatGlBalance(
   const lines = await client.journalLine.findMany({
     where: {
       accountId: account.id,
+      deletedAt: null,
       journalEntry: {
         status: 'POSTED',
+        deletedAt: null,
         date: { gte: startDate, lte: endDate },
         // ❗ استثنِ قيود الإقرار الضريبي والسداد (قيود الإقفال)
         //    حتى لا تتأثر أرصدة التحقق بقيد الإقرار نفسه.

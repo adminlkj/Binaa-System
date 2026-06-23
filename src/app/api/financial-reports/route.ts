@@ -34,12 +34,13 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
   if (dateFrom) dateFilter.gte = new Date(dateFrom)
   if (dateTo) dateFilter.lte = new Date(dateTo)
 
-  const entryWhere: Record<string, unknown> = { status: 'POSTED' }
+  const entryWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
   if (dateFrom || dateTo) entryWhere.date = dateFilter
 
   // Get all posted journal lines within date range
   const lines = await db.journalLine.findMany({
     where: {
+      deletedAt: null,
       journalEntry: entryWhere,
     },
     include: {
@@ -185,11 +186,12 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
 // ============ BALANCE SHEET ============
 
 async function getBalanceSheet(dateTo: string | null) {
-  const entryWhere: Record<string, unknown> = { status: 'POSTED' }
+  const entryWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
   if (dateTo) entryWhere.date = { lte: new Date(dateTo) }
 
   const lines = await db.journalLine.findMany({
     where: {
+      deletedAt: null,
       journalEntry: entryWhere,
     },
     include: {
@@ -329,8 +331,10 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
   // Net Profit for the period
   const periodLines = await db.journalLine.findMany({
     where: {
+      deletedAt: null,
       journalEntry: {
         status: 'POSTED',
+        deletedAt: null,
         date: { gte: fromDate, lte: toDate },
       },
     },
@@ -360,8 +364,10 @@ async function getCashFlow(dateFrom: string | null, dateTo: string | null) {
   // Working capital changes - compare balances at start vs end of period
   const beforePeriodLines = await db.journalLine.findMany({
     where: {
+      deletedAt: null,
       journalEntry: {
         status: 'POSTED',
+        deletedAt: null,
         date: { lt: fromDate },
       },
     },

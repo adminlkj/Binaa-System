@@ -85,8 +85,8 @@ export async function DELETE(
     if (existing.journalEntryId) {
       try {
         const originalEntry = await db.journalEntry.findUnique({
-          where: { id: existing.journalEntryId },
-          include: { lines: true },
+          where: { id: existing.journalEntryId, deletedAt: null },
+          include: { lines: { where: { deletedAt: null } } },
         })
 
         if (originalEntry) {

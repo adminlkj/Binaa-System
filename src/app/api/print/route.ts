@@ -373,9 +373,10 @@ export async function GET(request: NextRequest) {
       }
     } else if (type === 'journal-entry') {
       const je = await db.journalEntry.findUnique({
-        where: { id },
+        where: { id, deletedAt: null },
         include: {
           lines: {
+            where: { deletedAt: null },
             include: { account: true, costCenter: true },
           },
         },

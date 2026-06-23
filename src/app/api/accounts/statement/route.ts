@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     // Build where clause for journal lines
     const journalEntryFilter: Record<string, unknown> = {
       status: 'POSTED',
+      deletedAt: null,
     }
 
     // Apply date filters on the journal entry
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
     const journalLines = await db.journalLine.findMany({
       where: {
         accountId,
+        deletedAt: null,
         journalEntry: journalEntryFilter,
       },
       include: {
@@ -90,8 +92,10 @@ export async function GET(request: NextRequest) {
       const beforeDateLines = await db.journalLine.findMany({
         where: {
           accountId,
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             date: { lt: new Date(dateFrom) },
           },
         },

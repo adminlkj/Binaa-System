@@ -39,8 +39,10 @@ async function getBalancesByAccountIds(
       _sum: { debit: true, credit: true },
       where: {
         accountId: account.id,
+        deletedAt: null,
         journalEntry: {
           status: 'POSTED',
+          deletedAt: null,
           ...dateFilter,
         },
       },
@@ -86,7 +88,8 @@ async function getBalanceChangeByAccountIds(
       _sum: { debit: true, credit: true },
       where: {
         accountId: account.id,
-        journalEntry: { status: 'POSTED', ...toDateFilter },
+        deletedAt: null,
+        journalEntry: { status: 'POSTED', deletedAt: null, ...toDateFilter },
       },
     })
     const endD = toNumber(endLines._sum.debit)
@@ -97,7 +100,8 @@ async function getBalanceChangeByAccountIds(
       _sum: { debit: true, credit: true },
       where: {
         accountId: account.id,
-        journalEntry: { status: 'POSTED', ...fromDateFilter },
+        deletedAt: null,
+        journalEntry: { status: 'POSTED', deletedAt: null, ...fromDateFilter },
       },
     })
     const startD = toNumber(startLines._sum.debit)
@@ -187,8 +191,10 @@ export async function GET(request: Request) {
         _sum: { debit: true, credit: true },
         where: {
           accountId: account.id,
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             ...beginDateFilter,
           },
         },
@@ -200,8 +206,10 @@ export async function GET(request: Request) {
         _sum: { debit: true, credit: true },
         where: {
           accountId: account.id,
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             ...endDateFilter,
           },
         },
@@ -239,7 +247,8 @@ export async function GET(request: Request) {
         _sum: { debit: true, credit: true },
         where: {
           accountId: acc.id,
-          journalEntry: { status: 'POSTED', ...periodDateFilter },
+          deletedAt: null,
+          journalEntry: { status: 'POSTED', deletedAt: null, ...periodDateFilter },
         },
       })
       totalRevenue += toNumber(agg._sum.credit) - toNumber(agg._sum.debit) // Revenue: credit normal
@@ -250,7 +259,8 @@ export async function GET(request: Request) {
         _sum: { debit: true, credit: true },
         where: {
           accountId: acc.id,
-          journalEntry: { status: 'POSTED', ...periodDateFilter },
+          deletedAt: null,
+          journalEntry: { status: 'POSTED', deletedAt: null, ...periodDateFilter },
         },
       })
       totalExpenses += toNumber(agg._sum.debit) - toNumber(agg._sum.credit) // Expense: debit normal

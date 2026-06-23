@@ -60,8 +60,10 @@ async function closePeriod(year: number, month: number, type: string) {
 
       const lines = await tx.journalLine.findMany({
         where: {
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             date: { gte: yearStart, lte: yearEnd },
           },
         },
@@ -197,8 +199,8 @@ async function reopenPeriod(year: number, month: number, type: string) {
     // Reverse the closing journal entry if exists
     if (existing.closingEntryId) {
       const closingEntry = await tx.journalEntry.findUnique({
-        where: { id: existing.closingEntryId },
-        include: { lines: true },
+        where: { id: existing.closingEntryId, deletedAt: null },
+        include: { lines: { where: { deletedAt: null } } },
       })
 
       if (closingEntry) {

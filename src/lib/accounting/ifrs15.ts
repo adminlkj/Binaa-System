@@ -163,7 +163,10 @@ export async function calculatePeriodRevenue(
   try {
     const recognized = await client.journalLine.aggregate({
       where: {
+        deletedAt: null,
         journalEntry: {
+          status: 'POSTED',
+          deletedAt: null,
           sourceType: 'IFRS15_REVENUE',
           sourceId: projectId,
         },

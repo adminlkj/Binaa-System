@@ -391,10 +391,10 @@ export async function initializeChartOfAccounts() {
  * @throws Error if entry not found, not POSTED, or already reversed
  */
 export async function reverseEntry(journalEntryId: string, tx: PrismaTransaction) {
-  // 1. Find the original entry with its lines
+  // 1. Find the original entry with its lines (exclude soft-deleted entries/lines)
   const originalEntry = await tx.journalEntry.findUnique({
-    where: { id: journalEntryId },
-    include: { lines: true },
+    where: { id: journalEntryId, deletedAt: null },
+    include: { lines: { where: { deletedAt: null } } },
   })
 
   if (!originalEntry) {
@@ -414,7 +414,7 @@ export async function reverseEntry(journalEntryId: string, tx: PrismaTransaction
   }
 
   const existingReversal = await tx.journalEntry.findFirst({
-    where: { reversedEntryId: journalEntryId },
+    where: { reversedEntryId: journalEntryId, deletedAt: null },
   })
   if (existingReversal) {
     throw new Error('القيد محسوب عكسه مسبقاً - يوجد قيد عكسي مرتبط بهذا القيد')
@@ -1477,10 +1477,12 @@ export async function getTrialBalance(dateFrom?: Date, dateTo?: Date) {
   const entries = await db.journalEntry.findMany({
     where: {
       status: 'POSTED',
+      deletedAt: null,
       ...dateFilter,
     },
     include: {
       lines: {
+        where: { deletedAt: null },
         include: {
           account: true,
         },
@@ -1569,7 +1571,8 @@ export async function getAccountBalance(accountCode: string): Promise<number> {
   const lines = await db.journalLine.findMany({
     where: {
       accountId: account.id,
-      journalEntry: { status: 'POSTED' },
+      deletedAt: null,
+      journalEntry: { status: 'POSTED', deletedAt: null },
     },
   })
 
@@ -1599,8 +1602,10 @@ export async function getGeneralLedger(accountCode: string, dateFrom?: Date, dat
   const lines = await db.journalLine.findMany({
     where: {
       accountId: account.id,
+      deletedAt: null,
       journalEntry: {
         status: 'POSTED',
+        deletedAt: null,
         ...glDateFilter,
       },
     },

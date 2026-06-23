@@ -29,9 +29,14 @@ export async function GET(
     if (endDate) dateFilter.lte = new Date(endDate)
 
     // Get journal lines for this account
-    const whereClause: Record<string, unknown> = { accountId: id }
+    const whereClause: Record<string, unknown> = {
+      accountId: id,
+      deletedAt: null,
+    }
     if (startDate || endDate) {
-      whereClause.journalEntry = { date: dateFilter }
+      whereClause.journalEntry = { status: 'POSTED', deletedAt: null, date: dateFilter }
+    } else {
+      whereClause.journalEntry = { status: 'POSTED', deletedAt: null }
     }
 
     const lines = await db.journalLine.findMany({

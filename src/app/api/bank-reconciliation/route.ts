@@ -50,8 +50,10 @@ export async function GET(request: NextRequest) {
       const lines = await db.journalLine.findMany({
         where: {
           accountId: bankAccount.accountId,
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             date: { gte: periodStart, lte: periodEnd },
           },
         },
@@ -122,8 +124,10 @@ export async function POST(request: NextRequest) {
       const lines = await db.journalLine.findMany({
         where: {
           accountId: bankAccount.accountId,
+          deletedAt: null,
           journalEntry: {
             status: 'POSTED',
+            deletedAt: null,
             date: { gte: periodStart, lte: periodEnd },
           },
         },

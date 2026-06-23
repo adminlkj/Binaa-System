@@ -10,9 +10,10 @@ export async function GET(
     const { id } = await params
 
     const entry = await db.journalEntry.findUnique({
-      where: { id },
+      where: { id, deletedAt: null },
       include: {
         lines: {
+          where: { deletedAt: null },
           include: {
             account: { select: { id: true, code: true, name: true, nameAr: true, type: true } },
             costCenter: { select: { id: true, code: true, name: true } },
@@ -59,8 +60,8 @@ export async function PUT(
 
     // Load the existing entry first to validate state transitions
     const existing = await db.journalEntry.findUnique({
-      where: { id },
-      include: { lines: true },
+      where: { id, deletedAt: null },
+      include: { lines: { where: { deletedAt: null } } },
     })
 
     if (!existing) {
@@ -125,6 +126,7 @@ export async function PUT(
       data: updateData,
       include: {
         lines: {
+          where: { deletedAt: null },
           include: {
             account: { select: { id: true, code: true, name: true, nameAr: true, type: true } },
             costCenter: { select: { id: true, code: true, name: true } },

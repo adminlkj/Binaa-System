@@ -31,7 +31,11 @@ export async function GET(request: Request) {
 
     // Get all journal lines for this account, with their parent journal entries
     const lines = await db.journalLine.findMany({
-      where: { accountId },
+      where: {
+        accountId,
+        deletedAt: null,
+        journalEntry: { status: 'POSTED', deletedAt: null },
+      },
       include: {
         journalEntry: {
           select: {

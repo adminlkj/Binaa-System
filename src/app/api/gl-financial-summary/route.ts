@@ -19,7 +19,8 @@ async function getAccountBalance(accountCode: string): Promise<number> {
     _sum: { debit: true, credit: true },
     where: {
       accountId: account.id,
-      journalEntry: { status: 'POSTED' },
+      deletedAt: null,
+      journalEntry: { status: 'POSTED', deletedAt: null },
     },
   })
 

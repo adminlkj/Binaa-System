@@ -54,7 +54,7 @@ async function getGLBalance(
     accountWhere.activityType = { in: [options.activityType, 'BOTH'] }
   }
 
-  const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+  const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
   if (options?.startDate || options?.endDate) {
     jeWhere.date = {}
     if (options.startDate) jeWhere.date.gte = options.startDate
@@ -65,6 +65,7 @@ async function getGLBalance(
     _sum: { debit: true, credit: true },
     where: {
       account: accountWhere,
+      deletedAt: null,
       journalEntry: jeWhere,
     },
   })
@@ -243,7 +244,8 @@ export async function GET() {
       ? await db.journalLine.findMany({
           where: {
             costCenterId: { in: projectCostCenterIds },
-            journalEntry: { status: 'POSTED' },
+            deletedAt: null,
+            journalEntry: { status: 'POSTED', deletedAt: null },
             account: { type: { in: ['REVENUE', 'EXPENSE'] } },
           },
           include: { account: { select: { type: true } }, costCenter: { select: { code: true } } },
@@ -306,7 +308,8 @@ export async function GET() {
           _sum: { debit: true, credit: true },
           where: {
             accountId: { in: allRoleAccountIds },
-            journalEntry: { status: 'POSTED' },
+            deletedAt: null,
+            journalEntry: { status: 'POSTED', deletedAt: null },
           },
         })
       : []
@@ -359,9 +362,10 @@ export async function GET() {
 
     // ===== 9. Recent Transactions (last 10 journal entries) =====
     const recentEntries = await db.journalEntry.findMany({
-      where: { status: 'POSTED', isReversal: false },
+      where: { status: 'POSTED', deletedAt: null, isReversal: false },
       include: {
         lines: {
+          where: { deletedAt: null },
           include: {
             account: { select: { code: true, name: true, nameAr: true } },
           },

@@ -34,7 +34,8 @@ export async function GET(request: Request) {
       by: ['accountId'],
       where: {
         accountId: { in: accountIds },
-        journalEntry: { status: 'POSTED' },
+        deletedAt: null,
+        journalEntry: { status: 'POSTED', deletedAt: null },
       },
       _sum: { debit: true, credit: true },
       _max: { createdAt: true },

@@ -266,9 +266,14 @@ export async function getTrialBalance(range?: DateRange): Promise<{
     const net = sums.debit - sums.credit
     if (Math.abs(net) < 0.005 && sums.debit === 0 && sums.credit === 0) continue // skip zero accounts
     const sign = signForType(a.type)
-    const balance = sign * net
-    const netDebit = balance > 0 ? balance : 0
-    const netCredit = balance < 0 ? Math.abs(balance) : 0
+    const balance = sign * net // signed balance (positive = normal side) — used by financial statements
+    // Trial balance columns show RAW net movement: if debits > credits → debit column,
+    // if credits > debits → credit column. This is independent of the account's normal balance.
+    // (A credit-balance account like Revenue with only credits MUST appear in the credit column,
+    //  not the debit column. The previous logic used `balance` which wrongly placed
+    //  credit-normal positive balances into the debit column.)
+    const netDebit = net > 0 ? net : 0
+    const netCredit = net < 0 ? Math.abs(net) : 0
     rows.push({
       accountId: a.id,
       code: a.code,

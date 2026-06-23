@@ -47,8 +47,10 @@ async function getAllAccountBalancesUpTo(dateTo: Date | undefined): Promise<Acco
   const lines = await db.journalLine.findMany({
     where: {
       accountId: { in: accountIds },
+      deletedAt: null,
       journalEntry: {
         status: 'POSTED',
+        deletedAt: null,
         ...dateFilter,
       },
     },

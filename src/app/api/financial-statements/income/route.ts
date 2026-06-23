@@ -46,8 +46,10 @@ async function getAccountBalancesByPrefix(
   const lines = await db.journalLine.findMany({
     where: {
       accountId: { in: accountIds },
+      deletedAt: null,
       journalEntry: {
         status: 'POSTED',
+        deletedAt: null,
         ...dateFilter,
       },
     },
@@ -99,9 +101,10 @@ export async function GET(request: Request) {
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
 
     // ---- Revenue Section ----
-    const constructionRevenue = await getAccountBalancesByPrefix('6100', dateFrom, dateTo)
-    const rentalRevenue = await getAccountBalancesByPrefix('6200', dateFrom, dateTo)
-    const otherRevenue = await getAccountBalancesByPrefix('6300', dateFrom, dateTo)
+    // Use 2-digit prefixes to match all child accounts (6100-series → '61', etc.)
+    const constructionRevenue = await getAccountBalancesByPrefix('61', dateFrom, dateTo)
+    const rentalRevenue = await getAccountBalancesByPrefix('62', dateFrom, dateTo)
+    const otherRevenue = await getAccountBalancesByPrefix('63', dateFrom, dateTo)
 
     const totalConstructionRevenue = sumBalances(constructionRevenue)
     const totalRentalRevenue = sumBalances(rentalRevenue)
@@ -109,9 +112,9 @@ export async function GET(request: Request) {
     const totalRevenue = r4(totalConstructionRevenue + totalRentalRevenue + totalOtherRevenue)
 
     // ---- Direct Costs Section ----
-    const contractCosts = await getAccountBalancesByPrefix('7100', dateFrom, dateTo)
-    const equipmentCosts = await getAccountBalancesByPrefix('7200', dateFrom, dateTo)
-    const projectExpenses = await getAccountBalancesByPrefix('7500', dateFrom, dateTo)
+    const contractCosts = await getAccountBalancesByPrefix('71', dateFrom, dateTo)
+    const equipmentCosts = await getAccountBalancesByPrefix('72', dateFrom, dateTo)
+    const projectExpenses = await getAccountBalancesByPrefix('75', dateFrom, dateTo)
 
     const totalContractCosts = sumBalances(contractCosts)
     const totalEquipmentCosts = sumBalances(equipmentCosts)
@@ -122,12 +125,12 @@ export async function GET(request: Request) {
     const grossProfit = r4(totalRevenue - totalDirectCosts)
 
     // ---- Indirect Costs Section ----
-    const administrativeCosts = await getAccountBalancesByPrefix('8100', dateFrom, dateTo)
-    const hrCosts = await getAccountBalancesByPrefix('8200', dateFrom, dateTo)
-    const depreciationCosts = await getAccountBalancesByPrefix('8300', dateFrom, dateTo)
-    const financialCosts = await getAccountBalancesByPrefix('8400', dateFrom, dateTo)
-    const taxCosts = await getAccountBalancesByPrefix('8500', dateFrom, dateTo)
-    const otherCosts = await getAccountBalancesByPrefix('8600', dateFrom, dateTo)
+    const administrativeCosts = await getAccountBalancesByPrefix('81', dateFrom, dateTo)
+    const hrCosts = await getAccountBalancesByPrefix('82', dateFrom, dateTo)
+    const depreciationCosts = await getAccountBalancesByPrefix('83', dateFrom, dateTo)
+    const financialCosts = await getAccountBalancesByPrefix('84', dateFrom, dateTo)
+    const taxCosts = await getAccountBalancesByPrefix('85', dateFrom, dateTo)
+    const otherCosts = await getAccountBalancesByPrefix('86', dateFrom, dateTo)
 
     const totalAdministrativeCosts = sumBalances(administrativeCosts)
     const totalHrCosts = sumBalances(hrCosts)

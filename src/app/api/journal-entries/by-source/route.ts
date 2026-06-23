@@ -22,9 +22,11 @@ export async function GET(request: Request) {
       where: {
         sourceType,
         sourceId,
+        deletedAt: null,
       },
       include: {
         lines: {
+          where: { deletedAt: null },
           include: {
             account: {
               select: {

@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search')
 
     // Build where clause
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { deletedAt: null }
     if (status) where.status = status
     if (sourceType) where.sourceType = sourceType
     if (startDate || endDate) {
@@ -32,14 +32,15 @@ export async function GET(request: Request) {
 
     // Get total count for pagination
     const total = await db.journalEntry.count({
-      where: Object.keys(where).length > 0 ? where : undefined,
+      where,
     })
 
     // Fetch paginated entries with lines including account details
     const entries = await db.journalEntry.findMany({
-      where: Object.keys(where).length > 0 ? where : undefined,
+      where,
       include: {
         lines: {
+          where: { deletedAt: null },
           include: {
             account: { select: { id: true, code: true, name: true, nameAr: true, type: true } },
             costCenter: { select: { id: true, code: true, name: true } },
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
 
     // Get distinct source types for filtering
     const sourceTypes = await db.journalEntry.findMany({
-      where: { sourceType: { not: null } },
+      where: { sourceType: { not: null }, deletedAt: null },
       select: { sourceType: true },
       distinct: ['sourceType'],
     })

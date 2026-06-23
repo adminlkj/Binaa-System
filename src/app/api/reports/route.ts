@@ -57,7 +57,8 @@ async function getProjectGLBalances(projectIds: string[]) {
   const lines = await db.journalLine.findMany({
     where: {
       costCenterId: { in: costCenterIds },
-      journalEntry: { status: 'POSTED' },
+      deletedAt: null,
+      journalEntry: { status: 'POSTED', deletedAt: null },
       account: { type: { in: ['REVENUE', 'EXPENSE'] } },
     },
     include: { account: { select: { type: true } }, costCenter: { select: { code: true } } },
@@ -109,7 +110,7 @@ async function getGLBalanceByType(
     accountWhere.activityType = { in: [options.activityType, 'BOTH'] }
   }
 
-  const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+  const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
   if (options?.dateFrom || options?.dateTo) {
     jeWhere.date = {}
     if (options.dateFrom) jeWhere.date.gte = options.dateFrom
@@ -118,7 +119,7 @@ async function getGLBalanceByType(
 
   const result = await db.journalLine.aggregate({
     _sum: { debit: true, credit: true },
-    where: { account: accountWhere, journalEntry: jeWhere },
+    where: { account: accountWhere, deletedAt: null, journalEntry: jeWhere },
   })
 
   const totalDebit = toNumber(result._sum.debit)
@@ -143,7 +144,7 @@ async function getGLBalanceForCodes(
   })
   if (accounts.length === 0) return 0
 
-  const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+  const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
   if (dateFrom || dateTo) {
     jeWhere.date = {}
     if (dateFrom) jeWhere.date.gte = dateFrom
@@ -154,6 +155,7 @@ async function getGLBalanceForCodes(
     _sum: { debit: true, credit: true },
     where: {
       accountId: { in: accounts.map(a => a.id) },
+      deletedAt: null,
       journalEntry: jeWhere,
     },
   })
@@ -435,7 +437,8 @@ export async function GET(request: Request) {
               _sum: { debit: true, credit: true },
               where: {
                 accountId: { in: expenseAccountIds },
-                journalEntry: { status: 'POSTED' },
+                deletedAt: null,
+                journalEntry: { status: 'POSTED', deletedAt: null },
               },
             })
           : []
@@ -546,7 +549,8 @@ export async function GET(request: Request) {
           const expenseLines = await db.journalLine.findMany({
             where: {
               costCenterId: { in: costCenterIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
               account: { type: 'EXPENSE' },
             },
             include: {
@@ -769,7 +773,8 @@ export async function GET(request: Request) {
           const revenueLines = await db.journalLine.findMany({
             where: {
               accountId: { in: revenueAccountIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
             include: {
               account: { select: { activityType: true } },
@@ -822,7 +827,8 @@ export async function GET(request: Request) {
             _sum: { debit: true, credit: true },
             where: {
               accountId: { in: expenseAccountIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
           })
 
@@ -866,7 +872,8 @@ export async function GET(request: Request) {
             _sum: { debit: true, credit: true },
             where: {
               accountId: { in: cashBankIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
           })
           // Cash accounts are ASSET (debit normal): debits = inflows, credits = outflows
@@ -881,7 +888,8 @@ export async function GET(request: Request) {
           const cashLines = await db.journalLine.findMany({
             where: {
               accountId: { in: cashBankIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
             include: {
               journalEntry: { select: { date: true } },
@@ -910,7 +918,8 @@ export async function GET(request: Request) {
             _sum: { debit: true },
             where: {
               accountId: { in: apIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
           })
           supplierPaymentsTotal = toNumber(apAgg._sum.debit)
@@ -925,7 +934,8 @@ export async function GET(request: Request) {
             _sum: { debit: true },
             where: {
               accountId: { in: payrollIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
           })
           salaryPaymentsTotal = toNumber(payrollAgg._sum.debit)
@@ -940,7 +950,8 @@ export async function GET(request: Request) {
             _sum: { credit: true },
             where: {
               accountId: { in: arIds },
-              journalEntry: { status: 'POSTED' },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
             },
           })
           clientPaymentsTotal = toNumber(arAgg._sum.credit)
