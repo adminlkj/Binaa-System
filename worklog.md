@@ -1851,3 +1851,23 @@ Stage Summary:
 - ✅ **تنقل الأقسام يعمل**: 7 تبويبات أقسام قابلة للنقر
 - ✅ **أزرار طباعة وتصدير**: في كل تقرير مالي جديد
 - ملفات مُعدَّلة/جديدة: `src/lib/report-engine.ts` (جديد), `src/app/api/reports/project-costs/route.ts`, `src/app/api/reports/route.ts`, 8 ملفات API جديدة في `src/app/api/reports/*/route.ts`, `src/components/modules/financial-statements-tab.tsx` (جديد), `src/components/modules/reports.tsx`, `src/components/sections/reports-section.tsx`, `src/stores/app-store.ts`, `prisma/schema.prisma`
+
+---
+Task ID: ZIP-BACKUP-RULE
+Agent: Main Agent
+Task: إنشاء أرشيف مضغوط محدّث دائماً يحتوي على كل التعديلات (قاعدة المستخدم: حدّث الملف المضغوط بعد كل تعديل مباشرة)
+
+Work Log:
+- المستخدم أبلغ: الملف المضغوط القديم `Binaa-ERP-Architecture-Overhaul.zip` (بتاريخ 21 يونيو) لم يكن يحتوي على أي إصلاحات 23 يونيو (محرك التقارير، 9 تقارير جديدة، أزرار الطباعة/التصدير، إصلاح Decimal bug)
+- تم حذف الملف المضغوط القديم تماماً
+- تم إنشاء سكربت قابل لإعادة الاستخدام `update-zip.sh` في جذر المشروع
+- السكربت يستبعد: node_modules, .next, .git, cache, logs, screenshots, *.png/*.jpg, .env, skills/ (بيئة Z.ai SDK وليست كود ERP), ملفات البحث الكبيرة
+- السكربت يُضمّن: src, prisma, public, docs, db, examples, mini-services, package.json, bun.lock, tsconfig, config files, worklog.md, audit reports, utility scripts
+- تم توليد `Binaa-ERP-System.zip` جديد (1.4MB, 563 ملف) يحتوي على ALL آخر التعديلات
+- التحقق: محرك التقارير، 9 مسارات API جديدة، المكونات الجديدة، schema محدّث — كلها موجودة
+
+Stage Summary:
+- ✅ **ملف مضغوط موحّد**: `Binaa-ERP-System.zip` (1.4MB, 563 ملف) — يحل محل القديم
+- ✅ **سكربت قابل لإعادة الاستخدام**: `update-zip.sh` — يُشغَّل بعد كل تعديل
+- ✅ **قاعدة دائمة للمستقبل**: بعد أي تعديل على الكود، يجب تشغيل `bash update-zip.sh` فوراً لتحديث الأرشيف. هذا إلزامي لكل agent مستقبلي.
+- ✅ **التحقق من الاكتمال**: جميع ملفات 23 يونيو (report-engine, financial-statements-tab, 9 report APIs, table-print-export, schema محدّث) موجودة في الأرشيف
