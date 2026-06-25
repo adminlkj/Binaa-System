@@ -2,6 +2,14 @@ import { db } from '@/lib/db'
 import { createJournalEntry, getSalaryAccountCode, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
+// ============================================================================
+// مسير الرواتب - GET (تفاصيل) + PUT (تحديث الحالة) + DELETE (حذف المسودة)
+// القواعد:
+//   - APPROVED: ينشئ قيد استحقاق فقط (مدين 8110/7120/7210 / دائن 3310)
+//   - PAID: يتحقق من bankAccountCode + journalEntryId موجود + totalNet > 0
+//           ثم ينشئ قيد دفع مستقل (مدين 3310 / دائن البنك)
+// ============================================================================
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -15,6 +23,7 @@ export async function GET(
           include: {
             employee: { select: { id: true, code: true, name: true, nameAr: true, salaryType: true } },
             project: { select: { id: true, code: true, name: true, nameAr: true } },
+            workTeam: { select: { id: true, code: true, name: true, nameAr: true } },
           },
           orderBy: { employee: { code: 'asc' } },
         },
@@ -48,12 +57,12 @@ export async function PUT(
 
     const newStatus = body.status
 
-    // When status changes to APPROVED, create accounting journal entries in transaction
+    // ============ APPROVED: قيد الاستحقاق فقط ============
     if (newStatus === 'APPROVED' && existing.status !== 'APPROVED') {
       const result = await db.$transaction(async (tx: PrismaTransaction) => {
         let journalEntryId: string | null = existing.journalEntryId
 
-        // Get payroll lines with project info to determine activity type
+        // اجلب بنود المسير مع معلومات المشروع لتحديد نوع النشاط
         const lines = await tx.payrollRunLine.findMany({
           where: { payrollRunId: id },
           include: {
@@ -61,9 +70,9 @@ export async function PUT(
           },
         })
 
-        const salaryDate = new Date(existing.year, existing.month - 1, 1)
+        const salaryDate = new Date(existing.year, existing.month -  1, 1)
 
-        // Group lines by activity type (PROJECT, RENTAL, ADMIN) to create separate journal entries
+        // تجميع البنود حسب نوع النشاط (PROJECT, RENTAL, ADMIN) لإنشاء قيود منفصلة
         const linesByActivity: Record<string, { totalNet: number; totalGosi: number }> = {}
 
         for (const line of lines) {
@@ -80,24 +89,48 @@ export async function PUT(
           if (!linesByActivity[activity]) {
             linesByActivity[activity] = { totalNet: 0, totalGosi: 0 }
           }
-          linesByActivity[activity].totalNet += line.netSalary
-          linesByActivity[activity].totalGosi += line.gosiDeduction
+          linesByActivity[activity].totalNet += Number(line.netSalary)
+          linesByActivity[activity].totalGosi += Number(line.gosiDeduction)
         }
 
-        // Create journal entries for each activity type
+        // إنشاء قيود يومية لكل نوع نشاط (قيد استحقاق فقط)
         for (const [activity, totals] of Object.entries(linesByActivity)) {
-          const salaryAccountCode = await getSalaryAccountCode(activity as 'PROJECT' | 'RENTAL' | 'ADMIN', tx)
-          const activityNameAr = activity === 'PROJECT' ? 'مشاريع' : activity === 'RENTAL' ? 'تأجير' : 'إدارية'
+          const salaryAccountCode = await getSalaryAccountCode(
+            activity as 'PROJECT' | 'RENTAL' | 'ADMIN',
+            tx,
+          )
+          const activityNameAr =
+            activity === 'PROJECT' ? 'مشاريع' : activity === 'RENTAL' ? 'تأجير' : 'إدارية'
 
           const jeLines = [
-            { accountCode: salaryAccountCode, debit: totals.totalNet, credit: 0, description: `رواتب ${activityNameAr}` },
-            { accountCode: '3310', debit: 0, credit: totals.totalNet, description: 'رواتب مستحقة' },
+            {
+              accountCode: salaryAccountCode,
+              debit: totals.totalNet,
+              credit: 0,
+              description: `رواتب ${activityNameAr}`,
+            },
+            {
+              accountCode: '3310',
+              debit: 0,
+              credit: totals.totalNet,
+              description: 'رواتب مستحقة',
+            },
           ]
 
           if (totals.totalGosi > 0) {
             jeLines.push(
-              { accountCode: '8210', debit: totals.totalGosi, credit: 0, description: 'تأمينات اجتماعية' },
-              { accountCode: '3830', debit: 0, credit: totals.totalGosi, description: 'تأمينات مستحقة' },
+              {
+                accountCode: '8210',
+                debit: totals.totalGosi,
+                credit: 0,
+                description: 'تأمينات اجتماعية',
+              },
+              {
+                accountCode: '3830',
+                debit: 0,
+                credit: totals.totalGosi,
+                description: 'تأمينات مستحقة',
+              },
             )
           }
 
@@ -114,6 +147,7 @@ export async function PUT(
             journalEntryId = entry.id
           } catch (entryError) {
             console.error('Error creating payroll journal entry:', entryError)
+            throw entryError
           }
         }
 
@@ -129,6 +163,7 @@ export async function PUT(
               include: {
                 employee: { select: { id: true, code: true, name: true, nameAr: true } },
                 project: { select: { id: true, code: true, name: true, nameAr: true } },
+                workTeam: { select: { id: true, code: true, name: true, nameAr: true } },
               },
             },
           },
@@ -138,6 +173,92 @@ export async function PUT(
       return NextResponse.json(result)
     }
 
+    // ============ PAID: قيد الدفع (مدين 3310 / دائن البنك) ============
+    if (newStatus === 'PAID' && existing.status !== 'PAID') {
+      // التحقق من وجود قيد الاستحقاق أولاً
+      if (!existing.journalEntryId) {
+        return NextResponse.json({
+          error: 'يجب اعتماد المسير أولاً (APPROVED) لإنشاء قيد الاستحقاق قبل الدفع',
+        }, { status: 400 })
+      }
+
+      if (!body.bankAccountCode) {
+        return NextResponse.json({
+          error: 'يجب تحديد الحساب البنكي/النقدي للدفع',
+        }, { status: 400 })
+      }
+
+      if (Number(existing.totalNet) <= 0) {
+        return NextResponse.json({
+          error: 'صافي الرواتب يجب أن يكون أكبر من صفر',
+        }, { status: 400 })
+      }
+
+      const result = await db.$transaction(async (tx: PrismaTransaction) => {
+        let paymentJournalEntryId: string | null = existing.paymentJournalEntryId
+
+        const salaryDate = new Date(existing.year, existing.month - 1, 1)
+        const totalNet = Number(existing.totalNet)
+        const bankAccountCode = String(body.bankAccountCode)
+        const bankAccountNameAr = String(body.bankAccountNameAr || 'البنك')
+
+        // قيد الدفع: مدين رواتب مستحقة / دائن البنك
+        const jeLines = [
+          {
+            accountCode: '3310',
+            debit: totalNet,
+            credit: 0,
+            description: 'سداد رواتب مستحقة',
+          },
+          {
+            accountCode: bankAccountCode,
+            debit: 0,
+            credit: totalNet,
+            description: `سداد من ${bankAccountNameAr}`,
+          },
+        ]
+
+        try {
+          const entry = await createJournalEntry({
+            entryNo: `JE-PAYP-${existing.code}`,
+            date: salaryDate,
+            description: `سداد مسير رواتب ${existing.code} - ${existing.month}/${existing.year}`,
+            descriptionAr: `سداد مسير رواتب ${existing.code} - ${existing.month}/${existing.year}`,
+            lines: jeLines,
+            sourceType: 'PAYROLL_PAYMENT',
+            sourceId: existing.code,
+          }, tx)
+          paymentJournalEntryId = entry.id
+        } catch (entryError) {
+          console.error('Error creating payroll payment journal entry:', entryError)
+          throw entryError
+        }
+
+        return await tx.payrollRun.update({
+          where: { id },
+          data: {
+            status: 'PAID',
+            notes: body.notes !== undefined ? body.notes : existing.notes,
+            paymentJournalEntryId,
+            paymentAccountCode: bankAccountCode,
+            paymentAccountNameAr: bankAccountNameAr,
+          },
+          include: {
+            lines: {
+              include: {
+                employee: { select: { id: true, code: true, name: true, nameAr: true } },
+                project: { select: { id: true, code: true, name: true, nameAr: true } },
+                workTeam: { select: { id: true, code: true, name: true, nameAr: true } },
+              },
+            },
+          },
+        })
+      })
+
+      return NextResponse.json(result)
+    }
+
+    // تحديث عام (الحالة أو الملاحظات فقط)
     const payrollRun = await db.payrollRun.update({
       where: { id },
       data: {
@@ -149,6 +270,7 @@ export async function PUT(
           include: {
             employee: { select: { id: true, code: true, name: true, nameAr: true } },
             project: { select: { id: true, code: true, name: true, nameAr: true } },
+            workTeam: { select: { id: true, code: true, name: true, nameAr: true } },
           },
         },
       },
@@ -173,12 +295,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'مسير الرواتب غير موجود' }, { status: 404 })
     }
 
-    // Only allow deletion of DRAFT payroll runs
+    // لا يمكن حذف إلا المسيرات في حالة المسودة
     if (existing.status !== 'DRAFT') {
-      return NextResponse.json({ error: 'لا يمكن حذف مسير الرواتب إلا في حالة المسودة' }, { status: 400 })
+      return NextResponse.json({
+        error: 'لا يمكن حذف مسير الرواتب إلا في حالة المسودة',
+      }, { status: 400 })
     }
 
-    // Delete lines and payroll run in transaction
     await db.$transaction(async (tx: PrismaTransaction) => {
       await tx.payrollRunLine.deleteMany({ where: { payrollRunId: id } })
       await tx.payrollRun.delete({ where: { id } })

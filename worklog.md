@@ -2320,3 +2320,97 @@ Stage Summary:
 - ✅ **اختبار حقيقي فعلي**: إنشاء بنك الإنماء → ظهور فوري في تحصيل العملاء وسداد الموردين
 - ملفات مُعدَّلة: `src/components/shared/create-account-dialog.tsx` (جديد), `src/components/modules/accounting.tsx`, `src/app/api/accounts/route.ts`, `src/app/api/accounts/[id]/route.ts`, `src/app/api/salary-payments/route.ts`
 - تم تحديث Binaa-ERP-System.zip (1.4MB)
+
+---
+Task ID: HR-RESTRUCTURE-PAYROLL-STATEMENTS
+Agent: Main Agent (Information Systems Engineer)
+Task: إعادة تنظيم دورة الموارد البشرية + تحويل شاشة الرواتب إلى كشوف رواتب احترافية
+
+Work Log:
+
+**1. تشخيص التعديلات المفقودة:**
+- اكتشاف خطير: التعديلات المذكورة في الجلسة السابقة (PAYROLL-DETAIL-BREAKDOWN) لم تُحفظ فعلياً في الكود
+- `payroll-runs.tsx` كان بتاريخ 16 يونيو بدون أي من التعديلات المزعومة (TableFooter, totalBasic, showCurrency)
+- **السبب الجذري:** نموذج `PayrollRun` و `PayrollRunLine` لم يكونا موجودين في Prisma schema إطلاقاً
+- API كان يفشل بـ `db.payrollRun is undefined` لأن Prisma Client لم يولّد هذه النماذج
+
+**2. إضافة النماذج إلى Prisma schema:**
+- إضافة enum `SalaryType` (MONTHLY | HOURLY)
+- إضافة enum `PayrollRunStatus` (DRAFT → REVIEW → APPROVED → PARTIALLY_PAID → PAID)
+- توسيع نموذج `Employee` بحقول: `salaryType`, `referenceMonthlyHours`, `housingAllowance`, `transportAllowance`, `otherAllowances`, `hourlyRate`, `hasGosi`, `gosiPercentage`
+- إنشاء نموذج `PayrollRun` (code, month, year, status, totalAmount, totalDeductions, totalGosi, totalNet, journalEntryId, paymentJournalEntryId, paymentAccountCode, paymentAccountNameAr)
+- إنشاء نموذج `PayrollRunLine` (15 حقل راتب تفصيلي + روابط لموظف/مشروع/فريق)
+- إنشاء نموذج `SalaryPayment` (للسدات الفردية مستقبلاً)
+- إضافة العلاقات العكسية في `Employee`, `Project`, `WorkTeam`
+- تشغيل `bun run db:push` بنجاح
+
+**3. إعادة ترتيب تبويبات HR في `src/stores/app-store.ts`:**
+- الترتيب الجديد: `employees → employee-contracts → work-teams → attendance → payroll-runs → salaries → resource-distribution`
+- إضافة `payroll-runs` إلى `NavItem` type
+- إضافة `payroll-runs` إلى `navGroups.hr.items` بالترتيب الصحيح
+- تحديث `navItemLabels`: employees=الموظفون, employee-contracts=العقود, work-teams=فريق العمل, attendance=الساعات, payroll-runs=مسيرات الرواتب
+- إضافة `payroll-runs` إلى `navItemActivity` كـ 'both'
+
+**4. تسجيل الموديول في `src/app/page.tsx`:**
+- إضافة `PayrollRunsModule` dynamic import
+- إضافة `'payroll-runs': PayrollRunsModule` إلى `moduleMap`
+
+**5. إعادة بناء `src/app/api/payroll-runs/route.ts`:**
+- GET: قائمة المسيرات مع فلترة status/month/year/search
+- POST: إنشاء مسير جديد مع:
+  - **منع التكرار**: التحقق من عدم وجود مسير معتمد للفترة + منع مسودة مكررة
+  - **فلاتر احترافية**: selectionType = ALL | TEAM | PROJECT | EMPLOYEE
+  - **فلترة نوع الراتب**: salaryTypeFilter = MONTHLY | HOURLY | null
+  - **دعم الساعيين**: تجميع ساعات الحضور من `Attendance` للشهر المحدد
+  - **دعم الشهريين**: استخدام basicSalary + housingAllowance + transportAllowance + otherAllowances
+  - **التأمينات**: حساب gosiDeduction = totalEntitlement × (gosiPercentage / 100)
+  - **ربط المشروع/الفريق**: من teamMemberships للموظف
+  - توليد code تلقائي بصيغة PAY-YYYY-NNNN
+
+**6. إعادة بناء `src/app/api/payroll-runs/[id]/route.ts`:**
+- GET: تفاصيل المسير مع البنود + employee + project + workTeam
+- PUT: 3 حالات منفصلة:
+  - **APPROVED**: إنشاء قيد استحقاق فقط (مدين 8110/7120/7210 / دائن 3310) + تأمينات (8210/3830)
+  - **PAID**: التحقق من journalEntryId + bankAccountCode + totalNet > 0، ثم إنشاء قيد دفع مستقل (مدين 3310 / دائن البنك)
+  - تحديث عام للحالة والملاحظات
+- DELETE: حذف المسيرات في حالة DRAFT فقط
+- استخدام `createJournalEntry` من engine.ts (يمر عبر الحارس المحاسبي R1-R12)
+
+**7. إعادة بناء `src/components/modules/payroll-runs.tsx` بالكامل:**
+- تغيير الاسم من "مسيرات الرواتب" إلى "كشوف الرواتب"
+- **CreatePayrollRunDialog** موسّع:
+  - فلترة نوع الراتب (MONTHLY/HOURLY/ALL)
+  - 4 أنواع اختيار: ALL | TEAM | PROJECT | EMPLOYEE (موظفون محددون)
+  - عرض نوع راتب كل موظف في قائمة الموظفين
+- **PayrollRunDetail** بإعادة بناء كاملة:
+  - **15 عمود** في جدول التفاصيل: كود/موظف/نوع/أساسي/ساعات/معدل الساعة/سكن/نقل/أخرى/حوافز/استحقاق/خصومات/تأمينات/صافي/مشروع-فريق
+  - **TableFooter** بإجماليات كل عمود مالي (9 إجماليات)
+  - **printData** بـ 15 عمود + `showCurrency: true` + `totals[]` بـ 9 إجماليات
+  - **CSV export** بنفس 15 عمود
+  - 5 Summary Cards: عدد الموظفين/الاستحقاق/الخصومات/التأمينات/الصافي
+  - بطاقة اختيار حساب الدفع + JE Preview (للحالة APPROVED)
+  - بطاقة عرض القيود المرتبطة (journalEntryId + paymentJournalEntryId)
+  - 3 أزرار حالة: إرسال للمراجعة / اعتماد (قيد استحقاق) / صرف الرواتب (قيد دفع)
+
+**8. فحص الجودة:**
+- ✅ `bun run lint` → 0 أخطاء، 0 تحذيرات
+- ✅ Prisma schema متوافق (db:push ناجح)
+- ✅ API GET /api/payroll-runs → 200 (يرجع المسير الموجود)
+- ✅ API POST /api/payroll-runs → 201 (أنشأ PAY-2026-0001 بـ 7 موظفين، إجمالي 83,000)
+- ✅ API GET /api/payroll-runs/{id} → 200 (يرجع التفاصيل الكاملة مع البنود)
+- ✅ تبويبات HR بالترتيب الصحيح في navigation
+
+**9. ملاحظة حول الخادم:**
+- الخادم يعمل بشكل مستقر على المنفذ 3000
+- تم التحقق من الـ APIs عبر curl بنجاح
+- agent-browser يسبب عدم استقرار في الخادم عند الفتح المتكرر، لكن الاختبار المباشر للـ APIs أكد عمل النظام
+
+Stage Summary:
+- ✅ **نماذج Prisma جديدة**: PayrollRun + PayrollRunLine + SalaryPayment + توسيع Employee
+- ✅ **تبويبات HR بالترتيب المطلوب**: موظفين → عقود → فريق عمل → ساعات → مسيرات رواتب
+- ✅ **شاشة كشوف الرواتب**: فلاتر احترافية (مشروع/فريق/نوع راتب/موظفون محددون) + 15 عمود تفصيلي + TableFooter + 9 إجماليات
+- ✅ **منع التكرار**: لا يمكن إنشاء مسير مكرر لنفس الفترة
+- ✅ **دعم الساعيين**: تجميع ساعات الحضور تلقائياً من سجلات الحضور
+- ✅ **قيود محاسبية منفصلة**: قيد استحقاق (APPROVED) + قيد دفع مستقل (PAID)
+- ✅ **lint نظيف** + APIs مختبرة
+- ملفات مُعدَّلة: `prisma/schema.prisma`, `src/stores/app-store.ts`, `src/app/page.tsx`, `src/app/api/payroll-runs/route.ts`, `src/app/api/payroll-runs/[id]/route.ts`, `src/components/modules/payroll-runs.tsx`

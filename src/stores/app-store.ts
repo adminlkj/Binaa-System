@@ -11,7 +11,7 @@ export type NavItem =
   // محور تأجير المعدات (Rental Hub)
   | 'equipment' | 'rental-contracts' | 'delivery-orders' | 'timesheets' | 'rental-invoices' | 'rental-payments'
   // الموارد البشرية (feed both hubs)
-  | 'employees' | 'employee-contracts' | 'attendance' | 'salaries' | 'work-teams' | 'resource-distribution'
+  | 'employees' | 'employee-contracts' | 'work-teams' | 'attendance' | 'payroll-runs' | 'salaries' | 'resource-distribution'
   // سلسلة التوريد (feed both hubs)
   | 'purchase-requests' | 'purchase-orders' | 'goods-receipt' | 'supplier-invoices' | 'supplier-payments'
   // التشغيل والصيانة (equipment-related)
@@ -62,7 +62,7 @@ export const navGroups: NavGroupConfig[] = [
     label: { ar: 'الموارد البشرية', en: 'Human Resources' },
     icon: 'Users',
     color: 'text-violet-600',
-    items: ['employees', 'employee-contracts', 'attendance', 'salaries', 'work-teams', 'resource-distribution'],
+    items: ['employees', 'employee-contracts', 'work-teams', 'attendance', 'payroll-runs', 'salaries', 'resource-distribution'],
   },
   {
     key: 'supply-chain',
@@ -113,10 +113,11 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'rental-payments': { ar: 'تحصيلات التأجير', en: 'Rental Collections' },
   // الموارد البشرية
   'employees': { ar: 'الموظفون', en: 'Employees' },
-  'employee-contracts': { ar: 'عقود الموظفين', en: 'Employee Contracts' },
-  'attendance': { ar: 'الحضور والانصراف', en: 'Attendance' },
-  'salaries': { ar: 'الرواتب', en: 'Salaries' },
-  'work-teams': { ar: 'فرق العمل', en: 'Work Teams' },
+  'employee-contracts': { ar: 'العقود', en: 'Contracts' },
+  'work-teams': { ar: 'فريق العمل', en: 'Work Teams' },
+  'attendance': { ar: 'الساعات', en: 'Hours' },
+  'payroll-runs': { ar: 'مسيرات الرواتب', en: 'Payroll Runs' },
+  'salaries': { ar: 'سلف الرواتب', en: 'Salary Advances' },
   'resource-distribution': { ar: 'توزيع الموارد', en: 'Resource Distribution' },
   // سلسلة التوريد
   'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
@@ -163,6 +164,7 @@ export const navItemActivity: Record<NavItem, ActivityType> = {
   'employees': 'both',
   'employee-contracts': 'both',
   'attendance': 'both',
+  'payroll-runs': 'both',
   'salaries': 'both',
   'work-teams': 'both',
   'resource-distribution': 'both',

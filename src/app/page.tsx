@@ -41,6 +41,7 @@ const RentalPaymentsModule = dynamic(() => import('@/components/modules/rental-p
 const EmployeesModule = dynamic(() => import('@/components/modules/employees').then(m => ({ default: m.EmployeesModule })), { loading: ModuleLoading, ssr: false })
 const EmployeeContractsModule = dynamic(() => import('@/components/modules/employee-contracts').then(m => ({ default: m.EmployeeContractsModule })), { loading: ModuleLoading, ssr: false })
 const AttendanceModule = dynamic(() => import('@/components/modules/attendance').then(m => ({ default: m.AttendanceModule })), { loading: ModuleLoading, ssr: false })
+const PayrollRunsModule = dynamic(() => import('@/components/modules/payroll-runs').then(m => ({ default: m.PayrollRunsModule })), { loading: ModuleLoading, ssr: false })
 const SalariesModule = dynamic(() => import('@/components/modules/salaries').then(m => ({ default: m.SalariesModule })), { loading: ModuleLoading, ssr: false })
 const WorkTeamsModule = dynamic(() => import('@/components/modules/work-teams').then(m => ({ default: m.WorkTeamsModule })), { loading: ModuleLoading, ssr: false })
 const ResourceDistributionModule = dynamic(() => import('@/components/modules/resource-distribution').then(m => ({ default: m.ResourceDistributionModule })), { loading: ModuleLoading, ssr: false })
@@ -94,9 +95,10 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   // الموارد البشرية
   'employees': EmployeesModule,
   'employee-contracts': EmployeeContractsModule,
-  'attendance': AttendanceModule,
-  'salaries': SalariesModule,
   'work-teams': WorkTeamsModule,
+  'attendance': AttendanceModule,
+  'payroll-runs': PayrollRunsModule,
+  'salaries': SalariesModule,
   'resource-distribution': ResourceDistributionModule,
   // سلسلة التوريد
   'purchase-requests': PurchaseRequestsModule,

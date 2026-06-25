@@ -1,18 +1,29 @@
 'use client'
 
+// ============================================================================
+// كشوف الرواتب - Professional Payroll Statements
+// ============================================================================
+// Features:
+//   - Professional filters (project / work team / salary type / specific employees)
+//   - Full salary detail per employee (15 columns)
+//   - Aggregate totals via TableFooter
+//   - Print + CSV export with totals section
+//   - APPROVED creates accrual journal entry; PAID creates separate payment entry
+// ============================================================================
+
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, Trash2, RefreshCw, Download,
   Eye, ArrowRight, Wallet, Clock, Shield, Users,
-  ChevronRight, ChevronLeft, Send, CheckCircle2,
+  ChevronRight, ChevronLeft, Send, CheckCircle2, Filter, X,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from '@/components/ui/table'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
@@ -51,8 +62,10 @@ interface PayrollRunLine {
   totalEntitlement: number
   netSalary: number
   projectId: string | null
+  workTeamId: string | null
   employee: { id: string; code: string; name: string; nameAr: string | null; salaryType: SalaryType }
   project: { id: string; code: string; name: string; nameAr: string | null } | null
+  workTeam: { id: string; code: string; name: string; nameAr: string | null } | null
 }
 
 interface PayrollRun {
@@ -63,9 +76,13 @@ interface PayrollRun {
   status: PayrollRunStatus
   totalAmount: number
   totalDeductions: number
+  totalGosi: number
   totalNet: number
   notes: string | null
   journalEntryId: string | null
+  paymentJournalEntryId: string | null
+  paymentAccountCode: string | null
+  paymentAccountNameAr: string | null
   createdAt: string
   updatedAt: string
   _count?: { lines: number }
@@ -80,6 +97,10 @@ interface WorkTeam {
 
 interface Project {
   id: string; code: string; name: string
+}
+
+interface EmployeeOption {
+  id: string; code: string; name: string; nameAr: string | null; salaryType: SalaryType
 }
 
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
@@ -126,8 +147,9 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
   const [form, setForm] = useState({
     month: String(new Date().getMonth() + 1),
     year: String(new Date().getFullYear()),
-    selectionType: 'ALL' as 'ALL' | 'TEAM' | 'PROJECT',
+    selectionType: 'ALL' as 'ALL' | 'TEAM' | 'PROJECT' | 'EMPLOYEE',
     selectionIds: [] as string[],
+    salaryTypeFilter: '' as '' | 'MONTHLY' | 'HOURLY',
     notes: '',
   })
 
@@ -141,6 +163,12 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
     queryKey: ['projects-list'],
     queryFn: async () => { const res = await fetch('/api/projects/list'); if (!res.ok) return []; return res.json() },
     enabled: open,
+  })
+
+  const { data: employees = [] } = useQuery<EmployeeOption[]>({
+    queryKey: ['employees-list-active'],
+    queryFn: async () => { const res = await fetch('/api/employees'); if (!res.ok) return []; return res.json() },
+    enabled: open && form.selectionType === 'EMPLOYEE',
   })
 
   const createMutation = useMutation({
@@ -157,6 +185,7 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
       year: parseInt(form.year),
       selectionType: form.selectionType,
       selectionIds: form.selectionIds,
+      salaryTypeFilter: form.salaryTypeFilter || null,
       notes: form.notes || null,
     })
   }
@@ -174,11 +203,11 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t('إنشاء مسير رواتب', 'Create Payroll Run', lang)}</DialogTitle>
-          <DialogDescription>{t('إنشاء مسير رواتب جديد للموظفين', 'Create a new payroll run for employees', lang)}</DialogDescription>
+          <DialogTitle>{t('إنشاء كشف رواتب', 'Create Payroll Statement', lang)}</DialogTitle>
+          <DialogDescription>{t('إنشاء كشف رواتب جديد للموظفين بفلاتر احترافية', 'Create a new payroll statement with professional filters', lang)}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Month & Year */}
+          {/* Period */}
           <div className="space-y-2">
             <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">
               {t('الفترة', 'Period', lang)}
@@ -202,7 +231,26 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
             </div>
           </div>
 
-          {/* Selection Type */}
+          {/* Salary Type Filter */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm text-amber-700 border-b border-amber-200 pb-1 flex items-center gap-2">
+              <Wallet className="size-4" />
+              {t('فلترة نوع الراتب', 'Salary Type Filter', lang)}
+            </h4>
+            <Select
+              value={form.salaryTypeFilter}
+              onValueChange={(v: 'MONTHLY' | 'HOURLY') => setForm(f => ({ ...f, salaryTypeFilter: v }))}
+            >
+              <SelectTrigger><SelectValue placeholder={t('جميع الأنواع', 'All Types', lang)} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">{t('جميع الأنواع', 'All Types', lang)}</SelectItem>
+                <SelectItem value="MONTHLY">{t('شهري', 'Monthly', lang)}</SelectItem>
+                <SelectItem value="HOURLY">{t('بالساعة', 'Hourly', lang)}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Selection */}
           <div className="space-y-2">
             <h4 className="font-semibold text-sm text-violet-700 border-b border-violet-200 pb-1 flex items-center gap-2">
               <Users className="size-4" />
@@ -210,12 +258,18 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
             </h4>
             <div className="space-y-2">
               <Label>{t('نوع الاختيار *', 'Selection Type *', lang)}</Label>
-              <Select value={form.selectionType} onValueChange={(v: 'ALL' | 'TEAM' | 'PROJECT') => setForm(f => ({ ...f, selectionType: v, selectionIds: [] }))}>
+              <Select
+                value={form.selectionType}
+                onValueChange={(v: 'ALL' | 'TEAM' | 'PROJECT' | 'EMPLOYEE') =>
+                  setForm(f => ({ ...f, selectionType: v, selectionIds: [] }))
+                }
+              >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">{t('جميع الموظفين', 'All Employees', lang)}</SelectItem>
                   <SelectItem value="TEAM">{t('حسب فريق العمل', 'By Work Team', lang)}</SelectItem>
                   <SelectItem value="PROJECT">{t('حسب المشروع', 'By Project', lang)}</SelectItem>
+                  <SelectItem value="EMPLOYEE">{t('موظفون محددون', 'Specific Employees', lang)}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -229,12 +283,7 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
                     <p className="text-sm text-muted-foreground text-center py-4">{t('لا توجد فرق عمل', 'No work teams found', lang)}</p>
                   ) : teams.map(team => (
                     <label key={team.id} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.selectionIds.includes(team.id)}
-                        onChange={() => toggleSelection(team.id)}
-                        className="rounded border-gray-300"
-                      />
+                      <input type="checkbox" checked={form.selectionIds.includes(team.id)} onChange={() => toggleSelection(team.id)} className="rounded border-gray-300" />
                       <span className="text-sm">{team.code} - {team.name}{team.project ? ` (${team.project.name})` : ''}</span>
                     </label>
                   ))}
@@ -254,18 +303,36 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
                     <p className="text-sm text-muted-foreground text-center py-4">{t('لا توجد مشاريع', 'No projects found', lang)}</p>
                   ) : projects.map(project => (
                     <label key={project.id} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.selectionIds.includes(project.id)}
-                        onChange={() => toggleSelection(project.id)}
-                        className="rounded border-gray-300"
-                      />
+                      <input type="checkbox" checked={form.selectionIds.includes(project.id)} onChange={() => toggleSelection(project.id)} className="rounded border-gray-300" />
                       <span className="text-sm">{project.code} - {project.name}</span>
                     </label>
                   ))}
                 </div>
                 {form.selectionIds.length > 0 && (
                   <p className="text-xs text-muted-foreground">{t(`${form.selectionIds.length} مشاريع محددة`, `${form.selectionIds.length} projects selected`, lang)}</p>
+                )}
+              </div>
+            )}
+
+            {/* Specific Employees */}
+            {form.selectionType === 'EMPLOYEE' && (
+              <div className="space-y-2">
+                <Label>{t('اختر الموظفين', 'Select Employees', lang)}</Label>
+                <div className="border rounded-lg max-h-48 overflow-y-auto p-2 space-y-1">
+                  {employees.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">{t('لا يوجد موظفون', 'No employees found', lang)}</p>
+                  ) : employees.map(emp => (
+                    <label key={emp.id} className="flex items-center gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer">
+                      <input type="checkbox" checked={form.selectionIds.includes(emp.id)} onChange={() => toggleSelection(emp.id)} className="rounded border-gray-300" />
+                      <span className="text-sm">{emp.code} - {emp.nameAr || emp.name}</span>
+                      <Badge variant="outline" className="text-xs mr-auto">
+                        {emp.salaryType === 'MONTHLY' ? t('شهري', 'Monthly', lang) : t('بالساعة', 'Hourly', lang)}
+                      </Badge>
+                    </label>
+                  ))}
+                </div>
+                {form.selectionIds.length > 0 && (
+                  <p className="text-xs text-muted-foreground">{t(`${form.selectionIds.length} موظف محدد`, `${form.selectionIds.length} employees selected`, lang)}</p>
                 )}
               </div>
             )}
@@ -284,7 +351,7 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
             <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إنشاء المسير', 'Create Run', lang)}
+              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إنشاء الكشف', 'Create Statement', lang)}
             </Button>
           </DialogFooter>
         </form>
@@ -293,89 +360,122 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
   )
 }
 
-// ============ Payroll Run Detail View ============
+// ============ Payroll Run Detail View (15-column full breakdown) ============
 function PayrollRunDetail({ payrollRun, onBack }: {
   payrollRun: PayrollRun; onBack: () => void
 }) {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
-  const lines = payrollRun.lines || []
+  const lines: PayrollRunLine[] = payrollRun.lines ?? []
+
+  // Bank account selection for payment (APPROVED -> PAID)
   const [bankAccountId, setBankAccountId] = useState<string | null>(null)
   const [bankAccountCode, setBankAccountCode] = useState('1120')
   const [bankAccountNameAr, setBankAccountNameAr] = useState('البنك')
 
-  // Calculate totals from lines
-  const totalGosi = lines.reduce((sum, l) => sum + (l.gosiDeduction || 0), 0)
+  // ============ Column totals (15-column full breakdown) ============
+  const totalBasic = lines.reduce((sum, l) => sum + (l.salaryType === 'MONTHLY' ? (l.basicSalary || 0) : (l.hourlySalary || 0)), 0)
+  const totalHousing = lines.reduce((sum, l) => sum + (l.housingAllowance || 0), 0)
+  const totalTransport = lines.reduce((sum, l) => sum + (l.transportAllowance || 0), 0)
+  const totalOther = lines.reduce((sum, l) => sum + (l.otherAllowances || 0), 0)
   const totalOvertime = lines.reduce((sum, l) => sum + (l.overtimeAmount || 0), 0)
+  const totalGosi = lines.reduce((sum, l) => sum + (l.gosiDeduction || 0), 0)
+  const totalDeductions = lines.reduce((sum, l) => sum + (l.deductions || 0), 0)
+  const totalHours = lines.reduce((sum, l) => sum + (l.workHours || 0), 0)
 
-  // Compute JE preview lines for payroll payment
+  // JE preview lines for payroll payment (separate from accrual)
   const jeLines = useMemo<JePreviewLine[]>(() => {
-    const totalAmount = payrollRun.totalAmount
     const totalNet = payrollRun.totalNet
-    if (totalAmount <= 0 || !['APPROVED', 'PARTIALLY_PAID'].includes(payrollRun.status)) return []
-    const lines: JePreviewLine[] = []
-    // Debit: Salaries & Wages
-    lines.push({ accountCode: '8110', accountNameAr: 'رواتب وأجور', debit: totalAmount, credit: 0 })
-    // Debit: GOSI Expense if GOSI > 0
-    if (totalGosi > 0) {
-      lines.push({ accountCode: '8210', accountNameAr: 'تأمينات اجتماعية', debit: totalGosi, credit: 0 })
-    }
-    // Credit: Salaries Payable
-    lines.push({ accountCode: '3310', accountNameAr: 'رواتب مستحقة', debit: 0, credit: totalAmount })
-    // Credit: GOSI Payable if GOSI > 0
-    if (totalGosi > 0) {
-      lines.push({ accountCode: '3830', accountNameAr: 'تأمينات اجتماعية مستحقة', debit: 0, credit: totalGosi })
-    }
-    // Credit: Selected bank account
-    lines.push({ accountCode: bankAccountCode, accountNameAr: bankAccountNameAr, debit: 0, credit: totalNet })
-    return lines
-  }, [payrollRun.totalAmount, payrollRun.totalNet, payrollRun.status, totalGosi, bankAccountCode, bankAccountNameAr])
+    if (totalNet <= 0 || payrollRun.status !== 'APPROVED') return []
+    return [
+      { accountCode: '3310', accountNameAr: 'رواتب مستحقة', debit: totalNet, credit: 0 },
+      { accountCode: bankAccountCode, accountNameAr: bankAccountNameAr, debit: 0, credit: totalNet },
+    ]
+  }, [payrollRun.totalNet, payrollRun.status, bankAccountCode, bankAccountNameAr])
 
   const statusMutation = useMutation({
-    mutationFn: (status: PayrollRunStatus) => fetch(`/api/payroll-runs/${payrollRun.id}`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
-    }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    mutationFn: (payload: { status: PayrollRunStatus; bankAccountCode?: string; bankAccountNameAr?: string }) =>
+      fetch(`/api/payroll-runs/${payrollRun.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'Error') })
+        return r.json()
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payroll-runs'] }),
   })
 
-  const printData = useMemo(() => ({
+  // ============ Print data: 15 columns + showCurrency + 9 totals ============
+  const printData = {
+    showCurrency: true,
     columns: [
       { key: 'code', label: lang === 'ar' ? 'كود الموظف' : 'Emp. Code' },
       { key: 'name', label: lang === 'ar' ? 'الموظف' : 'Employee' },
       { key: 'salaryType', label: lang === 'ar' ? 'النوع' : 'Type' },
+      { key: 'basic', label: lang === 'ar' ? 'الراتب الأساسي' : 'Basic Salary', type: 'amount' as const },
       { key: 'hours', label: lang === 'ar' ? 'الساعات' : 'Hours' },
-      { key: 'totalEntitlement', label: lang === 'ar' ? 'الاستحقاق' : 'Entitlement' },
-      { key: 'deductions', label: lang === 'ar' ? 'الخصومات' : 'Deductions' },
-      { key: 'gosi', label: lang === 'ar' ? 'التأمينات' : 'GOSI' },
-      { key: 'netSalary', label: lang === 'ar' ? 'الصافي' : 'Net' },
+      { key: 'hourlyRate', label: lang === 'ar' ? 'معدل الساعة' : 'Hourly Rate', type: 'amount' as const },
+      { key: 'housing', label: lang === 'ar' ? 'بدل السكن' : 'Housing', type: 'amount' as const },
+      { key: 'transport', label: lang === 'ar' ? 'بدل النقل' : 'Transport', type: 'amount' as const },
+      { key: 'other', label: lang === 'ar' ? 'بدلات أخرى' : 'Other Allow.', type: 'amount' as const },
+      { key: 'overtime', label: lang === 'ar' ? 'حوافز/عمل إضافي' : 'Overtime', type: 'amount' as const },
+      { key: 'totalEntitlement', label: lang === 'ar' ? 'إجمالي الاستحقاق' : 'Total Entitlement', type: 'amount' as const },
+      { key: 'deductions', label: lang === 'ar' ? 'الخصومات' : 'Deductions', type: 'amount' as const },
+      { key: 'gosi', label: lang === 'ar' ? 'التأمينات' : 'GOSI', type: 'amount' as const },
+      { key: 'netSalary', label: lang === 'ar' ? 'الصافي' : 'Net', type: 'amount' as const },
       { key: 'project', label: lang === 'ar' ? 'المشروع' : 'Project' },
     ],
     rows: lines.map(l => ({
       code: l.employee.code,
-      name: l.employee.name,
+      name: l.employee.nameAr || l.employee.name,
       salaryType: l.salaryType === 'MONTHLY' ? (lang === 'ar' ? 'شهري' : 'Monthly') : (lang === 'ar' ? 'بالساعة' : 'Hourly'),
+      basic: (l.salaryType === 'MONTHLY' ? l.basicSalary : l.hourlySalary).toFixed(2),
       hours: l.salaryType === 'HOURLY' ? l.workHours.toFixed(1) : '—',
+      hourlyRate: l.salaryType === 'HOURLY' ? l.hourlyRate.toFixed(2) : '—',
+      housing: l.housingAllowance.toFixed(2),
+      transport: l.transportAllowance.toFixed(2),
+      other: l.otherAllowances.toFixed(2),
+      overtime: l.overtimeAmount.toFixed(2),
       totalEntitlement: l.totalEntitlement.toFixed(2),
       deductions: l.deductions.toFixed(2),
       gosi: l.gosiDeduction.toFixed(2),
       netSalary: l.netSalary.toFixed(2),
-      project: l.project?.name || '—',
+      project: l.project?.nameAr || l.project?.name || '—',
     })),
+    totals: [
+      { label: lang === 'ar' ? 'إجمالي الراتب الأساسي' : 'Total Basic Salary', value: totalBasic },
+      { label: lang === 'ar' ? 'إجمالي بدل السكن' : 'Total Housing', value: totalHousing },
+      { label: lang === 'ar' ? 'إجمالي بدل النقل' : 'Total Transport', value: totalTransport },
+      { label: lang === 'ar' ? 'إجمالي البدلات الأخرى' : 'Total Other Allowances', value: totalOther },
+      { label: lang === 'ar' ? 'إجمالي الحوافز/العمل الإضافي' : 'Total Overtime', value: totalOvertime },
+      { label: lang === 'ar' ? 'إجمالي الاستحقاق' : 'Total Entitlement', value: payrollRun.totalAmount },
+      { label: lang === 'ar' ? 'إجمالي الخصومات' : 'Total Deductions', value: totalDeductions },
+      { label: lang === 'ar' ? 'إجمالي التأمينات' : 'Total GOSI', value: totalGosi },
+      { label: lang === 'ar' ? 'إجمالي الصافي' : 'Total Net', value: payrollRun.totalNet, isGrand: true },
+    ],
     infoItems: [
-      { label: lang === 'ar' ? 'كود المسير' : 'Run Code', value: payrollRun.code },
+      { label: lang === 'ar' ? 'كود الكشف' : 'Statement Code', value: payrollRun.code },
       { label: lang === 'ar' ? 'الفترة' : 'Period', value: formatMonth(payrollRun.month, payrollRun.year, lang) },
       { label: lang === 'ar' ? 'الحالة' : 'Status', value: statusConfig[payrollRun.status].label[lang] },
       { label: lang === 'ar' ? 'عدد الموظفين' : 'Employees', value: String(lines.length) },
     ],
-  }), [lines, payrollRun, lang])
+  }
 
+  // ============ CSV export: same 15 columns ============
   const handleExport = () => {
     const columns: CSVColumn[] = [
       { key: 'code', label: t('كود الموظف', 'Emp. Code', lang) },
       { key: 'name', label: t('الموظف', 'Employee', lang) },
       { key: 'salaryType', label: t('النوع', 'Type', lang) },
+      { key: 'basic', label: t('الراتب الأساسي', 'Basic Salary', lang) },
       { key: 'hours', label: t('الساعات', 'Hours', lang) },
-      { key: 'totalEntitlement', label: t('الاستحقاق', 'Entitlement', lang) },
+      { key: 'hourlyRate', label: t('معدل الساعة', 'Hourly Rate', lang) },
+      { key: 'housing', label: t('بدل السكن', 'Housing', lang) },
+      { key: 'transport', label: t('بدل النقل', 'Transport', lang) },
+      { key: 'other', label: t('بدلات أخرى', 'Other Allow.', lang) },
+      { key: 'overtime', label: t('حوافز/عمل إضافي', 'Overtime', lang) },
+      { key: 'totalEntitlement', label: t('إجمالي الاستحقاق', 'Total Entitlement', lang) },
       { key: 'deductions', label: t('الخصومات', 'Deductions', lang) },
       { key: 'gosi', label: t('التأمينات', 'GOSI', lang) },
       { key: 'netSalary', label: t('الصافي', 'Net', lang) },
@@ -383,44 +483,54 @@ function PayrollRunDetail({ payrollRun, onBack }: {
     ]
     exportToCSV(lines.map(l => ({
       code: l.employee.code,
-      name: l.employee.name,
+      name: l.employee.nameAr || l.employee.name,
       salaryType: l.salaryType === 'MONTHLY' ? 'Monthly' : 'Hourly',
+      basic: (l.salaryType === 'MONTHLY' ? l.basicSalary : l.hourlySalary).toFixed(2),
       hours: l.salaryType === 'HOURLY' ? l.workHours.toFixed(1) : '—',
+      hourlyRate: l.salaryType === 'HOURLY' ? l.hourlyRate.toFixed(2) : '—',
+      housing: l.housingAllowance.toFixed(2),
+      transport: l.transportAllowance.toFixed(2),
+      other: l.otherAllowances.toFixed(2),
+      overtime: l.overtimeAmount.toFixed(2),
       totalEntitlement: l.totalEntitlement.toFixed(2),
       deductions: l.deductions.toFixed(2),
       gosi: l.gosiDeduction.toFixed(2),
       netSalary: l.netSalary.toFixed(2),
-      project: l.project?.name || '—',
-    })), `payroll-run-${payrollRun.code}`, columns)
+      project: l.project?.nameAr || l.project?.name || '—',
+    })), `payroll-statement-${payrollRun.code}`, columns)
   }
 
-  const getNextStatus = (): PayrollRunStatus | null => {
-    switch (payrollRun.status) {
-      case 'DRAFT': return 'REVIEW'
-      case 'REVIEW': return 'APPROVED'
-      default: return null
+  const handleApprove = () => {
+    if (confirm(t(
+      'هل تريد اعتماد كشف الرواتب؟ سيتم إنشاء قيد محاسبي للاستحقاق (مدين رواتب / دائن رواتب مستحقة).',
+      'Approve this payroll statement? An accrual journal entry will be created (Dr Salaries / Cr Salaries Payable).',
+      lang,
+    ))) {
+      statusMutation.mutate({ status: 'APPROVED' })
     }
   }
 
-  const getNextStatusLabel = () => {
-    switch (payrollRun.status) {
-      case 'DRAFT': return t('إرسال للمراجعة', 'Send for Review', lang)
-      case 'REVIEW': return t('اعتماد', 'Approve', lang)
-      default: return null
+  const handlePay = () => {
+    if (!bankAccountId) {
+      alert(t('يرجى اختيار حساب البنك للدفع أولاً', 'Please select a bank account for payment first', lang))
+      return
     }
-  }
-
-  const getNextStatusIcon = () => {
-    switch (payrollRun.status) {
-      case 'DRAFT': return <Send className="size-4" />
-      case 'REVIEW': return <CheckCircle2 className="size-4" />
-      default: return null
+    if (confirm(t(
+      'هل تريد صرف الرواتب؟ سيتم إنشاء قيد دفع مستقل (مدين رواتب مستحقة / دائن البنك).',
+      'Pay these salaries? A separate payment journal entry will be created (Dr Salaries Payable / Cr Bank).',
+      lang,
+    ))) {
+      statusMutation.mutate({
+        status: 'PAID',
+        bankAccountCode,
+        bankAccountNameAr,
+      })
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Back button + Header */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-center gap-3">
           <Button variant="outline" size="icon" onClick={onBack}>
@@ -436,24 +546,34 @@ function PayrollRunDetail({ payrollRun, onBack }: {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <PrintButton type="generic-table" data={printData} size="sm" />
-          <Button variant="outline" size="sm" onClick={handleExport} className="gap-1"><Download className="size-4" />{t('تصدير', 'Export', lang)}</Button>
-          {getNextStatus() && (
+          <Button variant="outline" size="sm" onClick={handleExport} className="gap-1">
+            <Download className="size-4" />{t('تصدير', 'Export', lang)}
+          </Button>
+          {payrollRun.status === 'DRAFT' && (
             <Button
-              className="gap-1 bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => {
-                const next = getNextStatus()
-                if (next && confirm(t(
-                  payrollRun.status === 'DRAFT' ? 'هل تريد إرسال المسير للمراجعة؟' : 'هل تريد اعتماد المسير؟ سيتم إنشاء قيود محاسبية.',
-                  payrollRun.status === 'DRAFT' ? 'Send this payroll run for review?' : 'Approve this payroll run? Journal entries will be created.',
-                  lang
-                ))) {
-                  statusMutation.mutate(next)
-                }
-              }}
+              className="gap-1 bg-amber-600 hover:bg-amber-700"
+              onClick={() => statusMutation.mutate({ status: 'REVIEW' })}
               disabled={statusMutation.isPending}
             >
-              {getNextStatusIcon()}
-              {getNextStatusLabel()}
+              <Send className="size-4" />{t('إرسال للمراجعة', 'Send for Review', lang)}
+            </Button>
+          )}
+          {payrollRun.status === 'REVIEW' && (
+            <Button
+              className="gap-1 bg-emerald-600 hover:bg-emerald-700"
+              onClick={handleApprove}
+              disabled={statusMutation.isPending}
+            >
+              <CheckCircle2 className="size-4" />{t('اعتماد', 'Approve', lang)}
+            </Button>
+          )}
+          {payrollRun.status === 'APPROVED' && (
+            <Button
+              className="gap-1 bg-green-600 hover:bg-green-700"
+              onClick={handlePay}
+              disabled={statusMutation.isPending}
+            >
+              <Wallet className="size-4" />{t('صرف الرواتب', 'Pay Salaries', lang)}
             </Button>
           )}
         </div>
@@ -490,85 +610,173 @@ function PayrollRunDetail({ payrollRun, onBack }: {
         </CardContent></Card>
       </div>
 
-      {/* Bank Account Selection & JE Preview - only for APPROVED or PARTIALLY_PAID */}
-      {['APPROVED', 'PARTIALLY_PAID'].includes(payrollRun.status) && payrollRun.totalAmount > 0 && (
+      {/* Bank Account Selection & Payment JE Preview - only for APPROVED */}
+      {payrollRun.status === 'APPROVED' && Number(payrollRun.totalNet) > 0 && (
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg">{t('حساب الدفع والقيد المحاسبي', 'Payment Account & Journal Entry', lang)}</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Wallet className="size-5 text-emerald-600" />
+              {t('حساب الدفع والقيد المحاسبي', 'Payment Account & Journal Entry', lang)}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <AccountSelector
-              roles={['BANK']}
+              roles={['BANK', 'CASH']}
               value={bankAccountId}
               onValueChange={(id, account) => {
                 setBankAccountId(id)
                 setBankAccountCode(account.code)
                 setBankAccountNameAr(account.nameAr || account.name)
               }}
-              label={t('حساب البنك للدفع', 'Bank Account for Payment', lang)}
-              placeholder={t('اختر حساب البنك...', 'Select bank account...', lang)}
+              label={t('حساب الدفع (بنك/صندوق)', 'Payment Account (Bank/Cash)', lang)}
+              placeholder={t('اختر حساب الدفع...', 'Select payment account...', lang)}
             />
-            <JePreview lines={jeLines} title={t('القيد المحاسبي المتوقع', 'Expected Journal Entry', lang)} />
+            <JePreview lines={jeLines} title={t('قيد الدفع المتوقع', 'Expected Payment Journal Entry', lang)} />
+            {statusMutation.isError && (
+              <p className="text-sm text-rose-600">{(statusMutation.error as Error)?.message}</p>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {/* Lines Table */}
+      {/* Journal Entry References */}
+      {(payrollRun.journalEntryId || payrollRun.paymentJournalEntryId) && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Shield className="size-4 text-teal-600" />
+              {t('القيود المحاسبية المرتبطة', 'Linked Journal Entries', lang)}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {payrollRun.journalEntryId && (
+              <div className="flex items-center justify-between p-2 bg-emerald-50 rounded">
+                <span className="text-emerald-700">{t('قيد الاستحقاق', 'Accrual Entry', lang)}</span>
+                <Badge variant="outline" className="font-mono">{payrollRun.journalEntryId.slice(-8)}</Badge>
+              </div>
+            )}
+            {payrollRun.paymentJournalEntryId && (
+              <div className="flex items-center justify-between p-2 bg-green-50 rounded">
+                <span className="text-green-700">
+                  {t('قيد الدفع', 'Payment Entry', lang)}
+                  {payrollRun.paymentAccountNameAr && ` (${payrollRun.paymentAccountNameAr})`}
+                </span>
+                <Badge variant="outline" className="font-mono">{payrollRun.paymentJournalEntryId.slice(-8)}</Badge>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Lines Table - 15-column full breakdown with TableFooter totals */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">{t('تفاصيل المسير', 'Run Details', lang)}</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="size-4 text-violet-600" />
+            {t('تفاصيل كشف الرواتب', 'Payroll Statement Details', lang)}
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <Table>
-              <TableHeader><TableRow>
-                <TableHead className="text-right">{t('الموظف', 'Employee', lang)}</TableHead>
-                <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
-                <TableHead className="text-right">{t('الساعات', 'Hours', lang)}</TableHead>
-                <TableHead className="text-right">{t('الاستحقاق', 'Entitlement', lang)}</TableHead>
-                <TableHead className="text-right">{t('الخصومات', 'Deductions', lang)}</TableHead>
-                <TableHead className="text-right">{t('التأمينات', 'GOSI', lang)}</TableHead>
-                <TableHead className="text-right">{t('الصافي', 'Net', lang)}</TableHead>
-                <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
-              </TableRow></TableHeader>
+            <Table className="min-w-[1500px]">
+              <TableHeader>
+                <TableRow className="bg-gray-50">
+                  <TableHead className="text-right whitespace-nowrap">{t('كود', 'Code', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('الموظف', 'Employee', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('النوع', 'Type', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('أساسي/أجر', 'Basic/Wage', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('الساعات', 'Hours', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('معدل الساعة', 'Hourly Rate', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('بدل سكن', 'Housing', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('بدل نقل', 'Transport', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('بدلات أخرى', 'Other', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('حوافز', 'Overtime', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap font-semibold">{t('الاستحقاق', 'Entitlement', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('الخصومات', 'Deductions', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('التأمينات', 'GOSI', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap font-semibold">{t('الصافي', 'Net', lang)}</TableHead>
+                  <TableHead className="text-right whitespace-nowrap">{t('المشروع/الفريق', 'Project/Team', lang)}</TableHead>
+                </TableRow>
+              </TableHeader>
               <TableBody>
                 {lines.map(line => (
-                  <TableRow key={line.id}>
+                  <TableRow key={line.id} className="hover:bg-gray-50">
+                    <TableCell className="font-mono text-xs">{line.employee.code}</TableCell>
                     <TableCell>
-                      <div>
-                        <span className="font-medium">{line.employee.name}</span>
-                        <span className="text-xs text-muted-foreground mr-1">{line.employee.code}</span>
-                      </div>
+                      <div className="font-medium text-sm">{line.employee.nameAr || line.employee.name}</div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="gap-1">
+                      <Badge variant="outline" className="gap-1 text-xs">
                         {line.salaryType === 'MONTHLY'
                           ? <><Wallet className="size-3" />{t('شهري', 'Monthly', lang)}</>
                           : <><Clock className="size-3" />{t('بالساعة', 'Hourly', lang)}</>
                         }
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-mono text-sm">
-                      {line.salaryType === 'HOURLY' ? line.workHours.toFixed(1) : '—'}
-                    </TableCell>
-                    <TableCell><MoneyDisplay value={line.totalEntitlement} lang={lang} size="sm" /></TableCell>
-                    <TableCell>
-                      {line.deductions > 0
-                        ? <MoneyDisplay value={line.deductions} lang={lang} size="sm" />
-                        : <span className="text-muted-foreground">—</span>
+                    <TableCell className="font-mono text-xs">
+                      {line.salaryType === 'MONTHLY'
+                        ? formatSAR(line.basicSalary)
+                        : formatSAR(line.hourlySalary)
                       }
                     </TableCell>
-                    <TableCell>
-                      {line.gosiDeduction > 0
-                        ? <MoneyDisplay value={line.gosiDeduction} lang={lang} size="sm" />
-                        : <span className="text-muted-foreground">—</span>
-                      }
+                    <TableCell className="font-mono text-xs">
+                      {line.salaryType === 'HOURLY' ? line.workHours.toFixed(1) : <span className="text-muted-foreground">—</span>}
                     </TableCell>
-                    <TableCell><MoneyDisplay value={line.netSalary} lang={lang} size="sm" bold /></TableCell>
-                    <TableCell className="text-sm">{line.project?.name || '—'}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {line.salaryType === 'HOURLY' ? formatSAR(line.hourlyRate) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {line.housingAllowance > 0 ? formatSAR(line.housingAllowance) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {line.transportAllowance > 0 ? formatSAR(line.transportAllowance) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {line.otherAllowances > 0 ? formatSAR(line.otherAllowances) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {line.overtimeAmount > 0 ? formatSAR(line.overtimeAmount) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs font-semibold">
+                      {formatSAR(line.totalEntitlement)}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-rose-600">
+                      {line.deductions > 0 ? formatSAR(line.deductions) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-orange-600">
+                      {line.gosiDeduction > 0 ? formatSAR(line.gosiDeduction) : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs font-bold text-emerald-700">
+                      {formatSAR(line.netSalary)}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <div>{line.project?.nameAr || line.project?.name || <span className="text-muted-foreground">—</span>}</div>
+                      {line.workTeam && (
+                        <div className="text-[10px] text-muted-foreground">{line.workTeam.nameAr || line.workTeam.name}</div>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
+              <TableFooter>
+                <TableRow className="bg-gray-100 font-bold">
+                  <TableCell colSpan={3} className="text-right">
+                    {t('الإجماليات', 'Totals', lang)} ({lines.length} {t('موظف', 'employees', lang)})
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{formatSAR(totalBasic)}</TableCell>
+                  <TableCell className="font-mono text-xs">{totalHours.toFixed(1)}</TableCell>
+                  <TableCell className="text-muted-foreground">—</TableCell>
+                  <TableCell className="font-mono text-xs">{formatSAR(totalHousing)}</TableCell>
+                  <TableCell className="font-mono text-xs">{formatSAR(totalTransport)}</TableCell>
+                  <TableCell className="font-mono text-xs">{formatSAR(totalOther)}</TableCell>
+                  <TableCell className="font-mono text-xs">{formatSAR(totalOvertime)}</TableCell>
+                  <TableCell className="font-mono text-xs font-bold">{formatSAR(payrollRun.totalAmount)}</TableCell>
+                  <TableCell className="font-mono text-xs text-rose-600">{formatSAR(totalDeductions)}</TableCell>
+                  <TableCell className="font-mono text-xs text-orange-600">{formatSAR(totalGosi)}</TableCell>
+                  <TableCell className="font-mono text-xs font-bold text-emerald-700">{formatSAR(payrollRun.totalNet)}</TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+              </TableFooter>
             </Table>
           </div>
         </CardContent>
@@ -577,7 +785,7 @@ function PayrollRunDetail({ payrollRun, onBack }: {
   )
 }
 
-// ============ Main Payroll Runs Module ============
+// ============ Main Payroll Runs Module (كشوف الرواتب) ============
 export function PayrollRunsModule() {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
@@ -610,11 +818,11 @@ export function PayrollRunsModule() {
 
   const printData = useMemo(() => ({
     columns: [
-      { key: 'code', label: lang === 'ar' ? 'كود المسير' : 'Run Code' },
+      { key: 'code', label: lang === 'ar' ? 'كود الكشف' : 'Statement Code' },
       { key: 'period', label: lang === 'ar' ? 'الفترة' : 'Period' },
       { key: 'employees', label: lang === 'ar' ? 'عدد الموظفين' : 'Employees' },
-      { key: 'totalAmount', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
-      { key: 'totalNet', label: lang === 'ar' ? 'الصافي' : 'Net' },
+      { key: 'totalAmount', label: lang === 'ar' ? 'الإجمالي' : 'Total', type: 'amount' as const },
+      { key: 'totalNet', label: lang === 'ar' ? 'الصافي' : 'Net', type: 'amount' as const },
       { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
     ],
     rows: filtered.map(run => ({
@@ -632,7 +840,7 @@ export function PayrollRunsModule() {
 
   const handleExport = () => {
     const columns: CSVColumn[] = [
-      { key: 'code', label: t('كود المسير', 'Run Code', lang) },
+      { key: 'code', label: t('كود الكشف', 'Statement Code', lang) },
       { key: 'period', label: t('الفترة', 'Period', lang) },
       { key: 'employees', label: t('عدد الموظفين', 'Employees', lang) },
       { key: 'totalAmount', label: t('الإجمالي', 'Total', lang) },
@@ -646,15 +854,15 @@ export function PayrollRunsModule() {
       totalAmount: run.totalAmount.toFixed(2),
       totalNet: run.totalNet.toFixed(2),
       status: run.status,
-    })), `payroll-runs-${new Date().toISOString().slice(0, 10)}`, columns)
+    })), `payroll-statements-${new Date().toISOString().slice(0, 10)}`, columns)
   }
 
-  // Detail view (conditional returns after all hooks)
+  // Detail view
   if (selectedRunId && selectedRun) {
     return (
       <ModuleLayout
-        title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
-        subtitle={{ ar: 'إدارة مسيرات رواتب الموظفين', en: 'Manage employee payroll runs' }}
+        title={{ ar: 'كشوف الرواتب', en: 'Payroll Statements' }}
+        subtitle={{ ar: 'كشف تفصيلي برواتب الموظفين مع القيود المحاسبية', en: 'Detailed payroll statements with journal entries' }}
       >
         <PayrollRunDetail payrollRun={selectedRun} onBack={() => setSelectedRunId(null)} />
       </ModuleLayout>
@@ -664,8 +872,8 @@ export function PayrollRunsModule() {
   if (selectedRunId && isLoadingDetail) {
     return (
       <ModuleLayout
-        title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
-        subtitle={{ ar: 'إدارة مسيرات رواتب الموظفين', en: 'Manage employee payroll runs' }}
+        title={{ ar: 'كشوف الرواتب', en: 'Payroll Statements' }}
+        subtitle={{ ar: 'كشف تفصيلي برواتب الموظفين', en: 'Detailed payroll statements' }}
       >
         <div className="flex items-center justify-center py-20">
           <RefreshCw className="size-8 animate-spin text-muted-foreground" />
@@ -676,15 +884,15 @@ export function PayrollRunsModule() {
 
   return (
     <ModuleLayout
-      title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
-      subtitle={{ ar: 'إدارة مسيرات رواتب الموظفين', en: 'Manage employee payroll runs' }}
+      title={{ ar: 'كشوف الرواتب', en: 'Payroll Statements' }}
+      subtitle={{ ar: 'إدارة كشوف رواتب الموظفين بفلاتر احترافية وتفاصيل كاملة', en: 'Manage payroll statements with professional filters and full details' }}
       actions={
         <div className="flex items-center gap-2">
           <PrintButton type="generic-table" data={printData} size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport}><Download className="size-4" /></Button>
           <Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="size-4" />{t('مسير جديد', 'New Run', lang)}
+            <Plus className="size-4" />{t('كشف جديد', 'New Statement', lang)}
           </Button>
         </div>
       }
@@ -695,7 +903,7 @@ export function PayrollRunsModule() {
           <div className="relative flex-1">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
             <Input
-              placeholder={t('بحث بكود المسير...', 'Search by run code...', lang)}
+              placeholder={t('بحث بكود الكشف...', 'Search by statement code...', lang)}
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pr-9"
@@ -727,18 +935,17 @@ export function PayrollRunsModule() {
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-10">
             <FileText className="size-12 text-gray-300" />
-            <p className="text-muted-foreground">{t('لا توجد مسيرات رواتب', 'No payroll runs', lang)}</p>
+            <p className="text-muted-foreground">{t('لا توجد كشوف رواتب', 'No payroll statements', lang)}</p>
             <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setCreateDialogOpen(true)}>
-              <Plus className="size-4 mr-1" />{t('إنشاء مسير', 'Create Run', lang)}
+              <Plus className="size-4 mr-1" />{t('إنشاء كشف', 'Create Statement', lang)}
             </Button>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <Table>
               <TableHeader><TableRow>
-                <TableHead className="text-right">{t('كود المسير', 'Run Code', lang)}</TableHead>
-                <TableHead className="text-right">{t('الشهر', 'Month', lang)}</TableHead>
-                <TableHead className="text-right">{t('السنة', 'Year', lang)}</TableHead>
+                <TableHead className="text-right">{t('كود الكشف', 'Code', lang)}</TableHead>
+                <TableHead className="text-right">{t('الفترة', 'Period', lang)}</TableHead>
                 <TableHead className="text-right">{t('عدد الموظفين', 'Employees', lang)}</TableHead>
                 <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
                 <TableHead className="text-right">{t('الصافي', 'Net', lang)}</TableHead>
@@ -750,7 +957,6 @@ export function PayrollRunsModule() {
                   <TableRow key={run.id} className="cursor-pointer hover:bg-gray-50" onClick={() => setSelectedRunId(run.id)}>
                     <TableCell className="font-medium font-mono">{run.code}</TableCell>
                     <TableCell>{formatMonth(run.month, run.year, lang)}</TableCell>
-                    <TableCell className="font-mono">{run.year}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant="outline" className="gap-1">
                         <Users className="size-3" />
@@ -771,7 +977,7 @@ export function PayrollRunsModule() {
                             size="icon"
                             className="size-8 text-rose-600 hover:text-rose-700"
                             onClick={() => {
-                              if (confirm(t('هل أنت متأكد من حذف المسير؟', 'Are you sure you want to delete this run?', lang))) {
+                              if (confirm(t('هل أنت متأكد من حذف الكشف؟', 'Are you sure you want to delete this statement?', lang))) {
                                 deleteMutation.mutate(run.id)
                               }
                             }}

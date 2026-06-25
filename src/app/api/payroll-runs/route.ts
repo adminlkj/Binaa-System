@@ -1,6 +1,11 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
+// ============================================================================
+// مسيرات الرواتب - GET (قائمة) + POST (إنشاء)
+// المصدر الوحيد للحقيقة للقيود: JournalEntry المرتبط عبر journalEntryId
+// ============================================================================
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -38,8 +43,10 @@ export async function POST(request: Request) {
     const month = parseInt(body.month)
     const year = parseInt(body.year)
     const notes = body.notes || null
-    const selectionType = body.selectionType || 'ALL' // ALL | TEAM | PROJECT
+    // الفلاتر الاحترافية: ALL | TEAM | PROJECT | EMPLOYEE | SALARY_TYPE
+    const selectionType: string = body.selectionType || 'ALL'
     const selectionIds: string[] = body.selectionIds || []
+    const salaryTypeFilter: 'MONTHLY' | 'HOURLY' | null = body.salaryTypeFilter || null
 
     // Validate month/year
     if (!month || month < 1 || month > 12) {
@@ -47,6 +54,28 @@ export async function POST(request: Request) {
     }
     if (!year || year < 2000) {
       return NextResponse.json({ error: 'سنة غير صالحة' }, { status: 400 })
+    }
+
+    // ============ منع التكرار: التحقق من عدم وجود مسير لنفس الشهر/السنة ============
+    const existingRun = await db.payrollRun.findFirst({
+      where: { month, year, status: { not: 'DRAFT' } },
+      select: { id: true, code: true, status: true },
+    })
+    if (existingRun) {
+      return NextResponse.json({
+        error: `يوجد مسير رواتب معتمد بالفعل للفترة ${month}/${year} (${existingRun.code}). لا يمكن إنشاء مسير مكرر لنفس الفترة`,
+      }, { status: 400 })
+    }
+
+    // السماح بمسير مسودة واحد فقط لكل فترة
+    const existingDraft = await db.payrollRun.findFirst({
+      where: { month, year, status: 'DRAFT' },
+      select: { id: true, code: true },
+    })
+    if (existingDraft) {
+      return NextResponse.json({
+        error: `يوجد مسير رواتب مسودة للفترة ${month}/${year} (${existingDraft.code}). يرجى حذفه أو اعتماده قبل إنشاء مسير جديد`,
+      }, { status: 400 })
     }
 
     // Generate code: PAY-{year}-{sequential 4-digit number}
@@ -64,88 +93,79 @@ export async function POST(request: Request) {
     }
     const code = `${prefix}${String(nextNum).padStart(4, '0')}`
 
-    // Get employees based on selection
-    let employees: Array<{
-      id: string; code: string; name: string; nameAr: string | null
-      salaryType: string; basicSalary: number
-      housingAllowance: number; transportAllowance: number; otherAllowances: number
-      referenceMonthlySalary: number; referenceMonthlyHours: number
-      projectId: string | null; hasGosi: boolean; gosiPercentage: number
-      teamMemberships: Array<{ team: { projectId: string | null } }>
-    }> = []
-
-    if (selectionType === 'ALL') {
-      employees = await db.employee.findMany({
-        where: { isActive: true, status: 'ACTIVE' },
-        select: {
-          id: true, code: true, name: true, nameAr: true,
-          salaryType: true, basicSalary: true,
-          housingAllowance: true, transportAllowance: true, otherAllowances: true,
-          referenceMonthlySalary: true, referenceMonthlyHours: true,
-          projectId: true, hasGosi: true, gosiPercentage: true,
-          teamMemberships: { select: { team: { select: { projectId: true } } } },
-        },
-        orderBy: { code: 'asc' },
-      })
-    } else if (selectionType === 'TEAM') {
-      // Get employees who are members of the specified teams
-      employees = await db.employee.findMany({
-        where: {
-          isActive: true, status: 'ACTIVE',
-          teamMemberships: { some: { teamId: { in: selectionIds } } },
-        },
-        select: {
-          id: true, code: true, name: true, nameAr: true,
-          salaryType: true, basicSalary: true,
-          housingAllowance: true, transportAllowance: true, otherAllowances: true,
-          referenceMonthlySalary: true, referenceMonthlyHours: true,
-          projectId: true, hasGosi: true, gosiPercentage: true,
-          teamMemberships: { select: { team: { select: { projectId: true } } } },
-        },
-        orderBy: { code: 'asc' },
-      })
-    } else if (selectionType === 'PROJECT') {
-      // Get employees assigned to specified projects (directly or via team)
-      employees = await db.employee.findMany({
-        where: {
-          isActive: true, status: 'ACTIVE',
-          OR: [
-            { projectId: { in: selectionIds } },
-            { teamMemberships: { some: { team: { projectId: { in: selectionIds } } } } },
-          ],
-        },
-        select: {
-          id: true, code: true, name: true, nameAr: true,
-          salaryType: true, basicSalary: true,
-          housingAllowance: true, transportAllowance: true, otherAllowances: true,
-          referenceMonthlySalary: true, referenceMonthlyHours: true,
-          projectId: true, hasGosi: true, gosiPercentage: true,
-          teamMemberships: { select: { team: { select: { projectId: true } } } },
-        },
-        orderBy: { code: 'asc' },
-      })
+    // ============ بناء شرط WHERE للموظفين حسب نوع الاختيار ============
+    const employeeWhere: Record<string, unknown> = {
+      isActive: true,
+      status: 'ACTIVE',
     }
 
+    if (salaryTypeFilter) {
+      employeeWhere.salaryType = salaryTypeFilter
+    }
+
+    if (selectionType === 'TEAM' && selectionIds.length > 0) {
+      employeeWhere.teamMemberships = { some: { teamId: { in: selectionIds } } }
+    } else if (selectionType === 'PROJECT' && selectionIds.length > 0) {
+      // الموظفون الأعضاء في فرق تنتمي للمشروع المحدد
+      employeeWhere.teamMemberships = {
+        some: { team: { projectId: { in: selectionIds } } },
+      }
+    } else if (selectionType === 'EMPLOYEE' && selectionIds.length > 0) {
+      employeeWhere.id = { in: selectionIds }
+    }
+
+    const employees = await db.employee.findMany({
+      where: employeeWhere,
+      select: {
+        id: true, code: true, name: true, nameAr: true,
+        salaryType: true, basicSalary: true,
+        housingAllowance: true, transportAllowance: true, otherAllowances: true,
+        hourlyRate: true, referenceMonthlyHours: true,
+        hasGosi: true, gosiPercentage: true,
+        teamMemberships: {
+          select: {
+            teamId: true,
+            team: { select: { id: true, projectId: true } },
+          },
+        },
+      },
+      orderBy: { code: 'asc' },
+    })
+
     if (employees.length === 0) {
-      return NextResponse.json({ error: 'لم يتم العثور على موظفين مطابقين' }, { status: 400 })
+      return NextResponse.json({
+        error: 'لم يتم العثور على موظفين مطابقين لمعايير الفلترة',
+      }, { status: 400 })
     }
 
     // Calculate date range for attendance (for hourly employees)
     const startDate = new Date(year, month - 1, 1)
     const endDate = new Date(year, month, 1) // first day of next month
 
-    // Build lines data
-    const linesData: Array<{
-      employeeId: string; salaryType: string
-      basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number
-      workHours: number; hourlyRate: number; hourlySalary: number
-      overtimeAmount: number; deductions: number; gosiDeduction: number
-      totalEntitlement: number; netSalary: number
+    // ============ بناء بنود المسير ============
+    type LineData = {
+      employeeId: string
+      workTeamId: string | null
       projectId: string | null
-    }> = []
+      salaryType: 'MONTHLY' | 'HOURLY'
+      basicSalary: number
+      housingAllowance: number
+      transportAllowance: number
+      otherAllowances: number
+      hourlyRate: number
+      workHours: number
+      hourlySalary: number
+      overtimeAmount: number
+      deductions: number
+      gosiDeduction: number
+      totalEntitlement: number
+      netSalary: number
+    }
 
+    const linesData: LineData[] = []
     let totalAmount = 0
     let totalDeductions = 0
+    let totalGosi = 0
     let totalNet = 0
 
     for (const emp of employees) {
@@ -161,13 +181,14 @@ export async function POST(request: Request) {
       let lineOtherAllowances = 0
 
       if (emp.salaryType === 'MONTHLY') {
-        lineBasicSalary = emp.basicSalary
-        lineHousingAllowance = emp.housingAllowance
-        lineTransportAllowance = emp.transportAllowance
-        lineOtherAllowances = emp.otherAllowances
-        lineTotalEntitlement = lineBasicSalary + lineHousingAllowance + lineTransportAllowance + lineOtherAllowances
+        lineBasicSalary = Number(emp.basicSalary)
+        lineHousingAllowance = Number(emp.housingAllowance)
+        lineTransportAllowance = Number(emp.transportAllowance)
+        lineOtherAllowances = Number(emp.otherAllowances)
+        lineTotalEntitlement =
+          lineBasicSalary + lineHousingAllowance + lineTransportAllowance + lineOtherAllowances
       } else {
-        // HOURLY: get attendance hours for the month
+        // HOURLY: اجلب ساعات الحضور للشهر المحدد من سجلات الحضور
         const attendance = await db.attendance.findMany({
           where: {
             employeeId: emp.id,
@@ -176,51 +197,59 @@ export async function POST(request: Request) {
           select: { workHours: true, overtimeHours: true },
         })
 
-        lineWorkHours = attendance.reduce((sum, a) => sum + (a.workHours || 0), 0)
-        const totalOvertimeHours = attendance.reduce((sum, a) => sum + (a.overtimeHours || 0), 0)
+        lineWorkHours = attendance.reduce(
+          (sum, a) => sum + Number(a.workHours || 0),
+          0,
+        )
+        const totalOvertimeHours = attendance.reduce(
+          (sum, a) => sum + Number(a.overtimeHours || 0),
+          0,
+        )
 
-        lineHourlyRate = emp.referenceMonthlyHours > 0
-          ? emp.referenceMonthlySalary / emp.referenceMonthlyHours
-          : 0
+        lineHourlyRate = Number(emp.hourlyRate || 0)
         lineHourlySalary = lineWorkHours * lineHourlyRate
-        lineOvertimeAmount = totalOvertimeHours * lineHourlyRate
+        lineOvertimeAmount = totalOvertimeHours * lineHourlyRate * 1.5 // عمل إضافي بمعدل 1.5x
         lineTotalEntitlement = lineHourlySalary + lineOvertimeAmount
       }
 
-      // GOSI deduction
+      // استقطاع التأمينات الاجتماعية
       const gosiDeduction = emp.hasGosi
-        ? lineTotalEntitlement * (emp.gosiPercentage / 100)
+        ? lineTotalEntitlement * (Number(emp.gosiPercentage) / 100)
         : 0
 
       const netSalary = lineTotalEntitlement - lineDeductions - gosiDeduction
 
-      // Determine projectId: from employee.projectId, or from employee's team's projectId
-      let lineProjectId = emp.projectId
-      if (!lineProjectId && emp.teamMemberships.length > 0) {
-        const teamProject = emp.teamMemberships.find(tm => tm.team.projectId)
-        lineProjectId = teamProject?.team.projectId || null
+      // تحديد فريق العمل والمشروع من عضوية الموظف في الفرق
+      let lineWorkTeamId: string | null = null
+      let lineProjectId: string | null = null
+      if (emp.teamMemberships.length > 0) {
+        const firstMembership = emp.teamMemberships[0]
+        lineWorkTeamId = firstMembership.teamId
+        lineProjectId = firstMembership.team.projectId || null
       }
 
       linesData.push({
         employeeId: emp.id,
+        workTeamId: lineWorkTeamId,
+        projectId: lineProjectId,
         salaryType: emp.salaryType,
         basicSalary: lineBasicSalary,
         housingAllowance: lineHousingAllowance,
         transportAllowance: lineTransportAllowance,
         otherAllowances: lineOtherAllowances,
-        workHours: lineWorkHours,
         hourlyRate: lineHourlyRate,
+        workHours: lineWorkHours,
         hourlySalary: lineHourlySalary,
         overtimeAmount: lineOvertimeAmount,
         deductions: lineDeductions,
         gosiDeduction,
         totalEntitlement: lineTotalEntitlement,
         netSalary,
-        projectId: lineProjectId,
       })
 
       totalAmount += lineTotalEntitlement
-      totalDeductions += lineDeductions + gosiDeduction
+      totalDeductions += lineDeductions
+      totalGosi += gosiDeduction
       totalNet += netSalary
     }
 
@@ -233,6 +262,7 @@ export async function POST(request: Request) {
         status: 'DRAFT',
         totalAmount,
         totalDeductions,
+        totalGosi,
         totalNet,
         notes,
         lines: {
@@ -243,7 +273,8 @@ export async function POST(request: Request) {
         lines: {
           include: {
             employee: { select: { id: true, code: true, name: true, nameAr: true } },
-            project: { select: { id: true, code: true, name: true } },
+            project: { select: { id: true, code: true, name: true, nameAr: true } },
+            workTeam: { select: { id: true, code: true, name: true, nameAr: true } },
           },
         },
         _count: { select: { lines: true } },

@@ -175,6 +175,19 @@ enum SalaryStatus {
   PAID
 }
 
+enum SalaryType {
+  MONTHLY
+  HOURLY
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+}
+
 enum GoodsReceiptStatus {
   PENDING
   PARTIAL
@@ -478,6 +491,14 @@ model Employee {
   residenceExpiry DateTime?
   hireDate        DateTime?
   basicSalary     Decimal        @default(0)
+  salaryType      SalaryType     @default(MONTHLY) // شهري أو بالساعة
+  referenceMonthlyHours Decimal  @default(240) // عدد ساعات المرجعية الشهرية للموظفين بالساعة
+  housingAllowance Decimal       @default(0)
+  transportAllowance Decimal     @default(0)
+  otherAllowances Decimal        @default(0)
+  hourlyRate      Decimal        @default(0) // معدل الساعة للموظفين بالساعة
+  hasGosi         Boolean        @default(false) // خاضع للتأمينات الاجتماعية
+  gosiPercentage  Decimal        @default(0) // نسبة استقطاع التأمينات (مثال: 9.75)
   status          EmployeeStatus @default(ACTIVE)
   branchId        String
   phone           String?
@@ -496,6 +517,8 @@ model Employee {
   teamMemberships TeamMember[]
   operatorLogs    EquipmentOperation[]
   laborCosts      LaborCost[]
+  payrollLines    PayrollRunLine[]
+  salaryPayments  SalaryPayment[]
 
   @@index([branchId])
   @@index([status])
@@ -580,6 +603,7 @@ model WorkTeam {
 
   project Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
   members TeamMember[]
+  payrollLines PayrollRunLine[]
 
   @@index([projectId])
   @@index([isActive])
@@ -599,6 +623,91 @@ model TeamMember {
 
   @@index([teamId])
   @@index([employeeId])
+}
+
+// ============ PAYROLL RUNS (مسيرات الرواتب) ============
+// مسير الرواتب يجمع عدة موظفين لفترة شهرية معينة.
+// المصدر الوحيد للحقيقة في قيود الرواتب هو JournalEntry المرتبط عبر journalEntryId.
+
+model PayrollRun {
+  id                   String           @id @default(cuid())
+  code                 String           @unique // PAY-YYYY-NNNN
+  month                Int              // 1-12
+  year                 Int
+  status               PayrollRunStatus @default(DRAFT)
+  totalAmount          Decimal          @default(0) // إجمالي الاستحقاق
+  totalDeductions      Decimal          @default(0) // إجمالي الخصومات
+  totalGosi            Decimal          @default(0) // إجمالي التأمينات
+  totalNet             Decimal          @default(0) // إجمالي الصافي
+  notes                String?
+  journalEntryId       String?          // قيد الاستحقاق (مدين 8110/7120/7210 / دائن 3310)
+  paymentJournalEntryId String?         // قيد الدفع (مدين 3310 / دائن البنك/الصندوق)
+  paymentAccountCode   String?          // كود الحساب الذي تم الدفع منه (بنك/صندوق)
+  paymentAccountNameAr String?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  lines           PayrollRunLine[]
+  salaryPayments  SalaryPayment[]
+
+  @@index([month, year])
+  @@index([status])
+  @@index([year])
+}
+
+model PayrollRunLine {
+  id                 String     @id @default(cuid())
+  payrollRunId       String
+  employeeId         String
+  projectId          String?    // ربط سطر المسير بمشروع معين
+  workTeamId         String?    // ربط سطر المسير بفريق عمل
+  salaryType         SalaryType // MONTHLY أو HOURLY
+  basicSalary        Decimal    @default(0) // الراتب الأساسي (للشهريين)
+  housingAllowance   Decimal    @default(0) // بدل السكن
+  transportAllowance Decimal    @default(0) // بدل النقل
+  otherAllowances    Decimal    @default(0) // بدلات أخرى
+  hourlyRate         Decimal    @default(0) // معدل الساعة (للساعيين)
+  workHours          Decimal    @default(0) // عدد الساعات (للساعيين)
+  hourlySalary       Decimal    @default(0) // أجر الساعات = hourlyRate * workHours
+  overtimeAmount     Decimal    @default(0) // حوافز/عمل إضافي
+  deductions         Decimal    @default(0) // الخصومات
+  gosiDeduction      Decimal    @default(0) // استقطاع التأمينات
+  totalEntitlement   Decimal    @default(0) // إجمالي الاستحقاق
+  netSalary          Decimal    @default(0) // الصافي
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  payrollRun PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  workTeam   WorkTeam?  @relation(fields: [workTeamId], references: [id], onDelete: SetNull)
+
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@index([projectId])
+  @@index([workTeamId])
+  @@index([salaryType])
+}
+
+model SalaryPayment {
+  id              String   @id @default(cuid())
+  payrollRunId    String?
+  employeeId      String
+  amount          Decimal  @default(0)
+  paymentDate     DateTime @default(now())
+  paymentMethod   String   @default("BANK_TRANSFER") // BANK_TRANSFER | CASH | CHEQUE
+  reference       String?  // رقم مرجعي (رقم التحويل، رقم الشيك)
+  notes           String?
+  journalEntryId  String?  // قيد سداد الراتب (مدين 3310 / دائن البنك/الصندوق)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  payrollRun PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: SetNull)
+  employee   Employee   @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([payrollRunId])
+  @@index([employeeId])
+  @@index([paymentDate])
 }
 
 // ============ PROJECTS ============
@@ -648,6 +757,7 @@ model Project {
   equipmentOperations    EquipmentOperation[]
   salaries               Salary[]
   deliveryOrders         EquipmentDeliveryOrder[]
+  payrollLines           PayrollRunLine[]
   // ── Phase 1-2 relations ──
   wbsElements            WBSElement[]
   activities             Activity[]
