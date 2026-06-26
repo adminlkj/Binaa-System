@@ -1,8 +1,9 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
+import { updateAssetAndRecalculate, deleteAsset, generateDepreciationSchedule, calculateDepreciation } from '@/lib/accounting/depreciation-engine'
 import { NextResponse } from 'next/server'
 
-// ============ GET: Asset detail with depreciation schedule ============
+// ============ GET: Asset detail with full depreciation schedule ============
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -17,10 +18,7 @@ export async function GET(
         depExpenseAccount: { select: { id: true, code: true, name: true, nameAr: true } },
         accumDepAccount: { select: { id: true, code: true, name: true, nameAr: true } },
         depreciations: {
-          include: {
-            journalEntry: { select: { id: true, entryNo: true, date: true, description: true, descriptionAr: true } },
-          },
-          orderBy: [{ year: 'desc' }, { month: 'desc' }],
+          orderBy: [{ year: 'asc' }, { month: 'asc' }],
         },
       },
     })
@@ -29,17 +27,50 @@ export async function GET(
       return NextResponse.json({ error: 'الأصل غير موجود' }, { status: 404 })
     }
 
-    const acquisitionCost = toNumber(asset.acquisitionCost)
-    const residualValue = toNumber(asset.residualValue)
-    const accumulatedDepreciation = toNumber(asset.accumulatedDepreciation)
-    const monthlyDepreciation = asset.usefulLifeMonths > 0
-      ? (acquisitionCost - residualValue) / asset.usefulLifeMonths
-      : 0
+    // جلب قيود الإهلاك المرتبطة منفصلة (لا توجد علاقة مسماة)
+    const depIds = asset.depreciations.map(d => d.id).filter(Boolean)
+    const depJournalEntries = depIds.length > 0
+      ? await db.journalEntry.findMany({
+          where: { id: { in: asset.depreciations.map(d => d.journalEntryId).filter(Boolean) as string[] } },
+          select: { id: true, entryNo: true, date: true, description: true, status: true },
+        })
+      : []
+    const jeMap = new Map(depJournalEntries.map(je => [je.id, je]))
+    const depreciationsWithJE = asset.depreciations.map(d => ({
+      ...d,
+      journalEntry: d.journalEntryId ? jeMap.get(d.journalEntryId) || null : null,
+    }))
+
+    // جلب قيد التملك منفصلاً (لا توجد علاقة مسماة)
+    let acquisitionEntry: any = null
+    if (asset.journalEntryId) {
+      acquisitionEntry = await db.journalEntry.findUnique({
+        where: { id: asset.journalEntryId },
+        select: { id: true, entryNo: true, date: true, description: true },
+      })
+    }
+
+    // توليد الجدول الكامل (متوقع + منفذ) — نمرر فقط السجلات غير المعكوسة
+    const activeDepreciations = depreciationsWithJE.filter(d => !d.reversed)
+    const schedule = generateDepreciationSchedule(asset, activeDepreciations)
+
+    const calc = calculateDepreciation({
+      acquisitionCost: toNumber(asset.acquisitionCost),
+      usefulLifeMonths: asset.usefulLifeMonths,
+      usefulLifeYears: asset.usefulLifeYears,
+      depreciationRate: toNumber(asset.depreciationRate),
+      residualValue: toNumber(asset.residualValue),
+      accumulatedDepreciation: toNumber(asset.accumulatedDepreciation),
+    })
 
     return NextResponse.json({
       ...serializeDecimal(asset),
-      monthlyDepreciation,
+      monthlyDepreciation: calc.monthlyDepreciation,
+      annualDepreciation: calc.annualDepreciation,
       netBookValue: toNumber(asset.netBookValue),
+      schedule,
+      calculation: calc,
+      acquisitionEntry,
     })
   } catch (error) {
     console.error('Error fetching asset:', error)
@@ -47,7 +78,7 @@ export async function GET(
   }
 }
 
-// ============ PUT: Update asset (only if ACTIVE and no depreciations) ============
+// ============ PUT: Update asset (auto-recalculates) ============
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -56,75 +87,51 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
 
-    const existing = await db.fixedAsset.findUnique({
-      where: { id },
-      include: { _count: { select: { depreciations: true } } },
+    const result = await updateAssetAndRecalculate({
+      id,
+      name: body.name,
+      nameAr: body.nameAr,
+      category: body.category,
+      acquisitionDate: body.acquisitionDate,
+      acquisitionCost: body.acquisitionCost !== undefined ? Number(body.acquisitionCost) : undefined,
+      usefulLifeYears: body.usefulLifeYears !== undefined ? Number(body.usefulLifeYears) : undefined,
+      depreciationRate: body.depreciationRate !== undefined ? Number(body.depreciationRate) : undefined,
+      notes: body.notes,
+      accountId: body.accountId,
+      depExpenseAccountId: body.depExpenseAccountId,
+      accumDepAccountId: body.accumDepAccountId,
     })
 
-    if (!existing) {
-      return NextResponse.json({ error: 'الأصل غير موجود' }, { status: 404 })
-    }
-
-    if (existing._count.depreciations > 0) {
-      return NextResponse.json(
-        { error: 'لا يمكن تعديل أصل تم إهلاكه — يجب عكس القيود أولاً' },
-        { status: 400 }
-      )
-    }
-
-    const updated = await db.fixedAsset.update({
-      where: { id },
-      data: {
-        name: body.name || existing.name,
-        nameAr: body.nameAr !== undefined ? body.nameAr : existing.nameAr,
-        category: body.category || existing.category,
-        acquisitionDate: body.acquisitionDate ? new Date(body.acquisitionDate) : existing.acquisitionDate,
-        acquisitionCost: body.acquisitionCost !== undefined ? Number(body.acquisitionCost) : existing.acquisitionCost,
-        residualValue: body.residualValue !== undefined ? Number(body.residualValue) : existing.residualValue,
-        usefulLifeMonths: body.usefulLifeMonths ? parseInt(body.usefulLifeMonths) : existing.usefulLifeMonths,
-        accountId: body.accountId !== undefined ? body.accountId : existing.accountId,
-        depExpenseAccountId: body.depExpenseAccountId !== undefined ? body.depExpenseAccountId : existing.depExpenseAccountId,
-        accumDepAccountId: body.accumDepAccountId !== undefined ? body.accumDepAccountId : existing.accumDepAccountId,
-        // Recalculate NBV if cost changed
-        netBookValue: body.acquisitionCost !== undefined ? Number(body.acquisitionCost) : existing.netBookValue,
-      },
+    return NextResponse.json({
+      ...serializeDecimal(result.asset),
+      monthlyDepreciation: result.calculation.monthlyDepreciation,
+      annualDepreciation: result.calculation.annualDepreciation,
+      schedule: result.schedule,
+      message: 'تم تحديث الأصل وإعادة حساب الإهلاك',
     })
-
-    return NextResponse.json(serializeDecimal(updated))
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating asset:', error)
-    return NextResponse.json({ error: 'فشل في تحديث الأصل' }, { status: 500 })
+    return NextResponse.json(
+      { error: error.message || 'فشل في تحديث الأصل' },
+      { status: 500 }
+    )
   }
 }
 
-// ============ DELETE: Delete asset (only if no depreciations) ============
+// ============ DELETE: Delete asset (auto-reverses acquisition JE) ============
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
-
-    const existing = await db.fixedAsset.findUnique({
-      where: { id },
-      include: { _count: { select: { depreciations: true } } },
-    })
-
-    if (!existing) {
-      return NextResponse.json({ error: 'الأصل غير موجود' }, { status: 404 })
-    }
-
-    if (existing._count.depreciations > 0) {
-      return NextResponse.json(
-        { error: 'لا يمكن حذف أصل تم إهلاكه — يجب عكس القيود أولاً' },
-        { status: 400 }
-      )
-    }
-
-    await db.fixedAsset.delete({ where: { id } })
-    return NextResponse.json({ success: true })
-  } catch (error) {
+    const result = await deleteAsset(id)
+    return NextResponse.json(result)
+  } catch (error: any) {
     console.error('Error deleting asset:', error)
-    return NextResponse.json({ error: 'فشل في حذف الأصل' }, { status: 500 })
+    return NextResponse.json(
+      { error: error.message || 'فشل في حذف الأصل' },
+      { status: 500 }
+    )
   }
 }

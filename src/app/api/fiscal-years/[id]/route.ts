@@ -33,7 +33,7 @@ export async function GET(
   }
 }
 
-// ============ PUT: Update fiscal year (only if OPEN) ============
+// ============ PUT: Update fiscal year (admin — no status restriction) ============
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -47,22 +47,36 @@ export async function PUT(
       return NextResponse.json({ error: 'السنة المالية غير موجودة' }, { status: 404 })
     }
 
-    if (existing.status !== 'OPEN') {
-      return NextResponse.json(
-        { error: 'لا يمكن تعديل سنة مالية مغلقة' },
-        { status: 400 }
-      )
+    // Admin override: allow editing closed years too (with audit note)
+    const updateData: any = {
+      name: body.name || existing.name,
+    }
+    if (body.startDate) updateData.startDate = new Date(body.startDate)
+    if (body.endDate) updateData.endDate = new Date(body.endDate)
+
+    // If reopening via PUT (status override)
+    if (body.status && body.status !== existing.status) {
+      updateData.status = body.status
+      if (body.status === 'OPEN') {
+        updateData.closedAt = null
+        updateData.closedBy = null
+        updateData.closingNotes = body.notes || `أُعيد فتح السنة بواسطة المدير`
+      }
     }
 
     const updated = await db.fiscalYear.update({
       where: { id },
-      data: {
-        name: body.name || existing.name,
-        startDate: body.startDate ? new Date(body.startDate) : existing.startDate,
-        endDate: body.endDate ? new Date(body.endDate) : existing.endDate,
-      },
+      data: updateData,
       include: { periods: true },
     })
+
+    // If status changed to OPEN, reopen all periods too
+    if (body.status === 'OPEN' && existing.status !== 'OPEN') {
+      await db.fiscalPeriod.updateMany({
+        where: { fiscalYearId: id },
+        data: { status: 'OPEN' },
+      })
+    }
 
     return NextResponse.json(serializeDecimal(updated))
   } catch (error) {
@@ -71,7 +85,7 @@ export async function PUT(
   }
 }
 
-// ============ DELETE: Delete fiscal year (only if OPEN) ============
+// ============ DELETE: Delete fiscal year (admin — no status restriction) ============
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -87,13 +101,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'السنة المالية غير موجودة' }, { status: 404 })
     }
 
-    if (existing.status !== 'OPEN') {
-      return NextResponse.json(
-        { error: 'لا يمكن حذف سنة مالية مغلقة' },
-        { status: 400 }
-      )
-    }
-
+    // Admin override: allow deleting closed years too
+    // (closing JE remains in the ledger as historical record)
     await db.fiscalYear.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {

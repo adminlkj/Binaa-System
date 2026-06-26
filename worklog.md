@@ -2676,3 +2676,65 @@ Stage Summary:
 - ✅ التحقق الكامل: إنشاء → عرض فترات → معاينة إقفال → تنفيذ إقفال → سنة مغلقة
 - ملفات مُعدَّلة: `src/components/modules/financial-years.tsx` (بناء كامل), `src/app/api/fiscal-years/[id]/closing-preview/route.ts` (إصلاح الأرصدة السالبة), `src/app/api/fiscal-years/[id]/close/route.ts` (إصلاح الأرصدة السالبة)
 - ✅ الملف المضغوط مُحدَّث
+
+---
+Task ID: 15
+Agent: Code Agent
+Task: مراجعة وإعادة بناء منطق إهلاك الأصول بالكامل ليكون واضحاً ومنظماً وتسلسلياً ودقيقاً في الربط بالحسابات وإنشاء القيود. المستخدم يُدخل فقط: اسم الأصل، نوعه، قيمة الشراء، تاريخ الشراء، عدد السنوات، النسبة المقدرة للاهلاك — وكل شيء آخر تلقائي.
+
+Work Log:
+- فحص المنطق الحالي الموزع على 4 ملفات API + depreciation.tsx (1001 سطر)
+- تحديث مخطط Prisma (FixedAsset + AssetDepreciation):
+  * FixedAsset: إضافة usefulLifeYears, depreciationRate, monthlyDepreciation, annualDepreciation, lastDepreciationDate, notes
+  * AssetDepreciation: إضافة beginningNBV, endingNBV, reversed, reversedAt + index على journalEntryId
+- إنشاء محرك إهلاك مركزي جديد src/lib/accounting/depreciation-engine.ts (~750 سطر):
+  * calculateDepreciation() — حساب موحد للإهلاك (الشهري/السنوي/المتبقي)
+  * generateDepreciationSchedule() — توليد جدول كامل 12 شهر × N سنة
+  * resolveAssetAccounts() — حلّ الحسابات الثلاثة عبر الأدوار (FIXED_ASSET, DEPRECIATION_EXPENSE, ACCUM_DEPRECIATION)
+  * createAssetWithAcquisition() — إنشاء أصل + قيد تملك تلقائياً (معاملة واحدة)
+  * updateAssetAndRecalculate() — تحديث + إعادة حساب
+  * runDepreciationForAsset() — إهلاك شهر واحد (تسلسلي: تحقق → حساب → قيد → سجل → تحديث)
+  * runBulkDepreciation() — إهلاك مجمع
+  * reverseAssetDepreciation() — عكس قيد + إعادة حساب الأصل
+  * deleteAsset() — حذف مع عكس قيد التملك
+- تحديث جميع API endpoints لاستخدام المحرك المركزي:
+  * POST /api/fixed-assets — نموذج مبسّط (6 حقول فقط)
+  * GET /api/fixed-assets/[id] — تفاصيل + جدول كامل + قيد التملك
+  * POST /api/fixed-assets/[id]/depreciate — يستخدم المحرك
+  * POST /api/fixed-assets/depreciate-all — يستخدم المحرك
+  * POST /api/asset-depreciations/[id]/reverse — endpoint جديد للعكس
+  * GET /api/asset-depreciations — إضافة فلتر reversed + ملخص
+- إعادة بناء depreciation.tsx بالكامل (1180 سطر):
+  * AssetFormDialog مبسّط: اسم/نوع/قيمة/تاريخ/سنوات/نسبة + ملاحظات
+  * معاينة حية للإهلاك (الشهري/السنوي/المتبقي/الإجمالي)
+  * إعدادات متقدمة (اختياري): تجاوز الحسابات، إنشاء قيد التملك
+  * AssetDetailDialog: 4 بطاقات + الحسابات المرتبطة + جدول إهلاك كامل (12 صفحة)
+  * جدول الأصول مع شريط تقدم الإهلاك + أزرار عرض/تعديل/حذف
+  * تبويب: الأصول / تشغيل الإهلاك / سجلات الإهلاك (مع عكس) / التقارير
+- اختبارات API:
+  * إنشاء أصل AST-0001 (حفارة اختبار، 120000، 5 سنوات، 20%): monthlyDep=2000 ✓
+  * تشغيل إهلاك فبراير 2024: dep=2000, begin=120000 → end=118000 ✓
+  * عرض الجدول الكامل: 60 شهراً (5×12) ✓
+  * عكس إهلاك فبراير: accumulatedDep رجع 2000→0, NBV رجع 118000→120000 ✓
+  * إعادة تشغيل الإهلاك: نجح برقم قيد جديد ✓
+  * إنشاء أصل AST-0002 (شاحنة، 200000، 8 سنوات، 12.5%): monthlyDep=2083.33 ✓
+- اختبارات Agent Browser:
+  * شاشة الإهلاك تُعرض بشكل كامل
+  * جدول الإهلاك الكامل يعرض 12 شهراً مع تمييز المنفذ/المتوقع
+  * نموذج الإدخال المبسّط يعمل مع المعاينة الحية
+  * جميع التبويبات تعمل بدون أخطاء runtime
+- إصلاح bugs:
+  * Prisma: حقول جديدة + index على journalEntryId
+  * إزالة include journalEntry (لا توجد علاقة مسماة) — جلب منفصل
+  * إزالة descriptionAr من select (غير موجود في JournalEntry)
+  * تغيير صيغة رقم القيد لتشمل timestamp (تجنب التكرار)
+  * فلترة السجلات المعكوسة في generateDepreciationSchedule
+
+Stage Summary:
+- محرك إهلاك مركزي وموحّد في depreciation-engine.ts (Single Source of Truth)
+- نموذج إدخال مبسّط: 6 حقول أساسية فقط + معاينة حية
+- جدول إهلاك كامل تلقائي (12 شهر × N سنة) مع تمييز المنفذ
+- قيود تلقائية: قيد التملك + قيود الإهلاك الشهرية
+- إمكانية العكس والتعديل والمتابعة
+- lint نظيف، dev server يعمل، 0 أخطاء runtime
+- الملف المضغوط محدّث (595 ملف، 1.5M)

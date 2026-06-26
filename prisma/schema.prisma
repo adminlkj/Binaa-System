@@ -1972,19 +1972,25 @@ model FixedAsset {
   assetCode               String   @unique
   name                    String
   nameAr                  String?
-  category                String // EQUIPMENT, VEHICLE, OFFICE_EQUIPMENT, SOFTWARE, OTHER
+  category                String // EQUIPMENT, VEHICLE, OFFICE_EQUIPMENT, SOFTWARE, BUILDING, FURNITURE, OTHER
   acquisitionDate         DateTime
   acquisitionCost         Decimal  @default(0)
   residualValue           Decimal  @default(0)
   usefulLifeMonths        Int
+  usefulLifeYears         Int      @default(0) // عدد السنوات (المدخل الأساسي للمستخدم)
+  depreciationRate        Decimal  @default(0) // النسبة المقدرة للاهلاك سنوياً %
   depreciationMethod      String   @default("STRAIGHT_LINE")
+  monthlyDepreciation     Decimal  @default(0) // الإهلاك الشهري المحسوب تلقائياً
+  annualDepreciation      Decimal  @default(0) // الإهلاك السنوي المحسوب تلقائياً
   accumulatedDepreciation Decimal  @default(0)
   netBookValue            Decimal  @default(0)
+  lastDepreciationDate    DateTime? // تاريخ آخر إهلاك تم تشغيله
   status                  String   @default("ACTIVE") // ACTIVE, SOLD, DISPOSED, FULLY_DEPRECIATED
-  accountId               String? // Fixed Asset Account
-  depExpenseAccountId     String? // Depreciation Expense Account
-  accumDepAccountId       String? // Accumulated Depreciation Account
-  journalEntryId          String? // Acquisition journal entry
+  accountId               String? // حساب الأصل الثابت
+  depExpenseAccountId     String? // حساب مصروف الإهلاك
+  accumDepAccountId       String? // حساب مجمع الإهلاك
+  journalEntryId          String? // قيد التملك (acquisition)
+  notes                   String?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
 
@@ -2006,7 +2012,11 @@ model AssetDepreciation {
   year               Int
   month              Int
   depreciationAmount Decimal  @default(0)
+  beginningNBV       Decimal  @default(0) // القيمة الدفترية بداية الشهر
+  endingNBV          Decimal  @default(0) // القيمة الدفترية نهاية الشهر
   journalEntryId     String?
+  reversed           Boolean  @default(false) // هل تم عكس القيد
+  reversedAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -2014,6 +2024,7 @@ model AssetDepreciation {
 
   @@index([fixedAssetId])
   @@index([year, month])
+  @@index([journalEntryId])
 }
 
 // ============ PROVISIONS ============

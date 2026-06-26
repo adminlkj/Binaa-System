@@ -3,6 +3,7 @@
 // Binaa ERP - Period Closing Guard (Phase 1)
 // ============================================================================
 // يمنع ترحيل قيود إلى فترات مغلقة — متطلب IFRS / GAAP أساسي
+// مدير النظام يمكنه تجاوز هذا الحارس عبر allowAdminOverride=true
 // ============================================================================
 
 import { db } from '@/lib/db'
@@ -13,9 +14,17 @@ type TxClient = typeof db | any
  * يتحقق إن كانت الفترة مفتوحة للترحيل
  * @param date تاريخ القيد
  * @param tx optional transaction client
+ * @param options.allowAdminOverride — تجاوز الفحص (للمدير / قيود النظام)
  * @throws Error إذا كانت الفترة مغلقة
  */
-export async function assertPeriodOpen(date: Date, tx?: TxClient): Promise<void> {
+export async function assertPeriodOpen(
+  date: Date,
+  tx?: TxClient,
+  options?: { allowAdminOverride?: boolean }
+): Promise<void> {
+  // Admin override: skip all checks (system manager can post anywhere)
+  if (options?.allowAdminOverride) return
+
   const client = tx ?? db
 
   // 1) ابحث عن FiscalYear التي تحتوي هذا التاريخ

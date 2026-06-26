@@ -684,11 +684,11 @@
    684→                <p className="text-xl font-bold text-sky-700">{results.journalEntryIds?.length || 0}</p>
    685→              </div>
    686→            </div>
-   687→            {results.skipped > 0 && results.skipped?.length > 0 && (
+   687→            {results.skipped > 0 && results.skippedDetails?.length > 0 && (
    688→              <details className="text-sm">
    689→                <summary className="cursor-pointer text-amber-700 font-medium">{t(lang, 'عرض الأصول المتخطاة', 'Show skipped assets')}</summary>
    690→                <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
-   691→                  {results.skipped.map((s: any, i: number) => (
+   691→                  {results.skippedDetails.map((s: any, i: number) => (
    692→                    <div key={i} className="text-xs bg-amber-50 rounded p-1.5">
    693→                      <span className="font-mono">{s.assetCode}</span> - {s.assetName}: {s.reason}
    694→                    </div>

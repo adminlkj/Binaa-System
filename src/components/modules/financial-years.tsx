@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CalendarRange, Plus, RefreshCw, Lock, Eye, Trash2, Pencil,
   CheckCircle2, AlertCircle, Wallet, TrendingUp, TrendingDown,
-  Calendar, FileText, ChevronLeft, ChevronRight, X,
+  Calendar, FileText, ChevronLeft, ChevronRight, X, Unlock, KeyRound,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -286,7 +286,10 @@ function EditFiscalYearDialog({
             {t(lang, 'تعديل السنة المالية', 'Edit Fiscal Year')}
           </DialogTitle>
           <DialogDescription>
-            {t(lang, 'يمكن تعديل السنة المالية فقط وهي بحالة "مفتوحة".', 'Only open fiscal years can be edited.')}
+            {t(lang,
+              'يمكن لمدير النظام تعديل بيانات السنة المالية في أي حالة.',
+              'The system manager can edit fiscal year data in any status.'
+            )}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -623,29 +626,113 @@ function ClosingPreviewDialog({
 
 // ============ Periods View Dialog ============
 function PeriodsViewDialog({
-  year, open, onOpenChange, lang,
+  year, open, onOpenChange, lang, onPeriodsChanged,
 }: {
   year: FiscalYear | null
   open: boolean
   onOpenChange: (v: boolean) => void
   lang: 'ar' | 'en'
+  onPeriodsChanged?: () => void
 }) {
+  const queryClient = useQueryClient()
+  const [localPeriods, setLocalPeriods] = useState<FiscalPeriod[]>([])
+
+  React.useEffect(() => {
+    if (year?.periods) setLocalPeriods(year.periods)
+  }, [year?.periods])
+
+  const togglePeriodMutation = useMutation({
+    mutationFn: async ({ periodId, newStatus }: { periodId: string; newStatus: string }) => {
+      const res = await fetch(`/api/fiscal-years/${year!.id}/periods/${periodId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'فشل')
+      return data
+    },
+    onSuccess: (data, variables) => {
+      // Update local state immediately for snappy UI
+      setLocalPeriods(prev => prev.map(p =>
+        p.id === variables.periodId ? { ...p, status: variables.newStatus } : p
+      ))
+      toast.success(data.message)
+      queryClient.invalidateQueries({ queryKey: ['fiscal-years'] })
+      onPeriodsChanged?.()
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
+  const toggleAll = (newStatus: string) => {
+    localPeriods.forEach(p => {
+      if (p.status !== newStatus) {
+        togglePeriodMutation.mutate({ periodId: p.id, newStatus })
+      }
+    })
+  }
+
   if (!year) return null
-  const periods = year.periods ?? []
+  const periods = localPeriods.length > 0 ? localPeriods : (year.periods ?? [])
+  const openCount = periods.filter(p => p.status === 'OPEN').length
+  const closedCount = periods.filter(p => p.status === 'CLOSED').length
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
             <Calendar className="size-5 text-teal-600" />
             {t(lang, 'فترات السنة المالية', 'Fiscal Year Periods')}
             <Badge variant="outline" className="font-mono">{year.name}</Badge>
+            <Badge variant="outline" className={statusConfig[year.status]?.cls || ''}>
+              {statusConfig[year.status]?.[lang] || year.status}
+            </Badge>
           </DialogTitle>
           <DialogDescription>
-            {t(lang, '12 فترة شهرية تُنشأ تلقائياً مع كل سنة مالية.', '12 monthly periods are created automatically with each fiscal year.')}
+            {t(lang,
+              '12 فترة شهرية تُنشأ تلقائياً مع كل سنة مالية. يمكن لمدير النظام فتح/إغلاق أي فترة.',
+              '12 monthly periods are created automatically. The system manager can open/close any period.'
+            )}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Summary + bulk actions */}
+        <div className="flex items-center justify-between gap-2 flex-wrap rounded-lg bg-muted/40 p-3">
+          <div className="flex items-center gap-3 text-sm">
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="size-4 text-emerald-600" />
+              <span className="font-semibold">{openCount}</span>
+              <span className="text-muted-foreground">{t(lang, 'مفتوحة', 'open')}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Lock className="size-4 text-gray-600" />
+              <span className="font-semibold">{closedCount}</span>
+              <span className="text-muted-foreground">{t(lang, 'مغلقة', 'closed')}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm" variant="outline"
+              onClick={() => toggleAll('OPEN')}
+              disabled={togglePeriodMutation.isPending || openCount === periods.length}
+              className="gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+            >
+              <Unlock className="size-3.5" />
+              {t(lang, 'فتح الكل', 'Open All')}
+            </Button>
+            <Button
+              size="sm" variant="outline"
+              onClick={() => toggleAll('CLOSED')}
+              disabled={togglePeriodMutation.isPending || closedCount === periods.length}
+              className="gap-1 text-gray-700 border-gray-300 hover:bg-gray-50"
+            >
+              <Lock className="size-3.5" />
+              {t(lang, 'إغلاق الكل', 'Close All')}
+            </Button>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
           {periods.length === 0 ? (
             <div className="col-span-full text-center text-muted-foreground py-8 text-sm">
@@ -655,8 +742,9 @@ function PeriodsViewDialog({
             periods.map(p => {
               const cfg = statusConfig[p.status] || statusConfig.OPEN
               const Icon = cfg.icon
+              const isClosed = p.status === 'CLOSED'
               return (
-                <Card key={p.id} className="border shadow-none">
+                <Card key={p.id} className={`border shadow-none ${isClosed ? 'bg-gray-50/50' : ''}`}>
                   <CardContent className="p-3">
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm font-semibold">
@@ -667,9 +755,26 @@ function PeriodsViewDialog({
                         {cfg[lang]}
                       </Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground mb-2">
                       {formatDate(p.startDate, lang)} — {formatDate(p.endDate, lang)}
                     </p>
+                    <Button
+                      size="sm"
+                      variant={isClosed ? 'outline' : 'default'}
+                      onClick={() => togglePeriodMutation.mutate({
+                        periodId: p.id,
+                        newStatus: isClosed ? 'OPEN' : 'CLOSED',
+                      })}
+                      disabled={togglePeriodMutation.isPending}
+                      className={`w-full gap-1 h-7 text-xs ${
+                        isClosed
+                          ? 'text-emerald-700 border-emerald-300 hover:bg-emerald-50'
+                          : 'bg-gray-600 hover:bg-gray-700 text-white'
+                      }`}
+                    >
+                      {isClosed ? <Unlock className="size-3" /> : <Lock className="size-3" />}
+                      {isClosed ? t(lang, 'إعادة الفتح', 'Reopen') : t(lang, 'إغلاق', 'Close')}
+                    </Button>
                   </CardContent>
                 </Card>
               )
@@ -699,6 +804,10 @@ export function FinancialYearsModule() {
   const [periodsOpen, setPeriodsOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<FiscalYear | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [reopenTarget, setReopenTarget] = useState<FiscalYear | null>(null)
+  const [reopenOpen, setReopenOpen] = useState(false)
+  const [reopenNotes, setReopenNotes] = useState('')
+  const [reopenReverseJE, setReopenReverseJE] = useState(true)
 
   const { data, isLoading, refetch } = useQuery<FiscalYearsResponse>({
     queryKey: ['fiscal-years'],
@@ -726,6 +835,32 @@ export function FinancialYearsModule() {
     onError: (err: Error) => toast.error(err.message),
   })
 
+  const reopenMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/fiscal-years/${reopenTarget!.id}/reopen`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes: reopenNotes || 'أُعيد فتح السنة بواسطة مدير النظام',
+          reverseClosingJE: reopenReverseJE,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'فشل')
+      return data
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || (lang === 'ar' ? 'تمت إعادة فتح السنة المالية' : 'Fiscal year reopened'))
+      queryClient.invalidateQueries({ queryKey: ['fiscal-years'] })
+      queryClient.invalidateQueries({ queryKey: ['closing-preview'] })
+      setReopenOpen(false)
+      setReopenTarget(null)
+      setReopenNotes('')
+      setReopenReverseJE(true)
+    },
+    onError: (err: Error) => toast.error(err.message),
+  })
+
   const years = data?.years ?? []
   const current = data?.current ?? null
   const lastClosed = data?.lastClosed ?? null
@@ -745,6 +880,12 @@ export function FinancialYearsModule() {
   const handleDelete = (y: FiscalYear) => {
     setDeleteTarget(y)
     setDeleteOpen(true)
+  }
+  const handleReopen = (y: FiscalYear) => {
+    setReopenTarget(y)
+    setReopenNotes('')
+    setReopenReverseJE(true)
+    setReopenOpen(true)
   }
 
   return (
@@ -873,9 +1014,10 @@ export function FinancialYearsModule() {
                   {years.map(y => {
                     const cfg = statusConfig[y.status] || statusConfig.OPEN
                     const Icon = cfg.icon
-                    const isOpen = y.status === 'OPEN'
+                    const isClosed = y.status === 'CLOSED'
+                    const isClosing = y.status === 'CLOSING'
                     return (
-                      <TableRow key={y.id} className={isOpen ? 'bg-emerald-50/30' : ''}>
+                      <TableRow key={y.id} className={y.status === 'OPEN' ? 'bg-emerald-50/30' : isClosed ? 'bg-gray-50/40' : ''}>
                         <TableCell className="font-mono font-semibold">{y.name}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {formatDate(y.startDate, lang)}<br />
@@ -906,44 +1048,57 @@ export function FinancialYearsModule() {
                           {y.netProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center justify-center gap-1">
+                          <div className="flex items-center justify-center gap-1 flex-wrap">
+                            {/* View Periods — always available */}
                             <Button
                               variant="ghost" size="sm"
                               onClick={() => handlePeriods(y)}
-                              title={t(lang, 'عرض الفترات', 'View Periods')}
+                              title={t(lang, 'عرض / إدارة الفترات', 'View / Manage Periods')}
                               className="size-8 p-0"
                             >
                               <Calendar className="size-4" />
                             </Button>
-                            {isOpen && (
-                              <>
-                                <Button
-                                  variant="ghost" size="sm"
-                                  onClick={() => handleEdit(y)}
-                                  title={t(lang, 'تعديل', 'Edit')}
-                                  className="size-8 p-0"
-                                >
-                                  <Pencil className="size-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost" size="sm"
-                                  onClick={() => handlePreview(y)}
-                                  title={t(lang, 'معاينة الإقفال', 'Closing Preview')}
-                                  className="size-8 p-0 text-rose-600 hover:text-rose-700"
-                                >
-                                  <Lock className="size-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost" size="sm"
-                                  onClick={() => handleDelete(y)}
-                                  title={t(lang, 'حذف', 'Delete')}
-                                  className="size-8 p-0 text-rose-600 hover:text-rose-700"
-                                >
-                                  <Trash2 className="size-4" />
-                                </Button>
-                              </>
+                            {/* Edit — admin: always (even closed) */}
+                            <Button
+                              variant="ghost" size="sm"
+                              onClick={() => handleEdit(y)}
+                              title={t(lang, 'تعديل', 'Edit')}
+                              className="size-8 p-0"
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                            {/* Closing preview — only for OPEN (can be closed) */}
+                            {!isClosed && (
+                              <Button
+                                variant="ghost" size="sm"
+                                onClick={() => handlePreview(y)}
+                                title={t(lang, 'معاينة الإقفال', 'Closing Preview')}
+                                className="size-8 p-0 text-rose-600 hover:text-rose-700"
+                              >
+                                <Lock className="size-4" />
+                              </Button>
                             )}
-                            {!isOpen && y.closingJournalEntryId && (
+                            {/* Reopen — only for CLOSED */}
+                            {isClosed && (
+                              <Button
+                                variant="ghost" size="sm"
+                                onClick={() => handleReopen(y)}
+                                title={t(lang, 'إعادة فتح السنة', 'Reopen Year')}
+                                className="size-8 p-0 text-emerald-600 hover:text-emerald-700"
+                              >
+                                <Unlock className="size-4" />
+                              </Button>
+                            )}
+                            {/* Delete — admin: always */}
+                            <Button
+                              variant="ghost" size="sm"
+                              onClick={() => handleDelete(y)}
+                              title={t(lang, 'حذف', 'Delete')}
+                              className="size-8 p-0 text-rose-600 hover:text-rose-700"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                            {isClosed && y.closingJournalEntryId && (
                               <Badge variant="outline" className="text-xs bg-sky-50 text-sky-700 border-sky-200 ml-1">
                                 <FileText className="size-3 ml-1" />
                                 {t(lang, 'مُقفلة', 'Closed')}
@@ -995,8 +1150,8 @@ export function FinancialYearsModule() {
             </li>
             <li>
               {t(lang,
-                'يمكن تعديل أو حذف السنة المفتوحة فقط. السنة المغلقة تكون للقراءة فقط (مرجعية).',
-                'Only open years can be edited or deleted. Closed years are read-only (for reference).'
+                'يمكن لمدير النظام تعديل وحذف وإعادة فتح السنوات في أي حالة (مفتوحة/مغلقة) بدون قيود.',
+                'The system manager can edit, delete, and reopen years in any status (open/closed) without restrictions.'
               )}
             </li>
           </ul>
@@ -1007,7 +1162,13 @@ export function FinancialYearsModule() {
       <CreateFiscalYearDialog open={createOpen} onOpenChange={setCreateOpen} lang={lang} />
       <EditFiscalYearDialog year={editTarget} open={editOpen} onOpenChange={setEditOpen} lang={lang} />
       <ClosingPreviewDialog year={previewTarget} open={previewOpen} onOpenChange={setPreviewOpen} lang={lang} />
-      <PeriodsViewDialog year={periodsTarget} open={periodsOpen} onOpenChange={setPeriodsOpen} lang={lang} />
+      <PeriodsViewDialog
+        year={periodsTarget}
+        open={periodsOpen}
+        onOpenChange={setPeriodsOpen}
+        lang={lang}
+        onPeriodsChanged={() => refetch()}
+      />
 
       {/* Delete Confirmation */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -1034,6 +1195,81 @@ export function FinancialYearsModule() {
               className="gap-1 bg-rose-600 hover:bg-rose-700 text-white"
             >
               {deleteMutation.isPending ? t(lang, 'جاري الحذف...', 'Deleting...') : t(lang, 'حذف نهائي', 'Delete Permanently')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reopen Confirmation */}
+      <Dialog open={reopenOpen} onOpenChange={setReopenOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-emerald-700">
+              <Unlock className="size-5" />
+              {t(lang, 'إعادة فتح السنة المالية', 'Reopen Fiscal Year')}
+            </DialogTitle>
+            <DialogDescription>
+              {t(lang,
+                `سيتم إعادة فتح السنة المالية "${reopenTarget?.name}" وجميع فتراتها الـ12. يمكن بعدها تعديل وترحيل قيود جديدة.`,
+                `Fiscal year "${reopenTarget?.name}" and all its 12 periods will be reopened. New entries can then be posted.`
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 flex gap-2">
+              <AlertCircle className="size-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold mb-1">
+                  {t(lang, 'إجراء مدير النظام', 'Administrator Action')}
+                </p>
+                <p>
+                  {t(lang,
+                    'إعادة فتح سنة مغلقة يسمح بتعديل القيود في فترة مغلقة. استخدم هذا بحذر بعد مراجعة المراجع.',
+                    'Reopening a closed year allows editing entries in a closed period. Use with caution after auditor review.'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {reopenTarget?.closingJournalEntryId && (
+              <label className="flex items-start gap-3 cursor-pointer rounded-lg bg-sky-50 border border-sky-200 p-3">
+                <Switch checked={reopenReverseJE} onCheckedChange={setReopenReverseJE} />
+                <span className="text-sm">
+                  <span className="font-semibold">
+                    {t(lang, 'عكس قيد الإقفال تلقائياً', 'Auto-reverse closing JE')}
+                  </span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    {t(lang,
+                      'يُنشئ قيداً عكسياً يلغي تأثير قيد الإقفال الأصلي (يستعيد أرصدة الإيرادات والمصروفات).',
+                      'Creates a reversal entry that cancels the original closing JE (restores revenue/expense balances).'
+                    )}
+                  </span>
+                </span>
+              </label>
+            )}
+
+            <div className="space-y-1.5">
+              <Label>{t(lang, 'ملاحظات إعادة الفتح', 'Reopen Notes')}</Label>
+              <Textarea
+                value={reopenNotes}
+                onChange={e => setReopenNotes(e.target.value)}
+                placeholder={t(lang, 'سبب إعادة الفتح أو المراجع...', 'Reason for reopening or reference...')}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReopenOpen(false)}>
+              {t(lang, 'إلغاء', 'Cancel')}
+            </Button>
+            <Button
+              onClick={() => reopenMutation.mutate()}
+              disabled={reopenMutation.isPending}
+              className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {reopenMutation.isPending
+                ? t(lang, 'جاري إعادة الفتح...', 'Reopening...')
+                : t(lang, 'تأكيد إعادة الفتح', 'Confirm Reopen')}
             </Button>
           </DialogFooter>
         </DialogContent>
