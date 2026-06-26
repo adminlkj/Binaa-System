@@ -62,6 +62,8 @@ const ExpensesModule = dynamic(() => import('@/components/modules/expenses').the
 
 // Accounting & Reports
 const AccountingModule = dynamic(() => import('@/components/modules/accounting').then(m => ({ default: m.AccountingModule })), { loading: ModuleLoading, ssr: false })
+const DepreciationModule = dynamic(() => import('@/components/modules/depreciation').then(m => ({ default: m.DepreciationModule })), { loading: ModuleLoading, ssr: false })
+const FinancialYearsModule = dynamic(() => import('@/components/modules/financial-years').then(m => ({ default: m.FinancialYearsModule })), { loading: ModuleLoading, ssr: false })
 const VATModule = dynamic(() => import('@/components/modules/vat').then(m => ({ default: m.VATModule })), { loading: ModuleLoading, ssr: false })
 const ReportsModule = dynamic(() => import('@/components/modules/reports').then(m => ({ default: m.ReportsModule })), { loading: ModuleLoading, ssr: false })
 
@@ -114,6 +116,8 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   'expenses': ExpensesModule,
   // المحاسبة والتقارير
   'accounting': AccountingModule,
+  'depreciation': DepreciationModule,
+  'financial-years': FinancialYearsModule,
   'vat': VATModule,
   'reports': ReportsModule,
   // الإعدادات والبيانات

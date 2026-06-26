@@ -362,13 +362,24 @@ model AuditLog {
 // ============ FISCAL YEAR & PERIODS ============
 
 model FiscalYear {
-  id        String   @id @default(cuid())
-  name      String   @unique // e.g. "2025"
-  startDate DateTime
-  endDate   DateTime
-  status    String   @default("OPEN") // OPEN, CLOSED
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                     String   @id @default(cuid())
+  name                   String   @unique // e.g. "2025"
+  startDate              DateTime
+  endDate                DateTime
+  status                 String   @default("OPEN") // OPEN, CLOSING, CLOSED
+  // Closing support
+  closingJournalEntryId  String?  // قيد إقفال السنة
+  openingJournalEntryId  String?  // قيد افتتاح السنة الجديدة (ترحيل الأرصدة)
+  retainedEarningsAccountCode String? // حساب الأرباح المرحلة المستخدم في الإقفال
+  closedBy               String?
+  closedAt               DateTime?
+  closingNotes           String?
+  // Summary totals (cached at closing time)
+  totalRevenue           Decimal  @default(0)
+  totalExpenses          Decimal  @default(0)
+  netProfit              Decimal  @default(0)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   periods FiscalPeriod[]
 

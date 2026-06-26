@@ -17,7 +17,7 @@ export type NavItem =
   // التشغيل والصيانة (equipment-related)
   | 'equipment-operations' | 'equipment-maintenance' | 'fuel' | 'subcontractors'
   // المحاسبة والتقارير
-  | 'accounting' | 'vat' | 'reports'
+  | 'accounting' | 'vat' | 'reports' | 'depreciation' | 'financial-years'
   // الإعدادات والبيانات الأساسية
   | 'clients' | 'suppliers' | 'inventory' | 'settings' | 'expenses' | 'accounting-mapping'
 
@@ -83,7 +83,7 @@ export const navGroups: NavGroupConfig[] = [
     label: { ar: 'المحاسبة والتقارير', en: 'Accounting & Reports' },
     icon: 'Calculator',
     color: 'text-teal-600',
-    items: ['accounting', 'vat', 'reports'],
+    items: ['accounting', 'depreciation', 'financial-years', 'vat', 'reports'],
   },
   {
     key: 'settings-data',
@@ -133,6 +133,8 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'expenses': { ar: 'المصروفات', en: 'Expenses' },
   // المحاسبة والتقارير
   'accounting': { ar: 'المحاسبة', en: 'Accounting' },
+  'depreciation': { ar: 'الإهلاك', en: 'Depreciation' },
+  'financial-years': { ar: 'السنوات المالية', en: 'Financial Years' },
   'vat': { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
   'reports': { ar: 'التقارير', en: 'Reports' },
   // الإعدادات
@@ -182,6 +184,8 @@ export const navItemActivity: Record<NavItem, ActivityType> = {
   'expenses': 'both',
   // Accounting
   'accounting': 'both',
+  'depreciation': 'both',
+  'financial-years': 'both',
   'vat': 'both',
   'reports': 'both',
   // Settings

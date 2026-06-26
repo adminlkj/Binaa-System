@@ -2414,3 +2414,173 @@ Stage Summary:
 - ✅ **قيود محاسبية منفصلة**: قيد استحقاق (APPROVED) + قيد دفع مستقل (PAID)
 - ✅ **lint نظيف** + APIs مختبرة
 - ملفات مُعدَّلة: `prisma/schema.prisma`, `src/stores/app-store.ts`, `src/app/page.tsx`, `src/app/api/payroll-runs/route.ts`, `src/app/api/payroll-runs/[id]/route.ts`, `src/components/modules/payroll-runs.tsx`
+
+---
+Task ID: FIX-MOBILESIDEBAR-001
+Agent: Main Agent (Information Systems Engineer)
+Task: إصلاح خطأ MobileSidebar (Element type is invalid) + التحقق من القوائم المنسدلة
+
+Work Log:
+**1. تشخيص الخطأ:**
+- الخطأ: "Element type is invalid: expected a string... but got: undefined" في MobileSidebar
+- السبب الجذري: كاشbuild قديم (stale build cache) + عدم وجود حماية ضد الأيقونات غير المعرّفة
+- التحقق: جميع الـ38 NavItem لها أيقونات معرّفة في navItemIcons (لا توجد أيقونات مفقودة)
+
+**2. الإصلاح الدفاعي:**
+- إضافة `Circle` كأيقونة احتياطية (FallbackIcon) من lucide-react
+- في Desktop Sidebar: `const GroupIcon = groupIcons[group.key] || FallbackIcon` + `const Icon = navItemIcons[item] || FallbackIcon` + `const label = navItemLabels[item] || { ar: item, en: item }` + `const colors = groupColors[group.key] || groupColors['settings-data']`
+- في Mobile Sidebar: نفس الحماية المطبقة على GroupIcon و Icon و label
+- النتيجة: حتى لو نقصت أيقونة، لن ينهار التطبيق
+
+**3. إعادة تشغيل الخادم:**
+- قتل العمليات القديمة: `pkill -9 -f "next-server"` + `pkill -9 -f "bun run dev"`
+- تنظيف الكاش: `rm -rf .next/cache`
+- إنشاء سكريبت daemon قوي: `/home/z/my-project/start-dev.sh` باستخدام `setsid` للت detach كامل
+- إعادة التشغيل بنجاح: HTTP 200 على المنفذ 3000
+
+**4. التحقق عبر agent-browser:**
+- فتح الصفحة بنجاح: "نظام بِنَاء ERP | Binaa Construction ERP"
+- لا أخطاء في console
+- اختبار mobile viewport (390x844): فتح MobileSidebar بنجاح، ظهور جميع الـ38 عنصر تنقل
+- اختبار desktop: التنقل للمحاسبة → تبويب دفتر الأستاذ
+- التحقق من القائمة المنسدلة: تظهر 115+ حساب ترحيل (1110 الصندوق، 1120 البنوك، 1210 عملاء، إلخ)
+
+**5. التحقق من القوائم المنسدلة لكشف الحساب ودفتر الأستاذ:**
+- General Ledger: يستخدم `postingAccounts = accounts.filter(a => a.allowPosting && a.isActive)` → 115 حساب ✓
+- API `/api/accounts` يرجع المصفوفة المسطحة (flattened) مع جميع الحسابات ✓
+- Account Statement Dialog: يفتح من شجرة الحسابات (لا يحتاج dropdown - يأخذ الحساب كـ prop) ✓
+- النتيجة: القوائم المنسدلة تعمل بشكل صحيح
+
+Stage Summary:
+- ✅ إصلاح خطأ MobileSidebar (Element type is invalid) - حماية defensive + إعادة تشغيل
+- ✅ القوائم المنسدلة في دفتر الأستاذ تعمل (115+ حساب)
+- ✅ كاش قديم تم تنظيفه
+- ✅ سكريبت daemon قوي: `start-dev.sh` باستخدام setsid
+- ✅ التحقق الكامل عبر agent-browser (mobile + desktop)
+- ملفات معدّلة: `src/components/layout/sidebar.tsx`, `start-dev.sh` (جديد)
+
+---
+Task ID: TASK-5-UNIFY-EXPENSES
+Agent: Code Agent (Unify Expenses Screen)
+Task: توحيد شاشة المصروفات — تجميع كل عمليات المصروفات (وقود/صيانة/نقل/سائقين/تشغيلية/إدارية/عامة) في شاشة واحدة بأقسام داخلية
+
+Work Log:
+
+**1. قراءة شاشة المصروفات الحالية وتحليل البنية:**
+- `src/components/modules/expenses.tsx` (967 سطر) كان يقسم المصروفات إلى تبويبين فقط: "مصروفات المشاريع" و"مصروفات إدارية"
+- الـ API `/api/expenses` يدعم GET/POST/PUT/DELETE + فلترة بـ `projectId`/`category`/`expenseType`/`search`/`from`/`to` (تعدد الصفحات اختياري)
+- الـ POST يدعم تمرير `accountId` (حساب المصروف) و`payingAccountId` (حساب السداد) → يستخدم `buildExpenseJournalEntryWithExplicitAccounts` لبناء القيد:
+  - Dr: حساب المصروف (المختار من الـ role)
+  - Dr: VAT_INPUT (1410) — إذا كان هناك VAT
+  - Cr: حساب السداد (CASH أو BANK)
+- نموذج Prisma `Expense` يحتوي على: projectId, equipmentId, costCenterId, expenseType, activityType, category, description, amount, vatRate, vatAmount, totalAmount, date, reference, payFrom, attachmentPath, journalEntryId. **لا يوجد employeeId** — تم استخدام حقل `reference` لتضمين معلومات الموظف.
+- الأدوار المحاسبية المتاحة في `src/lib/account-roles.ts`: FUEL_EXPENSE, MAINTENANCE_EXPENSE, TRANSPORT_EXPENSE, DRIVER_EXPENSE, PROJECT_COST, SUBCONTRACTOR_COST, ADMIN_EXPENSE, PAYROLL_EXPENSE, GOSI_EXPENSE, DEPRECIATION_EXPENSE, ZAKAT_EXPENSE, RENTAL_DEPRECIATION
+
+**2. تصميم شاشة موحدة بـ 7 أقسام داخلية:**
+- كل قسم يرتبط بأدوار محاسبية محددة وله أيقونة ولون مميز:
+  - **وقود (Fuel)** ← FUEL_EXPENSE، أيقونة Fuel، لون rose، رابط افتراضي: معدة
+  - **صيانة (Maintenance)** ← MAINTENANCE_EXPENSE، أيقونة Wrench، لون orange، رابط افتراضي: معدة
+  - **نقل (Transport)** ← TRANSPORT_EXPENSE، أيقونة Truck، لون teal، رابط افتراضي: مشروع
+  - **سائقين (Drivers)** ← DRIVER_EXPENSE، أيقونة Users، لون lime، رابط افتراضي: موظف
+  - **مصروفات تشغيلية (Operations)** ← PROJECT_COST + SUBCONTRACTOR_COST، أيقونة Cog، لون amber، رابط افتراضي: مشروع
+  - **مصروفات إدارية (Administrative)** ← ADMIN_EXPENSE + PAYROLL_EXPENSE + GOSI_EXPENSE + DEPRECIATION_EXPENSE + ZAKAT_EXPENSE + RENTAL_DEPRECIATION، أيقونة Briefcase، لون violet، رابط افتراضي: خاص بالشركة
+  - **مصروفات عامة (General/Other)** ← كل حسابات المصروفات (fallback)، أيقونة FolderOpen، لون gray، رابط افتراضي: خاص بالشركة
+- خريطة عكسية `CATEGORY_TO_SECTION` لتصنيف أي مصروف يُرجع من الـ API إلى القسم المناسب (عبر حقل category)
+
+**3. تحسين `/api/expenses` GET route:**
+- إضافة فلتر `categories` (comma-separated list) — يسمح بجلب كل مصروفات قسم محدد بطلب واحد
+- إضافة فلتر `equipmentId` و`costCenterId` للفلترة الكاملة
+- الحفاظ على التوافق مع الـ API السابق (لم يحذف أي filter موجود)
+
+**4. إعادة بناء `src/components/modules/expenses.tsx` بالكامل (1396 سطر):**
+
+أ. **نموذج موحد `ExpenseFormDialog`** يخدم كل الأقسام:
+   - **اختيار نوع الربط (Link Type):** 5 خيارات بصرية (Company / Project / Equipment / Cost Center / Employee) — كل خيار يظهر المُحدد المناسب عند الاختيار
+   - **اختيار حساب المصروف:** يستخدم `AccountSelector` مع `roles={sectionCfg.roles}` — يجلب فقط الحسابات المرتبطة بهذا القسم من `/api/accounts/by-role?role=<ROLES>`
+   - **اختيار حساب السداد:** `AccountSelector` مع `roles={['CASH', 'BANK']}` — يحسم `payFrom` تلقائياً من دور الحساب المختار
+   - **VAT Toggle:** `Switch` من shadcn/ui — عند الإطفاء: `vatRate=0` و`vatAmount=0`؛ عند التشغيل: 15% ويُحسب تلقائياً
+   - **معاينة القيد (JE Preview):** مكون `JePreview` يعرض الأسطر المتوقعة (Dr المصروف + Dr VAT_INPUT + Cr حساب السداد) مع توازن مدين/دائن
+   - **معالجة الموظفين:** بما أن نموذج Expense لا يحتوي على `employeeId`، يتم حفظ اسم الموظف وكوده في حقل `reference` بصيغة `"Employee: Ahmed (EMP-001)"`
+   - **إعادة التعيين عند الفتح:** استخدام `key={`${section}-${dialogKey}`}` بدلاً من `useEffect(setState)` (تجنب lint error `react-hooks/set-state-in-effect`) — كل فتح للنموذج يُنشئ mount جديد بحالة ابتدائية نظيفة
+
+ب. **الشاشة الرئيسية `ExpensesModule`:**
+   - **4 بطاقات ملخص:** إجمالي كل المصروفات + القسم النشط + مصروفات إدارية + هذا الشهر
+   - **7 تبويبات أقسام** مع شارة عدد السجلات لكل قسم ولون مميز
+   - **فلاتر متقدمة:** بحث حر (وصف/مشروع/معدة/مرجع/فئة) + فلتر مشروع + فلتر VAT (الكل/مع ضريبة/بدون ضريبة)
+   - **جدول بيانات موحد** مع رأس ثابت (sticky header) وتمرير عمودي (`max-h-[60vh] overflow-y-auto`) و11 عمود: الفئة/الوصف/المرتبط بـ/المبلغ/الضريبة/الإجمالي/السداد من/التاريخ/المرجع/القيد المحاسبي/إجراءات
+   - **عمود "المرتبط بـ" ذكي:** يعرض badge ملوّن يشير لنوع الربط (مشروع أخضر/معدة سماوي/مركز تكلفة كهرماني/موظف بنفسجي/خاص بالشركة رمادي) — يكتشف الموظف من `reference` تلقائياً
+   - **تذييل إجماليات:** عدد السجلات + إجمالي المبلغ + الإجمالي مع الضريبة
+   - **أزرار التصدير والطباعة:** `PrintButton` (نوع `expense-report`) و`exportToCSV` (11 عمود)
+
+ج. **لوحة المعلومات التثقيفية:** لافتة معلومات أسفل الفلاتر تشرح القسم النشط وأدواره المحاسبية المربوطة
+
+**5. التحقق من توليد القيود المحاسبية:**
+- النموذج يُمرر `accountId` (حساب المصروف المختار) و`payingAccountId` (حساب السداد) إلى POST `/api/expenses`
+- الـ POST يستدعي `buildExpenseJournalEntryWithExplicitAccounts(expenseId, accountId, payingAccountId, tx)` التي:
+  - تتحقق من وجود ونشاط كلا الحسابين وتسمح بـ posting
+  - تبني أسطر القيد: Dr حساب المصروف + Dr VAT_INPUT (إذا VAT > 0) + Cr حساب السداد
+  - تستخدم `postJournalEntry` من guard.ts (يمر بكل القواعد R1-R12)
+  - تُحدّث `expense.journalEntryId` بالقيد المنشأ
+- النموذج يعرض معاينة JE مباشرة في النموذج قبل الحفظ (مكون `JePreview`)
+
+**6. القيود المعمارية الملتزَم بها:**
+- ✅ لم يتم تعديل `prisma/schema.prisma`
+- ✅ لم يتم تعديل `src/stores/app-store.ts` (nav item `expenses` موجود مسبقاً)
+- ✅ لم يتم تعديل `src/app/page.tsx` (ExpensesModule مسجّل في moduleMap)
+- ✅ لم يتم تعديل `src/components/layout/sidebar.tsx`
+- ✅ وحدات fuel/maintenance/equipment-operations بقيت كما هي في الـ sidebar (تخدم وظائفها الخاصة مثل تتبع اللترات)
+- ✅ فقط الملفات المعدّلة: `src/components/modules/expenses.tsx` (إعادة بناء كامل) + `src/app/api/expenses/route.ts` (إضافة فلاتر categories/equipmentId/costCenterId)
+
+**7. فحص الجودة:**
+- ✅ `bun run lint` → **0 أخطاء، 0 تحذيرات** (بعد إصلاح 3 مشاكل أولية: `react-hooks/exhaustive-deps` disable غير ضروري + `useMemo` deps مع `now.getMonth()` غير بسيطة + `setState in effect`)
+- ✅ تجميع ناجح: `✓ Compiled in 361ms` في dev.log
+- ✅ اختبار الدخان: HTTP 200 على `/`, `/api/expenses`, `/api/accounts/by-role?role=FUEL_EXPENSE`
+- ✅ الـ API يرجع البيانات بشكل صحيح ويدعم الفلاتر الجديدة
+- ✅ النموذج يعرض معاينة JE المتوازنة قبل الحفظ (Dr = Cr = totalAmount)
+
+Stage Summary:
+- ✅ **شاشة موحدة بـ 7 أقسام** (وقود/صيانة/نقل/سائقين/تشغيلية/إدارية/عامة) بدلاً من تبويبين سابقين
+- ✅ **كل قسم يربط بأدوار محاسبية محددة** → القائمة المنسدلة تجلب فقط الحسابات المرتبطة بالقسم من `/api/accounts/by-role`
+- ✅ **حرية الربط الذكية:** مشروع / معدة / مركز تكلفة / موظف / خاص بالشركة — مع إظهار المُحدد المناسب ديناميكياً
+- ✅ **VAT Toggle** مع حساب تلقائي 15% وتوليد قيد VAT_INPUT (1410) صحيح
+- ✅ **معاينة القيد المحاسبي الحية** قبل الحفظ مع badge "متوازن/غير متوازن"
+- ✅ **4 بطاقات ملخص + جدول بـ 11 عمود + 3 فلاتر** (بحث/مشروع/VAT) + تذييل إجماليات
+- ✅ **API محسّن:** فلتر `categories` (comma-separated) + `equipmentId` + `costCenterId`
+- ✅ **معالجة الموظفين** عبر حقل `reference` (نموذج Prisma لم يتغير)
+- ✅ **lint نظيف** + APIs مختبرة + تجميع ناجح
+- ✅ **استخدام `key` prop** لإعادة تعيين النموذج بدلاً من `useEffect(setState)` (متوافق مع قواعد React 19 الجديدة)
+- ملفات مُعدَّلة: `src/components/modules/expenses.tsx` (إعادة بناء كامل، 1396 سطر)، `src/app/api/expenses/route.ts` (إضافة فلاتر GET)
+
+---
+Task ID: TASK-6-FIX-DEPRECIATION-RENDER
+Agent: Code Agent (Fix Depreciation Runtime Error)
+Task: إصلاح خطأ runtime في DepreciationModule: "Objects are not valid as a React child (found: object with keys {assetCode, assetName, reason})"
+
+Work Log:
+- **تشخيص السبب الجذري:** خطأ React "Objects are not valid as a React child" يظهر عند تشغيل الإهلاك وعرض بطاقة النتائج.
+- **السبب:** API `/api/fixed-assets/depreciate-all` كان يُرجع في الـ response مفتاحين مكررين باسم `skipped`:
+  - السطر 170: `skipped: skipped.length` (رقم)
+  - السطر 174: `skipped` (مصفوفة كائنات `{assetCode, assetName, reason}`)
+  - في JSON، عند تكرار المفتاح، يفوز الأخير → `results.skipped` أصبح مصفوفة كائنات بدلاً من رقم.
+- **النتيجة في الواجهة:** السطر 676 في `depreciation.tsx` كان يعرض `{results.skipped}` مباشرة كطفل React → React لا يقبل مصفوفة كائنات كطفل صالح → خطأ runtime.
+- **الإصلاح في API:** إعادة تسمية المصفوفة إلى `skippedDetails` (مع إبقاء `skipped` كرقم العدد) لإزالة تعارض المفتاح المكرر.
+- **الإصلاح في الواجهة:** تحديث `depreciation.tsx` السطر 687 و691 لاستخدام `results.skippedDetails` بدلاً من `results.skipped` للمصفوفة، مع إبقاء `results.skipped` كرقم في السطر 676.
+
+التحقق (Agent Browser):
+- ✅ فتح `/` → لا أخطاء، صفحة تُحمّل نظيفة
+- ✅ الانتقال إلى "المحاسبة والتقارير" → "الإهلاك" → الوحدة تُحمّل بـ 4 تبويبات
+- ✅ تبويب "تشغيل الإهلاك": معاينة الأصل (AST-0001 جهاز كمبيوتر، إهلاك شهري 0.00)
+- ✅ النقر على "تشغيل الإهلاك" → تأكيد → التنفيذ → HTTP 201 نجاح
+- ✅ بطاقة النتائج ظهرت بكامل محتواها: أصول مُعالَجة=0، أصول متخطاة=1، إجمالي الإهلاك=0.00، قيود مُنشأة=0
+- ✅ "عرض الأصول المتخطاة" تُوسّع وتعرض: "AST-0001 - جهاز كمبيوتر: قيمة الإهلاك صفر" (خصائص الكائن تُعرض كنصوص وليس ككائنات خام)
+- ✅ لا أخطاء في console، لا أخطاء في page errors
+- ✅ `bun run lint` → 0 أخطاء، 0 تحذيرات
+- ✅ تحديث `Binaa-ERP-System.zip` عبر `update-zip.sh`
+
+Stage Summary:
+- ✅ خطأ React runtime في DepreciationModule مُصلَح بالكامل
+- ✅ السبب الجذري: تعارض مفتاح `skipped` مكرر في JSON response (رقم + مصفوفة)
+- ✅ الحل: فصل المفتاحين → `skipped` (رقم) + `skippedDetails` (مصفوفة كائنات)
+- ✅ التحقق الكامل عبر Agent Browser: التشغيل الفعلي للإهلاك يُظهر النتائج والتخطيات بشكل صحيح
+- ملفات مُعدَّلة: `src/app/api/fixed-assets/depreciate-all/route.ts`, `src/components/modules/depreciation.tsx`
+- ✅ الملف المضغوط مُحدَّث

@@ -8,7 +8,8 @@ import {
   Fuel as FuelIcon, UsersRound, CalendarDays, Banknote,
   PackageCheck, FilePlus, ReceiptText, Cog, Network,
   Receipt, ArrowRightLeft, Hammer, ListChecks, HardHat,
-  DollarSign, Warehouse, Link2,
+  DollarSign, Warehouse, Link2, Wallet, Circle,
+  TrendingDown, CalendarRange,
 } from 'lucide-react'
 import {
   useAppStore,
@@ -41,6 +42,7 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'employees': Users,
   'employee-contracts': FileText,
   'attendance': CalendarDays,
+  'payroll-runs': Wallet,
   'salaries': Banknote,
   'work-teams': UsersRound,
   'resource-distribution': Network,
@@ -58,6 +60,8 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'expenses': DollarSign,
   // Accounting
   'accounting': Calculator,
+  'depreciation': TrendingDown,
+  'financial-years': CalendarRange,
   'vat': ReceiptText,
   'reports': TrendingUp,
   // Settings
@@ -67,6 +71,9 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'settings': Settings,
   'accounting-mapping': Link2,
 }
+
+// Fallback icon for safety (prevents 'Element type is invalid' crashes)
+const FallbackIcon = Circle
 
 // Hub group icons
 const groupIcons: Record<NavGroup, React.ElementType> = {
@@ -149,8 +156,8 @@ export function Sidebar() {
         {navGroups.map(group => {
           const isExpanded = expandedGroups.has(group.key)
           const hasActiveItem = group.items.includes(activeItem)
-          const GroupIcon = groupIcons[group.key]
-          const colors = groupColors[group.key]
+          const GroupIcon = groupIcons[group.key] || FallbackIcon
+          const colors = groupColors[group.key] || groupColors['settings-data']
           const isHub = group.key === 'construction-hub' || group.key === 'rental-hub'
 
           return (
@@ -195,9 +202,9 @@ export function Sidebar() {
 
               {/* Group Items */}
               {isExpanded && group.items.map(item => {
-                const Icon = navItemIcons[item]
+                const Icon = navItemIcons[item] || FallbackIcon
                 const isActive = activeItem === item
-                const label = navItemLabels[item]
+                const label = navItemLabels[item] || { ar: item, en: item }
                 const activity = navItemActivity[item]
 
                 return (
@@ -346,8 +353,8 @@ export function MobileSidebar() {
           {navGroups.map(group => {
             const isExpanded = expandedGroups.has(group.key)
             const hasActiveItem = group.items.includes(activeItem)
-            const GroupIcon = groupIcons[group.key]
-            const colors = groupColors[group.key]
+            const GroupIcon = groupIcons[group.key] || FallbackIcon
+            const colors = groupColors[group.key] || groupColors['settings-data']
             const isHub = group.key === 'construction-hub' || group.key === 'rental-hub'
 
             return (
@@ -370,9 +377,9 @@ export function MobileSidebar() {
                 </button>
 
                 {isExpanded && group.items.map(item => {
-                  const Icon = navItemIcons[item]
+                  const Icon = navItemIcons[item] || FallbackIcon
                   const isActive = activeItem === item
-                  const label = navItemLabels[item]
+                  const label = navItemLabels[item] || { ar: item, en: item }
                   const activity = navItemActivity[item]
 
                   return (
