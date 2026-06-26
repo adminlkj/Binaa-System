@@ -68,6 +68,8 @@ export async function GET(
         const credit = toNumber(balances[0]?._sum?.credit) || 0
         const balance = credit - debit // Revenue is credit-normal
         if (Math.abs(balance) > 0.01) {
+          // To zero a revenue: positive balance → debit it; negative balance → credit abs value
+          const isPositive = balance > 0
           revenueAccounts.push({
             id: acc.id,
             code: acc.code,
@@ -75,8 +77,8 @@ export async function GET(
             nameAr: acc.nameAr,
             role,
             balance,
-            debit, // to zero it: debit the balance
-            credit: 0,
+            debit: isPositive ? balance : 0,
+            credit: isPositive ? 0 : Math.abs(balance),
           })
         }
       }
@@ -104,6 +106,8 @@ export async function GET(
         const credit = toNumber(balances[0]?._sum?.credit) || 0
         const balance = debit - credit // Expense is debit-normal
         if (Math.abs(balance) > 0.01) {
+          // To zero an expense: positive balance → credit it; negative balance → debit abs value
+          const isPositive = balance > 0
           expenseAccounts.push({
             id: acc.id,
             code: acc.code,
@@ -111,8 +115,8 @@ export async function GET(
             nameAr: acc.nameAr,
             role,
             balance,
-            debit: 0,
-            credit: balance, // to zero it: credit the balance
+            debit: isPositive ? 0 : Math.abs(balance),
+            credit: isPositive ? balance : 0,
           })
         }
       }
@@ -125,25 +129,25 @@ export async function GET(
     // Build closing journal entry preview
     const jeLines: any[] = []
 
-    // Debit revenue accounts to zero them
+    // Zero revenue accounts (debit positive balances, credit negative ones)
     for (const rev of revenueAccounts) {
       jeLines.push({
         accountCode: rev.code,
         accountName: rev.nameAr || rev.name,
-        debit: rev.balance,
-        credit: 0,
+        debit: rev.debit,
+        credit: rev.credit,
         type: 'revenue',
         role: rev.role,
       })
     }
 
-    // Credit expense accounts to zero them
+    // Zero expense accounts (credit positive balances, debit negative ones)
     for (const exp of expenseAccounts) {
       jeLines.push({
         accountCode: exp.code,
         accountName: exp.nameAr || exp.name,
-        debit: 0,
-        credit: exp.balance,
+        debit: exp.debit,
+        credit: exp.credit,
         type: 'expense',
         role: exp.role,
       })

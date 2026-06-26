@@ -85,10 +85,12 @@ export async function POST(
         const credit = toNumber(balances[0]?._sum?.credit) || 0
         const balance = credit - debit
         if (Math.abs(balance) > 0.01) {
+          // To zero a revenue: positive balance → debit it; negative balance → credit abs value
+          const isPositive = balance > 0
           jeLines.push({
             accountCode: acc.code,
-            debit: balance,
-            credit: 0,
+            debit: isPositive ? balance : 0,
+            credit: isPositive ? 0 : Math.abs(balance),
             description: `إقفال ${acc.nameAr || acc.name}`,
           })
           totalRevenue += balance
@@ -96,7 +98,7 @@ export async function POST(
       }
     }
 
-    // Expense accounts (credit to zero them)
+    // Expense accounts (credit positive balances to zero them, debit negative ones)
     for (const role of EXPENSE_ROLES) {
       const accounts = await db.account.findMany({
         where: { accountRole: role, isActive: true, allowPosting: true },
@@ -118,10 +120,12 @@ export async function POST(
         const credit = toNumber(balances[0]?._sum?.credit) || 0
         const balance = debit - credit
         if (Math.abs(balance) > 0.01) {
+          // To zero an expense: positive balance → credit it; negative balance → debit abs value
+          const isPositive = balance > 0
           jeLines.push({
             accountCode: acc.code,
-            debit: 0,
-            credit: balance,
+            debit: isPositive ? 0 : Math.abs(balance),
+            credit: isPositive ? balance : 0,
             description: `إقفال ${acc.nameAr || acc.name}`,
           })
           totalExpenses += balance
