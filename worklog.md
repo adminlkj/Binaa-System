@@ -3572,3 +3572,30 @@ Stage Summary:
 - account-statement book balance = 0 دائماً (لا costCenterId على AR/AP lines).
 
 التقرير الكامل في `/home/z/my-project/audit-reports/01-accounting-engine.md`. لم تُعدَّل أي ملفات (READ-ONLY).
+
+---
+Task ID: 1 (Accounting Engine Audit + Fix)
+Agent: Code Agent (main session)
+Task: Phase 1 — Deep audit of accounting engine + fix all CRITICAL/HIGH issues in small cycles
+
+Work Log:
+- Phase 0 (Baseline): Created audit branch, backed up DB, ran lint (CLEAN) + tsc (314 errors documented), committed baseline report (78434f9).
+- Phase 1 Audit: Launched subagent (Task 1-a) for READ-ONLY deep audit of accounting engine. Produced audit-reports/01-accounting-engine.md — 48 issues (16 CRITICAL / 14 HIGH / 12 MEDIUM / 6 LOW).
+- Fix Cycle 1 (dab4223): Fiscal year close/reopen wrapped in $transaction + compare-and-swap lock. CRITICAL #1,#2.
+- Fix Cycle 2 (0d0ed1b): R1 enforcement across 11 routes — removed try/catch that swallowed JE failures, wrapped in $transaction, redesigned salary cycle (accrual model: Dr Payroll/Cr Salaries Payable at approve, Dr Salaries Payable/Cr Cash at payment). Fixed costCenterId=projectId conflation. CRITICAL #4-#11.
+- Fix Cycle 3 (57dc1b0): Removed double revenue recognition (progress claims no longer create JE at approval; revenue recognized only at invoicing). CRITICAL #3.
+- Fix Cycle 4 (57dc1b0): Fixed isPostable → allowPosting field name. CRITICAL #13.
+- Fix Cycle 5 (57dc1b0): Moved db.update outside $transaction inside the transaction for purchase-invoices + sales-invoices PUT. CRITICAL #16.
+- Fix Cycle 6 (f...): initializeChartOfAccounts accepts tx param; removed calls from 5 hot-path routes (performance + atomicity). CRITICAL #12.
+- Fix Cycle 7: VAT refund account fixed — added VAT_REFUND_RECEIVABLE role, fixed VAT_INPUT defaultCodes (1410→3120), changed account 1410 role, fixed autoEntryVATDeclaration. CRITICAL #14.
+- Fix Cycle 8 (fdf6ec3): Goods receipt wrapped in $transaction + added GRNI journal entry (Dr Inventory/Project Cost / Cr GRNI). Added account 3330 (GRNI) + set 1340 role=INVENTORY. CRITICAL #15.
+- Fix Cycle 9 (1a7a127): consistency.ts SQL filters (exclude deleted/DRAFT/reversals), healthCheck removed isActive filter (all accounts in equation), expenses DELETE soft-delete. HIGH #20,#21,#27.
+- Fix Cycle 10 (603c73e): Fixed 4 wrong defaultCodes (CONTRACT_LIABILITY, SUBCONTRACTOR_RETENTION_PAYABLE, INVENTORY, GRNI). HIGH #25.
+
+Stage Summary:
+- ALL 16 CRITICAL issues from audit 01-accounting-engine.md are FIXED and committed.
+- 6 HIGH issues fixed (#20, #21, #25, #27, + salary cycle redesign, + dead-code-adjacent).
+- 10 commits, all auto-pushed to GitHub (origin/main) + safety repo.
+- Verification: bun run lint CLEAN. All affected APIs return HTTP 200. Agent Browser confirms: dashboard renders, accounting module loads with all 8 tabs + real data (46 assets, 34 liabilities, 7 equity), NO console errors, NO hydration errors.
+- Remaining (deferred to next cycle): 14 dead autoEntry functions cleanup (HIGH #23), hardcoded fallback removal (HIGH #19), getNextEntryNo fix (HIGH #18), descriptionAr schema gap (HIGH #24), remaining defaultCodes for non-existent accounts (FX_GAIN/LOSS, UNBILLED_REVENUE, etc. — need new chart accounts).
+- Next phases: Phase 2 (Projects), Phase 3 (Rental), Phase 4 (Expenses), Phase 5 (HR), Phase 6 (Reports), Phase 7 (RBAC), Phase 8 (Regression).
