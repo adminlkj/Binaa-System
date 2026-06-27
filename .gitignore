@@ -79,3 +79,11 @@ backup-*.zip
 # Uploaded user files (runtime data, not source code)
 public/uploads/*
 !public/uploads/.gitkeep
+
+# Tool result artifacts (junk, not source code)
+tool-results/
+screenshot-*.png
+screenshot-*.mjs
+verify-*.png
+bug-reproduction.png
+*.png.bak
