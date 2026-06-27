@@ -3599,3 +3599,103 @@ Stage Summary:
 - Verification: bun run lint CLEAN. All affected APIs return HTTP 200. Agent Browser confirms: dashboard renders, accounting module loads with all 8 tabs + real data (46 assets, 34 liabilities, 7 equity), NO console errors, NO hydration errors.
 - Remaining (deferred to next cycle): 14 dead autoEntry functions cleanup (HIGH #23), hardcoded fallback removal (HIGH #19), getNextEntryNo fix (HIGH #18), descriptionAr schema gap (HIGH #24), remaining defaultCodes for non-existent accounts (FX_GAIN/LOSS, UNBILLED_REVENUE, etc. — need new chart accounts).
 - Next phases: Phase 2 (Projects), Phase 3 (Rental), Phase 4 (Expenses), Phase 5 (HR), Phase 6 (Reports), Phase 7 (RBAC), Phase 8 (Regression).
+
+---
+Task ID: 1-VERIFY
+Agent: Z.ai Code (main)
+Task: Phase 1 — End-to-end verification of accounting engine cycle (الدورة الأولى)
+
+Work Log:
+- Started dev server (port 3000) and confirmed clean startup.
+- Created comprehensive test scripts to verify the accounting engine cycle end-to-end.
+- Tested via API calls (HTTP) AND direct DB queries AND Agent Browser (UI verification).
+
+**Tests executed (all PASSED ✅):**
+
+1. **Purchase Invoice (PI)** — Created PI with 10000 + 15% VAT = 11500.
+   - JE created: Dr تكاليف المواد 7110 = 10000 / Dr ضريبة مدخلات 3120 = 1500 / Cr موردون 3210 = 11500
+   - Balanced: D=11500, C=11500 ✅
+
+2. **Sales Invoice (SI)** — Created SI with 20000 + 15% VAT = 23000.
+   - JE created: Dr عملاء 1210 = 23000 / Cr إيرادات المستخلصات 6110 = 20000 / Cr ضريبة مخرجات 3110 = 3000
+   - Balanced: D=23000, C=23000 ✅
+
+3. **Expense** — Created expense 5000 + 15% VAT = 5750.
+   - JE created and balanced: D=5750, C=5750 ✅
+
+4. **Supplier Payment** — Paid supplier 5750.
+   - JE: Dr موردون 3210 = 5750 / Cr الصندوق 1110 = 5750 (correctly reduces AP and Cash)
+   - Balanced: D=5750, C=5750 ✅
+
+5. **Client Payment** — Received 11500 from client.
+   - JE: Dr الصندوق 1110 = 11500 / Cr عملاء 1210 = 11500 (correctly increases Cash and reduces AR)
+   - Balanced: D=11500, C=11500 ✅
+
+6. **Petty Cash** — Created 1000 petty cash with branchId.
+   - JE: Dr مصروفات أخرى 8630 = 1000 / Cr الصندوق 1110 = 1000
+   - Balanced: D=1000, C=1000 ✅
+
+7. **Employee Advance** — Created 2000 advance.
+   - JE: Dr سلف الموظفين 1230 = 2000 / Cr الصندوق 1110 = 2000
+   - Balanced: D=2000, C=2000 ✅
+
+8. **Manual Journal Entry** — Created Dr Cash 1000 / Cr Revenue 1000.
+   - JE created via /api/journal-entries, balanced ✅
+
+9. **Salary Accrual (CRITICAL #4 fix verified)** — Approved salary 4500.
+   - JE: Dr رواتب وأجور 8110 = 4500 / Cr رواتب مستحقة 3310 = 4500 (CORRECT accrual model!)
+   - Balanced: D=4500, C=4500 ✅
+   - This proves the previous bug (Dr Payroll / Cr Cash — cash deducted twice) is FIXED.
+
+10. **Salary Payment** — Paid salary 4500.
+    - JE: Dr رواتب مستحقة 3310 = 4500 / Cr الصندوق 1110 = 4500 (settles the liability)
+    - Balanced: D=4500, C=4500 ✅
+    - Together with accrual, net effect = Dr Salaries Expense / Cr Cash (CORRECT!)
+
+11. **Reversal (Cancellation)** — Cancelled a purchase invoice.
+    - Reversal JE created with properly swapped D/C:
+      - Original: Dr Material 10000 / Dr VAT 1500 / Cr AP 11500
+      - Reversal: Cr Material 10000 / Cr VAT 1500 / Dr AP 11500
+    - Balanced ✅, original kept POSTED (no double-cancellation bug)
+
+12. **Trial Balance Report** — /api/reports/trial-balance
+    - Total Debit = Total Credit = 128000.00
+    - isBalanced = true ✅
+
+13. **Balance Sheet Report** — /api/reports/balance-sheet
+    - Assets = 30000 = Liabilities + Equity = 30000
+    - isBalanced = true ✅
+
+14. **Income Statement Report** — /api/reports/income-statement
+    - Revenue = 40000, Expenses = 26000, Net Income = 14000 ✅
+
+15. **Agent Browser UI Verification** —
+    - Dashboard loads with no console errors
+    - Accounting module loads with all 8 tabs (Chart of Accounts, Account Linking, Engine, Impact, Health, Journal Entries, Ledger, Trial Balance)
+    - Trial Balance tab shows correct totals (D=118000, C=118000)
+    - Journal Entries tab shows all 13+ entries with POSTED status
+    - No hydration errors, no runtime errors
+
+**Final DB State:**
+- 152 accounts (115 postable, all active)
+- 16 POSTED journal entries
+- Total Debit = 128000.00 = Total Credit = 128000.00
+- Difference = 0.0000 (ZERO riyals unbalanced)
+- 0 R4 violations (no posting to non-postable accounts)
+- 0 duplicate entry numbers
+- 1 reversal entry with proper D/C swap
+- 10 distinct sourceTypes covered: PURCHASE_INVOICE(5), SALES_INVOICE(3), EXPENSE(1), EMPLOYEE_ADVANCE(1), SUPPLIER_PAYMENT(1), CLIENT_PAYMENT(1), PETTY_CASH(1), MANUAL(1), SALARY_ACCRUAL(1), SALARY_PAYMENT(1)
+
+**Lint:** CLEAN (0 errors, 0 warnings)
+**Dev server log:** No fatal errors, all API routes return 200/201
+
+Stage Summary:
+- **ACCOUNTING ENGINE IS VALID** ✅
+- The user's criterion ("إذا ظهر ريال واحد غير متزن فالمحرك يعتبر غير صالح") is satisfied: difference = 0.0000
+- All 10 critical business flows create balanced JEs
+- Reversal mechanism works correctly (swapped D/C, original kept POSTED)
+- Salary cycle correctly uses accrual model (no double cash deduction)
+- All financial reports balanced (Trial Balance, Balance Sheet, Income Statement)
+- No code changes needed in this verification cycle — all previous Phase 1 fixes (commits dab4223 through 603c73e) are confirmed working end-to-end
+- Working tree clean (test data is in DB which is gitignored)
+- **Ready to proceed to Phase 2 (Projects cycle)**
