@@ -1,7 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { toNumber } from '@/lib/decimal'
-import { createProgressClaimJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
 
 export async function GET(
   request: Request,
@@ -33,10 +32,13 @@ export async function GET(
 // Supported status transitions:
 //   DRAFT → SUBMITTED → APPROVED → (invoiced separately)
 //   Any status → REJECTED
-// When transitioning to APPROVED, an accounting journal entry is auto-created:
-//   Debit: العملاء (Clients Receivable) — totalAmount
-//   Credit: إيرادات المستخلصات (Progress Claims Revenue) — amount
-//   Credit: ضريبة المخرجات (Output VAT) — vatAmount
+//
+// IMPORTANT (accounting model): A progress claim is a certification of work done,
+// NOT a revenue event. Revenue (and AR + VAT) is recognized ONLY when the approved
+// claim is converted to a sales invoice (see sales-invoices/route.ts which calls
+// createSalesInvoiceJournalEntry). Creating a JE at claim approval would double-count
+// revenue because the invoice conversion creates its own JE.
+// The previous code called createProgressClaimJournalEntry here → double revenue.
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -71,31 +73,7 @@ export async function PUT(
         )
       }
 
-      // When transitioning to APPROVED, create the accounting journal entry
-      // within a transaction so the claim update and JE creation are atomic.
-      if (newStatus === 'APPROVED' && !existing.journalEntryId) {
-        const updated = await db.$transaction(async (tx: PrismaTransaction) => {
-          await tx.progressClaim.update({
-            where: { id },
-            data: {
-              status: newStatus,
-              approvedDate: new Date(),
-            },
-          })
-          // Create the journal entry (throws on missing role-mapped accounts)
-          await createProgressClaimJournalEntry(id, tx)
-          return await tx.progressClaim.findUnique({
-            where: { id },
-            include: {
-              project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true, nameAr: true, code: true } } } },
-              contract: { select: { id: true, contractNo: true, totalValue: true } },
-            },
-          })
-        })
-        return NextResponse.json(updated)
-      }
-
-      // Simple status update (no JE)
+      // Simple status update. No journal entry — revenue is recognized at invoicing.
       const updated = await db.progressClaim.update({
         where: { id },
         data: {

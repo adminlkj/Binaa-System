@@ -117,10 +117,15 @@ export async function PUT(
             { status: 400 }
           )
         }
-        // R4: all accounts must be active and postable
+        // R4: all accounts must be active and postable.
+        // NOTE: the field is `allowPosting` (schema.prisma), not `isPostable`.
+        // The prior `a.isPostable` was always undefined → filter always truthy → every
+        // DRAFT→POSTED transition would be rejected (latent bug, currently dead code
+        // because POST routes create POSTED entries directly, but would break if
+        // DRAFT-first posting were enabled).
         const accountIds = [...new Set(existing.lines.map(l => l.accountId))]
         const accounts = await db.account.findMany({ where: { id: { in: accountIds } } })
-        const inactive = accounts.filter(a => !a.isActive || !a.isPostable)
+        const inactive = accounts.filter(a => !a.isActive || !a.allowPosting)
         if (inactive.length > 0) {
           return NextResponse.json(
             {

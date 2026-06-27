@@ -169,9 +169,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'لا يمكن تعديل فاتورة ملغاة' }, { status: 400 })
     }
 
-    // If the invoice has been approved/posted and amounts are changing, create reversal + new entry
-    if (existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
-      await db.$transaction(async (tx: PrismaTransaction) => {
+    // Atomic update: if the invoice has been approved/posted and amounts are changing,
+    // reverse the old JE + update amounts + create new JE + apply all other field updates
+    // in a SINGLE transaction. The prior code did the field update OUTSIDE the tx, which
+    // could leave the invoice partially updated if that outer write failed after the tx
+    // committed (CRITICAL #16).
+    const amountsChanging = existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)
+
+    const updated = await db.$transaction(async (tx: PrismaTransaction) => {
+      if (amountsChanging) {
         const originalEntry = await tx.journalEntry.findUnique({
           where: { id: existing.journalEntryId!, deletedAt: null },
           include: { lines: { where: { deletedAt: null } } },
@@ -179,7 +185,6 @@ export async function PUT(request: Request) {
 
         if (originalEntry) {
           // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
-          // Avoids double-cancellation bug.
           await reverseEntry(existing.journalEntryId!, tx)
         }
 
@@ -197,27 +202,32 @@ export async function PUT(request: Request) {
           },
         })
 
-        // Create new journal entry (throws on failure so the tx rolls back).
+        // Create new journal entry (throws on failure → tx rolls back).
         await createPurchaseInvoiceJournalEntry(existing.id, tx)
 
-        updateData.journalEntryId = undefined // Will be set by createPurchaseInvoiceJournalEntry
-      })
-    }
+        // createPurchaseInvoiceJournalEntry sets journalEntryId via its own update;
+        // don't overwrite it in the final update below.
+        updateData.journalEntryId = undefined
+        updateData.subtotal = undefined
+        updateData.vatAmount = undefined
+        updateData.totalAmount = undefined
+      }
 
-    // Update the invoice
-    const updated = await db.purchaseInvoice.update({
-      where: { id },
-      data: {
-        ...updateData,
-        ...(updateData.date && { date: new Date(updateData.date) }),
-        ...(updateData.dueDate && { dueDate: new Date(updateData.dueDate) }),
-      },
-      include: {
-        supplier: { select: { id: true, name: true, code: true } },
-        purchaseOrder: { select: { id: true, orderNo: true } },
-        project: { select: { id: true, name: true, code: true, projectType: true } },
-        items: true,
-      },
+      // Apply all remaining (non-amount) field updates inside the same transaction
+      return await tx.purchaseInvoice.update({
+        where: { id },
+        data: {
+          ...updateData,
+          ...(updateData.date && { date: new Date(updateData.date) }),
+          ...(updateData.dueDate && { dueDate: new Date(updateData.dueDate) }),
+        },
+        include: {
+          supplier: { select: { id: true, name: true, code: true } },
+          purchaseOrder: { select: { id: true, orderNo: true } },
+          project: { select: { id: true, name: true, code: true, projectType: true } },
+          items: true,
+        },
+      })
     })
 
     return NextResponse.json(updated)

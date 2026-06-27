@@ -679,10 +679,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'لا يمكن تعديل فاتورة ملغاة' }, { status: 400 })
     }
 
-    // If the invoice has been approved/posted (has a journal entry), create a reversal + new entry
-    if (existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
-      // Perform reversal + new entry + update in a transaction
-      await db.$transaction(async (tx: PrismaTransaction) => {
+    // Atomic update: if the invoice has been approved/posted (has a JE) and amounts are
+    // changing, reverse the old JE + update amounts + create new JE + apply all other
+    // field updates in a SINGLE transaction. The prior code did the field update OUTSIDE
+    // the tx (CRITICAL #16) — if that outer write failed after the tx committed, the
+    // invoice was left partially updated with a new JE but stale metadata.
+    const amountsChanging = existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)
+
+    const updated = await db.$transaction(async (tx: PrismaTransaction) => {
+      if (amountsChanging) {
         // Create reversal entry for the original
         const originalEntry = await tx.journalEntry.findUnique({
           where: { id: existing.journalEntryId!, deletedAt: null },
@@ -691,7 +696,6 @@ export async function PUT(request: Request) {
 
         if (originalEntry) {
           // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
-          // Avoids double-cancellation bug.
           await reverseEntry(existing.journalEntryId!, tx)
         }
 
@@ -700,8 +704,7 @@ export async function PUT(request: Request) {
         const newVatAmount = updateData.vatAmount ?? existing.vatAmount
         const newDate = updateData.date ? new Date(updateData.date) : existing.date
 
-        // Use auto-journal for the new entry
-        // First update the invoice temporarily so createSalesInvoiceJournalEntry reads the new values
+        // Update the invoice so createSalesInvoiceJournalEntry reads the new values
         await tx.salesInvoice.update({
           where: { id: existing.id },
           data: {
@@ -713,40 +716,47 @@ export async function PUT(request: Request) {
         })
 
         await createSalesInvoiceJournalEntry(existing.id, tx)
-      })
-    }
 
-    // Update the invoice
-    const updated = await db.salesInvoice.update({
-      where: { id },
-      data: {
-        ...updateData,
-        ...(updateData.date && { date: new Date(updateData.date) }),
-        ...(updateData.dueDate && { dueDate: new Date(updateData.dueDate) }),
-      },
-      include: {
-        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
-        project: { select: { id: true, name: true, nameAr: true, code: true } },
-        contract: { select: { id: true, contractNo: true } },
-        timesheet: {
-          select: {
-            id: true, operatingHours: true, month: true, year: true, status: true,
-            project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
-            equipment: { select: { id: true, name: true, code: true, nameAr: true } },
-            rental: { select: { id: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true } },
-            contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
-          },
+        // createSalesInvoiceJournalEntry sets journalEntryId; don't overwrite it below.
+        updateData.journalEntryId = undefined
+        updateData.subtotal = undefined
+        updateData.vatAmount = undefined
+        updateData.totalAmount = undefined
+        updateData.date = undefined
+      }
+
+      // Apply all remaining (non-amount) field updates inside the same transaction
+      return await tx.salesInvoice.update({
+        where: { id },
+        data: {
+          ...updateData,
+          ...(updateData.date && { date: new Date(updateData.date) }),
+          ...(updateData.dueDate && { dueDate: new Date(updateData.dueDate) }),
         },
-        progressClaim: {
-          select: {
-            id: true, claimNo: true, date: true, amount: true, vatAmount: true,
-            totalAmount: true, status: true, invoiced: true,
-            project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
-            contract: { select: { id: true, contractNo: true } },
+        include: {
+          client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+          project: { select: { id: true, name: true, nameAr: true, code: true } },
+          contract: { select: { id: true, contractNo: true } },
+          timesheet: {
+            select: {
+              id: true, operatingHours: true, month: true, year: true, status: true,
+              project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
+              equipment: { select: { id: true, name: true, code: true, nameAr: true } },
+              rental: { select: { id: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true } },
+              contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
+            },
           },
+          progressClaim: {
+            select: {
+              id: true, claimNo: true, date: true, amount: true, vatAmount: true,
+              totalAmount: true, status: true, invoiced: true,
+              project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
+              contract: { select: { id: true, contractNo: true } },
+            },
+          },
+          items: true,
         },
-        items: true,
-      },
+      })
     })
 
     return NextResponse.json(updated)
