@@ -3,7 +3,27 @@ import { initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { seedFinancialMappings } from '@/lib/financial-mapping-engine'
 import { NextResponse } from 'next/server'
 
-export async function POST() {
+/**
+ * SECURITY GUARD: This endpoint WIPES THE ENTIRE DATABASE.
+ * It requires an explicit `confirm=WIPE_ALL_DATA` query parameter to proceed.
+ * Without it, the request is rejected with 403.
+ * This prevents accidental data destruction via misclicks or automated tools.
+ */
+export async function POST(request: Request) {
+  // ============ SECURITY: require explicit confirmation ============
+  const url = new URL(request.url)
+  const confirm = url.searchParams.get('confirm')
+  if (confirm !== 'WIPE_ALL_DATA') {
+    return NextResponse.json(
+      {
+        success: false,
+        message:
+          'تم رفض الطلب: هذه العملية تمسح قاعدة البيانات بالكامل. مطلوب تأكيد صريح.',
+      },
+      { status: 403 }
+    )
+  }
+
   try {
     // ============ CLEAR EXISTING DATA (respect relations) ============
     // Delete in reverse dependency order
