@@ -120,9 +120,9 @@ export async function GET() {
 
     // ===== 1. Active Projects count & Total Contract Value =====
     const activeProjects = await db.project.count({
-      where: { status: { in: ['ACTIVE', 'PLANNING'] } },
+      where: { status: { in: ['ACTIVE', 'PLANNING'] }, deletedAt: null },
     })
-    const totalProjects = await db.project.count()
+    const totalProjects = await db.project.count({ where: { deletedAt: null } })
     const contractAgg = await db.contract.aggregate({
       _sum: { totalValue: true },
       where: { status: 'ACTIVE' },
@@ -189,14 +189,14 @@ export async function GET() {
     const netProfit = totalRevenue - totalExpenses
 
     // ===== 5b. Activity-Based Metrics =====
-    const constructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION' } })
-    const rentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL' } })
-    const activeConstructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION', status: { in: ['ACTIVE', 'PLANNING'] } } })
-    const activeRentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL', status: { in: ['ACTIVE', 'PLANNING'] } } })
+    const constructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION', deletedAt: null } })
+    const rentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL', deletedAt: null } })
+    const activeConstructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION', status: { in: ['ACTIVE', 'PLANNING'] }, deletedAt: null } })
+    const activeRentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL', status: { in: ['ACTIVE', 'PLANNING'] }, deletedAt: null } })
 
     // Get project IDs by type for filtering
     const constructionProjectIds = (await db.project.findMany({
-      where: { projectType: 'CONSTRUCTION' },
+      where: { projectType: 'CONSTRUCTION', deletedAt: null },
       select: { id: true },
     })).map(p => p.id)
     const rentalProjectIds = (await db.project.findMany({
@@ -217,9 +217,9 @@ export async function GET() {
     const inUseEquipment = equipmentStatusMap['IN_USE'] || 0
 
     // ===== 6. Project Profitability Summary (GL-BASED) =====
-    // Get all active projects with their cost centers
+    // Get all active projects with their cost centers (exclude soft-deleted)
     const projects = await db.project.findMany({
-      where: { status: { in: ['ACTIVE', 'PLANNING', 'COMPLETED'] } },
+      where: { status: { in: ['ACTIVE', 'PLANNING', 'COMPLETED'] }, deletedAt: null },
       include: {
         client: { select: { name: true } },
         contracts: { select: { totalValue: true } },
@@ -478,7 +478,7 @@ export async function GET() {
     // ===== 16. Hub-specific data =====
     // Recent construction projects (last 5)
     const recentConstructionProjects = await db.project.findMany({
-      where: { projectType: 'CONSTRUCTION' },
+      where: { projectType: 'CONSTRUCTION', deletedAt: null },
       select: {
         id: true, code: true, name: true, status: true, contractValue: true,
         client: { select: { name: true } },

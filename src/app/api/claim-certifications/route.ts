@@ -43,13 +43,24 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/claim-certifications
+// P2-CRIT-006 fix: wrap cert.create + claim.update in $transaction.
+// Removed the try/catch that swallowed the claim.update error silently.
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { claimId, certifiedBy, certificationDate, claimedAmount, certifiedAmount, retentionAmount, advanceDeduction, penaltyAmount, otherDeductions, consultantName, consultantApprovalNo, notes } = body
+    const { claimId, certifiedBy, certificationDate, claimedAmount, certifiedAmount, retentionAmount, advanceDeduction, penaltyAmount, otherDeductions, notes } = body
 
     if (!claimId || !certifiedAmount || !certificationDate) {
       return NextResponse.json({ error: 'claimId, certifiedAmount, certificationDate are required' }, { status: 400 })
+    }
+
+    // P2-MED-009 fix: check for existing certification (claimId is @unique)
+    const existing = await db.claimCertification.findUnique({ where: { claimId } })
+    if (existing) {
+      return NextResponse.json(
+        { error: 'Claim already certified. Use PUT to amend the existing certification.' },
+        { status: 400 }
+      )
     }
 
     const claimed = Number(claimedAmount || 0)
@@ -61,27 +72,30 @@ export async function POST(request: NextRequest) {
     const deducted = retention + advance + penalty + other
     const netPayable = certified - deducted
 
-    const cert = await db.claimCertification.create({
-      data: {
-        claimId,
-        certifiedBy,
-        certificationDate: new Date(certificationDate),
-        claimedAmount: claimed,
-        certifiedAmount: certified,
-        deductedAmount: deducted,
-        retentionAmount: retention,
-        advanceDeduction: advance,
-        penaltyAmount: penalty,
-        otherDeductions: other,
-        netPayable,
-        status: 'CERTIFIED',
-        notes,
-      },
-    })
+    // P2-CRIT-006 fix: atomic transaction — cert + claim update succeed or fail together.
+    // No more silent failure where cert is created but claim stays in SUBMITTED.
+    const cert = await db.$transaction(async (tx) => {
+      const created = await tx.claimCertification.create({
+        data: {
+          claimId,
+          certifiedBy,
+          certificationDate: new Date(certificationDate),
+          claimedAmount: claimed,
+          certifiedAmount: certified,
+          deductedAmount: deducted,
+          retentionAmount: retention,
+          advanceDeduction: advance,
+          penaltyAmount: penalty,
+          otherDeductions: other,
+          netPayable,
+          status: 'CERTIFIED',
+          notes,
+        },
+      })
 
-    // Update ProgressClaim status + certifiedAmount
-    try {
-      await db.progressClaim.update({
+      // Update ProgressClaim status + certifiedAmount atomically
+      // (was in try/catch that swallowed errors — P2-CRIT-006 fix)
+      await tx.progressClaim.update({
         where: { id: claimId },
         data: {
           status: 'APPROVED',
@@ -90,9 +104,9 @@ export async function POST(request: NextRequest) {
           advanceDeduction: advance,
         },
       })
-    } catch (e) {
-      console.error('Failed to update ProgressClaim after certification:', e)
-    }
+
+      return created
+    })
 
     return NextResponse.json({
       data: { ...cert, claimedAmount: Number(cert.claimedAmount), certifiedAmount: Number(cert.certifiedAmount), netPayable: Number(cert.netPayable) },

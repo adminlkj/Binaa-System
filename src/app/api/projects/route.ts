@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') || ''
     const status = searchParams.get('status')
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { deletedAt: null }
     if (status) where.status = status
     if (search) {
       where.OR = [

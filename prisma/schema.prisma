@@ -788,6 +788,7 @@ model Project {
   committedCost          Decimal?  @default(0)
   actualCost             Decimal?  @default(0)
   progressPercent        Decimal?  @default(0)
+  deletedAt              DateTime?  // P2-CRIT-009 fix: soft-delete support
 
   @@index([branchId])
   @@index([clientId])

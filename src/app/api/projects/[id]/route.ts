@@ -7,8 +7,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const project = await db.project.findUnique({
-      where: { id },
+    const project = await db.project.findFirst({
+      where: { id, deletedAt: null },
       include: {
         client: { select: { id: true, name: true, code: true } },
         branch: { select: { id: true, name: true, code: true } },
@@ -237,14 +237,68 @@ export async function DELETE(
   try {
     const { id } = await params
 
-    const existing = await db.project.findUnique({ where: { id } })
+    const existing = await db.project.findFirst({
+      where: { id, deletedAt: null },
+      include: {
+        _count: {
+          select: {
+            // Block delete if there are active (non-DRAFT/CANCELLED) contracts
+            contracts: { where: { status: { in: ['ACTIVE', 'UNDER_REVIEW'] } } },
+            // Block if there are submitted/approved claims (not DRAFT/REJECTED)
+            progressClaims: { where: { status: { in: ['SUBMITTED', 'APPROVED', 'PARTIALLY_PAID', 'PAID'] } } },
+            // Block if there are issued invoices (not DRAFT/CANCELLED)
+            salesInvoices: { where: { status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'] } } },
+            purchaseInvoices: { where: { status: { in: ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE'] } } },
+            expenses: true,
+            subcontractorInvoices: true,
+          },
+        },
+      },
+    })
+
     if (!existing) {
       return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
     }
 
-    await db.project.delete({ where: { id } })
+    if (existing.deletedAt) {
+      return NextResponse.json({ error: 'المشروع محذوف بالفعل' }, { status: 400 })
+    }
 
-    return NextResponse.json({ message: 'تم حذف المشروع بنجاح' })
+    // P2-CRIT-009 fix: block hard-delete entirely. Projects must be CANCELLED, not deleted.
+    // Block if there are any financial records that reference the project.
+    const c = existing._count
+    const blockingCount =
+      c.contracts + c.progressClaims + c.salesInvoices + c.purchaseInvoices +
+      c.expenses + c.subcontractorInvoices
+
+    if (blockingCount > 0) {
+      return NextResponse.json(
+        {
+          error: `لا يمكن حذف مشروع له سجلات مالية مرتبطة (${blockingCount} سجل). استخدم الإلغاء بدلاً من الحذف.`,
+          counts: {
+            contracts: c.contracts,
+            progressClaims: c.progressClaims,
+            salesInvoices: c.salesInvoices,
+            purchaseInvoices: c.purchaseInvoices,
+            expenses: c.expenses,
+            subcontractorInvoices: c.subcontractorInvoices,
+          },
+        },
+        { status: 400 }
+      )
+    }
+
+    // P2-CRIT-009 fix: soft-delete instead of hard-delete.
+    // Sets deletedAt + status=CANCELLED. All JEs, cost centers, etc. remain intact.
+    await db.project.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        status: 'CANCELLED',
+      },
+    })
+
+    return NextResponse.json({ message: 'تم إلغاء المشروع (soft-delete). السجلات المالية محفوظة.' })
   } catch (error) {
     console.error('Error deleting project:', error)
     return NextResponse.json({ error: 'فشل في حذف المشروع' }, { status: 500 })

@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       // Removed — the chart of accounts is seeded once and should already exist.
       // Calling it here was a performance regression (110 upserts per request) and
       // broke transaction atomicity (it used db, not tx).
-      await autoEntrySubcontractorInvoice({
+      const je = await autoEntrySubcontractorInvoice({
         invoiceNo: created.invoiceNo,
         subcontractorName: created.subcontractor.name,
         amount: Number(created.amount),
@@ -105,10 +105,22 @@ export async function POST(request: Request) {
         costCenterId: projectCostCenterId,
       }, tx)
 
-      return created
+      // Store journalEntryId on the invoice (P2 regression fix)
+      await tx.subcontractorInvoice.update({
+        where: { id: created.id },
+        data: { journalEntryId: je.id },
+      })
+
+      return tx.subcontractorInvoice.findUnique({
+        where: { id: created.id },
+        include: {
+          subcontractor: { select: { id: true, name: true, code: true, specialty: true } },
+          project: { select: { id: true, name: true, code: true } },
+        },
+      })
     })
 
-    return NextResponse.json(invoice, { status: 201 })
+    return NextResponse.json(invoice!, { status: 201 })
   } catch (error) {
     console.error('Error creating subcontractor invoice:', error)
     return NextResponse.json({ error: 'فشل في إنشاء فاتورة مقاول الباطن' }, { status: 500 })
