@@ -47,6 +47,7 @@ export const AccountRole = {
   VAT_INPUT: 'VAT_INPUT',
   VAT_OUTPUT: 'VAT_OUTPUT',
   VAT_DUE: 'VAT_DUE',
+  VAT_REFUND_RECEIVABLE: 'VAT_REFUND_RECEIVABLE',
   SALARIES_PAYABLE: 'SALARIES_PAYABLE',
   GOSI_PAYABLE: 'GOSI_PAYABLE',
   ZAKAT_EXPENSE: 'ZAKAT_EXPENSE',
@@ -170,7 +171,10 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     labelAr: 'ضريبة القيمة المضافة المدخلة',
     labelEn: 'Input VAT',
     description: 'ضريبة القيمة المضافة على المشتريات والمصروفات',
-    defaultCodes: ['1410'],
+    // FIXED (audit 8.3): was ['1410'] which is the VAT Refund Receivable ASSET.
+    // Input VAT is a LIABILITY (3120). The prior default caused getAccountCodeByRole
+    // to return 1410 (asset) instead of 3120 (liability) for input VAT.
+    defaultCodes: ['3120'],
   },
 
   VAT_OUTPUT: {
@@ -187,6 +191,14 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     labelEn: 'VAT Due',
     description: 'صافي ضريبة القيمة المضافة المستحقة للهيئة',
     defaultCodes: ['3130'],
+  },
+
+  VAT_REFUND_RECEIVABLE: {
+    role: 'VAT_REFUND_RECEIVABLE',
+    labelAr: 'ضريبة مستحقة الاسترداد',
+    labelEn: 'VAT Refund Receivable',
+    description: 'ضريبة القيمة المضافة المستحقة الاسترداد من الهيئة (أصل)',
+    defaultCodes: ['1410'],
   },
 
   // ── Current Liabilities ──────────────────────────────────────────────

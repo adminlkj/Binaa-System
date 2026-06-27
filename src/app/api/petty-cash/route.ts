@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryPettyCash, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
+import { autoEntryPettyCash, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       // Auto-create accounting journal entry.
       // R1 (every financial operation MUST create a posted JE) is enforced: if the JE
       // fails, the entire transaction rolls back — no petty cash record without a JE.
-      await initializeChartOfAccounts()
+      // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
       const journalEntry = await autoEntryPettyCash({
         description: pettyCash.description,
         amount: pettyCash.amount,

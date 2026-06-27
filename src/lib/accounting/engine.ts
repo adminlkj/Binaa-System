@@ -85,7 +85,7 @@ export const CHART_OF_ACCOUNTS_TEMPLATE: AccountTemplate[] = [
       { code: '1340', name: 'Consumable Supplies', nameAr: 'لوازم مستهلكة', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'BOTH' },
       { code: '1350', name: 'Equipment Available for Rent', nameAr: 'معدات جاهزة للتأجير', type: 'ASSET', parentId: '1300', allowPosting: true, level: 2, activityType: 'EQUIPMENT_RENTAL' },
     { code: '1400', name: 'Input VAT (Asset)', nameAr: 'ضريبة مدخلات (أصل)', type: 'ASSET', parentId: '1000', allowPosting: false, isSystem: true, level: 1, activityType: 'BOTH' },
-      { code: '1410', name: 'VAT Refund Receivable', nameAr: 'ضريبة مستحقة الاسترداد', type: 'ASSET', parentId: '1400', allowPosting: true, level: 2, activityType: 'BOTH', accountRole: 'VAT_INPUT' },
+      { code: '1410', name: 'VAT Refund Receivable', nameAr: 'ضريبة مستحقة الاسترداد', type: 'ASSET', parentId: '1400', allowPosting: true, level: 2, activityType: 'BOTH', accountRole: 'VAT_REFUND_RECEIVABLE' },
     { code: '1500', name: 'Prepaid Expenses', nameAr: 'مصروفات مقدمة', type: 'ASSET', parentId: '1000', allowPosting: false, level: 1, activityType: 'BOTH' },
       { code: '1510', name: 'Prepaid Rent', nameAr: 'إيجار مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
       { code: '1520', name: 'Prepaid Insurance', nameAr: 'تأمين مقدمة', type: 'ASSET', parentId: '1500', allowPosting: true, level: 2, activityType: 'BOTH' },
@@ -329,7 +329,22 @@ export async function ensureAccountExists(template: AccountTemplate, tx?: Prisma
 
 // ============ INITIALIZE CHART OF ACCOUNTS ============
 
-export async function initializeChartOfAccounts() {
+/**
+ * Initialize / sync the chart of accounts from the CHART_OF_ACCOUNTS_TEMPLATE.
+ *
+ * IMPORTANT (CRITICAL #12 fix): This function is EXPENSIVE — it iterates ~110 accounts
+ * and performs an upsert on each. It must ONLY be called during database seeding or
+ * an explicit "sync chart of accounts" admin action. It must NOT be called on every
+ * POST of an expense/advance/invoice (the prior pattern caused a major performance
+ * regression and made every transaction non-atomic because the writes used `db`
+ * instead of the caller's `tx`).
+ *
+ * @param tx - Optional Prisma transaction client. When provided, all writes are
+ *             performed on `tx` so they are atomic with the caller's transaction.
+ *             When omitted, falls back to the global `db` (for seed scripts).
+ */
+export async function initializeChartOfAccounts(tx?: PrismaTransaction) {
+  const client = tx || db
   let created = 0
   let updated = 0
 
@@ -340,10 +355,10 @@ export async function initializeChartOfAccounts() {
   })
 
   for (const tmpl of sorted) {
-    const existing = await db.account.findUnique({ where: { code: tmpl.code } })
+    const existing = await client.account.findUnique({ where: { code: tmpl.code } })
     if (existing) {
       // Update existing account with new fields
-      await db.account.update({
+      await client.account.update({
         where: { code: tmpl.code },
         data: {
           name: tmpl.name,
@@ -360,9 +375,9 @@ export async function initializeChartOfAccounts() {
       })
       // Update parent reference if needed
       if (tmpl.parentId) {
-        const parent = await db.account.findUnique({ where: { code: tmpl.parentId } })
+        const parent = await client.account.findUnique({ where: { code: tmpl.parentId } })
         if (parent && existing.parentId !== parent.id) {
-          await db.account.update({
+          await client.account.update({
             where: { code: tmpl.code },
             data: { parentId: parent.id },
           })
@@ -370,12 +385,27 @@ export async function initializeChartOfAccounts() {
       }
       updated++
     } else {
-      await ensureAccountExists(tmpl)
+      // Create new account. Note: ensureAccountExists uses the global db; for atomicity
+      // inside a tx we inline a minimal create here.
+      await client.account.create({
+        data: {
+          code: tmpl.code,
+          name: tmpl.name,
+          nameAr: tmpl.nameAr,
+          type: tmpl.type,
+          parentCode: tmpl.parentId || null,
+          accountRole: tmpl.accountRole || null,
+          isSystem: tmpl.isSystem || false,
+          allowPosting: tmpl.allowPosting || false,
+          level: tmpl.level || 0,
+          activityType: tmpl.activityType || null,
+        },
+      })
       created++
     }
   }
 
-  const total = await db.account.count()
+  const total = await client.account.count()
   return { created, updated, total }
 }
 
@@ -1297,7 +1327,11 @@ export async function autoEntryVATDeclaration(data: {
   const vatOutputCode = await getAccountCodeByRole(AccountRole.VAT_OUTPUT, tx) || '3110'
   const vatInputCode = await getAccountCodeByRole(AccountRole.VAT_INPUT, tx) || '3120'
   const vatDueCode = await getAccountCodeByRole(AccountRole.VAT_DUE, tx) || '3130'
-  const vatRefundCode = await getAccountCodeByRole(AccountRole.VAT_INPUT, tx) || '1410'
+  // FIXED (CRITICAL #14): VAT refund is an ASSET (1410), not a liability.
+  // The prior code used VAT_INPUT role (which maps to liability 3120) as the refund
+  // debit account → zeroed out the liability instead of creating a receivable asset.
+  // Now uses the dedicated VAT_REFUND_RECEIVABLE role.
+  const vatRefundCode = await getAccountCodeByRole(AccountRole.VAT_REFUND_RECEIVABLE, tx) || '1410'
 
   const lines: { accountCode: string; debit: number; credit: number }[] = []
 

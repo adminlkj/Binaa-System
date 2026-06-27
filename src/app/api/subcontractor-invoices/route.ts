@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntrySubcontractorInvoice, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
+import { autoEntrySubcontractorInvoice, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -76,7 +76,10 @@ export async function POST(request: Request) {
         },
       })
 
-      await initializeChartOfAccounts()
+      // Note: initializeChartOfAccounts() was called here previously on every POST.
+      // Removed — the chart of accounts is seeded once and should already exist.
+      // Calling it here was a performance regression (110 upserts per request) and
+      // broke transaction atomicity (it used db, not tx).
       await autoEntrySubcontractorInvoice({
         invoiceNo: created.invoiceNo,
         subcontractorName: created.subcontractor.name,

@@ -1,0 +1,2622 @@
+=== AUDIT LOG TABS START ===
+==========================================
+TAB: 31a-accounting-chart-of-accounts (tab='شجرة الحسابات' ref=@e59)
+TIMESTAMP: 20:13:00
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 3326
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [selected, ref=e59]
+      - StaticText "شجرة الحسابات"
+    - tab "ربط الحسابات بالنظام" [ref=e60]
+      - StaticText "ربط الحسابات بالنظام"
+    - tab "محرك الربط المحاسبي" [ref=e61]
+      - StaticText "محرك الربط المحاسبي"
+    - tab "أثر الحسابات" [ref=e62]
+      - StaticText "أثر الحسابات"
+    - tab "فحص السلامة" [ref=e63]
+      - StaticText "فحص السلامة"
+    - tab "قيود اليومية" [ref=e64]
+      - StaticText "قيود اليومية"
+    - tab "دفتر الأستاذ" [ref=e65]
+      - StaticText "دفتر الأستاذ"
+    - tab "ميزان المراجعة" [ref=e66]
+      - StaticText "ميزان المراجعة"
+  - tabpanel "شجرة الحسابات" [ref=e10] focusable [tabindex]
+    - paragraph
+      - StaticText "أصول"
+    - paragraph
+      - StaticText "46"
+    - paragraph
+      - StaticText "التزامات"
+    - paragraph
+      - StaticText "33"
+    - paragraph
+      - StaticText "حقوق ملكية"
+    - paragraph
+      - StaticText "7"
+    - paragraph
+      - StaticText "إيرادات"
+    - paragraph
+      - StaticText "15"
+    - paragraph
+      - StaticText "مصروفات"
+    - paragraph
+      - StaticText "50"
+    - LabelText
+      - StaticText "النشاط"
+    - combobox [expanded=false, ref=e67]: الكل
+      - generic [ref=e76] clickable [onclick]
+        - StaticText "الكل"
+    - LabelText
+      - StaticText "النوع"
+==========================================
+
+==========================================
+TAB: 31b-accounting-role-mapping (tab='ربط الحسابات بالنظام' ref=@e60)
+TIMESTAMP: 20:13:04
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 1894
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [ref=e59]
+      - StaticText "شجرة الحسابات"
+    - tab "ربط الحسابات بالنظام" [selected, ref=e60]
+      - StaticText "ربط الحسابات بالنظام"
+    - tab "محرك الربط المحاسبي" [ref=e61]
+      - StaticText "محرك الربط المحاسبي"
+    - tab "أثر الحسابات" [ref=e62]
+      - StaticText "أثر الحسابات"
+    - tab "فحص السلامة" [ref=e63]
+      - StaticText "فحص السلامة"
+    - tab "قيود اليومية" [ref=e64]
+      - StaticText "قيود اليومية"
+    - tab "دفتر الأستاذ" [ref=e65]
+      - StaticText "دفتر الأستاذ"
+    - tab "ميزان المراجعة" [ref=e66]
+      - StaticText "ميزان المراجعة"
+  - tabpanel "ربط الحسابات بالنظام" [ref=e10] focusable [tabindex]
+    - paragraph
+      - StaticText "إجمالي الأدوار"
+    - paragraph
+      - StaticText "45"
+    - paragraph
+      - StaticText "مرتبط"
+    - paragraph
+      - StaticText "31"
+    - paragraph
+      - StaticText "غير مربوط"
+    - paragraph
+      - StaticText "14"
+    - paragraph
+      - StaticText "حسابات فرعية"
+    - paragraph
+      - StaticText "0"
+    - button "طباعة" [ref=e67]
+      - StaticText "طباعة"
+    - button "تصدير" [ref=e68]
+      - StaticText "تصدير"
+    - heading "أصول متداولة" [level=4, ref=e69]
+    - StaticText "5"
+    - table
+      - rowgroup
+        - row
+          - columnheader "الدور" [ref=e348]
+          - columnheader "الحساب الأب" [ref=e349]
+==========================================
+
+==========================================
+TAB: 31c-accounting-mapping-engine (tab='محرك الربط المحاسبي' ref=@e61)
+TIMESTAMP: 20:13:09
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 699
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [ref=e59]
+    - tab "ربط الحسابات بالنظام" [ref=e60]
+    - tab "محرك الربط المحاسبي" [selected, ref=e61]
+    - tab "أثر الحسابات" [ref=e62]
+    - tab "فحص السلامة" [ref=e63]
+    - tab "قيود اليومية" [ref=e64]
+    - tab "دفتر الأستاذ" [ref=e65]
+    - tab "ميزان المراجعة" [ref=e66]
+  - tabpanel "محرك الربط المحاسبي" [ref=e10] focusable [tabindex]
+    - heading "محرك الربط المحاسبي" [level=3, ref=e67]
+    - button "طباعة" [ref=e68]
+    - button "تصدير" [ref=e69]
+    - button "تهيئة الربط" [ref=e70]
+    - heading "المبيعات والإيرادات" [level=4, ref=e71]
+    - StaticText "3"
+    - paragraph
+    - paragraph
+    - StaticText "مكتمل"
+    - button "تعديل" [ref=e72]
+    - StaticText "مدين (Debit)"
+    - StaticText "ذمم العملاء"
+    - StaticText "دائن (Credit)"
+    - StaticText "إيرادات المشاريع"
+    - StaticText "ضريبة القيمة المضافة المخرجة"
+    - paragraph
+      - StaticText "إصدار فاتورة مشروع / مستخلص - مدين: ذمم العملاء | دائن: إيرادات المشاريع + ضريبة القيمة المضافة"
+    - paragraph
+    - paragraph
+    - StaticText "مكتمل"
+    - button "تعديل" [ref=e73]
+    - StaticText "مدين (Debit)"
+    - StaticText "ذمم العملاء"
+    - StaticText "دائن (Credit)"
+    - StaticText "إيرادات التأجير"
+    - StaticText "ضريبة القيمة المضافة المخرجة"
+    - paragraph
+      - StaticText "إصدار فاتورة تأجير معدات - مدين: ذمم العملاء | دائن: إيرادات التأجير + ضريبة القيمة المضافة"
+    - paragraph
+    - paragraph
+    - StaticText "مكتمل"
+    - button "تعديل" [ref=e74]
+    - StaticText "مدين (Debit)"
+    - StaticText "ذمم العملاء"
+    - StaticText "دائن (Credit)"
+==========================================
+
+==========================================
+TAB: 31d-accounting-impact (tab='أثر الحسابات' ref=@e62)
+TIMESTAMP: 20:13:13
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 517
+--- CONSOLE ---
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [ref=e59]
+    - tab "ربط الحسابات بالنظام" [ref=e60]
+    - tab "محرك الربط المحاسبي" [ref=e61]
+    - tab "أثر الحسابات" [selected, ref=e62]
+    - tab "فحص السلامة" [ref=e63]
+    - tab "قيود اليومية" [ref=e64]
+    - tab "دفتر الأستاذ" [ref=e65]
+    - tab "ميزان المراجعة" [ref=e66]
+  - tabpanel "أثر الحسابات" [ref=e10] focusable [tabindex]
+    - heading "أثر الحسابات على النظام" [level=3, ref=e67]
+    - button "طباعة" [ref=e68]
+    - button "تصدير" [ref=e69]
+    - paragraph
+    - paragraph
+    - paragraph
+    - paragraph
+    - paragraph
+    - paragraph
+    - paragraph
+    - paragraph
+    - textbox "بحث بالكود أو الاسم..." [ref=e70]
+    - combobox [expanded=false, ref=e71]: الكل
+      - generic [ref=e72] clickable [onclick]
+    - generic
+      - generic [ref=e73] clickable [cursor:pointer, onclick]
+      - generic [ref=e74] clickable [cursor:pointer, onclick]
+      - generic [ref=e75] clickable [cursor:pointer, onclick]
+      - generic [ref=e76] clickable [cursor:pointer, onclick]
+      - generic [ref=e77] clickable [cursor:pointer, onclick]
+      - generic [ref=e78] clickable [cursor:pointer, onclick]
+      - generic [ref=e79] clickable [cursor:pointer, onclick]
+      - generic [ref=e80] clickable [cursor:pointer, onclick]
+      - generic [ref=e81] clickable [cursor:pointer, onclick]
+      - generic [ref=e82] clickable [cursor:pointer, onclick]
+      - generic [ref=e83] clickable [cursor:pointer, onclick]
+      - generic [ref=e84] clickable [cursor:pointer, onclick]
+      - generic [ref=e85] clickable [cursor:pointer, onclick]
+      - generic [ref=e86] clickable [cursor:pointer, onclick]
+      - generic [ref=e87] clickable [cursor:pointer, onclick]
+      - generic [ref=e88] clickable [cursor:pointer, onclick]
+      - generic [ref=e89] clickable [cursor:pointer, onclick]
+      - generic [ref=e90] clickable [cursor:pointer, onclick]
+      - generic [ref=e91] clickable [cursor:pointer, onclick]
+      - generic [ref=e92] clickable [cursor:pointer, onclick]
+==========================================
+
+==========================================
+TAB: 31e-accounting-health (tab='فحص السلامة' ref=@e63)
+TIMESTAMP: 20:13:17
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 49
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [ref=e59]
+    - tab "ربط الحسابات بالنظام" [ref=e60]
+    - tab "محرك الربط المحاسبي" [ref=e61]
+    - tab "أثر الحسابات" [ref=e62]
+    - tab "فحص السلامة" [selected, ref=e63]
+    - tab "قيود اليومية" [ref=e64]
+    - tab "دفتر الأستاذ" [ref=e65]
+    - tab "ميزان المراجعة" [ref=e66]
+  - tabpanel "فحص السلامة" [ref=e10] focusable [tabindex]
+    - heading "فحص السلامة المحاسبي" [level=3, ref=e67]
+    - button "طباعة" [ref=e68]
+    - button "تصدير" [disabled, ref=e69]
+    - button "فحص الآن" [ref=e70]
+    - paragraph
+    - paragraph
+    - paragraph
+      - StaticText "آخر فحص: ٢٧ يونيو ٢٠٢٦"
+- heading "المحاسبة" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "شجرة الحسابات" [ref=e59]
+  - tab "ربط الحسابات بالنظام" [ref=e60]
+  - tab "محرك الربط المحاسبي" [ref=e61]
+  - tab "أثر الحسابات" [ref=e62]
+  - tab "فحص السلامة" [selected, ref=e63]
+  - tab "قيود اليومية" [ref=e64]
+  - tab "دفتر الأستاذ" [ref=e65]
+  - tab "ميزان المراجعة" [ref=e66]
+- tabpanel "فحص السلامة" [ref=e10] focusable [tabindex]
+  - heading "فحص السلامة المحاسبي" [level=3, ref=e67]
+  - button "طباعة" [ref=e68]
+  - button "تصدير" [disabled, ref=e69]
+  - button "فحص الآن" [ref=e70]
+  - paragraph
+  - paragraph
+  - paragraph
+    - StaticText "آخر فحص: ٢٧ يونيو ٢٠٢٦"
+- heading "فحص السلامة المحاسبي" [level=3, ref=e67]
+- button "طباعة" [ref=e68]
+- button "تصدير" [disabled, ref=e69]
+- button "فحص الآن" [ref=e70]
+- paragraph
+  - StaticText "آخر فحص: ٢٧ يونيو ٢٠٢٦"
+==========================================
+
+==========================================
+TAB: 31f-accounting-journal-entries (tab='قيود اليومية' ref=@e64)
+TIMESTAMP: 20:13:21
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 58
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [ref=e59]
+    - tab "ربط الحسابات بالنظام" [ref=e60]
+    - tab "محرك الربط المحاسبي" [ref=e61]
+    - tab "أثر الحسابات" [ref=e62]
+    - tab "فحص السلامة" [ref=e63]
+    - tab "قيود اليومية" [selected, ref=e64]
+    - tab "دفتر الأستاذ" [ref=e65]
+    - tab "ميزان المراجعة" [ref=e66]
+  - tabpanel "قيود اليومية" [ref=e10] focusable [tabindex]
+    - heading "القيود اليومية 0 / 0" [level=3, ref=e67]
+    - button "طباعة" [ref=e68]
+    - button "تصدير" [disabled, ref=e69]
+    - button "قيد يدوي جديد" [ref=e70]
+    - LabelText
+    - combobox [expanded=false, ref=e71]: الكل
+      - generic [ref=e74] clickable [onclick]
+    - LabelText
+    - combobox [expanded=false, ref=e72]: الكل
+      - generic [ref=e75] clickable [onclick]
+    - textbox "بحث برقم القيد أو الوصف..." [ref=e73]
+- heading "المحاسبة" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "شجرة الحسابات" [ref=e59]
+  - tab "ربط الحسابات بالنظام" [ref=e60]
+  - tab "محرك الربط المحاسبي" [ref=e61]
+  - tab "أثر الحسابات" [ref=e62]
+  - tab "فحص السلامة" [ref=e63]
+  - tab "قيود اليومية" [selected, ref=e64]
+  - tab "دفتر الأستاذ" [ref=e65]
+  - tab "ميزان المراجعة" [ref=e66]
+- tabpanel "قيود اليومية" [ref=e10] focusable [tabindex]
+  - heading "القيود اليومية 0 / 0" [level=3, ref=e67]
+  - button "طباعة" [ref=e68]
+  - button "تصدير" [disabled, ref=e69]
+  - button "قيد يدوي جديد" [ref=e70]
+  - LabelText
+  - combobox [expanded=false, ref=e71]: الكل
+    - generic [ref=e74] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e72]: الكل
+    - generic [ref=e75] clickable [onclick]
+  - textbox "بحث برقم القيد أو الوصف..." [ref=e73]
+- heading "القيود اليومية 0 / 0" [level=3, ref=e67]
+==========================================
+
+==========================================
+TAB: 31g-accounting-ledger (tab='دفتر الأستاذ' ref=@e65)
+TIMESTAMP: 20:13:25
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 94
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [ref=e59]
+      - StaticText "شجرة الحسابات"
+    - tab "ربط الحسابات بالنظام" [ref=e60]
+      - StaticText "ربط الحسابات بالنظام"
+    - tab "محرك الربط المحاسبي" [ref=e61]
+      - StaticText "محرك الربط المحاسبي"
+    - tab "أثر الحسابات" [ref=e62]
+      - StaticText "أثر الحسابات"
+    - tab "فحص السلامة" [ref=e63]
+      - StaticText "فحص السلامة"
+    - tab "قيود اليومية" [ref=e64]
+      - StaticText "قيود اليومية"
+    - tab "دفتر الأستاذ" [selected, ref=e65]
+      - StaticText "دفتر الأستاذ"
+    - tab "ميزان المراجعة" [ref=e66]
+      - StaticText "ميزان المراجعة"
+  - tabpanel "دفتر الأستاذ" [ref=e10] focusable [tabindex]
+    - heading "دفتر الأستاذ العام" [level=3, ref=e67]
+    - LabelText
+      - StaticText "الحساب"
+    - combobox [expanded=false, ref=e68]: اختر الحساب...
+      - StaticText "اختر الحساب..."
+    - LabelText
+      - StaticText "من تاريخ"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e72]: 0
+        - spinbutton "Day" [ref=e73]: 0
+        - spinbutton "Year" [ref=e74]: 0
+      - button "Show date picker" [ref=e70]
+    - LabelText
+      - StaticText "إلى تاريخ"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e75]: 0
+        - spinbutton "Day" [ref=e76]: 0
+        - spinbutton "Year" [ref=e77]: 0
+      - button "Show date picker" [ref=e71]
+    - button "عرض" [ref=e69]
+- heading "المحاسبة" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "شجرة الحسابات" [ref=e59]
+  - tab "ربط الحسابات بالنظام" [ref=e60]
+==========================================
+
+==========================================
+TAB: 31h-accounting-trial-balance (tab='ميزان المراجعة' ref=@e66)
+TIMESTAMP: 20:13:29
+HEADING: المحاسبة
+MAIN_CONTENT_LINES: 85
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "المحرك المحاسبي المتكامل — القيود والتقارير المالية والتحليل"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "شجرة الحسابات" [ref=e59]
+      - StaticText "شجرة الحسابات"
+    - tab "ربط الحسابات بالنظام" [ref=e60]
+      - StaticText "ربط الحسابات بالنظام"
+    - tab "محرك الربط المحاسبي" [ref=e61]
+      - StaticText "محرك الربط المحاسبي"
+    - tab "أثر الحسابات" [ref=e62]
+      - StaticText "أثر الحسابات"
+    - tab "فحص السلامة" [ref=e63]
+      - StaticText "فحص السلامة"
+    - tab "قيود اليومية" [ref=e64]
+      - StaticText "قيود اليومية"
+    - tab "دفتر الأستاذ" [ref=e65]
+      - StaticText "دفتر الأستاذ"
+    - tab "ميزان المراجعة" [selected, ref=e66]
+      - StaticText "ميزان المراجعة"
+  - tabpanel "ميزان المراجعة" [ref=e10] focusable [tabindex]
+    - heading "ميزان المراجعة" [level=3, ref=e67]
+    - LabelText
+      - StaticText "من تاريخ"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e71]: 0
+        - spinbutton "Day" [ref=e72]: 0
+        - spinbutton "Year" [ref=e73]: 0
+      - button "Show date picker" [ref=e69]
+    - LabelText
+      - StaticText "إلى تاريخ"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e74]: 0
+        - spinbutton "Day" [ref=e75]: 0
+        - spinbutton "Year" [ref=e76]: 0
+      - button "Show date picker" [ref=e70]
+    - button "عرض" [ref=e68]
+- heading "المحاسبة" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "شجرة الحسابات" [ref=e59]
+  - tab "ربط الحسابات بالنظام" [ref=e60]
+  - tab "محرك الربط المحاسبي" [ref=e61]
+  - tab "أثر الحسابات" [ref=e62]
+  - tab "فحص السلامة" [ref=e63]
+  - tab "قيود اليومية" [ref=e64]
+==========================================
+
+=== AUDIT LOG TABS REPORTS ===
+==========================================
+TAB: 35a-reports-financial-statements (tab='القوائم المالية' ref=@e59)
+TIMESTAMP: 20:13:49
+HEADING: التقارير
+MAIN_CONTENT_LINES: 204
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [selected, ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "قائمة الدخل" [ref=e10] focusable [tabindex]
+    - heading "قائمة الدخل" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - button "تصدير" [ref=e77]
+    - button "طباعة" [ref=e78]
+      - StaticText "طباعة"
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e81]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e82]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e83]: 0
+      - button "Show date picker" [ref=e79]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e84]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e85]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e86]: 0
+      - button "Show date picker" [ref=e80]
+==========================================
+
+==========================================
+TAB: 35b-reports-projects (tab='تقارير المشاريع' ref=@e60)
+TIMESTAMP: 20:13:54
+HEADING: التقارير
+MAIN_CONTENT_LINES: 241
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e59]
+    - tab "تقارير المشاريع" [selected, ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "ربحية المشاريع" [selected, ref=e66]
+    - tab "تفصيل التكاليف" [ref=e67]
+    - tab "ملخص الحالات" [ref=e68]
+  - tabpanel "ربحية المشاريع" [ref=e10] focusable [tabindex]
+    - heading "تقرير ربحية المشاريع" [level=3, ref=e69]
+    - button [ref=e70]
+    - button "تصدير" [ref=e71]
+    - button "طباعة" [ref=e72]
+      - StaticText "طباعة"
+    - paragraph
+      - StaticText "قيمة العقود"
+    - StaticText "9,487,500.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "المفوتر"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "المحصل"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "التكاليف"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "الربح"
+    - StaticText "9,487,500.00"
+    - image "Saudi Riyal"
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e101]
+          - columnheader "المشروع" [ref=e102]
+          - columnheader "النوع" [ref=e103]
+          - columnheader "قيمة العقد" [ref=e104]
+          - columnheader "المفوتر" [ref=e105]
+==========================================
+
+==========================================
+TAB: 35c-reports-rental (tab='تقارير التأجير' ref=@e61)
+TIMESTAMP: 20:13:58
+HEADING: التقارير
+MAIN_CONTENT_LINES: 215
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [selected, ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "استخدام المعدات" [selected, ref=e66]
+    - tab "إيرادات حسب العميل" [ref=e67]
+    - tab "حالة المعدات" [ref=e68]
+  - tabpanel "استخدام المعدات" [ref=e10] focusable [tabindex]
+    - heading "تقرير استخدام المعدات" [level=3, ref=e69]
+    - button [ref=e70]
+    - button "طباعة" [ref=e71]
+      - StaticText "طباعة"
+    - paragraph
+      - StaticText "إجمالي الساعات"
+    - paragraph
+      - StaticText "0"
+    - paragraph
+      - StaticText "الإيرادات"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "التكاليف"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "صافي الربح"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e97]
+          - columnheader "المعدة" [ref=e98]
+          - columnheader "الساعات" [ref=e99]
+          - columnheader "الإيرادات" [ref=e100]
+          - columnheader "الصيانة" [ref=e101]
+          - columnheader "الوقود" [ref=e102]
+          - columnheader "التكاليف" [ref=e103]
+          - columnheader "صافي الربح" [ref=e104]
+      - row
+        - cell "EQ-001" [ref=e72]
+==========================================
+
+==========================================
+TAB: 35d-reports-financial (tab='التقارير المالية' ref=@e62)
+TIMESTAMP: 20:14:02
+HEADING: التقارير
+MAIN_CONTENT_LINES: 91
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [selected, ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "ميزان المراجعة" [selected, ref=e66]
+    - tab "ملخص الإيرادات" [ref=e67]
+    - tab "ملخص المصروفات" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+  - tabpanel "ميزان المراجعة" [ref=e10] focusable [tabindex]
+    - heading "ميزان المراجعة" [level=3, ref=e70]
+    - button [ref=e71]
+    - button "تصدير" [ref=e72]
+    - button "طباعة" [ref=e73]
+      - StaticText "طباعة"
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e76]: 0
+        - spinbutton "Day" [ref=e77]: 0
+        - spinbutton "Year" [ref=e78]: 0
+      - button "Show date picker" [ref=e74]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e79]: 0
+        - spinbutton "Day" [ref=e80]: 0
+        - spinbutton "Year" [ref=e81]: 0
+      - button "Show date picker" [ref=e75]
+- heading "التقارير" [level=1, ref=e7]
+- tablist [ref=e8] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e59]
+  - tab "تقارير المشاريع" [ref=e60]
+  - tab "تقارير التأجير" [ref=e61]
+  - tab "التقارير المالية" [selected, ref=e62]
+  - tab "تقارير المشتريات" [ref=e63]
+  - tab "تقارير العملاء" [ref=e64]
+  - tab "تقارير الضريبة" [ref=e65]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "ميزان المراجعة" [selected, ref=e66]
+==========================================
+
+==========================================
+TAB: 35e-reports-purchases (tab='تقارير المشتريات' ref=@e63)
+TIMESTAMP: 20:14:06
+HEADING: التقارير
+MAIN_CONTENT_LINES: 124
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [selected, ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "ملخص المشتريات" [selected, ref=e66]
+    - tab "أرصدة الموردين" [ref=e67]
+  - tabpanel "ملخص المشتريات" [ref=e10] focusable [tabindex]
+    - heading "ملخص المشتريات" [level=3, ref=e68]
+    - button [ref=e69]
+    - button "طباعة" [ref=e70]
+      - StaticText "طباعة"
+    - paragraph
+      - StaticText "إجمالي المشتريات"
+    - StaticText "1,345,500.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "2 فاتورة"
+    - StaticText "حسب المورد"
+    - table
+      - rowgroup
+        - row
+          - columnheader "المورد" [ref=e78]
+          - columnheader "الفواتير" [ref=e79]
+          - columnheader "الإجمالي" [ref=e80]
+      - row
+        - cell "مؤسسة الخرسانة الجاهزة" [ref=e71]
+        - cell "1" [ref=e72]
+        - cell "621,000.00" [ref=e73]
+      - row
+        - cell "شركة الحديد الوطنية" [ref=e74]
+        - cell "1" [ref=e75]
+        - cell "724,500.00" [ref=e76]
+    - StaticText "حسب المشروع"
+    - table
+      - rowgroup
+        - row
+          - columnheader "المشروع" [ref=e81]
+          - columnheader "الفواتير" [ref=e82]
+          - columnheader "الإجمالي" [ref=e83]
+- heading "التقارير" [level=1, ref=e7]
+- tablist [ref=e8] focusable [tabindex]
+==========================================
+
+==========================================
+TAB: 35f-reports-clients (tab='تقارير العملاء' ref=@e64)
+TIMESTAMP: 20:14:10
+HEADING: التقارير
+MAIN_CONTENT_LINES: 242
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [selected, ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "أرصدة العملاء" [selected, ref=e66]
+    - tab "تقرير التقادم" [ref=e67]
+  - tabpanel "أرصدة العملاء" [ref=e10] focusable [tabindex]
+    - heading "أرصدة العملاء" [level=3, ref=e68]
+    - button [ref=e69]
+    - button "تصدير" [ref=e70]
+    - button "طباعة" [ref=e71]
+      - StaticText "طباعة"
+    - paragraph
+      - StaticText "إجمالي الفواتير"
+    - StaticText "2,811,750.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "المحصل"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "المستحق"
+    - StaticText "2,811,750.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "المتأخر"
+    - StaticText "535,000.00"
+    - image "Saudi Riyal"
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e103]
+          - columnheader "العميل" [ref=e104]
+          - columnheader "الفواتير" [ref=e105]
+          - columnheader "المدفوع" [ref=e106]
+          - columnheader "المستحق" [ref=e107]
+          - columnheader "المتأخر" [ref=e108]
+      - row
+        - cell "CLT-003" [ref=e72]
+        - cell "شركة التطوير العقاري" [ref=e73]
+        - cell "0.00" [ref=e74]
+==========================================
+
+==========================================
+TAB: 35g-reports-vat (tab='تقارير الضريبة' ref=@e65)
+TIMESTAMP: 20:14:14
+HEADING: التقارير
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e60]
+    - tab "تقارير المشاريع" [ref=e61]
+    - tab "تقارير التأجير" [ref=e62]
+    - tab "التقارير المالية" [ref=e63]
+    - tab "تقارير المشتريات" [ref=e64]
+    - tab "تقارير العملاء" [ref=e65]
+    - tab "تقارير الضريبة" [selected, ref=e66]
+  - LabelText
+  - combobox [expanded=false, ref=e9]: 2026
+    - generic [ref=e67] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e10]: اختر الربع
+    - generic [ref=e68] clickable [onclick]
+  - button "طباعة" [ref=e11]
+- heading "التقارير" [level=1, ref=e7]
+- tablist [ref=e8] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e60]
+  - tab "تقارير المشاريع" [ref=e61]
+  - tab "تقارير التأجير" [ref=e62]
+  - tab "التقارير المالية" [ref=e63]
+  - tab "تقارير المشتريات" [ref=e64]
+  - tab "تقارير العملاء" [ref=e65]
+  - tab "تقارير الضريبة" [selected, ref=e66]
+- combobox [expanded=false, ref=e9]: 2026
+  - generic [ref=e67] clickable [onclick]
+- combobox [expanded=false, ref=e10]: اختر الربع
+  - generic [ref=e68] clickable [onclick]
+- button "طباعة" [ref=e11]
+==========================================
+
+=== AUDIT LOG TABS REPORTS SUBTABS ===
+==========================================
+SUBTAB: 35h-reports-income-statement (parent='القوائم المالية' sub='قائمة الدخل' ref=@e66)
+TIMESTAMP: 20:14:37
+HEADING: التقارير
+MAIN_CONTENT_LINES: 204
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [selected, ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "قائمة الدخل" [ref=e10] focusable [tabindex]
+    - heading "قائمة الدخل" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - button "تصدير" [ref=e77]
+    - button "طباعة" [ref=e78]
+      - StaticText "طباعة"
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e81]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e82]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e83]: 0
+      - button "Show date picker" [ref=e79]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e84]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e85]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e86]: 0
+      - button "Show date picker" [ref=e80]
+==========================================
+
+==========================================
+SUBTAB: 35i-reports-balance-sheet (parent='القوائم المالية' sub='الميزانية' ref=@e67)
+TIMESTAMP: 20:14:42
+HEADING: التقارير
+MAIN_CONTENT_LINES: 207
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [selected, ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "الميزانية" [ref=e10] focusable [tabindex]
+    - heading "الميزانية العمومية" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - button "تصدير" [ref=e77]
+    - LabelText
+      - StaticText "كما في تاريخ"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e79]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e80]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e81]: 0
+      - button "Show date picker" [ref=e78]
+    - paragraph
+      - StaticText "الأصول"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "الخصوم"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "حقوق الملكية"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+==========================================
+
+==========================================
+SUBTAB: 35j-reports-trial-balance (parent='القوائم المالية' sub='ميزان المراجعة' ref=@e68)
+TIMESTAMP: 20:14:48
+HEADING: التقارير
+MAIN_CONTENT_LINES: 99
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [selected, ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "ميزان المراجعة" [ref=e10] focusable [tabindex]
+    - heading "ميزان المراجعة" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - button "تصدير" [ref=e77]
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e80]: 0
+        - spinbutton "Day" [ref=e81]: 0
+        - spinbutton "Year" [ref=e82]: 0
+      - button "Show date picker" [ref=e78]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e83]: 0
+        - spinbutton "Day" [ref=e84]: 0
+        - spinbutton "Year" [ref=e85]: 0
+      - button "Show date picker" [ref=e79]
+- heading "التقارير" [level=1, ref=e7]
+- tablist [ref=e8] focusable [tabindex]
+  - tab "القوائم المالية" [selected, ref=e59]
+  - tab "تقارير المشاريع" [ref=e60]
+  - tab "تقارير التأجير" [ref=e61]
+  - tab "التقارير المالية" [ref=e62]
+==========================================
+
+==========================================
+SUBTAB: 35k-reports-cash-flow (parent='القوائم المالية' sub='التدفق النقدي' ref=@e69)
+TIMESTAMP: 20:14:54
+HEADING: التقارير
+MAIN_CONTENT_LINES: 250
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [selected, ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "التدفق النقدي" [ref=e10] focusable [tabindex]
+    - heading "قائمة التدفقات النقدية" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e79]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e80]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e81]: 0
+      - button "Show date picker" [ref=e77]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e82]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e83]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e84]: 0
+      - button "Show date picker" [ref=e78]
+    - paragraph
+      - StaticText "التدقات الداخلة"
+    - StaticText "0.00"
+==========================================
+
+==========================================
+SUBTAB: 35l-reports-general-ledger (parent='القوائم المالية' sub='الأستاذ العام' ref=@e70)
+TIMESTAMP: 20:15:00
+HEADING: التقارير
+MAIN_CONTENT_LINES: 52
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [selected, ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "الأستاذ العام" [ref=e10] focusable [tabindex]
+    - heading "دفتر الأستاذ العام" [level=3, ref=e75]
+    - button [ref=e76]
+    - combobox [expanded=false, ref=e77]: اختر حساباً...
+- heading "التقارير" [level=1, ref=e7]
+- tablist [ref=e8] focusable [tabindex]
+  - tab "القوائم المالية" [selected, ref=e59]
+  - tab "تقارير المشاريع" [ref=e60]
+  - tab "تقارير التأجير" [ref=e61]
+  - tab "التقارير المالية" [ref=e62]
+  - tab "تقارير المشتريات" [ref=e63]
+  - tab "تقارير العملاء" [ref=e64]
+  - tab "تقارير الضريبة" [ref=e65]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "قائمة الدخل" [ref=e66]
+  - tab "الميزانية" [ref=e67]
+  - tab "ميزان المراجعة" [ref=e68]
+  - tab "التدفق النقدي" [ref=e69]
+  - tab "الأستاذ العام" [selected, ref=e70]
+  - tab "كشف حساب" [ref=e71]
+  - tab "مراكز التكلفة" [ref=e72]
+  - tab "الأعمال تحت التنفيذ" [ref=e73]
+  - tab "مطابقة الضريبة" [ref=e74]
+- tabpanel "الأستاذ العام" [ref=e10] focusable [tabindex]
+  - heading "دفتر الأستاذ العام" [level=3, ref=e75]
+  - button [ref=e76]
+  - combobox [expanded=false, ref=e77]: اختر حساباً...
+- heading "دفتر الأستاذ العام" [level=3, ref=e75]
+==========================================
+
+==========================================
+SUBTAB: 35m-reports-account-statement (parent='القوائم المالية' sub='كشف حساب' ref=@e71)
+TIMESTAMP: 20:15:06
+HEADING: التقارير
+MAIN_CONTENT_LINES: 52
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [selected, ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "كشف حساب" [ref=e10] focusable [tabindex]
+    - heading "كشف حساب" [level=3, ref=e75]
+    - button [ref=e76]
+    - combobox [expanded=false, ref=e77]: اختر حساباً...
+- heading "التقارير" [level=1, ref=e7]
+- tablist [ref=e8] focusable [tabindex]
+  - tab "القوائم المالية" [selected, ref=e59]
+  - tab "تقارير المشاريع" [ref=e60]
+  - tab "تقارير التأجير" [ref=e61]
+  - tab "التقارير المالية" [ref=e62]
+  - tab "تقارير المشتريات" [ref=e63]
+  - tab "تقارير العملاء" [ref=e64]
+  - tab "تقارير الضريبة" [ref=e65]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "قائمة الدخل" [ref=e66]
+  - tab "الميزانية" [ref=e67]
+  - tab "ميزان المراجعة" [ref=e68]
+  - tab "التدفق النقدي" [ref=e69]
+  - tab "الأستاذ العام" [ref=e70]
+  - tab "كشف حساب" [selected, ref=e71]
+  - tab "مراكز التكلفة" [ref=e72]
+  - tab "الأعمال تحت التنفيذ" [ref=e73]
+  - tab "مطابقة الضريبة" [ref=e74]
+- tabpanel "كشف حساب" [ref=e10] focusable [tabindex]
+  - heading "كشف حساب" [level=3, ref=e75]
+  - button [ref=e76]
+  - combobox [expanded=false, ref=e77]: اختر حساباً...
+- heading "كشف حساب" [level=3, ref=e75]
+==========================================
+
+==========================================
+SUBTAB: 35n-reports-cost-centers (parent='القوائم المالية' sub='مراكز التكلفة' ref=@e72)
+TIMESTAMP: 20:15:12
+HEADING: التقارير
+MAIN_CONTENT_LINES: 227
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [selected, ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "مراكز التكلفة" [ref=e10] focusable [tabindex]
+    - heading "تقرير مراكز التكلفة" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - button "تصدير" [ref=e77]
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e80]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e81]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e82]: 0
+      - button "Show date picker" [ref=e78]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e83]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e84]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e85]: 0
+      - button "Show date picker" [ref=e79]
+    - paragraph
+      - StaticText "إجمالي الإيرادات"
+==========================================
+
+==========================================
+SUBTAB: 35o-reports-wip (parent='القوائم المالية' sub='الأعمال تحت التنفيذ' ref=@e73)
+TIMESTAMP: 20:15:17
+HEADING: التقارير
+MAIN_CONTENT_LINES: 244
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [selected, ref=e73]
+    - tab "مطابقة الضريبة" [ref=e74]
+  - tabpanel "الأعمال تحت التنفيذ" [ref=e10] focusable [tabindex]
+    - heading "تقرير الأعمال تحت التنفيذ" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - button "تصدير" [ref=e77]
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e80]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e81]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e82]: 0
+      - button "Show date picker" [ref=e78]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e83]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e84]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e85]: 0
+      - button "Show date picker" [ref=e79]
+    - paragraph
+      - StaticText "قيمة العقود"
+==========================================
+
+==========================================
+SUBTAB: 35p-reports-vat-matching (parent='القوائم المالية' sub='مطابقة الضريبة' ref=@e74)
+TIMESTAMP: 20:15:23
+HEADING: التقارير
+MAIN_CONTENT_LINES: 187
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e7]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e8] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e59]
+    - tab "تقارير المشاريع" [ref=e60]
+    - tab "تقارير التأجير" [ref=e61]
+    - tab "التقارير المالية" [ref=e62]
+    - tab "تقارير المشتريات" [ref=e63]
+    - tab "تقارير العملاء" [ref=e64]
+    - tab "تقارير الضريبة" [ref=e65]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "قائمة الدخل" [ref=e66]
+    - tab "الميزانية" [ref=e67]
+    - tab "ميزان المراجعة" [ref=e68]
+    - tab "التدفق النقدي" [ref=e69]
+    - tab "الأستاذ العام" [ref=e70]
+    - tab "كشف حساب" [ref=e71]
+    - tab "مراكز التكلفة" [ref=e72]
+    - tab "الأعمال تحت التنفيذ" [ref=e73]
+    - tab "مطابقة الضريبة" [selected, ref=e74]
+  - tabpanel "مطابقة الضريبة" [ref=e10] focusable [tabindex]
+    - heading "مطابقة ضريبة القيمة المضافة" [level=3, ref=e75]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e76]
+    - button "تصدير" [ref=e77]
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e80]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e81]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e82]: 0
+      - button "Show date picker" [ref=e78]
+    - LabelText
+      - StaticText "إلى"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e83]: 0
+        - StaticText "/"
+        - spinbutton "Day" [ref=e84]: 0
+        - StaticText "/"
+        - spinbutton "Year" [ref=e85]: 0
+      - button "Show date picker" [ref=e79]
+    - paragraph
+      - StaticText "ضريبة المخرجات"
+==========================================
+
+=== AUDIT LOG TABS SETTINGS ===
+==========================================
+TAB: 39a-settings-company (tab='بيانات الشركة' ref=@e53)
+TIMESTAMP: 20:17:21
+HEADING: الإعدادات
+MAIN_CONTENT_LINES: 93
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإعدادات" [level=1, ref=e7]
+  - paragraph
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "بيانات الشركة" [selected, ref=e53]
+    - tab "الفروع" [ref=e54]
+    - tab "المستودعات" [ref=e55]
+    - tab "التكلفة" [ref=e56]
+    - tab "قوالب الفاتورة" [ref=e57]
+  - tabpanel "بيانات الشركة" [ref=e10] focusable [tabindex]
+    - button "حفظ التغييرات" [ref=e58]
+    - textbox "شركة البناء الحديثة للمقاولات" [ref=e59]
+    - textbox "Al Binaa Al Haditha Contracting Co." [ref=e60]
+    - textbox "300123456700003" [ref=e61]
+    - textbox "1234567890" [ref=e62]
+    - textbox "الدمام - المملكة العربية السعودية" [ref=e63]
+    - textbox "0500000000" [ref=e64]
+    - textbox "info@company.com" [ref=e65]: info@albinaa.com
+    - textbox "www.company.com" [ref=e66]
+    - textbox "الراجحي" [ref=e67]
+    - textbox "SA00 8000 0000 6080 1016 7519" [ref=e68]
+    - textbox "شركة البناء الحديثة للمقاولات" [ref=e69]
+    - generic [ref=e70] clickable [cursor:pointer, onclick]
+    - spinbutton [ref=e71]: 0.15000000596046448
+    - generic [ref=e72] clickable [cursor:pointer, onclick]
+    - generic [ref=e73] clickable [cursor:pointer, onclick]
+    - textbox "مدة السداد 30 يوماً من تاريخ الفاتورةهذه الفاتورة صادرة إلكترونياً" [ref=e74]: مدة السداد 30 يوماً من تاريخ الفاتورة
+يرجى ذكر رقم الفاتورة عند التحويل
+    - StaticText "الشعار والختم"
+    - LabelText
+    - generic [ref=e75] clickable [cursor:pointer, onclick]
+    - paragraph
+    - LabelText
+    - generic [ref=e76] clickable [cursor:pointer, onclick]
+    - paragraph
+      - StaticText "يُفضل SVG، PNG/JPG. الحجم الموصى به: 120-160 بكسل."
+- heading "الإعدادات" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "بيانات الشركة" [selected, ref=e53]
+  - tab "الفروع" [ref=e54]
+  - tab "المستودعات" [ref=e55]
+  - tab "التكلفة" [ref=e56]
+  - tab "قوالب الفاتورة" [ref=e57]
+- tabpanel "بيانات الشركة" [ref=e10] focusable [tabindex]
+  - button "حفظ التغييرات" [ref=e58]
+  - textbox "شركة البناء الحديثة للمقاولات" [ref=e59]
+  - textbox "Al Binaa Al Haditha Contracting Co." [ref=e60]
+  - textbox "300123456700003" [ref=e61]
+==========================================
+
+==========================================
+TAB: 39b-settings-branches (tab='الفروع' ref=@e54)
+TIMESTAMP: 20:17:25
+HEADING: الإعدادات
+MAIN_CONTENT_LINES: 70
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإعدادات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إعدادات النظام والبيانات الأساسية"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "بيانات الشركة" [ref=e53]
+      - StaticText "بيانات الشركة"
+    - tab "الفروع" [selected, ref=e54]
+      - StaticText "الفروع"
+    - tab "المستودعات" [ref=e55]
+      - StaticText "المستودعات"
+    - tab "التكلفة" [ref=e56]
+      - StaticText "التكلفة"
+    - tab "قوالب الفاتورة" [ref=e57]
+      - StaticText "قوالب الفاتورة"
+  - tabpanel "الفروع" [ref=e10] focusable [tabindex]
+    - button "فرع جديد" [ref=e58]
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e64]
+          - columnheader "الاسم" [ref=e65]
+          - columnheader "العنوان" [ref=e66]
+          - columnheader "الحالة" [ref=e67]
+      - row
+        - cell "BR-001" [ref=e59]
+        - cell "الفرع الرئيسي" [ref=e60]
+        - cell "الرياض، حي العليا، طريق الملك فهد" [ref=e61]
+        - cell "نشط" [ref=e62]
+- heading "الإعدادات" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "بيانات الشركة" [ref=e53]
+  - tab "الفروع" [selected, ref=e54]
+  - tab "المستودعات" [ref=e55]
+  - tab "التكلفة" [ref=e56]
+  - tab "قوالب الفاتورة" [ref=e57]
+- tabpanel "الفروع" [ref=e10] focusable [tabindex]
+  - button "فرع جديد" [ref=e58]
+  - table
+    - rowgroup
+      - row
+        - columnheader "الكود" [ref=e64]
+        - columnheader "الاسم" [ref=e65]
+        - columnheader "العنوان" [ref=e66]
+        - columnheader "الحالة" [ref=e67]
+    - row
+      - cell "BR-001" [ref=e59]
+      - cell "الفرع الرئيسي" [ref=e60]
+==========================================
+
+==========================================
+TAB: 39c-settings-warehouses (tab='المستودعات' ref=@e55)
+TIMESTAMP: 20:17:29
+HEADING: الإعدادات
+MAIN_CONTENT_LINES: 70
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإعدادات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إعدادات النظام والبيانات الأساسية"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "بيانات الشركة" [ref=e53]
+      - StaticText "بيانات الشركة"
+    - tab "الفروع" [ref=e54]
+      - StaticText "الفروع"
+    - tab "المستودعات" [selected, ref=e55]
+      - StaticText "المستودعات"
+    - tab "التكلفة" [ref=e56]
+      - StaticText "التكلفة"
+    - tab "قوالب الفاتورة" [ref=e57]
+      - StaticText "قوالب الفاتورة"
+  - tabpanel "المستودعات" [ref=e10] focusable [tabindex]
+    - button "مستودع جديد" [ref=e58]
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e64]
+          - columnheader "الاسم" [ref=e65]
+          - columnheader "الفرع" [ref=e66]
+          - columnheader "الحالة" [ref=e67]
+      - row
+        - cell "WH-001" [ref=e59]
+        - cell "المستودع الرئيسي" [ref=e60]
+        - cell "الفرع الرئيسي" [ref=e61]
+        - cell "نشط" [ref=e62]
+- heading "الإعدادات" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "بيانات الشركة" [ref=e53]
+  - tab "الفروع" [ref=e54]
+  - tab "المستودعات" [selected, ref=e55]
+  - tab "التكلفة" [ref=e56]
+  - tab "قوالب الفاتورة" [ref=e57]
+- tabpanel "المستودعات" [ref=e10] focusable [tabindex]
+  - button "مستودع جديد" [ref=e58]
+  - table
+    - rowgroup
+      - row
+        - columnheader "الكود" [ref=e64]
+        - columnheader "الاسم" [ref=e65]
+        - columnheader "الفرع" [ref=e66]
+        - columnheader "الحالة" [ref=e67]
+    - row
+      - cell "WH-001" [ref=e59]
+      - cell "المستودع الرئيسي" [ref=e60]
+==========================================
+
+==========================================
+TAB: 39d-settings-cost (tab='التكلفة' ref=@e56)
+TIMESTAMP: 20:17:33
+HEADING: الإعدادات
+MAIN_CONTENT_LINES: 95
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإعدادات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إعدادات النظام والبيانات الأساسية"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "بيانات الشركة" [ref=e53]
+      - StaticText "بيانات الشركة"
+    - tab "الفروع" [ref=e54]
+      - StaticText "الفروع"
+    - tab "المستودعات" [ref=e55]
+      - StaticText "المستودعات"
+    - tab "التكلفة" [selected, ref=e56]
+      - StaticText "التكلفة"
+    - tab "قوالب الفاتورة" [ref=e57]
+      - StaticText "قوالب الفاتورة"
+  - tabpanel "التكلفة" [ref=e10] focusable [tabindex]
+    - button "مركز تكلفة جديد" [ref=e58]
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e69]
+          - columnheader "الاسم" [ref=e70]
+          - columnheader "مركز أب" [ref=e71]
+      - row
+        - cell "CC-001" [ref=e59]
+        - cell "مشروع مجمع الملقا" [ref=e60]
+        - cell "—" [ref=e61]
+      - row
+        - cell "CC-002" [ref=e62]
+        - cell "مشروع مدرسة النسيم" [ref=e63]
+        - cell "—" [ref=e64]
+      - row
+        - cell "CC-003" [ref=e65]
+        - cell "مشروع فيلا الورود" [ref=e66]
+        - cell "—" [ref=e67]
+- heading "الإعدادات" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "بيانات الشركة" [ref=e53]
+  - tab "الفروع" [ref=e54]
+  - tab "المستودعات" [ref=e55]
+  - tab "التكلفة" [selected, ref=e56]
+  - tab "قوالب الفاتورة" [ref=e57]
+- tabpanel "التكلفة" [ref=e10] focusable [tabindex]
+  - button "مركز تكلفة جديد" [ref=e58]
+  - table
+    - rowgroup
+      - row
+        - columnheader "الكود" [ref=e69]
+==========================================
+
+==========================================
+TAB: 39e-settings-invoice-templates (tab='قوالب الفاتورة' ref=@e57)
+TIMESTAMP: 20:17:37
+HEADING: الإعدادات
+MAIN_CONTENT_LINES: 431
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإعدادات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إعدادات النظام والبيانات الأساسية"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "بيانات الشركة" [ref=e53]
+      - StaticText "بيانات الشركة"
+    - tab "الفروع" [ref=e54]
+      - StaticText "الفروع"
+    - tab "المستودعات" [ref=e55]
+      - StaticText "المستودعات"
+    - tab "التكلفة" [ref=e56]
+      - StaticText "التكلفة"
+    - tab "قوالب الفاتورة" [selected, ref=e57]
+      - StaticText "قوالب الفاتورة"
+  - tabpanel "قوالب الفاتورة" [ref=e10] focusable [tabindex]
+    - heading "قوالب تصميم الفواتير" [level=3, ref=e58]
+    - paragraph
+      - StaticText "اختر قالباً جاهزاً أو خصص الألوان والخطوط مع معاينة مباشرة"
+    - button "حفظ التغييرات" [ref=e59]
+    - StaticText "القوالب الجاهزة"
+    - button "كلاسيكي تصميم تقليدي بإطار نظيف - مناسب للشركات الرسمية" [ref=e60]
+      - StaticText "كلاسيكي"
+      - paragraph
+        - StaticText "تصميم تقليدي بإطار نظيف - مناسب للشركات الرسمية"
+    - button "عصري تصميم عصري بألوان متدرجة - مناسب للشركات التقنية" [ref=e61]
+      - StaticText "عصري"
+      - paragraph
+        - StaticText "تصميم عصري بألوان متدرجة - مناسب للشركات التقنية"
+    - button "مبسط تصميم مبسط بمساحات بيضاء - مناسب للشركات الاستشارية" [ref=e62]
+      - StaticText "مبسط"
+      - paragraph
+        - StaticText "تصميم مبسط بمساحات بيضاء - مناسب للشركات الاستشارية"
+    - button "مؤسسي تصميم مؤسسي قوي - مناسب للشركات الكبرى والمقاولات" [ref=e63]
+      - StaticText "مؤسسي"
+      - paragraph
+        - StaticText "تصميم مؤسسي قوي - مناسب للشركات الكبرى والمقاولات"
+    - button "ملكي تصميم فاخر بلمسات ذهبية - مناسب للشركات المرموقة" [ref=e64]
+      - StaticText "ملكي"
+      - paragraph
+        - StaticText "تصميم فاخر بلمسات ذهبية - مناسب للشركات المرموقة"
+    - button "محيط تصميم بألوان البحر الهادئة - مناسب للشركات الخدمية" [ref=e65]
+      - StaticText "محيط"
+      - paragraph
+        - StaticText "تصميم بألوان البحر الهادئة - مناسب للشركات الخدمية"
+    - StaticText "تخصيص الألوان"
+    - LabelText
+      - StaticText "اللون الأساسي"
+    - ColorWell: #0f766e
+==========================================
+
+=== AUDIT LOG TABS DEPRECIATION ===
+==========================================
+TAB: 32a-depreciation-assets (tab='الأصول الثابتة' ref=@e53)
+TIMESTAMP: 20:17:55
+HEADING: الإهلاك
+MAIN_CONTENT_LINES: 161
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإهلاك" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إدارة الأصول الثابتة — أدخل البيانات الأساسية والنظام يحسب الإهلاك ويُنشئ القيود تلقائياً"
+  - button "إضافة أصل" [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "الأصول الثابتة" [selected, ref=e53]
+      - StaticText "الأصول الثابتة"
+    - tab "تشغيل الإهلاك" [ref=e54]
+      - StaticText "تشغيل الإهلاك"
+    - tab "سجلات الإهلاك" [ref=e55]
+      - StaticText "سجلات الإهلاك"
+    - tab "تقرير الإهلاك" [ref=e56]
+      - StaticText "تقرير الإهلاك"
+  - tabpanel "الأصول الثابتة" [ref=e10] focusable [tabindex]
+    - paragraph
+      - StaticText "إجمالي الأصول"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "إجمالي التكلفة"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "مجمع الإهلاك"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "صافي القيمة الدفترية"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "إجمالي الإهلاك الشهري المتوقع"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "إجمالي الإهلاك السنوي المتوقع"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - LabelText
+      - StaticText "بحث"
+    - textbox "كود أو اسم الأصل..." [ref=e61]
+    - LabelText
+      - StaticText "الفئة"
+    - combobox [expanded=false, ref=e57]: الكل
+      - generic [ref=e62] clickable [onclick]
+        - StaticText "الكل"
+    - LabelText
+      - StaticText "الحالة"
+    - combobox [expanded=false, ref=e58]: الكل
+==========================================
+
+==========================================
+TAB: 32b-depreciation-run (tab='تشغيل الإهلاك' ref=@e54)
+TIMESTAMP: 20:17:59
+HEADING: الإهلاك
+MAIN_CONTENT_LINES: 105
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإهلاك" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إدارة الأصول الثابتة — أدخل البيانات الأساسية والنظام يحسب الإهلاك ويُنشئ القيود تلقائياً"
+  - button "إضافة أصل" [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "الأصول الثابتة" [ref=e53]
+      - StaticText "الأصول الثابتة"
+    - tab "تشغيل الإهلاك" [selected, ref=e54]
+      - StaticText "تشغيل الإهلاك"
+    - tab "سجلات الإهلاك" [ref=e55]
+      - StaticText "سجلات الإهلاك"
+    - tab "تقرير الإهلاك" [ref=e56]
+      - StaticText "تقرير الإهلاك"
+  - tabpanel "تشغيل الإهلاك" [ref=e10] focusable [tabindex]
+    - paragraph
+      - StaticText "فترة الإهلاك"
+    - paragraph
+      - StaticText "اختر الشهر والسنة لتشغيل الإهلاك لجميع الأصول النشطة"
+    - LabelText
+      - StaticText "الشهر"
+    - combobox [expanded=false, ref=e57]: يونيو
+      - generic [ref=e61] clickable [onclick]
+        - StaticText "يونيو"
+    - LabelText
+      - StaticText "السنة"
+    - combobox [expanded=false, ref=e58]: 2026
+      - generic [ref=e62] clickable [onclick]
+        - StaticText "2026"
+    - button "تشغيل الإهلاك" [disabled, ref=e59]
+    - heading "معاينة الأصول المراد إهلاكها" [level=3, ref=e60]
+    - StaticText "0"
+    - StaticText " "
+    - StaticText "أصل"
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e65]
+          - columnheader "الاسم" [ref=e66]
+          - columnheader "التكلفة" [ref=e67]
+          - columnheader "مجمع الإهلاك" [ref=e68]
+          - columnheader "القيمة الدفترية" [ref=e69]
+          - columnheader "إهلاك شهري" [ref=e70]
+          - columnheader "القيمة بعد الإهلاك" [ref=e71]
+      - row
+        - cell "لا توجد أصول نشطة" [ref=e63]
+- heading "الإهلاك" [level=1, ref=e7]
+- button "إضافة أصل" [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "الأصول الثابتة" [ref=e53]
+==========================================
+
+==========================================
+TAB: 32c-depreciation-records (tab='سجلات الإهلاك' ref=@e55)
+TIMESTAMP: 20:18:04
+HEADING: الإهلاك
+MAIN_CONTENT_LINES: 123
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإهلاك" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إدارة الأصول الثابتة — أدخل البيانات الأساسية والنظام يحسب الإهلاك ويُنشئ القيود تلقائياً"
+  - button "إضافة أصل" [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "الأصول الثابتة" [ref=e53]
+      - StaticText "الأصول الثابتة"
+    - tab "تشغيل الإهلاك" [ref=e54]
+      - StaticText "تشغيل الإهلاك"
+    - tab "سجلات الإهلاك" [selected, ref=e55]
+      - StaticText "سجلات الإهلاك"
+    - tab "تقرير الإهلاك" [ref=e56]
+      - StaticText "تقرير الإهلاك"
+  - tabpanel "سجلات الإهلاك" [ref=e10] focusable [tabindex]
+    - paragraph
+      - StaticText "إجمالي السجلات"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "سجلات نشطة"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "سجلات معكوسة"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "إجمالي المبلغ"
+    - StaticText "0.00"
+    - image "Saudi Riyal"
+    - LabelText
+      - StaticText "السنة"
+    - combobox [expanded=false, ref=e57]: الكل
+      - generic [ref=e60] clickable [onclick]
+        - StaticText "الكل"
+    - LabelText
+      - StaticText "الأصل"
+    - combobox [expanded=false, ref=e58]: كل الأصول
+      - generic [ref=e61] clickable [onclick]
+        - StaticText "كل الأصول"
+    - button [ref=e59]
+    - table
+      - rowgroup
+        - row
+          - columnheader "الأصل" [ref=e64]
+          - columnheader "الفترة" [ref=e65]
+          - columnheader "القيمة بداية الشهر" [ref=e66]
+          - columnheader "مبلغ الإهلاك" [ref=e67]
+          - columnheader "القيمة نهاية الشهر" [ref=e68]
+==========================================
+
+==========================================
+TAB: 32d-depreciation-report (tab='تقرير الإهلاك' ref=@e56)
+TIMESTAMP: 20:18:08
+HEADING: الإهلاك
+MAIN_CONTENT_LINES: 21
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "الإهلاك" [level=1, ref=e7]
+  - paragraph
+  - button "إضافة أصل" [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "الأصول الثابتة" [ref=e53]
+    - tab "تشغيل الإهلاك" [ref=e54]
+    - tab "سجلات الإهلاك" [ref=e55]
+    - tab "تقرير الإهلاك" [selected, ref=e56]
+  - tabpanel "تقرير الإهلاك" [ref=e10] focusable [tabindex]
+    - heading "تقرير الإهلاك حسب الفئة" [level=3, ref=e57]
+- heading "الإهلاك" [level=1, ref=e7]
+- button "إضافة أصل" [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "الأصول الثابتة" [ref=e53]
+  - tab "تشغيل الإهلاك" [ref=e54]
+  - tab "سجلات الإهلاك" [ref=e55]
+  - tab "تقرير الإهلاك" [selected, ref=e56]
+- tabpanel "تقرير الإهلاك" [ref=e10] focusable [tabindex]
+  - heading "تقرير الإهلاك حسب الفئة" [level=3, ref=e57]
+- heading "تقرير الإهلاك حسب الفئة" [level=3, ref=e57]
+==========================================
+
+=== AUDIT LOG TABS VAT ===
+==========================================
+TAB: 34a-vat-summary (tab='ملخص الضريبة' ref=@e53)
+TIMESTAMP: 20:18:20
+HEADING: ضريبة القيمة المضافة
+MAIN_CONTENT_LINES: 14
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "ضريبة القيمة المضافة" [level=1, ref=e7]
+  - paragraph
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "ملخص الضريبة" [selected, ref=e53]
+    - tab "الإقرار الضريبي" [ref=e54]
+  - tabpanel "ملخص الضريبة" [ref=e10] focusable [tabindex]
+- heading "ضريبة القيمة المضافة" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "ملخص الضريبة" [selected, ref=e53]
+  - tab "الإقرار الضريبي" [ref=e54]
+- tabpanel "ملخص الضريبة" [ref=e10] focusable [tabindex]
+==========================================
+
+==========================================
+TAB: 34b-vat-return (tab='الإقرار الضريبي' ref=@e54)
+TIMESTAMP: 20:18:24
+HEADING: ضريبة القيمة المضافة
+MAIN_CONTENT_LINES: 47
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "ضريبة القيمة المضافة" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إدارة إقرارات الضريبة وملخص الضريبة"
+  - button [ref=e8]
+  - tablist [ref=e9] focusable [tabindex]
+    - tab "ملخص الضريبة" [ref=e53]
+    - tab "الإقرار الضريبي" [selected, ref=e54]
+  - tabpanel "الإقرار الضريبي" [ref=e10] focusable [tabindex]
+    - LabelText
+    - combobox [expanded=false, ref=e55]: 2026
+      - generic [ref=e64] clickable [onclick]
+    - heading "الربع الأول - 2026" [level=3, ref=e56]
+    - button "إنشاء إقرار" [ref=e57]
+    - heading "الربع الثاني - 2026" [level=3, ref=e58]
+    - button "إنشاء إقرار" [ref=e59]
+    - heading "الربع الثالث - 2026" [level=3, ref=e60]
+    - button "إنشاء إقرار" [ref=e61]
+    - heading "الربع الرابع - 2026" [level=3, ref=e62]
+    - button "إنشاء إقرار" [ref=e63]
+- heading "ضريبة القيمة المضافة" [level=1, ref=e7]
+- button [ref=e8]
+- tablist [ref=e9] focusable [tabindex]
+  - tab "ملخص الضريبة" [ref=e53]
+  - tab "الإقرار الضريبي" [selected, ref=e54]
+- tabpanel "الإقرار الضريبي" [ref=e10] focusable [tabindex]
+  - LabelText
+  - combobox [expanded=false, ref=e55]: 2026
+    - generic [ref=e64] clickable [onclick]
+  - heading "الربع الأول - 2026" [level=3, ref=e56]
+  - button "إنشاء إقرار" [ref=e57]
+  - heading "الربع الثاني - 2026" [level=3, ref=e58]
+  - button "إنشاء إقرار" [ref=e59]
+  - heading "الربع الثالث - 2026" [level=3, ref=e60]
+  - button "إنشاء إقرار" [ref=e61]
+  - heading "الربع الرابع - 2026" [level=3, ref=e62]
+  - button "إنشاء إقرار" [ref=e63]
+- combobox [expanded=false, ref=e55]: 2026
+  - generic [ref=e64] clickable [onclick]
+- heading "الربع الأول - 2026" [level=3, ref=e56]
+- button "إنشاء إقرار" [ref=e57]
+- heading "الربع الثاني - 2026" [level=3, ref=e58]
+- button "إنشاء إقرار" [ref=e59]
+- heading "الربع الثالث - 2026" [level=3, ref=e60]
+- button "إنشاء إقرار" [ref=e61]
+- heading "الربع الرابع - 2026" [level=3, ref=e62]
+- button "إنشاء إقرار" [ref=e63]
+==========================================
+
+=== AUDIT LOG TABS INVENTORY ===
+==========================================
+TAB: 38a-inventory-items (tab='الأصناف' ref=@e56)
+TIMESTAMP: 20:18:36
+HEADING: المخزون
+MAIN_CONTENT_LINES: 276
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المخزون" [level=1, ref=e7]
+  - paragraph
+    - StaticText "إدارة المنتجات والخدمات والمستودعات"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "صنف جديد" [ref=e11]
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "الأصناف" [selected, ref=e56]
+      - StaticText "الأصناف"
+    - tab "المخازن" [ref=e57]
+      - StaticText "المخازن"
+  - tabpanel "الأصناف" [ref=e13] focusable [tabindex]
+    - paragraph
+      - StaticText "إجمالي الأصناف"
+    - paragraph
+      - StaticText "3"
+    - paragraph
+      - StaticText "قيمة المخزون"
+    - StaticText "234,000.00"
+    - image "Saudi Riyal"
+    - paragraph
+      - StaticText "أصناف منخفضة"
+    - paragraph
+      - StaticText "0"
+    - paragraph
+      - StaticText "خدمات"
+    - paragraph
+      - StaticText "0"
+    - textbox "بحث بالاسم أو الكود..." [ref=e60]
+    - combobox [expanded=false, ref=e58]: كل الأنواع
+      - generic [ref=e61] clickable [onclick]
+        - StaticText "كل الأنواع"
+    - combobox [expanded=false, ref=e59]: كل الفئات
+      - generic [ref=e62] clickable [onclick]
+        - StaticText "كل الفئات"
+    - table
+      - rowgroup
+        - row
+          - columnheader "الكود" [ref=e94]
+          - columnheader "الاسم" [ref=e95]
+          - columnheader "النوع" [ref=e96]
+          - columnheader "الوحدة" [ref=e97]
+          - columnheader "سعر الشراء" [ref=e98]
+          - columnheader "سعر البيع" [ref=e99]
+          - columnheader "الكمية" [ref=e100]
+          - columnheader "الحد الأدنى" [ref=e101]
+          - columnheader "المستودع" [ref=e102]
+==========================================
+
+==========================================
+TAB: 38b-inventory-warehouses (tab='المخازن' ref=@e57)
+TIMESTAMP: 20:18:40
+HEADING: المخزون
+MAIN_CONTENT_LINES: 24
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المخزون" [level=1, ref=e7]
+  - paragraph
+  - button "طباعة" [ref=e8]
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - tablist [ref=e11] focusable [tabindex]
+    - tab "الأصناف" [ref=e55]
+    - tab "المخازن" [selected, ref=e56]
+  - tabpanel "المخازن" [ref=e12] focusable [tabindex]
+    - button "مستودع جديد" [ref=e57]
+    - heading "المستودع الرئيسي" [level=3, ref=e58]
+- heading "المخزون" [level=1, ref=e7]
+- button "طباعة" [ref=e8]
+- button "تصدير CSV" [ref=e9]
+- button "تحديث" [ref=e10]
+- tablist [ref=e11] focusable [tabindex]
+  - tab "الأصناف" [ref=e55]
+  - tab "المخازن" [selected, ref=e56]
+- tabpanel "المخازن" [ref=e12] focusable [tabindex]
+  - button "مستودع جديد" [ref=e57]
+  - heading "المستودع الرئيسي" [level=3, ref=e58]
+- button "مستودع جديد" [ref=e57]
+- heading "المستودع الرئيسي" [level=3, ref=e58]
+==========================================
+
+=== AUDIT LOG TABS EXPENSES ===
+==========================================
+TAB: 30a-expenses-fuel (tab='وقود 1' ref=@e56)
+TIMESTAMP: 20:18:52
+HEADING: المصروفات
+MAIN_CONTENT_LINES: 188
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المصروفات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "مصروف جديد" [ref=e11]
+  - paragraph
+    - StaticText "إجمالي المصروفات"
+  - StaticText "50,025.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "القسم النشط: وقود"
+  - StaticText "17,250.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "هذا الشهر"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "وقود 1" [selected, ref=e56]
+      - StaticText "وقود"
+      - StaticText "1"
+    - tab "صيانة 1" [ref=e57]
+      - StaticText "صيانة"
+      - StaticText "1"
+    - tab "نقل 1" [ref=e58]
+      - StaticText "نقل"
+      - StaticText "1"
+    - tab "سائقين 0" [ref=e59]
+      - StaticText "سائقين"
+      - StaticText "0"
+    - tab "مصروفات تشغيلية 0" [ref=e60]
+      - StaticText "مصروفات تشغيلية"
+      - StaticText "0"
+    - tab "مصروفات إدارية 2" [ref=e61]
+      - StaticText "مصروفات إدارية"
+      - StaticText "2"
+    - tab "مصروفات عامة 0" [ref=e62]
+      - StaticText "مصروفات عامة"
+      - StaticText "0"
+  - tabpanel "وقود 1" [ref=e13] focusable [tabindex]
+    - textbox "بحث بالوصف أو المشروع أو المعدة أو المرجع..." [ref=e65]
+    - combobox [expanded=false, ref=e63]: كل المشاريع
+==========================================
+
+==========================================
+TAB: 30b-expenses-maintenance (tab='صيانة 1' ref=@e57)
+TIMESTAMP: 20:18:56
+HEADING: المصروفات
+MAIN_CONTENT_LINES: 188
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المصروفات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "مصروف جديد" [ref=e11]
+  - paragraph
+    - StaticText "إجمالي المصروفات"
+  - StaticText "50,025.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "القسم النشط: صيانة"
+  - StaticText "9,775.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "هذا الشهر"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "وقود 1" [ref=e56]
+      - StaticText "وقود"
+      - StaticText "1"
+    - tab "صيانة 1" [selected, ref=e57]
+      - StaticText "صيانة"
+      - StaticText "1"
+    - tab "نقل 1" [ref=e58]
+      - StaticText "نقل"
+      - StaticText "1"
+    - tab "سائقين 0" [ref=e59]
+      - StaticText "سائقين"
+      - StaticText "0"
+    - tab "مصروفات تشغيلية 0" [ref=e60]
+      - StaticText "مصروفات تشغيلية"
+      - StaticText "0"
+    - tab "مصروفات إدارية 2" [ref=e61]
+      - StaticText "مصروفات إدارية"
+      - StaticText "2"
+    - tab "مصروفات عامة 0" [ref=e62]
+      - StaticText "مصروفات عامة"
+      - StaticText "0"
+  - tabpanel "صيانة 1" [ref=e13] focusable [tabindex]
+    - textbox "بحث بالوصف أو المشروع أو المعدة أو المرجع..." [ref=e65]
+    - combobox [expanded=false, ref=e63]: كل المشاريع
+==========================================
+
+==========================================
+TAB: 30c-expenses-transport (tab='نقل 1' ref=@e58)
+TIMESTAMP: 20:19:01
+HEADING: المصروفات
+MAIN_CONTENT_LINES: 188
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المصروفات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "مصروف جديد" [ref=e11]
+  - paragraph
+    - StaticText "إجمالي المصروفات"
+  - StaticText "50,025.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "القسم النشط: نقل"
+  - StaticText "13,800.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "هذا الشهر"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "وقود 1" [ref=e56]
+      - StaticText "وقود"
+      - StaticText "1"
+    - tab "صيانة 1" [ref=e57]
+      - StaticText "صيانة"
+      - StaticText "1"
+    - tab "نقل 1" [selected, ref=e58]
+      - StaticText "نقل"
+      - StaticText "1"
+    - tab "سائقين 0" [ref=e59]
+      - StaticText "سائقين"
+      - StaticText "0"
+    - tab "مصروفات تشغيلية 0" [ref=e60]
+      - StaticText "مصروفات تشغيلية"
+      - StaticText "0"
+    - tab "مصروفات إدارية 2" [ref=e61]
+      - StaticText "مصروفات إدارية"
+      - StaticText "2"
+    - tab "مصروفات عامة 0" [ref=e62]
+      - StaticText "مصروفات عامة"
+      - StaticText "0"
+  - tabpanel "نقل 1" [ref=e13] focusable [tabindex]
+    - textbox "بحث بالوصف أو المشروع أو المعدة أو المرجع..." [ref=e65]
+    - combobox [expanded=false, ref=e63]: كل المشاريع
+==========================================
+
+==========================================
+TAB: 30d-expenses-drivers (tab='سائقين 0' ref=@e59)
+TIMESTAMP: 20:19:05
+HEADING: المصروفات
+MAIN_CONTENT_LINES: 70
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المصروفات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "مصروف جديد" [ref=e11]
+  - paragraph
+    - StaticText "إجمالي المصروفات"
+  - StaticText "50,025.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "القسم النشط: سائقين"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "هذا الشهر"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "وقود 1" [ref=e56]
+    - tab "صيانة 1" [ref=e57]
+    - tab "نقل 1" [ref=e58]
+    - tab "سائقين 0" [selected, ref=e59]
+    - tab "مصروفات تشغيلية 0" [ref=e60]
+    - tab "مصروفات إدارية 2" [ref=e61]
+    - tab "مصروفات عامة 0" [ref=e62]
+  - tabpanel "سائقين 0" [ref=e13] focusable [tabindex]
+    - textbox "بحث بالوصف أو المشروع أو المعدة أو المرجع..." [ref=e66]
+    - combobox [expanded=false, ref=e63]: كل المشاريع
+      - generic [ref=e67] clickable [onclick]
+    - combobox [expanded=false, ref=e64]: الكل
+      - generic [ref=e68] clickable [onclick]
+    - button "إضافة مصروف" [ref=e65]
+- heading "المصروفات" [level=1, ref=e7]
+- paragraph
+  - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+- button "طباعة" [ref=e8]
+- button "تصدير CSV" [ref=e9]
+- button "تحديث" [ref=e10]
+- button "مصروف جديد" [ref=e11]
+- paragraph
+  - StaticText "القسم النشط: سائقين"
+- tablist [ref=e12] focusable [tabindex]
+==========================================
+
+==========================================
+TAB: 30e-expenses-operational (tab='مصروفات تشغيلية 0' ref=@e60)
+TIMESTAMP: 20:19:09
+HEADING: المصروفات
+MAIN_CONTENT_LINES: 70
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المصروفات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "مصروف جديد" [ref=e11]
+  - paragraph
+    - StaticText "إجمالي المصروفات"
+  - StaticText "50,025.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "القسم النشط: مصروفات تشغيلية"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "هذا الشهر"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "وقود 1" [ref=e56]
+    - tab "صيانة 1" [ref=e57]
+    - tab "نقل 1" [ref=e58]
+    - tab "سائقين 0" [ref=e59]
+    - tab "مصروفات تشغيلية 0" [selected, ref=e60]
+    - tab "مصروفات إدارية 2" [ref=e61]
+    - tab "مصروفات عامة 0" [ref=e62]
+  - tabpanel "مصروفات تشغيلية 0" [ref=e13] focusable [tabindex]
+    - textbox "بحث بالوصف أو المشروع أو المعدة أو المرجع..." [ref=e66]
+    - combobox [expanded=false, ref=e63]: كل المشاريع
+      - generic [ref=e67] clickable [onclick]
+    - combobox [expanded=false, ref=e64]: الكل
+      - generic [ref=e68] clickable [onclick]
+    - button "إضافة مصروف" [ref=e65]
+- heading "المصروفات" [level=1, ref=e7]
+- paragraph
+  - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+- button "طباعة" [ref=e8]
+- button "تصدير CSV" [ref=e9]
+- button "تحديث" [ref=e10]
+- button "مصروف جديد" [ref=e11]
+- paragraph
+  - StaticText "القسم النشط: مصروفات تشغيلية"
+- tablist [ref=e12] focusable [tabindex]
+==========================================
+
+==========================================
+TAB: 30f-expenses-administrative (tab='مصروفات إدارية 2' ref=@e61)
+TIMESTAMP: 20:19:13
+HEADING: المصروفات
+MAIN_CONTENT_LINES: 241
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المصروفات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "مصروف جديد" [ref=e11]
+  - paragraph
+    - StaticText "إجمالي المصروفات"
+  - StaticText "50,025.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "القسم النشط: مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "هذا الشهر"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "وقود 1" [ref=e56]
+      - StaticText "وقود"
+      - StaticText "1"
+    - tab "صيانة 1" [ref=e57]
+      - StaticText "صيانة"
+      - StaticText "1"
+    - tab "نقل 1" [ref=e58]
+      - StaticText "نقل"
+      - StaticText "1"
+    - tab "سائقين 0" [ref=e59]
+      - StaticText "سائقين"
+      - StaticText "0"
+    - tab "مصروفات تشغيلية 0" [ref=e60]
+      - StaticText "مصروفات تشغيلية"
+      - StaticText "0"
+    - tab "مصروفات إدارية 2" [selected, ref=e61]
+      - StaticText "مصروفات إدارية"
+      - StaticText "2"
+    - tab "مصروفات عامة 0" [ref=e62]
+      - StaticText "مصروفات عامة"
+      - StaticText "0"
+  - tabpanel "مصروفات إدارية 2" [ref=e13] focusable [tabindex]
+    - textbox "بحث بالوصف أو المشروع أو المعدة أو المرجع..." [ref=e65]
+    - combobox [expanded=false, ref=e63]: كل المشاريع
+==========================================
+
+==========================================
+TAB: 30g-expenses-general (tab='مصروفات عامة 0' ref=@e62)
+TIMESTAMP: 20:19:17
+HEADING: المصروفات
+MAIN_CONTENT_LINES: 70
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 50 lines) ---
+- main
+  - heading "المصروفات" [level=1, ref=e7]
+  - paragraph
+    - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+  - button "طباعة" [ref=e8]
+    - StaticText "طباعة"
+  - button "تصدير CSV" [ref=e9]
+  - button "تحديث" [ref=e10]
+  - button "مصروف جديد" [ref=e11]
+  - paragraph
+    - StaticText "إجمالي المصروفات"
+  - StaticText "50,025.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "القسم النشط: مصروفات عامة"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "مصروفات إدارية"
+  - StaticText "9,200.00"
+  - image "Saudi Riyal"
+  - paragraph
+    - StaticText "هذا الشهر"
+  - StaticText "0.00"
+  - image "Saudi Riyal"
+  - tablist [ref=e12] focusable [tabindex]
+    - tab "وقود 1" [ref=e56]
+    - tab "صيانة 1" [ref=e57]
+    - tab "نقل 1" [ref=e58]
+    - tab "سائقين 0" [ref=e59]
+    - tab "مصروفات تشغيلية 0" [ref=e60]
+    - tab "مصروفات إدارية 2" [ref=e61]
+    - tab "مصروفات عامة 0" [selected, ref=e62]
+  - tabpanel "مصروفات عامة 0" [ref=e13] focusable [tabindex]
+    - textbox "بحث بالوصف أو المشروع أو المعدة أو المرجع..." [ref=e66]
+    - combobox [expanded=false, ref=e63]: كل المشاريع
+      - generic [ref=e67] clickable [onclick]
+    - combobox [expanded=false, ref=e64]: الكل
+      - generic [ref=e68] clickable [onclick]
+    - button "إضافة مصروف" [ref=e65]
+- heading "المصروفات" [level=1, ref=e7]
+- paragraph
+  - StaticText "شاشة موحدة لجميع المصروفات: وقود، صيانة، نقل، سائقين، تشغيلية، إدارية، وعامة"
+- button "طباعة" [ref=e8]
+- button "تصدير CSV" [ref=e9]
+- button "تحديث" [ref=e10]
+- button "مصروف جديد" [ref=e11]
+- paragraph
+  - StaticText "القسم النشط: مصروفات عامة"
+- tablist [ref=e12] focusable [tabindex]
+==========================================
+

@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryPurchaseInvoice, initializeChartOfAccounts, reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { autoEntryPurchaseInvoice, reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 // Valid status transitions for Supplier Invoices
@@ -95,7 +95,7 @@ export async function PUT(
           if (!journalEntryId) {
             // R1 enforced: if the JE fails, the entire transaction rolls back —
             // no invoice can transition to SENT without a posted journal entry.
-            await initializeChartOfAccounts()
+            // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
             const journalEntry = await autoEntryPurchaseInvoice({
               invoiceNo: existing.invoiceNo,
               supplierId: existing.supplierId,
@@ -181,7 +181,7 @@ export async function PUT(
         const newVatAmount = body.vatAmount ?? existing.vatAmount
         const newTotalAmount = body.totalAmount ?? existing.totalAmount
 
-        await initializeChartOfAccounts()
+        // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
         const newJournalEntry = await autoEntryPurchaseInvoice({
           invoiceNo: existing.invoiceNo,
           supplierId: existing.supplierId,

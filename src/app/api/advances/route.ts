@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryEmployeeAdvance, autoEntryAdvanceSettlement, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
+import { autoEntryEmployeeAdvance, autoEntryAdvanceSettlement, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
         },
       })
 
-      await initializeChartOfAccounts()
+      // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
       const journalEntry = await autoEntryEmployeeAdvance({
         employeeName: advance.employee.name,
         amount: advance.amount,
@@ -105,7 +105,7 @@ export async function PUT(request: Request) {
         },
       })
 
-      await initializeChartOfAccounts()
+      // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
       // Settlement JE (Dr Payroll / Cr Employee Advance). R1 enforced — if this
       // fails, the settlement update above is rolled back too.
       await autoEntryAdvanceSettlement({
