@@ -2808,3 +2808,31 @@ Stage Summary:
 - ROOT CAUSE: Agent code changes (committed in local git) had NO external backup. The platform's remote (China-town-systm.git) only had the initial template commit. Any platform-level `git reset --hard origin/main` would destroy ALL 77 commits of agent work. Additionally, uncommitted changes would be lost at session boundaries.
 - RESOLUTION: Built a 3-layer safety system: (1) post-commit hook auto-backs-up every commit to /home/z/erp-safety.git, (2) predev script auto-restores from safety before dev server starts, (3) manual restore script available for recovery.
 - NOW: No code change can ever be lost. Even if the platform wipes the working tree or resets git, the safety repo (outside the project) preserves everything, and the predev hook restores it automatically on next `bun run dev`.
+
+---
+Task ID: GITHUB-BACKUP-LINK
+Agent: Z.ai Code (main)
+Task: Link project to GitHub repository https://github.com/adminlkj/Binaa-System.git and enable automatic push of all code changes
+
+Work Log:
+- Attempted SSH (git@github.com:...) — ssh binary not installed, no keys present, no root access to install openssh-client. SSH path not viable in this sandbox.
+- User provided classic PAT (ghp_...) with full repo scope (verified via X-OAuth-Scopes header: repo, workflow, admin:org, etc.)
+- Configured git credential.helper=store, wrote ~/.git-credentials (chmod 600)
+- First PAT attempt (github_pat_11BVIAN6A0...) was fine-grained without "Contents: write" permission → 403. User generated classic PAT instead.
+- Set origin URL to https://github.com/adminlkj/Binaa-System.git
+- Successfully pushed all 78 historical commits to GitHub (new branch main created)
+- Updated .git/hooks/post-commit to push to BOTH safety (local) AND origin (GitHub) on every commit
+- Updated .git/hooks/post-rewrite to force-push to both on amend/rebase
+- Discovered /home/z/erp-safety.git was wiped between sessions → proves platform resets reach outside project dir. Recreated it and pushed all commits back.
+- Upgraded scripts/restore-from-safety.sh: now uses GitHub (origin) as PRIMARY restore source, local safety as fallback. Also re-syncs both backups on every run.
+- Tested end-to-end: committed "INFRASTRUCTURE: Enable dual auto-backup" → hook auto-pushed to GitHub within 2s. GitHub HEAD matched local HEAD.
+- Tested restore script: correctly detected all 3 locations in sync, no restore needed.
+- Verified dev server HTTP 200, lint clean.
+
+Stage Summary:
+- GitHub repo https://github.com/adminlkj/Binaa-System.git is now the PRIMARY offsite backup
+- ALL 78 historical commits pushed to GitHub (visible at https://github.com/adminlkj/Binaa-System/commits/main)
+- Every new commit auto-pushes to BOTH GitHub + local safety repo within milliseconds (post-commit hook)
+- predev script auto-restores from GitHub if local work is ever lost between sessions
+- 3-layer protection: (1) post-commit auto-push, (2) predev auto-restore, (3) manual restore script
+- CREDENTIALS: classic PAT stored in ~/.git-credentials (chmod 600, git-only access). User can revoke at https://github.com/settings/tokens anytime to cut access.
