@@ -41,12 +41,16 @@ export async function validateFinancialConsistency(): Promise<{
   const issues: ConsistencyIssue[] = []
 
   // Rule 1: توازن القيود (debit column vs credit column on JournalLine)
+  // FIXED (HIGH #20): filter to POSTED, non-deleted entries + non-deleted lines only.
+  // The prior raw SQL counted DRAFT entries (naturally unbalanced while editing) and
+  // soft-deleted entries/lines as violations → false positives.
   const unbalanced = await db.$queryRaw<Array<{ entryId: string; debits: number; credits: number }>>`
     SELECT je.id as "entryId",
       COALESCE(SUM(jl.debit), 0) as debits,
       COALESCE(SUM(jl.credit), 0) as credits
     FROM "JournalEntry" je
-    LEFT JOIN "JournalLine" jl ON jl."journalEntryId" = je.id
+    LEFT JOIN "JournalLine" jl ON jl."journalEntryId" = je.id AND jl."deletedAt" IS NULL
+    WHERE je."deletedAt" IS NULL AND je."status" = 'POSTED'
     GROUP BY je.id
     HAVING ABS(COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.credit), 0)) > 0.01
     LIMIT 100
@@ -61,9 +65,9 @@ export async function validateFinancialConsistency(): Promise<{
     ref: u.entryId, detail: `القيد غير متوازن: مدين=${u.debits} دائن=${u.credits}`,
   }))
 
-  // Rule 2: قيود بدون أطراف
+  // Rule 2: قيود بدون أطراف (POSTED entries only — DRAFT entries may be in progress)
   const emptyEntries = await db.journalEntry.findMany({
-    where: { lines: { none: {} } },
+    where: { lines: { none: {} }, deletedAt: null, status: 'POSTED' },
     take: 100,
     select: { id: true, entryNo: true },
   })
@@ -110,11 +114,14 @@ export async function validateFinancialConsistency(): Promise<{
     ref: 'supplier-payments', detail: `${supplierPaymentsWithoutJE} دفعة مورد بدون قيد`,
   })
 
-  // Rule 4: قيود مكررة لنفس المستند (raw SQL because Prisma 6 groupBy having syntax differs)
+  // Rule 4: قيود مكررة لنفس المستند (exclude deleted entries + reversal pairs)
+  // NOTE: a reversal entry shares sourceType/sourceId with its original by design
+  // (reverseEntry sets sourceId to the original's sourceId). That is NOT a duplicate.
+  // We exclude isReversal entries from this check so legitimate reversals don't flag.
   const duplicateRefs = await db.$queryRaw<Array<{ sourceType: string | null; sourceId: string | null; cnt: bigint }>>`
     SELECT "sourceType", "sourceId", COUNT(*) as cnt
     FROM "JournalEntry"
-    WHERE "sourceId" IS NOT NULL
+    WHERE "sourceId" IS NOT NULL AND "deletedAt" IS NULL AND "isReversal" = false
     GROUP BY "sourceType", "sourceId"
     HAVING COUNT(*) > 1
     LIMIT 100

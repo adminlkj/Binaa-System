@@ -462,12 +462,16 @@ export async function accountingHealthCheck(): Promise<{
   })
 
   // Check 4: accounting equation (Assets = Liabilities + Equity + (Revenue - Expenses))
+  // FIXED (HIGH #21): the prior filter `isActive: true` on accounts HID balances of
+  // deactivated accounts from the accounting equation. If an account with a non-zero
+  // balance was deactivated, its balance vanished from the equation → false pass.
+  // Now includes ALL accounts (active + inactive) so the equation is truly balanced.
   const grouped = await db.journalLine.groupBy({
     by: ['accountId'],
     _sum: { debit: true, credit: true },
     where: { deletedAt: null, journalEntry: { status: 'POSTED', deletedAt: null } },
   })
-  const accounts = await db.account.findMany({ where: { isActive: true }, select: { id: true, type: true } })
+  const accounts = await db.account.findMany({ select: { id: true, type: true } })
   const typeMap = new Map(accounts.map(a => [a.id, a.type]))
   let assets = 0, liab = 0, equity = 0, revenue = 0, expenses = 0
   for (const g of grouped) {

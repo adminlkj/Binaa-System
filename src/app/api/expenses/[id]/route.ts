@@ -54,16 +54,17 @@ export async function DELETE(
       )
     }
 
-    // If the expense has a journal entry, create a reversal entry and cancel the original
-    // Do all operations in a transaction
+    // If the expense has a journal entry, create a reversal entry and cancel the original.
+    // R12: never hard-delete a posted financial document — soft-delete + reversal preserves
+    // the audit trail. Do all operations in a transaction.
     await db.$transaction(async (tx: PrismaTransaction) => {
       if (existing.journalEntryId) {
         // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
-        // Avoids double-cancellation bug + Decimal conversion bug.
         await reverseEntry(existing.journalEntryId, tx)
       }
 
-      await tx.expense.delete({ where: { id } })
+      // Soft-delete (set deletedAt) instead of hard delete — preserves the audit trail.
+      await tx.expense.update({ where: { id }, data: { deletedAt: new Date() } })
     })
 
     return NextResponse.json({ message: 'تم حذف المصروف بنجاح' })
