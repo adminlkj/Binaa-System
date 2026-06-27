@@ -87,4 +87,4 @@ screenshot-*.mjs
 verify-*.png
 bug-reproduction.png
 *.png.bak
-audit-screenshots/
+audit-screenshots/audit-baseline.db

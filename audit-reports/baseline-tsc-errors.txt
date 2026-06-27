@@ -1,0 +1,314 @@
+src/app/api/account-statement/customer/route.ts(64,77): error TS2339: Property 'where' does not exist on type '{ select?: SalesInvoiceSelect<DefaultArgs> | null | undefined; omit?: SalesInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SalesInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/customer/route.ts(90,78): error TS2339: Property 'where' does not exist on type '{ select?: ClientPaymentSelect<DefaultArgs> | null | undefined; omit?: ClientPaymentOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: ClientPaymentScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/customer/route.ts(111,19): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/customer/route.ts(126,20): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(68,77): error TS2339: Property 'where' does not exist on type '{ select?: SalesInvoiceSelect<DefaultArgs> | null | undefined; omit?: SalesInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SalesInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(92,76): error TS2339: Property 'where' does not exist on type '{ select?: ProgressClaimSelect<DefaultArgs> | null | undefined; omit?: ProgressClaimOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: ProgressClaimScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(138,75): error TS2339: Property 'where' does not exist on type '{ select?: PurchaseInvoiceSelect<DefaultArgs> | null | undefined; omit?: PurchaseInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: PurchaseInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(159,72): error TS2339: Property 'where' does not exist on type '{ select?: ExpenseSelect<DefaultArgs> | null | undefined; omit?: ExpenseOmit<DefaultArgs> | null | undefined; include?: ExpenseInclude<...> | ... 1 more ... | undefined; ... 5 more ...; distinct?: ExpenseScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(182,81): error TS2339: Property 'where' does not exist on type '{ select?: SubcontractorInvoiceSelect<DefaultArgs> | null | undefined; omit?: SubcontractorInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SubcontractorInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(202,77): error TS2339: Property 'where' does not exist on type '{ select?: EquipmentCostSelect<DefaultArgs> | null | undefined; omit?: EquipmentCostOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: EquipmentCostScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(221,72): error TS2339: Property 'where' does not exist on type '{ select?: LaborCostSelect<DefaultArgs> | null | undefined; omit?: LaborCostOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: LaborCostScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(238,70): error TS2339: Property 'where' does not exist on type '{ select?: SalarySelect<DefaultArgs> | null | undefined; omit?: SalaryOmit<DefaultArgs> | null | undefined; include?: SalaryInclude<...> | null | undefined; ... 5 more ...; distinct?: SalaryScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(244,9): error TS2353: Object literal may only specify known properties, and 'totalEarnings' does not exist in type 'SalarySelect<DefaultArgs>'.
+src/app/api/account-statement/project/route.ts(258,78): error TS2339: Property 'where' does not exist on type '{ select?: EquipmentFuelLogSelect<DefaultArgs> | null | undefined; omit?: EquipmentFuelLogOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: EquipmentFuelLogScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(284,57): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(286,51): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(320,27): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(321,25): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(322,25): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(323,26): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(331,27): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(332,22): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(333,25): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(350,31): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(361,24): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(373,29): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(383,24): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(395,27): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(396,33): error TS2339: Property 'totalEarnings' does not exist on type '{ id: string; status: SalaryStatus; createdAt: Date; updatedAt: Date; deletedAt: Date | null; journalEntryId: string | null; activityType: string; basicSalary: Decimal; ... 9 more ...; netSalary: Decimal; }'.
+src/app/api/account-statement/project/route.ts(418,26): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/route.ts(98,9): error TS2322: Type '({ date: Date; description: string; debit: Decimal; credit: number; category: string; } | { date: Date; description: string; debit: number; credit: Decimal; category: string; })[]' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }[]'.
+src/app/api/account-statement/route.ts(148,21): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/account-statement/route.ts(149,19): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/account-statement/route.ts(241,9): error TS2322: Type '({ date: Date; description: string; debit: number; credit: Decimal; category: string; } | { date: Date; description: string; debit: Decimal; credit: number; category: string; })[]' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }[]'.
+src/app/api/account-statement/route.ts(289,21): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/account-statement/route.ts(290,19): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/account-statement/route.ts(513,5): error TS2365: Operator '+=' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(517,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(526,23): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(531,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(539,23): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(544,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(552,23): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(557,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(577,31): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/supplier/route.ts(64,80): error TS2339: Property 'where' does not exist on type '{ select?: PurchaseInvoiceSelect<DefaultArgs> | null | undefined; omit?: PurchaseInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: PurchaseInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/supplier/route.ts(90,80): error TS2339: Property 'where' does not exist on type '{ select?: SupplierPaymentSelect<DefaultArgs> | null | undefined; omit?: SupplierPaymentOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SupplierPaymentScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/supplier/route.ts(113,20): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/supplier/route.ts(126,19): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/accounts/role-mapping/route.ts(98,17): error TS2339: Property 'primaryAccount' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(98,37): error TS2339: Property 'accounts' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(104,15): error TS2339: Property 'role' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(105,18): error TS2339: Property 'labelAr' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(106,18): error TS2339: Property 'labelEn' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(107,22): error TS2339: Property 'description' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(108,23): error TS2339: Property 'defaultCodes' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(109,44): error TS2339: Property 'labelAr' does not exist on type 'never'.
+src/app/api/accounts/role-mapping/route.ts(109,59): error TS2339: Property 'role' does not exist on type 'never'.
+src/app/api/accounts/statement/route.ts(149,50): error TS2339: Property 'role' does not exist on type 'never'.
+src/app/api/accounts/statement/route.ts(151,33): error TS2339: Property 'labelAr' does not exist on type 'never'.
+src/app/api/advances/[id]/route.ts(14,27): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/advances/[id]/route.ts(15,23): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/advances/[id]/route.ts(28,9): error TS2322: Type 'string' is not assignable to type 'AdvanceStatus | EnumAdvanceStatusFieldUpdateOperationsInput | undefined'.
+src/app/api/advances/[id]/route.ts(31,65): error TS2353: Object literal may only specify known properties, and 'position' does not exist in type 'EmployeeSelect<DefaultArgs>'.
+src/app/api/advances/route.ts(43,9): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/advances/route.ts(93,30): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/business-flow/validate/route.ts(163,9): error TS2322: Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(175,9): error TS2322: Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(187,9): error TS2322: Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(201,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(213,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(225,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(237,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(249,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(263,9): error TS2322: Type 'ProfitabilityResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/business-flow/validate/route.ts(275,9): error TS2322: Type 'EquipmentProfitabilityResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+src/app/api/change-orders/[id]/route.ts(44,34): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/change-orders/[id]/route.ts(44,48): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/change-orders/[id]/route.ts(45,42): error TS2365: Operator '+' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/change-orders/[id]/route.ts(47,22): error TS2365: Operator '+' cannot be applied to types 'number | import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'number | import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/change-orders/route.ts(65,43): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/client-payments/[id]/route.ts(211,43): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/client-payments/[id]/route.ts(211,64): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/client-payments/[id]/route.ts(217,20): error TS2365: Operator '<' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/clients/[id]/accounting/route.ts(41,16): error TS2353: Object literal may only specify known properties, and 'clientId' does not exist in type 'JournalEntryWhereInput'.
+src/app/api/clients/[id]/accounting/route.ts(46,16): error TS2353: Object literal may only specify known properties, and 'clientId' does not exist in type 'JournalEntryWhereInput'.
+src/app/api/contracts/[id]/route.ts(57,34): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/contracts/[id]/route.ts(57,42): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/contracts/[id]/route.ts(58,36): error TS2365: Operator '+' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/dashboard/route.ts(60,28): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/dashboard/route.ts(61,26): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/dashboard/route.ts(276,22): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(277,22): error TS2365: Operator '>' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/dashboard/route.ts(277,52): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(348,22): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(348,38): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(360,22): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(360,38): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(528,22): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(528,38): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(543,22): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/dashboard/route.ts(543,38): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/delivery-orders/[id]/route.ts(32,7): error TS2322: Type '{ code: string; id: string; name: string; nameAr: string | null; } | null' is not assignable to type 'null'.
+src/app/api/delivery-orders/[id]/route.ts(39,7): error TS2322: Type '{ code: string; id: string; name: string; nameAr: string | null; } | null' is not assignable to type 'null'.
+src/app/api/employee-contracts/[id]/route.ts(24,9): error TS2365: Operator '+' cannot be applied to types 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/employee-contracts/[id]/route.ts(78,9): error TS2365: Operator '+' cannot be applied to types 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/employee-contracts/route.ts(19,26): error TS2365: Operator '+' cannot be applied to types 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/employee-contracts/route.ts(56,26): error TS2365: Operator '+' cannot be applied to types 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/equipment/maintenance/[id]/complete/route.ts(31,17): error TS2353: Object literal may only specify known properties, and 'completedAt' does not exist in type '(Without<EquipmentMaintenanceUpdateInput, EquipmentMaintenanceUncheckedUpdateInput> & EquipmentMaintenanceUncheckedUpdateInput) | (Without<...> & EquipmentMaintenanceUpdateInput)'.
+src/app/api/equipment/operations/route.ts(69,34): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/equipment/operations/route.ts(83,22): error TS2365: Operator '>' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/equipment/operations/route.ts(84,34): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/equipment/rental-contracts/[id]/route.ts(102,33): error TS2365: Operator '>' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/equipment/rental-contracts/[id]/route.ts(102,70): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/equipment/rental-contracts/[id]/route.ts(114,54): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/financial-statements/cash-flow/route.ts(167,7): error TS2322: Type '{ type: string; code: string; id: string; name: string; nameAr: string | null; }[]' is not assignable to type '{ id: true; code: true; name: true; nameAr: true; type: true; }[]'.
+src/app/api/financial-statements/cash-flow/route.ts(173,7): error TS2322: Type '{ type: string; code: string; id: string; name: string; nameAr: string | null; }[]' is not assignable to type '{ id: true; code: true; name: true; nameAr: true; type: true; }[]'.
+src/app/api/financial-statements/cash-flow/route.ts(193,11): error TS2322: Type 'true' is not assignable to type 'string | StringFilter<"JournalLine"> | undefined'.
+src/app/api/financial-statements/cash-flow/route.ts(202,33): error TS18048: 'begLines._sum' is possibly 'undefined'.
+src/app/api/financial-statements/cash-flow/route.ts(202,65): error TS18048: 'begLines._sum' is possibly 'undefined'.
+src/app/api/financial-statements/cash-flow/route.ts(208,11): error TS2322: Type 'true' is not assignable to type 'string | StringFilter<"JournalLine"> | undefined'.
+src/app/api/financial-statements/cash-flow/route.ts(217,30): error TS18048: 'endLines._sum' is possibly 'undefined'.
+src/app/api/financial-statements/cash-flow/route.ts(217,62): error TS18048: 'endLines._sum' is possibly 'undefined'.
+src/app/api/fiscal-years/route.ts(101,22): error TS2345: Argument of type '{ fiscalYearId: string; periodNo: number; startDate: Date; endDate: Date; status: string; }' is not assignable to parameter of type 'never'.
+src/app/api/fixed-assets/depreciate/route.ts(45,38): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(45,62): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(48,29): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(49,27): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(49,51): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(51,15): error TS2365: Operator '>=' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(51,48): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(51,72): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(99,40): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(99,93): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(99,117): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(100,30): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(106,50): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(107,21): error TS2365: Operator '<=' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/goods-receipt/route.ts(123,57): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/goods-receipt/route.ts(125,42): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/journal-entries/[id]/route.ts(123,65): error TS2339: Property 'isPostable' does not exist on type '{ type: string; code: string; id: string; description: string | null; isSystem: boolean; createdAt: Date; updatedAt: Date; name: string; nameAr: string | null; parentId: string | null; ... 6 more ...; descriptionAr: string | null; }'.
+src/app/api/period-closing/route.ts(82,26): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/period-closing/route.ts(82,40): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/period-closing/route.ts(88,26): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/period-closing/route.ts(88,39): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/petty-cash/route.ts(49,11): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/purchase-invoices/[id]/route.ts(27,7): error TS2322: Type '({ lines: ({ account: { code: string; name: string; }; } & { id: string; description: string | null; createdAt: Date; updatedAt: Date; deletedAt: Date | null; journalEntryId: string; accountId: string; costCenterId: string | null; debit: Decimal; credit: Decimal; })[]; } & { ...; }) | null' is not assignable to type 'null'.
+src/app/api/purchase-orders/[id]/route.ts(76,17): error TS2367: This comparison appears to be unintentional because the types '"DRAFT" | "PENDING_APPROVAL"' and '"RECEIVED"' have no overlap.
+src/app/api/rental-payments/[id]/route.ts(82,13): error TS2322: Type '"APPROVED"' is not assignable to type 'InvoiceStatus'.
+src/app/api/reports/project-profitability/route.ts(163,97): error TS2353: Object literal may only specify known properties, and 'netPayment' does not exist in type 'ProgressClaimSelect<DefaultArgs>'.
+src/app/api/reports/route.ts(116,27): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/reports/route.ts(117,25): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/reports/route.ts(150,19): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/reports/route.ts(151,17): error TS18046: 'jeWhere.date' is of type 'unknown'.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(31,67): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(44,23): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(44,34): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(50,55): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(91,60): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(102,24): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(103,26): error TS2365: Operator '>' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(103,61): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(128,26): error TS2365: Operator '>' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/resource-distribution/project-costs/[projectId]/route.ts(128,70): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/salaries/[id]/route.ts(71,11): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/salaries/auto-calculate/route.ts(50,19): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/salaries/auto-calculate/route.ts(56,19): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/salaries/auto-calculate/route.ts(62,23): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/salaries/auto-calculate/route.ts(75,19): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/salaries/auto-calculate/route.ts(84,23): error TS2365: Operator '+' cannot be applied to types 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/salary-payments/[id]/route.ts(21,9): error TS18047: 'existing.payrollRun' is possibly 'null'.
+src/app/api/salary-payments/[id]/route.ts(40,16): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+src/app/api/salary-payments/[id]/route.ts(45,11): error TS2365: Operator '>=' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/salary-payments/[id]/route.ts(45,24): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/salary-payments/[id]/route.ts(47,18): error TS2365: Operator '>' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/salary-payments/[id]/route.ts(56,20): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+src/app/api/seed/route.ts(456,26): error TS2345: Argument of type '{ id: string; date: Date; status: InvoiceStatus; sourceType: string; createdAt: Date; updatedAt: Date; deletedAt: Date | null; journalEntryId: string | null; ... 34 more ...; zatcaQr: string | null; }' is not assignable to parameter of type 'never'.
+src/app/api/seed/route.ts(559,64): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/seed/route.ts(560,66): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/seed/route.ts(560,132): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/seed/route.ts(561,65): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/seed/route.ts(562,72): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/seed/route.ts(562,140): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/subcontractor-invoices/route.ts(81,9): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/subcontractor-invoices/route.ts(82,9): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/subcontractor-invoices/route.ts(83,9): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/subcontractor-invoices/route.ts(84,9): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/supplier-invoices/[id]/route.ts(101,17): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/supplier-invoices/[id]/route.ts(102,17): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/supplier-invoices/[id]/route.ts(103,17): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/supplier-invoices/[id]/route.ts(104,17): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/supplier-invoices/[id]/route.ts(188,11): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/supplier-invoices/route.ts(210,11): error TS2353: Object literal may only specify known properties, and 'sellerName' does not exist in type '{ nameAr?: string | null | undefined; nameEn?: string | null | undefined; taxNumber?: string | null | undefined; }'.
+src/app/api/supplier-payments/[id]/route.ts(209,43): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/supplier-payments/[id]/route.ts(209,64): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/supplier-payments/[id]/route.ts(214,20): error TS2365: Operator '<' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/suppliers/[id]/accounting/route.ts(41,16): error TS2353: Object literal may only specify known properties, and 'supplierId' does not exist in type 'JournalEntryWhereInput'.
+src/app/api/suppliers/[id]/accounting/route.ts(46,16): error TS2353: Object literal may only specify known properties, and 'supplierId' does not exist in type 'JournalEntryWhereInput'.
+src/components/layout/providers.tsx(31,15): error TS2339: Property 'useThousandSeparatorsSystem' does not exist on type 'CompanySettingsData'.
+src/components/layout/providers.tsx(32,15): error TS2339: Property 'useThousandSeparatorsOfficial' does not exist on type 'CompanySettingsData'.
+src/components/layout/providers.tsx(36,13): error TS2339: Property 'useThousandSeparatorsSystem' does not exist on type 'CompanySettingsData'.
+src/components/layout/providers.tsx(37,13): error TS2339: Property 'useThousandSeparatorsOfficial' does not exist on type 'CompanySettingsData'.
+src/components/modules/accounting.tsx(1003,59): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/accounting.tsx(1091,12): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/accounting.tsx(1546,12): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/boq.tsx(87,31): error TS2551: Property 'projectId' does not exist on type 'BOQItemData'. Did you mean 'project'?
+src/components/modules/client-payments.tsx(290,67): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(302,97): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(306,80): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(354,86): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(361,129): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(367,111): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(529,86): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(673,83): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(847,60): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/client-payments.tsx(924,46): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/contracts.tsx(216,3): error TS1117: An object literal cannot have multiple properties with the same name.
+src/components/modules/contracts.tsx(218,3): error TS1117: An object literal cannot have multiple properties with the same name.
+src/components/modules/contracts.tsx(1019,21): error TS2339: Property 'length' does not exist on type 'never[] | { id: string; claimNo: string; date: string; percentage: number; amount: number; totalAmount: number; status: string; }'.
+src/components/modules/contracts.tsx(1038,29): error TS2339: Property 'map' does not exist on type 'never[] | { id: string; claimNo: string; date: string; percentage: number; amount: number; totalAmount: number; status: string; }'.
+src/components/modules/employees.tsx(197,16): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/employees.tsx(205,22): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/employees.tsx(206,28): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/employees.tsx(208,59): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/financial-statements-tab.tsx(185,17): error TS2352: Conversion of type 'AccountBalance[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/components/modules/financial-statements-tab.tsx(198,17): error TS2352: Conversion of type 'AccountBalance[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/components/modules/financial-statements-tab.tsx(210,17): error TS2352: Conversion of type 'TrialBalanceRow[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/components/modules/financial-statements-tab.tsx(236,17): error TS2352: Conversion of type 'ProjectWipRow[]' to type 'Record<string, unknown>[]' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+src/components/modules/inventory.tsx(605,38): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/labor.tsx(94,23): error TS2304: Cannot find name 'useMemo'.
+src/components/modules/labor.tsx(328,24): error TS2322: Type '"labor-report"' is not assignable to type 'PrintDocumentType'.
+src/components/modules/progress-claims.tsx(474,162): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/progress-claims.tsx(499,123): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/progress-claims.tsx(544,24): error TS2322: Type '"extract"' is not assignable to type 'PrintDocumentType'.
+src/components/modules/progress-claims.tsx(564,255): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/progress-claims.tsx(658,81): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/progress-claims.tsx(684,40): error TS2322: Type '"extract"' is not assignable to type 'PrintDocumentType'.
+src/components/modules/purchase-orders.tsx(724,77): error TS2322: Type '{ className: string; title: string; }' is not assignable to type 'IntrinsicAttributes & Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>'.
+src/components/modules/purchases.tsx(559,28): error TS2322: Type '{ children: Element[]; size: string; }' is not assignable to type 'IntrinsicAttributes & ClassAttributes<HTMLTableElement> & TableHTMLAttributes<HTMLTableElement>'.
+src/components/modules/rental-payments.tsx(289,129): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/rental-payments.tsx(295,111): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/rental-payments.tsx(654,46): error TS2554: Expected 2 arguments, but got 3.
+src/components/modules/salaries.tsx(474,93): error TS2322: Type '{ className: string; title: string; }' is not assignable to type 'IntrinsicAttributes & Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>'.
+src/components/modules/salaries.tsx(475,93): error TS2322: Type '{ className: string; title: string; }' is not assignable to type 'IntrinsicAttributes & Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>'.
+src/components/modules/salaries.tsx(537,20): error TS2554: Expected 3 arguments, but got 2.
+src/components/modules/salary-payments.tsx(472,24): error TS2322: Type '"salary-payment"' is not assignable to type 'PrintDocumentType'.
+src/components/modules/timesheets.tsx(700,42): error TS2322: Type '"timesheet-report"' is not assignable to type 'PrintDocumentType'.
+src/components/modules/vat.tsx(502,26): error TS2322: Type '"tax-declaration"' is not assignable to type 'PrintDocumentType'.
+src/components/sections/projects-section.tsx(957,64): error TS2554: Expected 3 arguments, but got 2.
+src/components/sections/projects-section.tsx(962,98): error TS2554: Expected 3 arguments, but got 2.
+src/components/sections/projects-section.tsx(963,124): error TS2554: Expected 3 arguments, but got 2.
+src/components/sections/projects-section.tsx(964,163): error TS2554: Expected 3 arguments, but got 2.
+src/components/sections/projects-section.tsx(968,95): error TS2554: Expected 3 arguments, but got 2.
+src/components/sections/projects-section.tsx(978,115): error TS2554: Expected 3 arguments, but got 2.
+src/components/sections/projects-section.tsx(985,70): error TS2554: Expected 3 arguments, but got 2.
+src/components/sections/projects-section.tsx(988,72): error TS2554: Expected 3 arguments, but got 2.
+src/components/shared/create-account-dialog.tsx(237,22): error TS2554: Expected 3 arguments, but got 2.
+src/components/shared/create-account-dialog.tsx(296,59): error TS2554: Expected 3 arguments, but got 2.
+src/components/shared/create-account-dialog.tsx(326,16): error TS2554: Expected 3 arguments, but got 2.
+src/components/shared/print-button.tsx(65,10): error TS2678: Type '"tax-declaration"' is not comparable to type 'PrintDocumentType'.
+src/components/shared/print-button.tsx(103,10): error TS2678: Type '"extract"' is not comparable to type 'PrintDocumentType'.
+src/components/shared/print-button.tsx(150,10): error TS2678: Type '"timesheet-report"' is not comparable to type 'PrintDocumentType'.
+src/components/shared/print-button.tsx(337,11): error TS2353: Object literal may only specify known properties, and ''extract'' does not exist in type 'Record<PrintDocumentType, string>'.
+src/lib/account-impact.ts(92,5): error TS2322: Type '{ code: string; id: string; name: string; nameAr: string | null; } | null' is not assignable to type 'null'.
+src/lib/account-impact.ts(110,7): error TS2322: Type '{ role: "CASH" | "BANK" | "CUSTOMER_AR" | "SUPPLIER_AP" | "RENTAL_REVENUE" | "PROJECT_REVENUE" | "FUEL_EXPENSE" | "MAINTENANCE_EXPENSE" | "PAYROLL_EXPENSE" | "FIXED_ASSET" | ... 34 more ... | "VAT_SETTLEMENT"; labelAr: string; labelEn: string; }' is not assignable to type 'null'.
+src/lib/account-impact.ts(352,18): error TS2345: Argument of type '{ id: string; code: string; name: string; type: string; accountRole: string | null; roleLabel: string | null; parentCode: string | null; allowPosting: boolean; level: number; childCount: number; journalLineCount: number; hasUsage: boolean; }' is not assignable to parameter of type 'never'.
+src/lib/account-roles.ts(703,19): error TS2345: Argument of type '{ role: string; labelAr: string; labelEn: string; description: string; defaultCodes: string[]; accounts: { id: string; code: string; nameAr: string | null; name: string; }[]; primaryAccount: { type: string; ... 15 more ...; descriptionAr: string | null; } | null; }' is not assignable to parameter of type 'never'.
+src/lib/accounting/engine.ts(480,18): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: any; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(547,16): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(550,14): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(645,16): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(648,14): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(803,16): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(806,14): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(884,16): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(972,14): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(973,14): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/accounting/engine.ts(1106,16): error TS2345: Argument of type '{ accountCode: string; debit: number; credit: number; }' is not assignable to parameter of type '{ accountCode: string; debit: number; credit: number; costCenterId: string | undefined; }'.
+src/lib/business-flow/engine.ts(1147,25): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1152,25): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1161,28): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1165,44): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1166,48): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1172,28): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1176,49): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1181,42): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1188,27): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1194,27): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1200,28): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1206,27): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1277,16): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1277,23): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/lib/business-flow/engine.ts(1277,50): error TS2339: Property 'rate' does not exist on type '{ contract: { value: Decimal; id: string; date: Date; description: string | null; status: ContractStatus; createdAt: Date; updatedAt: Date; journalEntryId: string | null; ... 29 more ...; projectCity: string | null; }; timesheets: { ...; }[]; } & { ...; }'.
+src/lib/business-flow/engine.ts(1285,44): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1289,46): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1293,48): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1293,69): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/lib/business-flow/engine.ts(1297,31): error TS2365: Operator '>' cannot be applied to types 'Decimal' and 'number'.
+src/lib/business-flow/engine.ts(1297,61): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/lib/business-flow/engine.ts(1300,41): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1308,46): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1309,48): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/lib/business-flow/engine.ts(1564,20): error TS2365: Operator '>' cannot be applied to types 'Decimal' and 'number'.
+src/lib/financial-mapping-engine.ts(398,24): error TS2345: Argument of type '{ role: "CASH" | "BANK" | "CUSTOMER_AR" | "SUPPLIER_AP" | "RENTAL_REVENUE" | "PROJECT_REVENUE" | "FUEL_EXPENSE" | "MAINTENANCE_EXPENSE" | "PAYROLL_EXPENSE" | "FIXED_ASSET" | ... 34 more ... | "VAT_SETTLEMENT"; roleInfo: AccountRoleInfo; accounts: never[]; }' is not assignable to parameter of type 'never'.
+src/lib/financial-mapping-engine.ts(408,25): error TS2345: Argument of type '{ role: "CASH" | "BANK" | "CUSTOMER_AR" | "SUPPLIER_AP" | "RENTAL_REVENUE" | "PROJECT_REVENUE" | "FUEL_EXPENSE" | "MAINTENANCE_EXPENSE" | "PAYROLL_EXPENSE" | "FIXED_ASSET" | ... 34 more ... | "VAT_SETTLEMENT"; roleInfo: AccountRoleInfo; accounts: never[]; }' is not assignable to parameter of type 'never'.
+src/lib/financial-mapping-engine.ts(450,15): error TS2345: Argument of type '{ type: string; code: string; id: string; description: string | null; isSystem: boolean; createdAt: Date; updatedAt: Date; name: string; nameAr: string | null; parentId: string | null; ... 6 more ...; descriptionAr: string | null; }' is not assignable to parameter of type 'never'.
+src/lib/financial-mapping-engine.ts(462,17): error TS2345: Argument of type '{ type: string; code: string; id: string; description: string | null; isSystem: boolean; createdAt: Date; updatedAt: Date; name: string; nameAr: string | null; parentId: string | null; ... 6 more ...; descriptionAr: string | null; }' is not assignable to parameter of type 'never'.
+src/lib/financial-mapping-engine.ts(478,49): error TS2339: Property 'code' does not exist on type 'never'.
+src/lib/financial-mapping-engine.ts(482,19): error TS2345: Argument of type '{ type: string; code: string; id: string; description: string | null; isSystem: boolean; createdAt: Date; updatedAt: Date; name: string; nameAr: string | null; parentId: string | null; ... 6 more ...; descriptionAr: string | null; }' is not assignable to parameter of type 'never'.
+src/lib/financial-mapping-engine.ts(489,20): error TS2339: Property 'code' does not exist on type 'never'.
+src/lib/financial-mapping-engine.ts(490,16): error TS2339: Property 'code' does not exist on type 'never'.
+src/lib/financial-mapping-engine.ts(665,19): error TS2345: Argument of type '{ role: "CASH" | "BANK" | "CUSTOMER_AR" | "SUPPLIER_AP" | "RENTAL_REVENUE" | "PROJECT_REVENUE" | "FUEL_EXPENSE" | "MAINTENANCE_EXPENSE" | "PAYROLL_EXPENSE" | "FIXED_ASSET" | ... 34 more ... | "VAT_SETTLEMENT"; ... 11 more ...; operations: { ...; }[]; }' is not assignable to parameter of type 'never'.
+src/printing/invoices/ServiceInvoice.ts(145,140): error TS2353: Object literal may only specify known properties, and 'isGrand' does not exist in type '{ label: string; value: number; }'.
+src/printing/operations/Timesheet.ts(117,168): error TS2353: Object literal may only specify known properties, and 'isGrand' does not exist in type '{ label: string; value: number; }'.
