@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { autoEntryExpense } from '@/lib/accounting/engine'
+import { createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { requireAccountByRole, AccountRole } from '@/lib/account-roles'
 
 export async function GET(request: Request) {
   try {
@@ -30,6 +31,57 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * Salary accrual journal entry.
+ * Accounting model (correct double-entry):
+ *   Dr PAYROLL_EXPENSE     netSalary      (expense recognized)
+ *   Cr SALARIES_PAYABLE    netSalary      (liability until paid)
+ *
+ * The cash credit happens later in salary-payments/route.ts when the salary
+ * is actually paid (Dr SALARIES_PAYABLE / Cr Cash). This avoids the prior bug
+ * where cash was debited twice (once at approve via autoEntryExpense, once at
+ * payment) and Salaries_Payable went negative.
+ */
+async function createSalaryAccrualJournalEntry(
+  args: {
+    employeeName: string
+    netSalary: number
+    salaryDate: Date
+    month: number
+    year: number
+    costCenterId?: string
+    salaryId: string
+  },
+  tx: PrismaTransaction
+) {
+  const payrollAccount = await requireAccountByRole(AccountRole.PAYROLL_EXPENSE, 'استحقاق راتب', tx)
+  const payableAccount = await requireAccountByRole(AccountRole.SALARIES_PAYABLE, 'استحقاق راتب', tx)
+  const desc = `استحقاق راتب ${args.employeeName} - ${args.month}/${args.year}`
+  return createJournalEntry({
+    entryNo: `JE-SAL-ACCRUE-${args.salaryId}`,
+    date: args.salaryDate,
+    description: `Salary accrual - ${args.employeeName} - ${args.month}/${args.year}`,
+    descriptionAr: desc,
+    lines: [
+      {
+        accountCode: payrollAccount.code,
+        debit: args.netSalary,
+        credit: 0,
+        description: desc,
+        costCenterId: args.costCenterId,
+      },
+      {
+        accountCode: payableAccount.code,
+        debit: 0,
+        credit: args.netSalary,
+        description: desc,
+      },
+    ],
+    sourceType: 'SALARY_ACCRUAL',
+    sourceId: args.salaryId,
+  }, tx)
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json()
@@ -41,106 +93,109 @@ export async function POST(request: Request) {
     const overtimeAmount = body.overtimeAmount ? parseFloat(body.overtimeAmount) : 0
     const deductions = body.deductions ? parseFloat(body.deductions) : 0
 
-    // Auto-calculate netSalary
     const netSalary = basicSalary + housingAllowance + transportAllowance + otherAllowances + overtimeAmount - deductions
 
-    let journalEntryId: string | null = null
-    let projectCostCreated = false
-
-    // If status is APPROVED, create accounting entry and project cost entry
-    if (body.status === 'APPROVED') {
-      const employee = await db.employee.findUnique({
-        where: { id: body.employeeId },
-        select: { id: true, name: true },
-      })
-
-      const salaryDate = new Date(body.year, body.month - 1, 1)
-
-      // Check if employee is allocated to a project
-      const allocation = await db.resourceAllocation.findFirst({
-        where: {
-          resourceType: 'EMPLOYEE',
-          resourceId: body.employeeId,
-          startDate: { lte: salaryDate },
-          OR: [{ endDate: null }, { endDate: { gte: salaryDate } }],
+    // Atomic: salary record + accrual JE + project cost in one transaction.
+    // R1 enforced — if the JE fails, the salary record is rolled back too.
+    const { salary, projectCostCreated } = await db.$transaction(async (tx: PrismaTransaction) => {
+      // Create the salary record first so we have a stable sourceId for the JE
+      const created = await tx.salary.create({
+        data: {
+          employeeId: body.employeeId,
+          month: parseInt(body.month),
+          year: parseInt(body.year),
+          basicSalary,
+          housingAllowance,
+          transportAllowance,
+          otherAllowances,
+          overtimeAmount,
+          deductions,
+          netSalary,
+          status: body.status || 'DRAFT',
+        },
+        include: {
+          employee: { select: { id: true, code: true, name: true, nameAr: true } },
         },
       })
 
-      // Determine cost center
-      let costCenterId: string | undefined
-      if (allocation) {
-        // Look up cost center for the project
-        const project = await db.project.findUnique({
-          where: { id: allocation.projectId },
-          select: { id: true, code: true, name: true },
+      let journalEntryId: string | null = null
+      let projectCostCreated = false
+
+      // If status is APPROVED, create accrual JE + project cost entry
+      if (body.status === 'APPROVED') {
+        const employee = created.employee
+        const salaryDate = new Date(body.year, body.month - 1, 1)
+
+        // Resolve cost center from project allocation (NOT projectId-as-costCenterId)
+        let costCenterId: string | undefined
+        const allocation = await tx.resourceAllocation.findFirst({
+          where: {
+            resourceType: 'EMPLOYEE',
+            resourceId: body.employeeId,
+            startDate: { lte: salaryDate },
+            OR: [{ endDate: null }, { endDate: { gte: salaryDate } }],
+          },
         })
-        if (project) {
-          const costCenter = await db.costCenter.findFirst({
-            where: { code: project.code },
+        if (allocation) {
+          const project = await tx.project.findUnique({
+            where: { id: allocation.projectId },
+            select: { id: true, code: true, name: true },
           })
-          if (costCenter) costCenterId = costCenter.id
+          if (project) {
+            const costCenter = await tx.costCenter.findFirst({
+              where: { code: project.code },
+            })
+            if (costCenter) costCenterId = costCenter.id
+          }
         }
-      }
 
-      // Create accounting entry
-      try {
-        const entry = await autoEntryExpense({
-          description: `راتب ${employee?.name || ''} - ${body.month}/${body.year}`,
-          amount: netSalary,
-          vatAmount: null,
-          category: 'SALARIES',
-          date: salaryDate,
-          payFrom: 'TREASURY',
+        // Accrual JE: Dr Payroll / Cr Salaries Payable (NO cash movement yet)
+        const entry = await createSalaryAccrualJournalEntry({
+          employeeName: employee.nameAr || employee.name || '',
+          netSalary,
+          salaryDate,
+          month: parseInt(body.month),
+          year: parseInt(body.year),
           costCenterId,
-        })
+          salaryId: created.id,
+        }, tx)
         journalEntryId = entry.id
-      } catch (entryError) {
-        console.error('Error creating salary accounting entry:', entryError)
-        // Continue without journal entry - don't block salary creation
-      }
 
-      // Create project cost entry if employee is allocated
-      if (allocation) {
-        try {
-          await db.equipmentCost.create({
+        // Project cost entry if employee is allocated
+        if (allocation) {
+          await tx.equipmentCost.create({
             data: {
               projectId: allocation.projectId,
-              description: `راتب ${employee?.name || ''} - ${body.month}/${body.year}`,
+              description: `راتب ${employee.nameAr || employee.name || ''} - ${body.month}/${body.year}`,
               amount: netSalary,
               date: salaryDate,
             },
           })
           projectCostCreated = true
-        } catch (costError) {
-          console.error('Error creating project cost entry:', costError)
-          // Don't block salary creation
         }
       }
-    }
 
-    const salary = await db.salary.create({
-      data: {
-        employeeId: body.employeeId,
-        month: parseInt(body.month),
-        year: parseInt(body.year),
-        basicSalary,
-        housingAllowance,
-        transportAllowance,
-        otherAllowances,
-        overtimeAmount,
-        deductions,
-        netSalary,
-        status: body.status || 'DRAFT',
-        journalEntryId,
-      },
-      include: {
-        employee: { select: { id: true, code: true, name: true, nameAr: true } },
-      },
+      // Attach journalEntryId
+      if (journalEntryId) {
+        await tx.salary.update({
+          where: { id: created.id },
+          data: { journalEntryId },
+        })
+      }
+
+      const withJe = await tx.salary.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          employee: { select: { id: true, code: true, name: true, nameAr: true } },
+        },
+      })
+      return { salary: withJe, projectCostCreated }
     })
 
     return NextResponse.json({ ...salary, projectCostCreated }, { status: 201 })
   } catch (error) {
     console.error('Error creating salary:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء سجل الراتب' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في إنشاء سجل الراتب'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

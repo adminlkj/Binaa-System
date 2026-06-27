@@ -41,25 +41,23 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry
-      try {
-        await initializeChartOfAccounts()
-        const journalEntry = await autoEntryPettyCash({
-          description: pettyCash.description,
-          amount: pettyCash.amount,
-          category: pettyCash.category || 'OTHER',
-          date: pettyCash.date,
-        }, tx)
+      // Auto-create accounting journal entry.
+      // R1 (every financial operation MUST create a posted JE) is enforced: if the JE
+      // fails, the entire transaction rolls back — no petty cash record without a JE.
+      await initializeChartOfAccounts()
+      const journalEntry = await autoEntryPettyCash({
+        description: pettyCash.description,
+        amount: pettyCash.amount,
+        category: pettyCash.category || 'OTHER',
+        date: pettyCash.date,
+      }, tx)
 
-        // Store journalEntryId on the petty cash entry
-        if (journalEntry) {
-          await tx.pettyCash.update({
-            where: { id: pettyCash.id },
-            data: { journalEntryId: journalEntry.id },
-          })
-        }
-      } catch (accountingError) {
-        console.error('Accounting entry failed for petty cash:', accountingError)
+      // Store journalEntryId on the petty cash entry
+      if (journalEntry) {
+        await tx.pettyCash.update({
+          where: { id: pettyCash.id },
+          data: { journalEntryId: journalEntry.id },
+        })
       }
 
       // Re-fetch to include journalEntryId

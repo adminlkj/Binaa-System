@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntrySubcontractorInvoice, initializeChartOfAccounts } from '@/lib/accounting/engine'
+import { autoEntrySubcontractorInvoice, initializeChartOfAccounts, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -52,42 +52,44 @@ export async function POST(request: Request) {
     }
     const invoiceNo = `SCI-${String(nextNum).padStart(4, '0')}`
 
-    const invoice = await db.subcontractorInvoice.create({
-      data: {
-        subcontractorId,
-        projectId: projectId || null,
-        invoiceNo,
-        date: new Date(date),
-        amount,
-        vatRate,
-        vatAmount,
-        totalAmount,
-        paidAmount: 0,
-        status: 'DRAFT',
-        description: description || null,
-      },
-      include: {
-        subcontractor: { select: { id: true, name: true, code: true, specialty: true } },
-        project: { select: { id: true, name: true, code: true } },
-      },
-    })
+    // Atomic: invoice record + JE in one transaction.
+    // R1 enforced — if the JE fails, the invoice record is rolled back too.
+    // costCenterId is NOT projectId (distinct entities) — left undefined here.
+    const invoice = await db.$transaction(async (tx: PrismaTransaction) => {
+      const created = await tx.subcontractorInvoice.create({
+        data: {
+          subcontractorId,
+          projectId: projectId || null,
+          invoiceNo,
+          date: new Date(date),
+          amount,
+          vatRate,
+          vatAmount,
+          totalAmount,
+          paidAmount: 0,
+          status: 'DRAFT',
+          description: description || null,
+        },
+        include: {
+          subcontractor: { select: { id: true, name: true, code: true, specialty: true } },
+          project: { select: { id: true, name: true, code: true } },
+        },
+      })
 
-    // Auto-create accounting journal entry
-    try {
       await initializeChartOfAccounts()
       await autoEntrySubcontractorInvoice({
-        invoiceNo: invoice.invoiceNo,
-        subcontractorName: invoice.subcontractor.name,
-        amount: invoice.amount,
-        vatRate: invoice.vatRate,
-        vatAmount: invoice.vatAmount,
-        totalAmount: invoice.totalAmount,
-        date: invoice.date,
-        costCenterId: invoice.projectId || undefined,
-      })
-    } catch (accountingError) {
-      console.error('Accounting entry failed for subcontractor invoice:', accountingError)
-    }
+        invoiceNo: created.invoiceNo,
+        subcontractorName: created.subcontractor.name,
+        amount: created.amount,
+        vatRate: created.vatRate,
+        vatAmount: created.vatAmount,
+        totalAmount: created.totalAmount,
+        date: created.date,
+        costCenterId: undefined,
+      }, tx)
+
+      return created
+    })
 
     return NextResponse.json(invoice, { status: 201 })
   } catch (error) {

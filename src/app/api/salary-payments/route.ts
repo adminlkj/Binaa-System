@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
-import { getDefaultAccountByRole } from '@/lib/account-roles'
+import { getDefaultAccountByRole, requireAccountByRole, AccountRole } from '@/lib/account-roles'
 
 export async function GET(request: Request) {
   try {
@@ -158,31 +158,30 @@ export async function POST(request: Request) {
           },
         })
 
-        // Create accounting journal entry
+        // Create accounting journal entry.
+        // R1 enforced: if the JE fails, the entire transaction rolls back — no salary
+        // can be marked PAID without a posted journal entry.
+        // Accounting: Dr SALARIES_PAYABLE / Cr Cash (settles the liability accrued at approve).
         const creditAccount = await resolveCreditAccount(tx)
+        const payableAccount = await requireAccountByRole(AccountRole.SALARIES_PAYABLE, 'سداد راتب', tx)
 
-        try {
-          const entry = await createJournalEntry({
-            entryNo: `JE-SAL-${employee.code}-${month}${year}`,
-            date: new Date(),
-            description: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
-            descriptionAr: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
-            lines: [
-              { accountCode: '3310', debit: netSalary, credit: 0, description: 'رواتب مستحقة' },
-              { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
-            ],
-            sourceType: 'SALARY_PAYMENT',
-            sourceId: salary.id,
-          }, tx)
+        const entry = await createJournalEntry({
+          entryNo: `JE-SAL-${employee.code}-${month}${year}`,
+          date: new Date(),
+          description: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
+          descriptionAr: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
+          lines: [
+            { accountCode: payableAccount.code, debit: netSalary, credit: 0, description: 'سداد رواتب مستحقة' },
+            { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
+          ],
+          sourceType: 'SALARY_PAYMENT',
+          sourceId: salary.id,
+        }, tx)
 
-          // Update salary with journal entry id
-          await tx.salary.update({
-            where: { id: salary.id },
-            data: { journalEntryId: entry.id },
-          })
-        } catch (entryError) {
-          console.error('Error creating salary payment journal entry:', entryError)
-        }
+        await tx.salary.update({
+          where: { id: salary.id },
+          data: { journalEntryId: entry.id },
+        })
 
         return salary
       })
@@ -224,31 +223,31 @@ export async function POST(request: Request) {
           },
         })
 
-        // Create journal entry
+        // Create journal entry.
+        // R1 enforced: if the JE fails, the entire transaction rolls back — no salary
+        // can be marked PAID without a posted journal entry.
+        // Accounting: Dr SALARIES_PAYABLE / Cr Cash (settles the liability accrued at approve).
         const netSalary = Number(salary.netSalary)
         const creditAccount = await resolveCreditAccount(tx)
+        const payableAccount = await requireAccountByRole(AccountRole.SALARIES_PAYABLE, 'سداد راتب', tx)
 
-        try {
-          const entry = await createJournalEntry({
-            entryNo: `JE-SAL-${salary.employee?.code || 'EMP'}-${month}${year}`,
-            date: new Date(),
-            description: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
-            descriptionAr: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
-            lines: [
-              { accountCode: '3310', debit: netSalary, credit: 0, description: 'رواتب مستحقة' },
-              { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
-            ],
-            sourceType: 'SALARY_PAYMENT',
-            sourceId: salary.id,
-          }, tx)
+        const entry = await createJournalEntry({
+          entryNo: `JE-SAL-${salary.employee?.code || 'EMP'}-${month}${year}`,
+          date: new Date(),
+          description: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
+          descriptionAr: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
+          lines: [
+            { accountCode: payableAccount.code, debit: netSalary, credit: 0, description: 'سداد رواتب مستحقة' },
+            { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
+          ],
+          sourceType: 'SALARY_PAYMENT',
+          sourceId: salary.id,
+        }, tx)
 
-          await tx.salary.update({
-            where: { id: salary.id },
-            data: { journalEntryId: entry.id },
-          })
-        } catch (entryError) {
-          console.error('Error creating salary payment journal entry:', entryError)
-        }
+        await tx.salary.update({
+          where: { id: salary.id },
+          data: { journalEntryId: entry.id },
+        })
 
         return salary
       })

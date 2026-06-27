@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryExpense, initializeChartOfAccounts } from '@/lib/accounting/engine'
+import { createSalaryAccrualJournalEntry } from '../route'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -54,31 +54,22 @@ export async function PUT(
       }
     }
 
-    let journalEntryId = existing.journalEntryId
     let projectCostCreated = false
 
-    // When approving: create accounting entry and project cost
+    // When approving: create accrual JE + project cost atomically.
+    // R1 enforced — if the JE fails, the status update is rolled back too.
     if (body.status === 'APPROVED' && existing.status === 'DRAFT') {
-      try {
-        await initializeChartOfAccounts()
-        const employee = await db.employee.findUnique({
+      const result = await db.$transaction(async (tx) => {
+        const employee = await tx.employee.findUnique({
           where: { id: existing.employeeId },
-          select: { name: true },
+          select: { name: true, nameAr: true },
         })
 
-        const entry = await autoEntryExpense({
-          description: `راتب ${employee?.name || ''} - ${existing.month}/${existing.year}`,
-          amount: existing.netSalary,
-          vatAmount: null,
-          category: 'SALARIES',
-          date: new Date(existing.year, existing.month - 1, 1),
-          payFrom: 'TREASURY',
-        })
-        journalEntryId = entry.id
-
-        // Check if employee is allocated to a project
         const salaryDate = new Date(existing.year, existing.month - 1, 1)
-        const allocation = await db.resourceAllocation.findFirst({
+
+        // Resolve cost center from project allocation
+        let costCenterId: string | undefined
+        const allocation = await tx.resourceAllocation.findFirst({
           where: {
             resourceType: 'EMPLOYEE',
             resourceId: existing.employeeId,
@@ -86,28 +77,61 @@ export async function PUT(
             OR: [{ endDate: null }, { endDate: { gte: salaryDate } }],
           },
         })
+        if (allocation) {
+          const project = await tx.project.findUnique({
+            where: { id: allocation.projectId },
+            select: { code: true },
+          })
+          if (project) {
+            const costCenter = await tx.costCenter.findFirst({
+              where: { code: project.code },
+            })
+            if (costCenter) costCenterId = costCenter.id
+          }
+        }
+
+        // Accrual JE: Dr Payroll / Cr Salaries Payable
+        const entry = await createSalaryAccrualJournalEntry({
+          employeeName: employee?.nameAr || employee?.name || '',
+          netSalary: Number(existing.netSalary),
+          salaryDate,
+          month: existing.month,
+          year: existing.year,
+          costCenterId,
+          salaryId: existing.id,
+        }, tx)
 
         if (allocation) {
-          await db.equipmentCost.create({
+          await tx.equipmentCost.create({
             data: {
               projectId: allocation.projectId,
-              description: `راتب ${employee?.name || ''} - ${existing.month}/${existing.year}`,
-              amount: existing.netSalary,
+              description: `راتب ${employee?.nameAr || employee?.name || ''} - ${existing.month}/${existing.year}`,
+              amount: Number(existing.netSalary),
               date: salaryDate,
             },
           })
           projectCostCreated = true
         }
-      } catch (accountingError) {
-        console.error('Error creating salary accounting entry:', accountingError)
-      }
+
+        return await tx.salary.update({
+          where: { id },
+          data: {
+            status: 'APPROVED',
+            journalEntryId: entry.id,
+          },
+          include: {
+            employee: { select: { id: true, code: true, name: true, nameAr: true } },
+          },
+        })
+      })
+
+      return NextResponse.json({ ...result, projectCostCreated })
     }
 
     const updated = await db.salary.update({
       where: { id },
       data: {
         ...(body.status && { status: body.status }),
-        ...(journalEntryId !== existing.journalEntryId && { journalEntryId }),
       },
       include: {
         employee: { select: { id: true, code: true, name: true, nameAr: true } },
@@ -117,7 +141,8 @@ export async function PUT(
     return NextResponse.json({ ...updated, projectCostCreated })
   } catch (error) {
     console.error('Error updating salary:', error)
-    return NextResponse.json({ error: 'فشل في تحديث سجل الراتب' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في تحديث سجل الراتب'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
@@ -141,7 +166,11 @@ export async function DELETE(
       )
     }
 
-    await db.salary.delete({ where: { id } })
+    // R12: soft-delete instead of hard delete (preserves audit trail)
+    await db.salary.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    })
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting salary:', error)

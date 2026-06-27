@@ -3476,3 +3476,99 @@ Stage Summary:
 - Print system unblocked: Buffer.from replaced with isomorphic Web APIs
 - Missing routes created: purchase-invoices/[id], rental-payments/[id]
 - All changes committed and pushed to GitHub automatically
+
+---
+Task ID: 1-a
+Agent: Accounting Engine Deep Auditor
+Task: Deep audit of accounting engine - design, journal cycle, atomicity, AutoEntry, dead functions, chart of accounts, linking
+
+Work Log:
+- قرأت worklog.md بالكامل لمعرفة ما أصلحه الـ Tier 1+2 agents سابقاً (Buffer.from، double-cancellation في 7 routes، VAT silent failures، journal-entries guard bypass، fiscal-years reopen bypass) وتجنب إعادة الإبلاغ عنها.
+- قرأت الملفات التالية سطراً سطراً: src/lib/accounting/guard.ts (518 LOC), src/lib/accounting/engine.ts (1529 LOC), src/lib/auto-journal.ts (348 LOC), src/lib/accounting/mapping.ts (618 LOC), src/lib/accounting/consistency.ts (154 LOC), src/lib/accounting/period-guard.ts (64 LOC), src/lib/accounting/ifrs15.ts (237 LOC), src/lib/accounting/depreciation-engine.ts (933 LOC), src/lib/account-roles.ts (720 LOC), src/lib/decimal.ts (65 LOC).
+- قرأت مسارات API الرئيسية: purchase-invoices/route.ts + [id], sales-invoices/route.ts (758 LOC), expenses/route.ts + [id], supplier-invoices/[id], subcontractor-invoices/route.ts, advances/route.ts, petty-cash/route.ts, salaries/route.ts + [id], salary-payments/route.ts, equipment/{fuel,maintenance,operations,expenses}/route.ts, vat/route.ts, fiscal-years/[id]/{close,reopen}/route.ts, journal-entries/route.ts + [id], goods-receipt/route.ts, client-payments/route.ts, supplier-payments/route.ts, progress-claims/[id]/route.ts, account-statement/route.ts.
+- grep لكل استدعاءات journalEntry.create / journalEntry.createMany / journalEntry.upsert في src/ للتأكد من عدم وجود bypass مباشر.
+- grep لكل استدعاءات autoEntry* لتحديد الدوال الميتة.
+- grep لكل استدعاءات createSalesInvoiceJournalEntry / createPurchaseInvoiceJournalEntry / createClientPaymentJournalEntry / createSupplierPaymentJournalEntry / createExpenseJournalEntry / createProgressClaimJournalEntry.
+- grep لكل استدعاءات initializeChartOfAccounts.
+- تحقق من prisma/schema.prisma للحقول المتعلقة: Account.allowPosting، JournalEntry (لا descriptionAr!)، FiscalYear/FiscalPeriod، ProgressClaim.claimNo (غير @unique)، Salary (لا @@unique [employeeId,year,month]).
+- تحققت من أسماء الحقول في JournalEntry schema — لا حقل descriptionAr رغم وجوده في JournalEntryInput وكل الـ autoEntry callers.
+- تتبعت 3 تدفقات كاملة (purchase invoice, sales invoice, expense) من button → API → validation → autoEntry → journal → ledger وسجلت كل خطوة.
+- بنيت جدول الـ atomic transactions لكل دالة تُجري 2+ كتابات.
+- بنيت جدول الـ 24 autoEntry function مع caller count و debit/credit correctness و guard usage و transaction status.
+- كتبت التقرير الكامل إلى /home/z/my-project/audit-reports/01-accounting-engine.md (48 issue موزعة: 16 CRITICAL, 14 HIGH, 12 MEDIUM, 6 LOW، + 48 توصية إصلاح مرتبة).
+
+Stage Summary:
+
+**Top 16 CRITICAL findings (with file:line):**
+
+1. **Double revenue recognition**: `src/app/api/progress-claims/[id]/route.ts:86` يستدعي `createProgressClaimJournalEntry` عند APPROVED، ثم `sales-invoices/route.ts:273` يستدعي `createSalesInvoiceJournalEntry` عند تحويل المستخلص لفاتورة → الإيراد يُسجل مرتين + VAT مزدوج. (auto-journal.ts:295 و engine.ts:580 متناقضان تصميمياً).
+
+2. **fiscal-years close بلا transaction**: `src/app/api/fiscal-years/[id]/close/route.ts:52,191,202,218` — 4+ كتابات على `db` بدون `$transaction`. فشل جزئي يترك قيد إقفال يتيم + سنة في حالة غير متّسقة.
+
+3. **fiscal-years reopen بلا transaction**: `src/app/api/fiscal-years/[id]/reopen/route.ts:50,58,69` — `reverseEntry(closingJE.id, db)` + `db.fiscalYear.update` + `db.fiscalPeriod.updateMany` ثلاث كتابات غير ذرية.
+
+4. **salary cycle معيب**: `src/app/api/salaries/route.ts:87-100` و `salaries/[id]/route.ts:69-103` يستخدمان `autoEntryExpense` (Dr Payroll / Cr Cash) بدلاً من accrual (Dr Payroll / Cr Salaries_Payable). ثم `salary-payments/route.ts:171,238` (Dr Salaries_Payable / Cr Cash) — النتيجة: cash مخصوم مرتين، Salaries_Payable سالب. + try/catch يبتلع فشل القيد.
+
+5. **costCenterId = projectId** في 5 مسارات: `supplier-invoices/[id]/route.ts:107`, `equipment/fuel/route.ts:83`, `equipment/maintenance/route.ts:110`, `equipment/operations/route.ts:93`, `salaries/route.ts` (ضمني). نوع projectId ≠ costCenterId. FK violation أو ربط خاطئ.
+
+6. **11 try/catch يبتلع فشل القيد بصمت** (R1 violation): petty-cash:61, advances:54+115, salaries:97 + salaries/[id]:101, subcontractor-invoices:88, supplier-invoices/[id]:111, equipment/fuel:91, equipment/maintenance:118, equipment/operations:95, equipment/expenses:84, salary-payments:183+249. المستند يُنشأ بدون قيد، الـ GL يفقد الحقيقة.
+
+7. **`a.isPostable` بدلاً من `allowPosting`**: `src/app/api/journal-entries/[id]/route.ts:123` — اسم الحقل خاطئ → `!a.isPostable` دائماً true → كل محاولة DRAFT→POSTED مرفوضة. (اليوم المسار ميت لأن POST ينشئ POSTED مباشرة).
+
+8. **`initializeChartOfAccounts` بلا tx**: `src/lib/accounting/engine.ts:332-380` — لا يقبل `tx`. يُستدعى داخل `$transaction` في 7 مسارات لكنه يستخدم `db` مباشرة → كتاباته غير ذرية. + يُستدعى على كل POST لمصروف/سلفة/فاتورة → performance regression.
+
+9. **goods-receipt بلا قيد محاسبي إطلاقاً**: `src/app/api/goods-receipt/route.ts:77-176` — 5+ كتابات بدون `$transaction` + لا قيد GRNI (Dr Inventory / Cr GRNI). R1 violation.
+
+10. **autoEntryVATDeclaration خطأ VAT refund**: `src/lib/accounting/engine.ts:1300` — للسطر المدين في حالة الاسترداد، تستخدم حساب VAT_INPUT (3120، liability) كـ refund account بدلاً من حساب asset مستقل (1410). يُصفِّر liability بدلاً من إنشاء asset.
+
+11. **purchase-invoices/sales-invoices PUT — update خارج tx**: `src/app/api/purchase-invoices/route.ts:208-221` و `sales-invoices/route.ts:720-750` — tx تُنشئ reversal + new JE بنجاح، ثم `db.*.update` أخير خارج tx قد يفشل ويترك الفاتورة بحالة جزئية.
+
+12. **equipment routes بلا tx**: `equipment/fuel/route.ts`, `equipment/maintenance/route.ts`, `equipment/operations/route.ts`, `equipment/expenses/route.ts` — 4+ كتابات بدون `$transaction` لكل منها.
+
+13. **subcontractor-invoices + advances بلا tx**: `subcontractor-invoices/route.ts:55-90` و `advances/route.ts:24-56, 96-117` — لا `$transaction`.
+
+14. **salaries routes بلا tx**: `salaries/route.ts:87-139` و `salaries/[id]/route.ts:62-115` — JE + equipmentCost + salary.create/update ثلاث كتابات منفصلة.
+
+15. **account-statement book balance دائماً 0**: `src/app/api/account-statement/route.ts:135-163` — `auto-journal.ts` لا يضع `costCenterId` على سطر AR/AP (auto-journal.ts:62-64, 116, 168-169, 221-222, 270, 326-330). الفلتر بـ `clientCostCenter.id` يُرجع 0 دائماً.
+
+16. **getNextEntryNo لا يحسب القيود ذات البادئات المختلفة**: `src/lib/accounting/guard.ts:394-407` — يفحص `JE-` prefix فقط. القيود `JE-SI-`, `JE-VAT-`, `IFRS15-`, `JE-DEP-AST-` لا تُحسَب → قد يُولِّد رقماً مكرراً. + O(n) لكل قيد.
+
+**Top 14 HIGH findings:**
+
+17. `account-roles.ts` defaultCodes errors — 9 roles لها defaultCodes خاطئة: CONTRACT_LIABILITY (2110 بدلاً من 3610)، SUBCONTRACTOR_RETENTION_PAYABLE (2130 بدلاً من 3500)، GRNI (2120)، INVENTORY (1100)، UNBILLED_REVENUE (4210 غير موجود)، FX_GAIN/LOSS (4290/5290 غير موجود)، DELAY_PENALTY_REVENUE (4280)، VAT_SETTLEMENT (2305).
+
+18. `SUBCONTRACTOR_ADVANCE.defaultCodes: ['1230']` (account-roles.ts:433) يتشارك مع EMPLOYEE_ADVANCE → لا تمييز في الـ GL.
+
+19. `JournalEntry` schema لا يحوي `descriptionAr` رغم وجوده في `JournalEntryInput` (guard.ts:79) والـ 24 autoEntry callers تولِّده. البيانات تُفقد.
+
+20. `consistency.ts:44-53` raw SQL لا يفلتر `deletedAt IS NULL` ولا `status='POSTED'` → كل قيد DRAFT غير متوازن يُحسَب كانتهاك.
+
+21. `accountingHealthCheck` check #4 (guard.ts:470) يفلتر `isActive: true` على الحسابات → deactivate account يُخفي أرصته من المعادلة المحاسبية.
+
+22. 14 دالة autoEntry ميتة في engine.ts + 1 في ifrs15.ts (autoEntryIFRS15Revenue) — انظر القسم 5 في التقرير.
+
+23. mapping.ts (618 LOC) شبه ميت بالكامل — فقط OperationType enum قد يُستخدم في UI، الباقي لا مستدعي.
+
+24. 29 fallbacks hardcoded في autoEntry (`|| '8630'`, `|| '3210'`, إلخ) — تكسر role mapping إذا أعاد المحاسب تعريف الدور.
+
+25. `autoEntrySalary` (engine.ts:947) ميتة رغم أن المسارات الفعلية تستخدم `autoEntryExpense` بدلاً منها (خطأ محاسبي — تفقد GOSI).
+
+26. `autoEntryEquipmentCost` (engine.ts:833) — `OPERATION` يُ map لـ FUEL_EXPENSE بدلاً من DRIVER_EXPENSE أو حساب تشغيلي مستقل.
+
+27. `expenses/[id]/route.ts:66`, `subcontractor-invoices/[id]/route.ts:280`, `salary/[id]/route.ts:144` — حذف hard بدلاً من soft-delete رغم وجود `deletedAt`.
+
+28. `JournalEntry.reversedEntry onDelete: SetNull` (schema.prisma:1801) — حذف القيد العكسي يُفقد audit trail.
+
+29. `ProgressClaim.claimNo` غير `@unique` (schema.prisma:958) + `Salary` لا `@@unique([employeeId,year,month])` → تكرارات.
+
+30. `assertPeriodOpen` (period-guard.ts) و `journal-entries/[id]/route.ts:134` يستخدمان نظامين مختلفين للفترات (PeriodClosing vs FiscalPeriod.status) — غير متّسق.
+
+**الملخص:** المحرك المحاسبي يعاني من 48 مشكلة موزعة على 16 CRITICAL + 14 HIGH + 12 MEDIUM + 6 LOW. الأخطر:
+- 11 موقع يبتلع فشل القيد بصمت (R1 violated — GL غير موثوق).
+- 9 مسارات API تُجري 2+ كتابات بدون `$transaction` (atomicity violated — data corruption على partial failure).
+- double revenue recognition على المستخلصات (يُضخِّم الإيراد وVAT).
+- salary cycle معيب (cash مخصوم مرتين، Salaries_Payable سالب).
+- 14 دالة autoEntry ميتة (from 24) — engine.ts شبه ميت.
+- account-statement book balance = 0 دائماً (لا costCenterId على AR/AP lines).
+
+التقرير الكامل في `/home/z/my-project/audit-reports/01-accounting-engine.md`. لم تُعدَّل أي ملفات (READ-ONLY).

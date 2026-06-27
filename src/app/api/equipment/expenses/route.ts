@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { autoEntryEquipmentCost } from '@/lib/accounting/engine'
+import { autoEntryEquipmentCost, type PrismaTransaction } from '@/lib/accounting/engine'
 
 // Map ExpenseCategory to costType for autoEntryEquipmentCost
 function mapCategoryToCostType(category: string): 'OPERATION' | 'MAINTENANCE' | 'FUEL' | 'OTHER' {
@@ -44,61 +44,58 @@ export async function POST(request: Request) {
     const amount = parseFloat(body.amount) || 0
     const expenseDate = new Date(body.date)
 
-    const expense = await db.equipmentExpense.create({
-      data: {
-        equipmentId: body.equipmentId,
-        category: body.category,
-        description: body.description,
-        amount,
-        date: expenseDate,
-        reference: body.reference || null,
-      },
-      include: {
-        equipment: {
-          select: { id: true, code: true, name: true },
+    // Atomic: expense record + JE + journalEntryId link in one transaction.
+    // R1 enforced — if the JE fails, the expense record is rolled back too.
+    const expense = await db.$transaction(async (tx: PrismaTransaction) => {
+      const created = await tx.equipmentExpense.create({
+        data: {
+          equipmentId: body.equipmentId,
+          category: body.category,
+          description: body.description,
+          amount,
+          date: expenseDate,
+          reference: body.reference || null,
         },
-      },
-    })
+        include: {
+          equipment: {
+            select: { id: true, code: true, name: true },
+          },
+        },
+      })
 
-    // Create accounting entry via autoEntryEquipmentCost
-    try {
       const costType = mapCategoryToCostType(body.category)
       const payFrom: 'CASH' | 'AP' = body.payFrom === 'AP' ? 'AP' : 'CASH'
 
       const journalEntry = await autoEntryEquipmentCost({
-        equipmentName: expense.equipment.name,
+        equipmentName: created.equipment.name,
         costType,
         amount,
         date: expenseDate,
         payFrom,
         costCenterId: body.costCenterId || undefined,
-      })
+      }, tx)
 
-      // Store journalEntryId on the expense
       if (journalEntry?.id) {
-        await db.equipmentExpense.update({
-          where: { id: expense.id },
+        await tx.equipmentExpense.update({
+          where: { id: created.id },
           data: { journalEntryId: journalEntry.id },
         })
       }
-    } catch (accountingError) {
-      console.error('Accounting entry failed for equipment expense:', accountingError)
-      // Don't fail the expense creation if accounting fails
-    }
 
-    // Re-fetch with journalEntryId
-    const updatedExpense = await db.equipmentExpense.findUnique({
-      where: { id: expense.id },
-      include: {
-        equipment: {
-          select: { id: true, code: true, name: true },
+      return await tx.equipmentExpense.findUniqueOrThrow({
+        where: { id: created.id },
+        include: {
+          equipment: {
+            select: { id: true, code: true, name: true },
+          },
         },
-      },
+      })
     })
 
-    return NextResponse.json(updatedExpense || expense, { status: 201 })
+    return NextResponse.json(expense, { status: 201 })
   } catch (error) {
     console.error('Error creating equipment expense:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء مصروف المعدة' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في إنشاء مصروف المعدة'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

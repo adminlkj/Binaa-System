@@ -93,24 +93,25 @@ export async function PUT(
           let journalEntryId = existing.journalEntryId
 
           if (!journalEntryId) {
-            try {
-              await initializeChartOfAccounts()
-              const journalEntry = await autoEntryPurchaseInvoice({
-                invoiceNo: existing.invoiceNo,
-                supplierId: existing.supplierId,
-                subtotal: existing.subtotal,
-                vatRate: existing.vatRate,
-                vatAmount: existing.vatAmount,
-                totalAmount: existing.totalAmount,
-                date: existing.date,
-                projectId: existing.projectId || undefined,
-                costCenterId: existing.projectId || undefined,
-                expenseCategory: existing.expenseCategory || undefined,
-              }, tx)
-              journalEntryId = journalEntry.id
-            } catch (accountingError) {
-              console.error('Accounting entry failed for supplier invoice:', accountingError)
-            }
+            // R1 enforced: if the JE fails, the entire transaction rolls back —
+            // no invoice can transition to SENT without a posted journal entry.
+            await initializeChartOfAccounts()
+            const journalEntry = await autoEntryPurchaseInvoice({
+              invoiceNo: existing.invoiceNo,
+              supplierId: existing.supplierId,
+              subtotal: existing.subtotal,
+              vatRate: existing.vatRate,
+              vatAmount: existing.vatAmount,
+              totalAmount: existing.totalAmount,
+              date: existing.date,
+              projectId: existing.projectId || undefined,
+              // costCenterId is a distinct entity from projectId. Passing projectId as
+              // costCenterId causes wrong cost-center linking or FK violations.
+              // Leave costCenterId null unless a real cost center is provided.
+              costCenterId: undefined,
+              expenseCategory: existing.expenseCategory || undefined,
+            }, tx)
+            journalEntryId = journalEntry.id
           }
 
           return await tx.purchaseInvoice.update({
@@ -190,7 +191,8 @@ export async function PUT(
           totalAmount: newTotalAmount,
           date: existing.date,
           projectId: existing.projectId || undefined,
-          costCenterId: existing.projectId || undefined,
+          // costCenterId is distinct from projectId — do not conflate the two.
+          costCenterId: undefined,
           expenseCategory: existing.expenseCategory || undefined,
         }, tx)
 
