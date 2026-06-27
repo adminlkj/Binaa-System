@@ -52,3 +52,30 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# ====================================================================
+# CRITICAL: Database files must NEVER be tracked by git.
+# Reason: The platform runs `git reset --hard` between sessions.
+# If db/custom.db is tracked, every reset DESTROYS all user-entered
+# data (employees, invoices, journal entries, etc.).
+# Keeping these untracked ensures git operations never touch live data.
+# ====================================================================
+db/*.db
+db/*.db-journal
+db/*.db-wal
+db/*.db-shm
+db/*.db.backup-*
+
+# ====================================================================
+# CRITICAL: Backup zip archives must NEVER be tracked by git.
+# Reason: If a stale zip is re-extracted, it overwrites newer code
+# with older versions, causing "modifications to disappear".
+# Backups belong outside version control.
+# ====================================================================
+Binaa-ERP-System.zip
+*.backup.zip
+backup-*.zip
+
+# Uploaded user files (runtime data, not source code)
+public/uploads/*
+!public/uploads/.gitkeep
