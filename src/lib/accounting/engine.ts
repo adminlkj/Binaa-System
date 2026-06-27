@@ -1513,6 +1513,150 @@ export async function getAccountBalance(accountCode: string): Promise<number> {
     : totalCredit - totalDebit
 }
 
+// ============ SUBCONTRACTOR CASH-FLOW AUTO ENTRIES ============
+// Added in Phase 2 Cycle 1 to fix P2-CRIT-002: subcontractor advances, payments,
+// and retentions were creating DB records without journal entries — the GL was
+// blind to all subcontractor cash flows. Now every subcontractor financial
+// operation creates a proper double-entry posting through the guard.
+
+/**
+ * سلفة مقاول باطن - Subcontractor Advance
+ * Dr: SUBCONTRACTOR_ADVANCE (1230)  — asset (advance is recoverable)
+ * Cr: CASH (1110) or BANK
+ *
+ * The advance is recovered later via autoEntrySubcontractorPayment (offset)
+ * or via a dedicated recovery endpoint.
+ */
+export async function autoEntrySubcontractorAdvance(data: {
+  advanceNo: string
+  subcontractorName: string
+  amount: number
+  date: Date
+  paymentMethod?: 'CASH' | 'BANK'
+  costCenterId?: string
+}, tx?: PrismaTransaction) {
+  const advanceCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_ADVANCE, tx) || '1230'
+  const cashCode = data.paymentMethod === 'BANK'
+    ? (await getAccountCodeByRole(AccountRole.BANK, tx) || '1120')
+    : (await resolvePaymentAccountCode('TREASURY', tx))
+
+  return createJournalEntry({
+    entryNo: `JE-SCA-${Date.now()}`,
+    date: data.date,
+    description: `Subcontractor Advance ${data.advanceNo} - ${data.subcontractorName}`,
+    descriptionAr: `سلفة مقاول باطن ${data.advanceNo} - ${data.subcontractorName}`,
+    lines: [
+      { accountCode: advanceCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+      { accountCode: cashCode, debit: 0, credit: data.amount },
+    ],
+    sourceType: 'SUBCONTRACTOR_ADVANCE',
+    sourceId: data.advanceNo,
+  }, tx)
+}
+
+/**
+ * سداد لمقاول باطن - Subcontractor Payment
+ * Dr: SUBCONTRACTOR_AP (3220)  — settles the payable accrued at invoice
+ * Cr: CASH (1110) or BANK
+ *
+ * If the payment includes a retention withholding portion, the caller should
+ * also invoke autoEntrySubcontractorRetention to accrue the retained amount
+ * as a liability (Cr SUBCONTRACTOR_RETENTION_PAYABLE / Dr SUBCONTRACTOR_AP).
+ */
+export async function autoEntrySubcontractorPayment(data: {
+  paymentNo: string
+  subcontractorName: string
+  amount: number
+  date: Date
+  paymentMethod?: 'CASH' | 'BANK'
+  costCenterId?: string
+}, tx?: PrismaTransaction) {
+  const apCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, tx) || '3220'
+  const cashCode = data.paymentMethod === 'BANK'
+    ? (await getAccountCodeByRole(AccountRole.BANK, tx) || '1120')
+    : (await resolvePaymentAccountCode('TREASURY', tx))
+
+  return createJournalEntry({
+    entryNo: `JE-SCP-${Date.now()}`,
+    date: data.date,
+    description: `Subcontractor Payment ${data.paymentNo} - ${data.subcontractorName}`,
+    descriptionAr: `سداد لمقاول باطن ${data.paymentNo} - ${data.subcontractorName}`,
+    lines: [
+      { accountCode: apCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+      { accountCode: cashCode, debit: 0, credit: data.amount },
+    ],
+    sourceType: 'SUBCONTRACTOR_PAYMENT',
+    sourceId: data.paymentNo,
+  }, tx)
+}
+
+/**
+ * احتجاز ضمان مقاول باطن - Subcontractor Retention
+ * Dr: SUBCONTRACTOR_AP (3220)        — reduces the AP (cash not paid)
+ * Cr: SUBCONTRACTOR_RETENTION_PAYABLE (3500)  — liability until released
+ *
+ * Called either at invoice time (accrue retention) or at payment time
+ * (withhold retention from cash payment).
+ */
+export async function autoEntrySubcontractorRetention(data: {
+  retentionNo: string
+  subcontractorName: string
+  withheldAmount: number
+  date: Date
+  costCenterId?: string
+}, tx?: PrismaTransaction) {
+  const apCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, tx) || '3220'
+  const retentionCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_RETENTION_PAYABLE, tx) || '3500'
+
+  return createJournalEntry({
+    entryNo: `JE-SRT-${Date.now()}`,
+    date: data.date,
+    description: `Subcontractor Retention ${data.retentionNo} - ${data.subcontractorName}`,
+    descriptionAr: `احتجاز ضمان مقاول باطن ${data.retentionNo} - ${data.subcontractorName}`,
+    lines: [
+      { accountCode: apCode, debit: data.withheldAmount, credit: 0, costCenterId: data.costCenterId },
+      { accountCode: retentionCode, debit: 0, credit: data.withheldAmount },
+    ],
+    sourceType: 'SUBCONTRACTOR_RETENTION',
+    sourceId: data.retentionNo,
+  }, tx)
+}
+
+/**
+ * تكلفة يدوية على مشروع - Manual Cost Entry
+ * Dr: PROJECT_COST (7110)  — or costType-specific role
+ * Cr: CASH (1110) / AP (3210) based on payFrom
+ *
+ * Used for manual project cost entries that aren't from a source document
+ * (e.g., overhead allocation, journal correction to project cost).
+ */
+export async function autoEntryManualCost(data: {
+  description: string
+  amount: number
+  date: Date
+  costType?: string
+  payFrom?: 'CASH' | 'AP'
+  costCenterId?: string
+}, tx?: PrismaTransaction) {
+  const costCode = await getAccountCodeByRole(AccountRole.PROJECT_COST, tx) || '7110'
+  const creditCode = data.payFrom === 'AP'
+    ? (await getAccountCodeByRole(AccountRole.SUPPLIER_AP, tx) || '3210')
+    : (await resolvePaymentAccountCode('TREASURY', tx))
+
+  return createJournalEntry({
+    entryNo: `JE-MCE-${Date.now()}`,
+    date: data.date,
+    description: `Manual Cost Entry - ${data.description}`,
+    descriptionAr: `قيد تكلفة يدوية - ${data.description}`,
+    lines: [
+      { accountCode: costCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+      { accountCode: creditCode, debit: 0, credit: data.amount },
+    ],
+    sourceType: 'MANUAL_COST',
+    sourceId: `MCE-${Date.now()}`,
+  }, tx)
+}
+
 // ============ GENERAL LEDGER ============
 
 export async function getGeneralLedger(accountCode: string, dateFrom?: Date, dateTo?: Date) {

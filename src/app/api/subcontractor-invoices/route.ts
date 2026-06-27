@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { autoEntrySubcontractorInvoice, type PrismaTransaction } from '@/lib/accounting/engine'
+import { Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -36,8 +37,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
     }
 
-    const vatAmount = amount * vatRate
-    const totalAmount = amount + vatAmount
+    // Use Decimal for financial precision (P2-CRIT-008 fix)
+    const amt = new Prisma.Decimal(body.amount)
+    const rate = new Prisma.Decimal(body.vatRate || 0.15)
+    const vatAmount = amt.mul(rate).toDecimalPlaces(2)
+    const totalAmount = amt.add(vatAmount)
+
+    // Fetch project costCenterId for JE attribution (P2-HIGH-009 fix)
+    let projectCostCenterId: string | undefined
+    if (projectId) {
+      const project = await db.project.findUnique({
+        where: { id: projectId },
+        select: { costCenterId: true },
+      })
+      projectCostCenterId = project?.costCenterId || undefined
+    }
 
     // Auto-generate invoice number
     const lastInvoice = await db.subcontractorInvoice.findFirst({
@@ -54,7 +68,7 @@ export async function POST(request: Request) {
 
     // Atomic: invoice record + JE in one transaction.
     // R1 enforced — if the JE fails, the invoice record is rolled back too.
-    // costCenterId is NOT projectId (distinct entities) — left undefined here.
+    // P2-HIGH-009 fix: pass project.costCenterId (was always undefined).
     const invoice = await db.$transaction(async (tx: PrismaTransaction) => {
       const created = await tx.subcontractorInvoice.create({
         data: {
@@ -62,8 +76,8 @@ export async function POST(request: Request) {
           projectId: projectId || null,
           invoiceNo,
           date: new Date(date),
-          amount,
-          vatRate,
+          amount: amt,
+          vatRate: rate,
           vatAmount,
           totalAmount,
           paidAmount: 0,
@@ -83,12 +97,12 @@ export async function POST(request: Request) {
       await autoEntrySubcontractorInvoice({
         invoiceNo: created.invoiceNo,
         subcontractorName: created.subcontractor.name,
-        amount: created.amount,
-        vatRate: created.vatRate,
-        vatAmount: created.vatAmount,
-        totalAmount: created.totalAmount,
+        amount: Number(created.amount),
+        vatRate: Number(created.vatRate),
+        vatAmount: Number(created.vatAmount),
+        totalAmount: Number(created.totalAmount),
         date: created.date,
-        costCenterId: undefined,
+        costCenterId: projectCostCenterId,
       }, tx)
 
       return created

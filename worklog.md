@@ -3699,3 +3699,49 @@ Stage Summary:
 - No code changes needed in this verification cycle — all previous Phase 1 fixes (commits dab4223 through 603c73e) are confirmed working end-to-end
 - Working tree clean (test data is in DB which is gitignored)
 - **Ready to proceed to Phase 2 (Projects cycle)**
+
+---
+Task ID: 2-a
+Agent: Projects Cycle Deep Auditor
+Task: READ-ONLY deep audit of projects cycle (project lifecycle, contracts, change orders, BOQ, progress claims, subcontractors)
+
+Work Log:
+- قرأت worklog.md (آخر 300 سطر) لمعرفة ما أصلحه Phase 1 (double revenue على المستخلصات، salary cycle، double-cancellation في 7 routes، VAT silent failures، fiscal year tx، initializeChartOfAccounts tx، isPostable→allowPosting، GRNI JE، consistency.ts SQL filters، 4 defaultCodes أخطأ). تجنبت إعادة الإبلاغ عن هذه.
+- قرأت audit-reports/01-accounting-engine.md (723 سطر) لفهم سياق المحرك المحاسبي والـ 48 issue السابقة (16 CRITICAL + 14 HIGH + 12 MEDIUM + 6 LOW).
+- قرأت prisma/schema.prisma لـ 18 model متعلقة بالمشاريع: Project, Contract, ChangeOrder, BOQItem, ProgressClaim, WBSElement, ProjectLedger, ProjectBudget, ProjectBudgetLine, ProjectForecast, ClaimItem, ClaimCertification, Subcontractor, SubcontractorContract, SubcontractorInvoice, SubcontractorAdvance, SubcontractorRetention, SubcontractorPayment. تحققت من @unique، @@unique، onDelete، الأنواع Decimal، enums (ProjectStatus, ContractStatus, ChangeOrderStatus, ClaimStatus).
+- قرأت كاملاً 13 API route file:
+  - projects/route.ts + [id]/route.ts + list/route.ts
+  - contracts/route.ts + [id]/route.ts
+  - change-orders/route.ts + [id]/route.ts
+  - boq/route.ts + [id]/route.ts
+  - progress-claims/route.ts + [id]/route.ts
+  - claim-items/route.ts (only — no [id])
+  - claim-certifications/route.ts (only — no [id])
+  - wbs/route.ts (only — no [id])
+  - project-controls/[projectId]/{summary,evm,backfill}/route.ts
+  - project-ledger/[projectId]/route.ts
+  - subcontractors/route.ts + [id]/route.ts
+  - subcontractor-invoices/route.ts (only — no [id])
+  - subcontractor-advances/route.ts (only — no [id])
+  - subcontractor-payments/route.ts (only — no [id])
+  - subcontractor-retentions/route.ts (only — no [id])
+  - measurements/route.ts (only — no [id])
+  - commitments/route.ts (only — no [id])
+  - cost-entries/route.ts
+- قرأت src/lib/accounting/engine.ts (autoEntrySubcontractorInvoice, autoEntryProgressClaim, reverseEntry signatures) و src/lib/accounting/ifrs15.ts (calculatePOC, calculatePeriodRevenue, autoEntryIFRS15Revenue) و src/lib/auto-journal.ts (createProgressClaimJournalEntry) و src/lib/account-roles.ts (SUBCONTRACTOR_AP, SUBCONTRACTOR_ADVANCE, SUBCONTRACTOR_RETENTION_PAYABLE, CONTRACT_ASSET, UNBILLED_REVENUE roles) و src/lib/report-engine.ts (buildProjectCostCenterMap, getProjectBalances).
+- grep للتحقق من الكتابة إلى ProjectLedger (0 writers)، WIPEntry/WIPAdjustment/LossProvision/ProjectBudget/ProjectForecast/CustomerAdvance/AdvanceRecovery (0 writers لكلها)، Project.actualCost/committedCost/estimatedTotalCost/progressPercent (0 updates)، autoEntryIFRS15Revenue و calculatePeriodRevenue (0 callers)، createProgressClaimJournalEntry (0 callers عدا comment).
+- grep للتحقق من الـ costCenterId على SubcontractorInvoice JE — confirmed undefined دائماً.
+- تحققت من sales-invoices/route.ts (createInvoiceFromExtract) للتأكد أن سلسلة progress claim → invoice → JE صحيحة وذرية.
+- قرأت 5 components بسرعة: projects.tsx (1876 LOC), contracts.tsx (1276 LOC), boq.tsx (506 LOC), progress-claims.tsx (721 LOC), subcontractors.tsx (218 LOC), change-order-dialog.tsx (354 LOC). كلها تستخدم TanStack Query + useState (لا react-hook-form + zod).
+- كتبت التقرير الكامل إلى /home/z/my-project/audit-reports/02-projects-cycle.md (41 issue: 9 CRITICAL + 14 HIGH + 11 MEDIUM + 7 LOW + 13 dead-code item + 7 fix cycles + 16 verified-working item).
+
+Stage Summary:
+- 41 issue total: 9 CRITICAL, 14 HIGH, 11 MEDIUM, 7 LOW
+- Report: /home/z/my-project/audit-reports/02-projects-cycle.md
+- Top 5 CRITICAL issues:
+  1. P2-CRIT-002: Subcontractor advances / payments / retentions create NO journal entries — GL blind to all subcontractor cash flows (3 routes + missing 3 autoEntry functions).
+  2. P2-CRIT-001: ChangeOrder APPROVED does not update Contract.value or Project.contractValue — corrupted EVM/POC/WIP reports.
+  3. P2-CRIT-003: SubcontractorPayment POST does not update SubcontractorInvoice.paidAmount or status — invoice never marked PAID.
+  4. P2-CRIT-004: ProjectLedger model has zero writers — entire project subledger is empty despite rich schema with 9 ledger types.
+  5. P2-CRIT-005: 8 project-cycle entities missing [id]/route.ts (subcontractor-invoices, -advances, -payments, -retentions, claim-items, claim-certifications, measurements, commitments, wbs) — no fetch/update/cancel lifecycle.
+- لم تُعدَّل أي ملفات (READ-ONLY). التقرير فقط + worklog append.
