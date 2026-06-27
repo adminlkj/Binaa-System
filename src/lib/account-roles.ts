@@ -407,7 +407,9 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     labelAr: 'مطلوب العقد (سلف العميل)',
     labelEn: 'Contract Liability (Customer Advance)',
     description: 'سلف العميل / الدفعات المقدّمة (IFRS 15.106)',
-    defaultCodes: ['2110'],
+    // FIXED (audit 8.3): was ['2110'] which is 'Construction Equipment' (ASSET).
+    // Contract liability is a LIABILITY. Customer advances map to 3410/3420.
+    defaultCodes: ['3410'],
   },
   UNBILLED_REVENUE: {
     role: 'UNBILLED_REVENUE',
@@ -449,7 +451,9 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     labelAr: 'احتجاز المقاولين الباطنين المستحق',
     labelEn: 'Subcontractor Retention Payable',
     description: 'الاحتجازات المستحقة للمقاولين الباطنين',
-    defaultCodes: ['2130'],
+    // FIXED (audit 8.3): was ['2130'] which is 'Vehicles' (ASSET).
+    // Retention payable is a LIABILITY → 3500 (Retention Payable).
+    defaultCodes: ['3500'],
   },
   DELAY_PENALTY_REVENUE: {
     role: 'DELAY_PENALTY_REVENUE',
@@ -463,14 +467,18 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     labelAr: 'المخزون',
     labelEn: 'Inventory',
     description: 'المخزون — بند أصول متداولة (IAS 2)',
-    defaultCodes: ['1100'],
+    // FIXED (audit 8.3): was ['1100'] which is 'Cash & Cash Equivalents'.
+    // Inventory is an ASSET → 1340 (Consumable Supplies, accountRole=INVENTORY).
+    defaultCodes: ['1340'],
   },
   GRNI: {
     role: 'GRNI',
     labelAr: 'بضاعة مستلمة دون فواتير',
     labelEn: 'Goods Received Not Invoiced',
     description: 'بضاعة وصلت مستودعنا بدون فاتورة المورد بعد',
-    defaultCodes: ['2120'],
+    // FIXED (audit 8.3): was ['2120'] which is 'Rental Equipment' (ASSET).
+    // GRNI is a LIABILITY → 3330 (created in chart template).
+    defaultCodes: ['3330'],
   },
   VAT_SETTLEMENT: {
     role: 'VAT_SETTLEMENT',
