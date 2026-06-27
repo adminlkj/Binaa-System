@@ -882,20 +882,37 @@ function amountInWordsSection(amount: number, lang: 'ar' | 'en'): string {
 }
 
 // ============ ZATCA TLV Encoding (Inline for print service) ============
+// Isomorphic version — safe for browser bundling. Uses TextEncoder + Uint8Array.
 function encodeZATCATLV(sellerName: string, vatNumber: string, date: string, total: string, vatTotal: string): string {
-  // TLV encoding: Tag (1 byte) + Length (1 byte) + Value
-  const encodeTag = (tag: number, value: string): Buffer => {
-    const buf = Buffer.from(value, 'utf8')
-    return Buffer.concat([Buffer.from([tag, buf.length]), buf])
+  const encoder = new TextEncoder()
+  const encodeTag = (tag: number, value: string): Uint8Array => {
+    const valBytes = encoder.encode(value)
+    const out = new Uint8Array(2 + valBytes.length)
+    out[0] = tag
+    out[1] = valBytes.length
+    out.set(valBytes, 2)
+    return out
   }
-  const tlv = Buffer.concat([
+  const tags = [
     encodeTag(0x01, sellerName),
     encodeTag(0x02, vatNumber),
     encodeTag(0x03, date),
     encodeTag(0x04, total),
     encodeTag(0x05, vatTotal),
-  ])
-  return tlv.toString('base64')
+  ]
+  const totalLen = tags.reduce((s, t) => s + t.length, 0)
+  const tlv = new Uint8Array(totalLen)
+  let offset = 0
+  for (const t of tags) {
+    tlv.set(t, offset)
+    offset += t.length
+  }
+  if (typeof btoa === 'function') {
+    let binary = ''
+    for (let i = 0; i < tlv.length; i++) binary += String.fromCharCode(tlv[i])
+    return btoa(binary)
+  }
+  return Buffer.from(tlv).toString('base64')
 }
 
 // ============ Rental Invoice CSS ============

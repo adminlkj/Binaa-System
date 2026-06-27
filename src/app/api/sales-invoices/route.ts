@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { createSalesInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
-import { createJournalEntry } from '@/lib/accounting/engine'
+import { reverseEntry } from '@/lib/accounting/engine'
 import { generateZatcaQRForInvoice } from '@/lib/zatca-qr'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
@@ -690,34 +690,9 @@ export async function PUT(request: Request) {
         })
 
         if (originalEntry) {
-          // Create reversal entry (swap debit/credit)
-          const accountIds = originalEntry.lines.map(l => l.accountId)
-          const accounts = await tx.account.findMany({ where: { id: { in: accountIds } } })
-          const accountMap = new Map(accounts.map(a => [a.id, a.code]))
-
-          const resolvedReversalLines = originalEntry.lines.map(line => ({
-            accountCode: accountMap.get(line.accountId) || '',
-            debit: toNumber(line.credit),
-            credit: toNumber(line.debit),
-            costCenterId: line.costCenterId || undefined,
-            description: `Reversal: ${line.description || ''}`,
-          }))
-
-          await createJournalEntry({
-            entryNo: `JE-REV-SI-${Date.now()}`,
-            date: new Date(),
-            description: `Reversal for Sales Invoice ${existing.invoiceNo}`,
-            descriptionAr: `قيد عكسي لفاتورة مبيعات ${existing.invoiceNo}`,
-            lines: resolvedReversalLines,
-            sourceType: 'SALES_INVOICE_REVERSAL',
-            sourceId: existing.invoiceNo,
-          }, tx)
-
-          // Cancel the original entry
-          await tx.journalEntry.update({
-            where: { id: existing.journalEntryId! },
-            data: { status: 'CANCELLED' },
-          })
+          // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
+          // Avoids double-cancellation bug.
+          await reverseEntry(existing.journalEntryId!, tx)
         }
 
         // Create new entry with updated values

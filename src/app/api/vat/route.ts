@@ -233,20 +233,15 @@ export async function PATCH(request: Request) {
         // ❗ مهم: تأريخ القيد بتاريخ نهاية الفترة الضريبية (وليس تاريخ اليوم)
         //    حتى يظهر القيد في دفتر اليومية للفترة الصحيحة عند التحقق من المطابقة.
         //    مثال: إقرار Q3 2024 → القيد بتاريخ 2024-09-30 (وليس تاريخ التقديم).
-        let journalEntryId: string | null = null
-        try {
-          const je = await autoEntryVATDeclaration({
-            period: existing.period,
-            outputVat: toNumber(existing.outputVat),
-            inputVat: toNumber(existing.inputVat),
-            netVat: toNumber(existing.netVat),
-            date: getPeriodEndDate(existing.year, existing.quarter),
-          }, tx)
-          journalEntryId = je.id
-        } catch (e) {
-          console.error('Failed to create VAT declaration journal entry:', e)
-          // استمر بدون قيد - لا نمنع التقديم بسبب مشكلة محاسبية
-        }
+        // إنشاء قيد الإقرار — إذا فشل، تفشل المعاملة بالكامل (لا يمكن تسجيل إقرار بدون قيد محاسبي)
+        const je = await autoEntryVATDeclaration({
+          period: existing.period,
+          outputVat: toNumber(existing.outputVat),
+          inputVat: toNumber(existing.inputVat),
+          netVat: toNumber(existing.netVat),
+          date: getPeriodEndDate(existing.year, existing.quarter),
+        }, tx)
+        const journalEntryId = je.id
 
         return tx.vATReturn.update({
           where: { id },
@@ -280,19 +275,16 @@ export async function PATCH(request: Request) {
       const amount = toNumber(existing.netVat)
       const vatReturn = await db.$transaction(async (tx: PrismaTransaction) => {
         // أنشئ قيد سداد الضريبة (إذا كان هناك مبلغ مستحق)
+        // إنشاء قيد السداد — إذا فشل، تفشل المعاملة بالكامل
         let paymentJournalEntryId: string | null = null
         if (amount > 0) {
-          try {
-            const je = await autoEntryVATPayment({
-              period: existing.period,
-              amount,
-              date: paymentDate ? new Date(paymentDate) : new Date(),
-              reference: paymentReference,
-            }, tx)
-            paymentJournalEntryId = je.id
-          } catch (e) {
-            console.error('Failed to create VAT payment journal entry:', e)
-          }
+          const je = await autoEntryVATPayment({
+            period: existing.period,
+            amount,
+            date: paymentDate ? new Date(paymentDate) : new Date(),
+            reference: paymentReference,
+          }, tx)
+          paymentJournalEntryId = je.id
         }
 
         return tx.vATReturn.update({
@@ -321,21 +313,13 @@ export async function PATCH(request: Request) {
       const reason = (body.reason as string) || 'إلغاء لإعادة الإنشاء'
 
       const vatReturn = await db.$transaction(async (tx: PrismaTransaction) => {
-        // اعكس قيد الإقرار إن وُجد
+        // اعكس قيد الإقرار إن وُجد — إذا فشل، تفشل المعاملة بالكامل
         if (existing.journalEntryId) {
-          try {
-            await reverseEntry(existing.journalEntryId, tx)
-          } catch (e) {
-            console.error('Failed to reverse VAT declaration journal entry:', e)
-          }
+          await reverseEntry(existing.journalEntryId, tx)
         }
         // اعكس قيد السداد إن وُجد
         if (existing.paymentJournalEntryId) {
-          try {
-            await reverseEntry(existing.paymentJournalEntryId, tx)
-          } catch (e) {
-            console.error('Failed to reverse VAT payment journal entry:', e)
-          }
+          await reverseEntry(existing.paymentJournalEntryId, tx)
         }
 
         return tx.vATReturn.update({

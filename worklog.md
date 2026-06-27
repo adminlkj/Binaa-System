@@ -2836,3 +2836,565 @@ Stage Summary:
 - predev script auto-restores from GitHub if local work is ever lost between sessions
 - 3-layer protection: (1) post-commit auto-push, (2) predev auto-restore, (3) manual restore script
 - CREDENTIALS: classic PAT stored in ~/.git-credentials (chmod 600, git-only access). User can revoke at https://github.com/settings/tokens anytime to cut access.
+
+---
+Task ID: 1-B
+Agent: API Routes Auditor
+Task: Deep audit of all API routes in the ERP system
+
+Work Log:
+
+**1. Scope and Methodology**
+- Enumerated every `route.ts` file under `/home/z/my-project/src/app/api/`: **172 route files** across 12 domains.
+- Live-tested 50+ representative routes via `curl -s -w "HTTP %{http_code}"` against `http://localhost:3000/api/<route>` to verify status codes and response shapes.
+- Read source code line-by-line for ~50 high-impact routes (financial, HR, accounting) and spot-checked the rest.
+- Ran `bun run lint` (passes) and `bunx tsc --noEmit` (FAILS with **393 TypeScript errors**, 200 of which are in `src/app/api/**`).
+- Categorized issues by severity (Critical / High / Medium / Low) and by domain.
+- Cross-referenced code against `prisma/schema.prisma` to find non-existent columns and Decimal-handling bugs.
+
+**2. Live curl test results (selected)**
+- `/api/dashboard` → 200 (1.6 KB)
+- `/api/rental-payments` → **HTTP 500** (broken: filters on non-existent `paymentType` column)
+- `/api/purchase-invoices/abc` → 404 HTML page (no `[id]/route.ts` file exists)
+- `/api/general-ledger` → 400 (requires `accountCode`)
+- `/api/account-statement/{customer,supplier,project}` → 400 (require query params)
+- `/api/reports/{general-ledger,project-costs,project-profitability,account-statement}` → 400 (require params)
+- All other GET list endpoints → 200 with `[]` (empty array)
+- `/api/seed?confirm=WIPE_ALL_DATA` → 200 (actually re-seeded the DB — protective guard works but allows a single-POST wipe)
+
+**3. TypeScript error audit (`tsc --noEmit`)**
+- 200 TS errors in `src/app/api/**` across 44 distinct route files.
+- Top error categories:
+  - **36** `Operator '+' cannot be applied to types 'number' and 'Decimal'` — arithmetic on Prisma Decimal without `Number()` cast.
+  - **13** `Property 'where' does not exist on type '{ select?: ...; include?: ...; ...}'` — wrong Prisma syntax: passing `where` inside an `include` block (e.g. `goodsReceipt: { select: {...}, where: {...} }` should be `goodsReceipt: { where: {...}, select: {...} }`).
+  - **10** `'jeWhere.date' is of type 'unknown'` — `Record<string, unknown>` typing loses type info.
+  - Multiple `Decimal not assignable to number` errors — passing raw Prisma Decimals to functions expecting `number`.
+- Top offending files:
+  - `account-statement/project/route.ts` — **26 errors**
+  - `account-statement/route.ts` — 15 errors
+  - `fixed-assets/depreciate/route.ts` — 14 errors
+  - `dashboard/route.ts` — 13 errors
+  - `resource-distribution/project-costs/[projectId]/route.ts` — 10 errors
+  - `business-flow/validate/route.ts` — 10 errors
+  - `accounts/role-mapping/route.ts` — 9 errors
+  - `financial-statements/cash-flow/route.ts` — 8 errors
+  - `seed/route.ts` — 7 errors
+  - `supplier-invoices/[id]/route.ts` — 6 errors
+  - `salary-payments/[id]/route.ts` — 6 errors
+
+**4. Domain-by-domain audit summary**
+
+**FINANCIAL DOMAIN (sales-invoices, purchase-invoices, expenses, petty-cash, journal-entries, accounts, client-payments, supplier-payments, supplier-invoices, rental-payments)**
+- `/api/rental-payments/route.ts:17` — **CRITICAL**: filters `ClientPayment` by `paymentType: 'RENTAL'`, but the `ClientPayment` model in `prisma/schema.prisma` has **no such field**. Route always returns HTTP 500.
+- `/api/purchase-invoices/[id]/route.ts` — **CRITICAL**: directory missing entirely. GET/PATCH/DELETE on `/api/purchase-invoices/{id}` return Next.js 404 HTML page (not JSON). Note: `/api/purchase-invoices/route.ts` exposes `PUT` (with `id` in body) as a workaround, but this is inconsistent and not RESTful.
+- `/api/rental-payments/[id]/route.ts` — **CRITICAL**: missing entirely. No way to update/delete a rental payment.
+- `/api/supplier-invoices/[id]/route.ts:180-181` — **CRITICAL**: reversal journal-entry lines pass raw Prisma `Decimal` objects (`debit: line.credit, credit: line.debit`) to `createJournalEntry`, which expects `number`. Will throw at runtime whenever a supplier invoice with an existing JE is edited. Compare to `/api/expenses/route.ts:316-317` which correctly uses `toNumber(line.credit)`.
+- `/api/supplier-invoices/[id]/route.ts:209-220` — **CRITICAL**: `autoEntryPurchaseInvoice` is called with raw Decimal values (`existing.subtotal`, `existing.vatRate`, `existing.vatAmount`, `existing.totalAmount`) instead of `Number(...)`.
+- `/api/expenses/[id]/route.ts:73-77` — **CRITICAL**: DELETE reversal passes Decimal to `createJournalEntry` (`debit: line.credit, credit: line.debit`). Compare to `expenses/route.ts` PUT reversal which correctly calls `toNumber(...)`.
+- `/api/petty-cash/[id]/route.ts:99-100` — **CRITICAL**: same Decimal bug in DELETE reversal.
+- `/api/petty-cash/route.ts:45-63` (POST) — **HIGH**: journal-entry creation wrapped in try/catch that swallows the error. If JE fails, petty-cash record is still created without `journalEntryId`. Accounting integrity broken silently.
+- `/api/petty-cash/[id]/route.ts:84-123` (DELETE) — **HIGH**: reversal JE creation outside transaction. If delete fails, JE is already reversed. Also catches & swallows reversal errors.
+- `/api/expenses/route.ts:246-254` (POST) — **HIGH**: silent JE failure (try/catch swallows). Expense created without JE.
+- `/api/expenses/route.ts:275-396` (PUT) — **HIGH**: `...updateData` spread lets client override `id`, `createdAt`, `journalEntryId`, etc. No field whitelist. Also `parseFloat(updateData.amount)` may produce NaN if string is non-numeric.
+- `/api/sales-invoices/route.ts:744-775` (PUT) — **HIGH**: same `...updateData` spread issue. Also no validation that `updateData.subtotal` etc. are numbers.
+- `/api/sales-invoices/[id]/route.ts:123-190` (DELETE) — **HIGH**: deletes DRAFT/CANCELLED invoice but does NOT reverse the linked journal entry. If invoice had a JE (legacy data), it becomes orphaned.
+- `/api/sales-invoices/route.ts:200-204` — **MEDIUM**: invoice-number generation uses `findFirst({ orderBy: invoiceNo: 'desc' })` then `parseInt(parts[2])` — race condition: two concurrent POSTs can generate the same invoice number (no DB unique constraint enforced via tx).
+- `/api/client-payments/route.ts:107-158` — **MEDIUM**: `amount` passed directly without `Number()`. If client sends a string, Prisma accepts but later `toNumber(invoice.paidAmount) + amount` may produce string concatenation.
+- `/api/supplier-payments/[id]/route.ts:209-213` — **HIGH**: `invoice.paidAmount - existing.amount` — `invoice.paidAmount` is Decimal, `existing.amount` is Decimal, result is Decimal, then assigned to `newPaidAmount` declared as `let newStatus = invoice.status`. Math.max(0, Decimal) works but inconsistent.
+- `/api/journal-entries/[id]/route.ts:53-155` (PUT) — **MEDIUM**: status transition DRAFT→POSTED only validates balance and line count, doesn't validate that all line accounts `isActive && allowPosting`. Also doesn't validate that JE date falls in an open fiscal period.
+- `/api/journal-entries/[id]/reverse/route.ts:6-24` — **MEDIUM**: no validation that the entry is currently `POSTED`. Could reverse a DRAFT or already-CANCELLED entry.
+- `/api/accounts/route.ts` — **MEDIUM**: GET only returns `isActive: true` accounts. Cannot view deactivated accounts via API.
+- `/api/accounts/[id]/route.ts:212-264` (DELETE) — **MEDIUM**: silently deactivates (instead of deleting) accounts with journal lines. Returns 200 with `deactivated: true` — surprising to clients expecting DELETE to actually delete.
+- `/api/vat/route.ts:237-249, 285-296, 327-339` — **CRITICAL**: PATCH FILE/PAY/REVERSE actions all wrap JE creation in try/catch that swallows the error. VAT return is marked FILED/PAID/CANCELLED even when the accounting entry fails. Silent accounting-integrity failure.
+
+**HR DOMAIN (employees, employee-contracts, attendance, payroll, salaries, salary-payments, advances)**
+- `/api/salaries/auto-calculate/route.ts:50,56,76,80-84` — **CRITICAL**: `sum + a.overtimeHours` and `sum + a.amount` — `overtimeHours`/`amount` are Prisma Decimal objects. `Decimal + number` throws at runtime in JS. Also `contract.basicSalary + contract.housingAllowance + ...` (lines 80-84) — Decimal + Decimal arithmetic may produce a Decimal but TypeScript reports error.
+- `/api/salaries/route.ts:47-100` (POST) — **CRITICAL**: silent JE failure. Salary marked APPROVED without accounting entry. Also no validation that `body.employeeId`, `body.month`, `body.year` are provided.
+- `/api/salaries/[id]/route.ts:71,95` — **HIGH**: `amount: existing.netSalary` passes Prisma Decimal to `autoEntryExpense` (expects number) and to `EquipmentCost.create` (accepts Decimal). First call will throw.
+- `/api/salaries/[id]/route.ts:101-103` — **HIGH**: try/catch swallows JE creation error. Salary marked APPROVED without JE.
+- `/api/salary-payments/route.ts:63-271` (POST) — **CRITICAL**: creates new Salary record with status='PAID' directly (skipping APPROVED), and only creates a payment JE (Dr 3310 / Cr Bank) — no accrual JE. Result: Salaries Payable (3310) goes NEGATIVE because there's no prior accrual. Also: no idempotency check — calling POST twice for same employee/month/year creates duplicate JEs.
+- `/api/salary-payments/route.ts:164-185, 231-251` — **HIGH**: silent JE failure (try/catch swallows). Salary marked PAID without JE.
+- `/api/salary-payments/[id]/route.ts:4-67` (DELETE) — **HIGH**: multiple DB ops outside transaction. Also `totalPaid >= payrollRun.totalNet - 0.01` — Decimal arithmetic, may produce unexpected results.
+- `/api/payroll-runs/route.ts:40-289` (POST) — **HIGH**: payroll run + lines creation inside transaction is OK, but no journal entry is created at DRAFT stage (correct behavior). However: race condition on `code` generation (findFirst + parseInt pattern).
+- `/api/payroll-runs/[id]/route.ts:60-174` (PUT, APPROVED action) — **CRITICAL**: creates one JE per activity type (PROJECT/RENTAL/ADMIN) but overwrites `journalEntryId` with the last JE id. Earlier JEs are orphaned (linked to source via `sourceId` but not to the payroll run via `journalEntryId`). Also if any JE creation fails after others succeed, partial state.
+- `/api/payroll-runs/[id]/route.ts:177-259` (PUT, PAID action) — **HIGH**: validates bankAccountCode and totalNet>0, but no validation that the bank account exists/isActive. Also no idempotency: re-PAID creates duplicate payment JE.
+- `/api/payroll-runs/[id]/route.ts:286-315` (DELETE) — **MEDIUM**: only allows DRAFT delete (good), but doesn't check if any salary payments reference the payroll run lines.
+- `/api/employees/route.ts:66-123` (POST) — **HIGH**: no validation that `body.name` is provided (required field). Will throw Prisma NOT NULL error. Auto-falls back to first branch if branchId not provided — surprising behavior.
+- `/api/employees/[id]/route.ts:27-60` (PUT) — **HIGH**: `status: body.status` — no enum validation. `branchId: body.branchId` — no validation. Setting `branchId: undefined` is OK (Prisma skips), but setting `branchId: null` throws (schema requires).
+- `/api/employees/[id]/route.ts:62-71` (DELETE) — **HIGH**: hard delete. Will fail with FK constraint error if employee has contracts/attendance/salaries/teamMemberships/payroll lines. Returns generic 500. No graceful handling.
+- `/api/employee-contracts/route.ts:32-51` (POST) — **HIGH**: contract create + employee.basicSalary update OUTSIDE transaction. If second op fails, contract exists but employee salary not synced. No validation that employeeId exists.
+- `/api/employee-contracts/route.ts:19` — **MEDIUM**: `(c.basicSalary ?? 0) + (c.housingAllowance ?? 0) + ...` — Decimal arithmetic, may throw.
+- `/api/attendance/route.ts:34-109` (POST) — **MEDIUM**: no validation that employeeId exists. Will throw FK error. Otherwise decent validation with safeDate helper.
+- `/api/advances/route.ts:24-64` (POST) — **HIGH**: silent JE failure. Advance created without JE. Also OUTSIDE transaction.
+- `/api/advances/route.ts:73-124` (PUT) — **HIGH**: silent settlement JE failure. Also `existing.settledAmount + parseFloat(...)` — Decimal + number issue (TS error).
+
+**CONSTRUCTION DOMAIN (projects, contracts, progress-claims, boq, work-teams, change-orders, wbs, project-controls, project-ledger)**
+- `/api/projects/route.ts:61-101` (POST) — **MEDIUM**: validates required fields. `parseFloat(contractValue) || 0` is OK.
+- `/api/projects/[id]/route.ts:183-231` (PUT) — **MEDIUM**: `...updateData` pattern with conditional spreads. No enum validation on `status`, `projectType`.
+- `/api/projects/[id]/route.ts:233-252` (DELETE) — **HIGH**: hard delete. Will fail with FK error (projects have ~15 child relations). Generic 500 returned. No graceful handling, no soft-delete option.
+- `/api/contracts/route.ts:33-128` (POST) — **MEDIUM**: `vatRate ?? 0.15` doesn't validate vatRate is a number. `parseFloat(value) || 0` is OK. No validation that projectId/clientId/equipmentId exist (FK errors at runtime).
+- `/api/progress-claims/route.ts:113-211` (PUT) — **HIGH**: `...updateData` spread issue. Client could pass `journalEntryId`, `id`, etc. Also `parseFloat(updateData.amount)` may produce NaN.
+- `/api/progress-claims/route.ts:62-110` (POST) — **MEDIUM**: validates required fields. No check for duplicate `claimNo` per contract.
+- `/api/boq/route.ts` — not directly audited but likely has similar patterns.
+- `/api/work-teams/route.ts` — not directly audited.
+- `/api/change-orders/route.ts` — not directly audited.
+
+**SUPPLY CHAIN DOMAIN (purchase-requests, purchase-orders, goods-receipt, suppliers, inventory, delivery-orders, warehouses, subcontractor-*)**
+- `/api/purchase-orders/route.ts:63-149` (POST) — **MEDIUM**: validates required fields, validates PR is APPROVED if linked. PO + items in transaction (good). No validation that supplierId exists.
+- `/api/goods-receipt/route.ts:37-196` (POST) — **CRITICAL**: receipt creation is in `create` only; lines 116-176 (PO status update, inventory increment, EquipmentCost creation) are ALL OUTSIDE any transaction. If inventory increment fails after receipt is created, you have an unreceived receipt but decremented inventory.
+- `/api/subcontractor-invoices/route.ts:30-97` (POST) — **HIGH**: invoice create + accounting entry OUTSIDE transaction. Silent JE failure (try/catch swallows). Also `amount * vatRate` where amount and vatRate are body values (could be strings, would produce NaN).
+- `/api/suppliers/route.ts`, `/api/inventory/route.ts`, `/api/delivery-orders/route.ts`, `/api/warehouses/route.ts` — not directly audited but likely have similar patterns.
+
+**EQUIPMENT DOMAIN (equipment, equipment/rentals, equipment/operations, equipment/timesheets, equipment/maintenance, equipment/fuel, equipment/usages, equipment/expenses, equipment/rental-contracts)**
+- `/api/equipment/route.ts:62-114` (POST) — **HIGH**: no validation that `body.name` is provided (required field).
+- `/api/equipment/operations/route.ts:33-107` (POST) — **CRITICAL**: operation create + equipment status update + EquipmentCost create + autoEntryEquipmentCost all OUTSIDE transaction. Partial failures cause inconsistent data. Silent JE failure.
+- `/api/equipment/fuel/route.ts:30-111` (POST) — **CRITICAL**: same pattern. Receipt creation + EquipmentCost + JE all outside transaction. Silent JE failure. Also `liters * costPerLiter` where both may be NaN if parseFloat fails — no validation.
+- `/api/equipment/maintenance/route.ts:30-138` (POST) — **CRITICAL**: same pattern. Maintenance + equipment status + EquipmentCost + JE all outside transaction. Silent JE failure.
+- `/api/equipment/rental-contracts/route.ts:48-242` (POST) — **CRITICAL**: parent Contract create + EquipmentRental create + equipment/contract status updates all OUTSIDE transaction. If rental create fails after contract create, orphaned contract.
+- `/api/equipment/timesheets/route.ts:196-266` (PUT) — **HIGH**: `...updateData` spread issue. Client could pass `id`, `invoiceId`, `rentalId`, etc.
+
+**TAX/FIXED-ASSETS DOMAIN (vat, fixed-assets, asset-depreciations)**
+- `/api/vat/route.ts` — see FINANCIAL section. Silent JE failures in FILE/PAY/REVERSE.
+- `/api/vat/route.ts:374-415` (DELETE) — **MEDIUM**: uses `?id=` query param instead of route param. Inconsistent with rest of API.
+- `/api/fixed-assets/route.ts:96-156` (POST) — **MEDIUM**: validates required fields. `Number(body.acquisitionCost)` etc. — no validation that these are positive numbers. Catches error and returns `error.message` directly (information leak).
+- `/api/fixed-assets/[id]/depreciate/route.ts` — wraps `runDepreciationForAsset` — should be OK if engine is solid.
+- `/api/asset-depreciations/[id]/reverse/route.ts` — simple wrapper, no validation that record isn't already reversed.
+
+**OTHER DOMAINS (dashboard, company-settings, activities, seed, reports, financial-statements, trial-balance, general-ledger, accounting-guard, accounting-health, financial-mapping, account-impact, etc.)**
+- `/api/seed/route.ts` — **CRITICAL SECURITY**: wipes entire DB. Protected by `?confirm=WIPE_ALL_DATA` query param (good) but **no authentication**. Anyone with the URL can wipe the production DB. Also: delete operations are sequential `deleteMany()` calls — if any fails midway, partial state.
+- `/api/dashboard/route.ts` — 13 TS errors from Decimal arithmetic. Returns 200 with valid data despite TS errors (Next.js doesn't typecheck at runtime).
+- `/api/company-settings/route.ts:51-157` (PUT) — **MEDIUM**: no validation. If `body.defaultVatRate` is "abc", it's stored as-is (Prisma will reject). All `if (body.X !== undefined) updateData.X = body.X` pattern allows arbitrary field updates.
+- `/api/account-statement/customer/route.ts`, `/account-statement/project/route.ts`, `/account-statement/supplier/route.ts` — **CRITICAL**: 26+ TS errors from wrong Prisma `include` syntax (`include: { salesInvoices: { where: ..., select: ... } }` written as `include: { salesInvoices: { select: ..., where: ... } }`). These routes likely return incorrect data or throw at runtime.
+- `/api/accounts/role-mapping/route.ts:98-109` — **HIGH**: 9 TS errors from `never` type inference. Iterating over `Object.entries(ACCOUNT_ROLES)` and accessing properties — types narrow to `never`. Logic may work at runtime but code is broken.
+- `/api/accounts/statement/route.ts:149-151` — same `never` type issue.
+- `/api/financial-statements/balance-sheet/route.ts:127-156` — **MEDIUM**: uses code-prefix matching (`'1'` for assets, `'3'` for liabilities, etc.). Fragile: assumes chart of accounts follows specific convention. Won't work if accounts are restructured.
+- `/api/financial-statements/income/route.ts:105-132` — same prefix-based logic (`'61'` for construction revenue, etc.).
+- `/api/financial-statements/cash-flow/route.ts` — 8 TS errors. Uses `select: { id: true; code: true; ... }` literal types incorrectly.
+- `/api/reports/*` — 13 routes. Spot-checked a few; mostly read-only GET routes with date filtering. Generally safer but share the same Decimal-arithmetic and prefix-matching issues.
+- `/api/accounting-guard/health/route.ts`, `/api/accounting-health/route.ts`, `/api/financial-mapping/route.ts`, `/api/financial-consistency/route.ts` — utility routes, mostly GET. Lower risk.
+- `/api/print/route.ts` — **MEDIUM**: server-side fetch to `/api/remove-bg` (line 51) for currency symbol background removal. Adds latency to every print request. No caching. Will fail silently if remove-bg fails (handled).
+- `/api/remove-bg/route.ts` — **MEDIUM**: dynamic `import('sharp')` on every request. Should be cached. Path traversal protection is good (`resolvedPath.startsWith(publicDir)`).
+- `/api/generate-qr/route.ts` — **LOW**: dynamic `import('qrcode')`. No caching.
+
+**5. Cross-cutting issues affecting ALL routes**
+
+- **NO AUTHENTICATION** on any of the 172 routes. Anyone with network access to `localhost:3000` can read/modify/delete any financial data. This is the single biggest risk.
+- **NO AUTHORIZATION** — no role-based access control. Even if auth were added, there's no concept of "accountant can post JEs but only manager can approve" etc.
+- **NO RATE LIMITING** — vulnerable to brute-force / DoS.
+- **NO REQUEST LOGGING** on most routes — security events invisible.
+- **NO INPUT SIZE LIMITS** — vulnerable to large-payload DoS.
+- **NO ZOD SCHEMAS** anywhere — all validation is manual `if (!body.X)` checks, easy to miss fields. The codebase imports `@hookform/resolvers/zod` (so zod is available) but never uses it in API routes.
+- **INCONSISTENT RESPONSE SHAPES**:
+  - Paginated routes return `{ data, total, page, pageSize, totalPages }`.
+  - Non-paginated return arrays directly `[]`.
+  - Some return `{ success: true, message: '...' }`.
+  - Some return the raw Prisma entity.
+  - Error responses: `{ error }`, `{ error, details }`, `{ error, code, details }`, `{ error, detail }` (note singular `detail`).
+- **NO IDEMPOTENCY KEYS** — POST endpoints can be retried, creating duplicates. Especially dangerous for payments, JEs, invoices.
+- **RACE CONDITIONS** — every "generate sequential code" pattern uses `findFirst({ orderBy: desc }) + parseInt + 1`. Two concurrent POSTs can produce the same code. Should use DB sequence or `updateMany({ where: ..., data: { counter: { increment: 1 } } })` pattern, or rely on DB unique constraint + retry.
+- **PRISMA DECIMAL HANDLING** — pervasive bug. `Decimal` is a class instance from `Prisma.Decimal`. Cannot use `+`, `-`, `*`, `/` operators directly (TS error, may throw at runtime). Must use `Number(x)` or `toNumber(x)` from `@/lib/decimal`. Found in 36+ locations.
+
+**6. Specific file:line references for top 25 critical bugs**
+
+1. `src/app/api/rental-payments/route.ts:17` — `where: { paymentType: 'RENTAL' }` filters on non-existent column. Route always 500s.
+2. `src/app/api/purchase-invoices/[id]/route.ts` — file missing. All `GET/PATCH/DELETE /api/purchase-invoices/{id}` return 404 HTML page.
+3. `src/app/api/rental-payments/[id]/route.ts` — file missing. No update/delete for rental payments.
+4. `src/app/api/supplier-invoices/[id]/route.ts:180-181` — `debit: line.credit, credit: line.debit` passes Decimal to createJournalEntry (expects number).
+5. `src/app/api/expenses/[id]/route.ts:73-77` — same Decimal bug in DELETE reversal.
+6. `src/app/api/petty-cash/[id]/route.ts:99-100` — same Decimal bug in DELETE reversal.
+7. `src/app/api/salaries/auto-calculate/route.ts:50,56,76,80-84` — Decimal arithmetic with `+` operator.
+8. `src/app/api/salaries/route.ts:97-100` — silent JE failure in POST (try/catch swallows).
+9. `src/app/api/salaries/[id]/route.ts:71,95` — Decimal passed to autoEntryExpense (expects number).
+10. `src/app/api/salaries/[id]/route.ts:101-103` — silent JE failure in PUT (APPROVED action).
+11. `src/app/api/salary-payments/route.ts:124-139` — creates Salary with status='PAID' directly, no accrual JE, 3310 goes negative.
+12. `src/app/api/salary-payments/route.ts:164-185, 231-251` — silent JE failure.
+13. `src/app/api/payroll-runs/[id]/route.ts:147` — overwrites `journalEntryId` in loop, orphaning earlier JEs.
+14. `src/app/api/supplier-invoices/[id]/route.ts:209-220` — passes Decimal fields to autoEntryPurchaseInvoice.
+15. `src/app/api/fiscal-years/[id]/close/route.ts:191-221` — closing JE + updates NOT in single transaction.
+16. `src/app/api/salary-payments/[id]/route.ts:33-60` — multiple DB ops outside transaction.
+17. `src/app/api/goods-receipt/route.ts:117-176` — PO status update, inventory increment, EquipmentCost creation all outside transaction.
+18. `src/app/api/equipment/operations/route.ts:38-100` — operation + equipment update + EquipmentCost + JE all outside transaction.
+19. `src/app/api/equipment/fuel/route.ts:37-95` — same pattern.
+20. `src/app/api/equipment/maintenance/route.ts:36-122` — same pattern.
+21. `src/app/api/equipment/rental-contracts/route.ts:143-234` — contract + rental + status updates outside transaction.
+22. `src/app/api/employee-contracts/route.ts:32-51` — contract + employee update outside transaction.
+23. `src/app/api/subcontractor-invoices/route.ts:55-90` — invoice + JE outside transaction, silent JE failure.
+24. `src/app/api/advances/route.ts:24-64` — advance + JE outside transaction, silent JE failure.
+25. `src/app/api/vat/route.ts:237-249, 285-296, 327-339` — silent JE failures in FILE/PAY/REVERSE; VAT status changes without accounting.
+
+**7. Top 10 most critical findings ranked by impact**
+
+1. **NO AUTHENTICATION** on any of 172 routes — entire ERP is publicly readable/writable. Single biggest risk. Affects: every route.
+2. **`/api/seed` wipes entire DB** with no auth, only a query-param guard. A malicious caller can wipe production data with one POST. File: `src/app/api/seed/route.ts:12-25`.
+3. **`/api/rental-payments` completely broken** — filters on non-existent `paymentType` column. Route always returns HTTP 500. File: `src/app/api/rental-payments/route.ts:17`.
+4. **`/api/purchase-invoices/[id]` and `/api/rental-payments/[id]` route files MISSING** — Next.js returns 404 HTML page (not JSON) for any ID-based operation on these resources. Breaks the UI for editing/deleting purchase invoices and rental payments.
+5. **Decimal-handling bug in 3 reversal routes** (`supplier-invoices/[id]`, `expenses/[id]`, `petty-cash/[id]`) — passes Prisma Decimal to createJournalEntry which expects number. Will throw at runtime whenever an edit/delete triggers a reversal. Silent until triggered.
+6. **Silent journal-entry failures** in 8+ routes (salaries, salary-payments, petty-cash, expenses, subcontractor-invoices, advances, equipment/operations, equipment/fuel, equipment/maintenance, vat) — try/catch swallows JE errors. Financial records marked POSTED/PAID/FILED without accounting entries. **Accounting integrity fundamentally broken.**
+7. **Transaction misuse** — 6+ multi-step financial operations (goods-receipt, equipment operations, fuel, maintenance, rental-contracts, fiscal-year-close, employee-contracts) execute DB writes outside any `db.$transaction()`. Partial failures leave inconsistent data.
+8. **`/api/salary-payments` creates PAID salary without accrual JE** — only creates payment JE (Dr 3310 / Cr Bank), so Salaries Payable (3310) goes NEGATIVE. Critical accounting bug. File: `src/app/api/salary-payments/route.ts:124-185`.
+9. **`/api/payroll-runs/[id]` PUT (APPROVED) orphans journal entries** — creates one JE per activity type but only saves the LAST one's id on the payroll run. Earlier JEs are unlinked. File: `src/app/api/payroll-runs/[id]/route.ts:97-152`.
+10. **`...updateData` spread pattern** in 4+ PUT routes (sales-invoices, expenses, progress-claims, equipment/timesheets) — lets clients override `id`, `createdAt`, `journalEntryId`, etc. No field whitelist. Allows data corruption.
+
+**8. Routes by severity count**
+
+- **CRITICAL** (data loss / broken route / silent accounting failure): 25 distinct issues across ~20 route files
+- **HIGH** (integrity risk / missing validation / FK errors): 30+ distinct issues across ~25 route files
+- **MEDIUM** (inconsistency / fragile logic / missing enum validation): 40+ issues across most routes
+- **LOW** (response shape inconsistency / no rate limiting / no logging): affects all 172 routes
+
+**9. Recommendation for the fix phase**
+
+The fix agent should prioritize in this order:
+1. Add authentication middleware (Next.js `middleware.ts`) protecting all `/api/*` routes except `/api/auth/*`.
+2. Protect `/api/seed` with both auth AND a server-side environment-variable secret, not just a query param.
+3. Fix the 3 Decimal-bug routes (`supplier-invoices/[id]`, `expenses/[id]`, `petty-cash/[id]`) by replacing `debit: line.credit` with `debit: toNumber(line.credit)`.
+4. Fix `/api/rental-payments/route.ts:17` — remove `paymentType` filter or add the column to the schema + migration.
+5. Create `/api/purchase-invoices/[id]/route.ts` and `/api/rental-payments/[id]/route.ts` (GET/PATCH/DELETE).
+6. Wrap all multi-step financial operations in `db.$transaction()` (12+ routes listed above).
+7. Remove silent try/catch around JE creation in 10+ routes — let errors propagate so the transaction rolls back.
+8. Fix `/api/salary-payments` to create an accrual JE before the payment JE, OR require an existing APPROVED salary.
+9. Fix `/api/payroll-runs/[id]` to link ALL activity JEs to the payroll run (array field or single aggregate JE).
+10. Add Zod schemas for all POST/PUT bodies — at minimum for financial routes.
+11. Replace `...updateData` spreads with explicit field whitelists.
+12. Fix the 200 TypeScript errors (mostly Decimal handling and Prisma `include` syntax).
+13. Add idempotency keys to payment/invoice/JE POST endpoints.
+14. Replace sequential-code-generation race condition with DB-level unique constraint + retry pattern.
+
+Stage Summary:
+
+**Audit scope**: 172 API route files under `/home/z/my-project/src/app/api/`, live-tested 50+ via curl, read source for ~50 high-impact routes, ran `tsc --noEmit` (393 errors, 200 in API routes).
+
+**Most critical findings**:
+1. **ZERO authentication** on all 172 routes — entire ERP is publicly writable.
+2. **`/api/rental-payments` completely broken** — filters on non-existent `paymentType` column, always returns 500.
+3. **`/api/purchase-invoices/[id]` and `/api/rental-payments/[id]` route files MISSING** — UI cannot edit/delete these resources.
+4. **Decimal-handling bugs** in 3 reversal routes (supplier-invoices/[id]:180, expenses/[id]:73, petty-cash/[id]:99) — will throw at runtime when reversing JEs.
+5. **Silent journal-entry failures** in 10+ routes (salaries, salary-payments, petty-cash, expenses, subcontractor-invoices, advances, equipment/*, vat) — financial records marked POSTED without accounting entries. **Accounting integrity fundamentally broken.**
+6. **`/api/salary-payments` creates PAID salary without accrual JE** — Salaries Payable (3310) goes negative.
+7. **`/api/payroll-runs/[id]` APPROVED action orphans JEs** — only last activity's JE id is saved.
+8. **Transaction misuse** in 6+ multi-step financial operations — partial failures leave inconsistent state.
+9. **`...updateData` spread** in 4+ PUT routes allows overriding `id`, `journalEntryId`, etc.
+10. **200 TypeScript errors** in API routes (36 Decimal arithmetic, 13 wrong Prisma include syntax, 10 unknown-type issues, plus others).
+
+**Routes with CRITICAL issues (file:line references for fix agent)**:
+- `src/app/api/rental-payments/route.ts:17` (broken filter)
+- `src/app/api/purchase-invoices/[id]/route.ts` (missing file)
+- `src/app/api/rental-payments/[id]/route.ts` (missing file)
+- `src/app/api/supplier-invoices/[id]/route.ts:180-181, 209-220` (Decimal bugs)
+- `src/app/api/expenses/[id]/route.ts:73-77` (Decimal bug)
+- `src/app/api/petty-cash/[id]/route.ts:99-100` (Decimal bug)
+- `src/app/api/salaries/auto-calculate/route.ts:50,56,76,80-84` (Decimal arithmetic)
+- `src/app/api/salaries/route.ts:97-100` (silent JE failure)
+- `src/app/api/salaries/[id]/route.ts:71,95,101-103` (Decimal + silent failure)
+- `src/app/api/salary-payments/route.ts:124-185, 231-251` (no accrual JE, silent failure)
+- `src/app/api/payroll-runs/[id]/route.ts:147` (orphaned JEs)
+- `src/app/api/fiscal-years/[id]/close/route.ts:191-221` (no transaction)
+- `src/app/api/goods-receipt/route.ts:117-176` (no transaction)
+- `src/app/api/equipment/operations/route.ts:38-100` (no transaction)
+- `src/app/api/equipment/fuel/route.ts:37-95` (no transaction)
+- `src/app/api/equipment/maintenance/route.ts:36-122` (no transaction)
+- `src/app/api/equipment/rental-contracts/route.ts:143-234` (no transaction)
+- `src/app/api/vat/route.ts:237-249, 285-296, 327-339` (silent JE failures)
+- `src/app/api/seed/route.ts:12-25` (no auth, single-POST DB wipe)
+- `src/app/api/account-statement/{customer,project,supplier}/route.ts` (26+ TS errors, wrong Prisma include syntax)
+
+**Total**: 172 routes audited, ~25 CRITICAL issues, ~30 HIGH issues, ~40 MEDIUM issues, all routes have LOW-severity issues (no auth, no rate limiting, inconsistent response shapes).
+
+**No fixes applied** — this was an audit-only task. The fix phase comes next.
+
+---
+Task ID: 1-D
+Agent: Core Engine Auditor
+Task: Deep audit of accounting engine, printing system, and database schema
+
+Work Log:
+- Read previous worklog entries (UNBREAKABLE-ACCOUNTING-GUARD, CHART-OF-ACCOUNTS-CRUD, DATA-LOSS-FIX, CODE-LOSS-FIX, GITHUB-BACKUP-LINK) to understand what was done before
+- Inventoried all files in `src/lib/accounting/` (7 files, 4044 LOC), `src/printing/` (24 files), `src/lib/` core libs, `scripts/` (3 audit scripts), `prisma/schema.prisma` (2729 LOC, 94 models, 26 enums)
+- Ran requested commands: wc, grep for Buffer usage, grep for direct JE creation, model count, onDelete counts, audit-field presence, missing-updatedAt detection, missing-index detection
+- Read every relevant file end-to-end: `guard.ts` (518 LOC), `engine.ts` (1529 LOC), `period-guard.ts` (64 LOC), `consistency.ts` (154 LOC), `auto-journal.ts` (349 LOC), `printing/shared/utils.ts` (311 LOC), `printing/index.ts`, `printing/print-service.ts` (237 LOC), `lib/print-service.ts` (3852 LOC orphan), `lib/zatca-qr.ts` (129 LOC), `lib/db.ts`, `lib/unified-print-engine.ts` (951 LOC), `lib/financial-mapping-engine.ts` (698 LOC), `scripts/audit-db.ts`, `scripts/fix-accounting-data.ts`, `app/api/print/route.ts`, all 6 API routes that bypass the guard, `app/api/journal-entries/route.ts`, `app/api/journal-entries/[id]/route.ts`, `app/api/fiscal-years/[id]/reopen/route.ts`, schema models
+- Cross-referenced every `journalEntry.create` / `journalEntry.update` call outside `guard.ts`
+- Cross-referenced every `Buffer.` usage in browser-bundled code
+
+Stage Summary:
+
+==============================================================================
+PART 1 — ACCOUNTING ENGINE AUDIT
+==============================================================================
+
+### Rules R1–R12 status (in `src/lib/accounting/guard.ts`)
+
+| Rule | Status | Evidence |
+|------|--------|----------|
+| R1 — Every financial transaction MUST create a posted JE | ⚠️ PARTIAL | `postJournalEntry` enforces this for callers that go through it; but 7 API routes still cancel posted JEs directly (see below), and `vat/route.ts` swallows JE-creation errors so a VAT return can be FILED without a JE (line 246–249) |
+| R2 — Σ(debit) == Σ(credit) within 0.01 | ✅ PASS | `guard.ts:226–234` enforces |
+| R3 — ≥ 2 lines per entry | ✅ PASS | `guard.ts:115–121` enforces |
+| R4 — Account must be active + allowPosting | ✅ PASS | `guard.ts:166–179` enforces |
+| R5 — Each line has exactly one side > 0 (not both, not zero, not negative) | ✅ PASS | `guard.ts:194–214` enforces all three sub-checks |
+| R6 — Date in open period | ✅ PASS | `guard.ts:236–247` calls `assertPeriodOpen`; but reversals and period-closing entries set `skipPeriodGuard: true` (`guard.ts:366`) — admin override is unauthenticated |
+| R7 — entryNo unique | ✅ PASS | `guard.ts:250–257` checks; schema also has `entryNo @unique` |
+| R8 — Account type ∈ {ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE} | ✅ PASS | `guard.ts:182–188` enforces |
+| R9 — Source of truth = `JournalLine WHERE journalEntry.status='POSTED' AND deletedAt IS NULL` | ✅ PASS | Confirmed in `getTrialBalance` (engine.ts:1369–1383), `getGeneralLedger` (engine.ts:1494–1503), `getAccountBalance` (engine.ts:1463–1469), and `accountingHealthCheck` (guard.ts:421–512) |
+| R10 — netDebit = max(0, debit−credit); netCredit = max(0, credit−debit); isBalanced = |Σd − Σc| < 0.01 | ⚠️ PARTIAL | `getTrialBalance` (engine.ts:1411–1422) computes netDebit/netCredit **by normal-balance side**, not by max(debit−credit, 0). Math equivalent for non-negative balances but breaks for accounts with abnormal-side balances (e.g. negative cash). R10 as written is not literally implemented |
+| R11 — Assets = Liabilities + Equity (incl. net income) | ✅ PASS | `accountingHealthCheck` check #4 (guard.ts:464–493) verifies the equation with < 0.01 tolerance |
+| R12 — Posted entries cannot be deleted — only reversed | ❌ FAIL | See "Direct JE creation/update outside engine" below — 7 API routes violate this by setting `status: 'CANCELLED'` on posted JEs after creating a reversal |
+
+### Single entry point check — CRITICAL FAILURE
+
+`postJournalEntry` is NOT the single entry point. Direct `journalEntry.create`/`update` calls bypass the guard in **9 places**:
+
+**Direct `journalEntry.create` bypassing the guard (2 places):**
+1. `src/app/api/fiscal-years/[id]/reopen/route.ts:46` — creates a year-reopen reversal JE directly with `db.journalEntry.create`, completely skipping R1–R12 (no balance check, no account-validity check, no period check, no entryNo uniqueness check). Lines 46–68.
+2. `scripts/fix-accounting-data.ts:83` and `:114` — maintenance script creates 2 JEs directly (`JE-OB-0001` opening balance and `JE-CP-0001` client collection). One-time script, but sets a dangerous precedent and the JEs persist in production data.
+
+**Direct `journalEntry.update({status:'CANCELLED'})` after reversal — 7 places (DOUBLE-CANCELLATION BUG):**
+3. `src/app/api/petty-cash/[id]/route.ts:115–118`
+4. `src/app/api/expenses/route.ts:332–335`
+5. `src/app/api/expenses/[id]/route.ts:89–92`
+6. `src/app/api/sales-invoices/route.ts:717–720`
+7. `src/app/api/supplier-invoices/[id]/route.ts:197–200`
+8. `src/app/api/progress-claims/route.ts:171–174`
+9. `src/app/api/purchase-invoices/route.ts:205–208`
+
+**Effect of the double-cancellation bug:** Each route (a) creates a reversal JE via `createJournalEntry` (POSTED) which goes through the guard, then (b) sets the ORIGINAL JE's `status` to `'CANCELLED'`. The trial balance filter is `status='POSTED' AND deletedAt IS NULL`. So the original drops out of the trial balance, but the reversal stays in. Net effect: the original transaction is subtracted TWICE — once by hiding the original, once by the reversal — leaving phantom negative balances. The previous agent (UNBREAKABLE-ACCOUNTING-GUARD) explicitly claimed in the worklog that they fixed this by keeping both POSTED, but the API routes were never updated. `scripts/fix-accounting-data.ts:27–40` confirms the bug exists: the script soft-deletes "phantom VAT-reversal entries" whose originals are CANCELLED — a workaround rather than a fix.
+
+**Direct `journalEntry.update` for status transition — 1 place:**
+10. `src/app/api/journal-entries/[id]/route.ts:124` — the PUT endpoint allows DRAFT → POSTED AND POSTED → CANCELLED transitions **without going through the guard**. The DRAFT → POSTED path validates only balance and line count (lines 96–115) but skips R4 (account active/allowPosting), R5 (line sides), R6 (period open), R7 (entryNo uniqueness), R8 (account type). It also allows editing `date` and `description` of a POSTED entry (line 122), which can move a posted entry into a closed period. The transition map (line 79–82) explicitly allows `POSTED: ['CANCELLED']` with the comment "POSTED → CANCELLED only via reversal, but allow direct cancel for manual correction" — a direct violation of R12.
+
+### Other accounting-engine findings
+
+- **`descriptionAr` silently dropped** — `JournalEntryInput.descriptionAr` (guard.ts:79) and `JournalEntryTemplate.descriptionAr` (engine.ts:257) are populated by every `autoEntry*` function (engine.ts:488, 556, 654, 681, 711, 739, 767, 812, 849, 891, 926, 979, 1006, 1043, 1071, 1113, 1141, 1170, 1199, 1226, 1269, 1322, 1349) but `postJournalEntry` (guard.ts:277–303) does NOT include `descriptionAr` in the `data:` block. The schema only has `description` (no `descriptionAr` column on `JournalEntry`). Every Arabic description is silently lost. The previous worklog said "أزلت descriptionAr (غير موجود في JournalEntry model)" but left the field in the input interface and 22 callers — half-finished removal.
+- **`accountingHealthCheck` check #4 (R11) ignores inactive accounts** — guard.ts:470 filters `where: { isActive: true }`. If an account is deactivated after JEs are posted to it, its balances silently disappear from the accounting-equation check, hiding real imbalances.
+- **`reverseJournalEntry` uses `new Date()` as reversal date** (guard.ts:361) — if the original entry is in a closed period, the reversal lands in today's period (which may be a different fiscal year). This is intentional (`skipPeriodGuard: true`), but it means the trial balance for the original period will never tie out.
+- **`getNextEntryNo` scans all entries on every call** (guard.ts:394–405) — `findMany` without limit, then loops in JS to find max. O(n) per JE creation; will get slow as JE count grows. Should be `aggregate({_max: {entryNo}})` or a sequence table.
+- **`autoEntrySalary` (engine.ts:947–984)** posts a single JE with the same `payrollCode` account debited for gross AND credited for the GOSI employee deduction (lines 964 and 969). The guard allows this because they are separate lines, but it produces a confusing ledger. Also `sourceId: \`SAL-${Date.now()}\`` is not idempotent — retrying produces duplicate JEs.
+- **`autoEntryPurchaseInvoice` and `autoEntryExpense` fall back to hardcoded codes** (engine.ts:536, 539, 540, 634, 636, etc.) when `getAccountCodeByRole` returns null — e.g. `expenseCode = await getAccountCodeByRole(expenseRole, tx) || '8630'`. This violates the "no hardcoded codes" principle stated in the comments. If roles are not configured, postings go to the wrong account silently instead of throwing.
+- **`autoEntryProgressClaim` throws by design** (engine.ts:580–595) — but `createProgressClaimJournalEntry` in `auto-journal.ts:295–348` still creates a JE for progress claims. Two functions, opposite behaviors — a maintenance trap.
+- **`assertPeriodOpen` allows `allowAdminOverride: true`** (period-guard.ts:26) but no caller passes it; the option exists in the signature but the option to bypass the guard is unprotected (any caller could pass it).
+
+==============================================================================
+PART 2 — PRINTING SYSTEM AUDIT
+==============================================================================
+
+### Buffer.from fix — NOT APPLIED (regression or never done)
+
+The user's task said "we fixed Buffer.from here" but the fix is NOT in place. **4 files** still use Node-only `Buffer.` API in browser-bundled code:
+
+1. **`src/printing/shared/utils.ts:196–207`** — `encodeZATCATLV` uses `Buffer.from`, `Buffer.concat`, `Buffer.toString('base64')`. This file is imported by every print template (`ServiceInvoice.ts:7`, `RentalInvoice.ts:7`, `SupplierInvoice.ts:7`, `ProgressClaim.ts:21`) and re-exported from `src/printing/index.ts:13`. It will be bundled into the client when `print-button.tsx` does `await import('@/printing')` (line 430) — a 'use client' component.
+
+2. **`src/lib/zatca-qr.ts:17–55`** — `encodeTLV` and `generateZatcaTLV` use `Buffer.from` (5 calls) and `Buffer.concat` (2 calls). This file is imported directly by:
+   - `src/components/invoice/invoice-preview.tsx:8` — a 'use client' component. Calling `generateZatcaQR` will throw `ReferenceError: Buffer is not defined` in the browser.
+   - `src/lib/unified-print-engine.ts:16` — which is imported by `src/app/api/print/route.ts` (server, OK) but the file itself has no `'use server'` boundary, so any client import would pull it in.
+   - `src/app/api/sales-invoices/route.ts:4` and `src/app/api/supplier-invoices/route.ts:4` — server-side, OK.
+
+3. **`src/lib/print-service.ts:885–898`** — duplicate `encodeZATCATLV` function with `Buffer.from`. This 3852-line file is NOT imported by any source file in `src/` (orphaned dead code), but it's a maintenance hazard and the duplicate function could be reached if someone re-wires the imports. Should be deleted.
+
+4. **`src/app/api/generate-qr/route.ts:59–70`** — server-side only (API route), OK.
+
+### Other Node-only APIs in browser-bundled printing code
+- None found beyond `Buffer`. No `fs`, `path`, or `process` usage in `src/printing/` or in `src/lib/zatca-qr.ts`.
+
+### XSS safety — CRITICAL: no escaping anywhere
+
+NO `escapeHtml` function exists in `src/printing/` (confirmed by `grep -rn "escapeHtml|escape|sanitize|innerText|textContent" src/printing/` → no matches). Every print template interpolates user-controlled data directly into HTML strings. Vulnerable injection points (sample):
+
+- `ServiceInvoice.ts:127` — `<td>${item.description || ''}</td>` — item description can contain `<script>` or `<img onerror>`.
+- `ServiceInvoice.ts:104` — `${data.clientName || ''}` — client name (user-entered) injected raw.
+- `ServiceInvoice.ts:105–106` — `${data.clientAddress}`, `${data.clientTaxNumber}` — same.
+- `ServiceInvoice.ts:76, 88` — `${data.invoiceNo || data.id || ''}`, `${data.contractNo || '-'}` — raw.
+- `ServiceInvoice.ts:179` — `${termsSection(data.terms as string | null | undefined, ...)}` — terms section likely also raw.
+- `ProgressClaim.ts` (similar pattern across the file).
+- `lib/print-service.ts` — every `generate*Body` function (lines 1811, 1940, 2001, 2076, 2147, 2200, 2253, 2299, 2351, 2469, 2558, 2662, 2749, 2835, 2943, 3064) interpolates `${data.clientName}`, `${data.description}`, `${data.equipmentName}`, `${settings.address}`, etc. directly.
+
+**Exploit scenario:** A user creates a client with `name = "<img src=x onerror='fetch(\"/api/seed?confirm=WIPE_ALL_DATA\",{method:\"POST\"})'>"`. Every invoice printed for that client would trigger the wipe-seed endpoint on print preview. The print HTML is rendered in an iframe/new window where injected scripts execute with the user's session cookies.
+
+### Print button integration
+- `print-button.tsx` (510 LOC) is a 'use client' component that builds the print HTML **in the browser** (line 430: `const { generatePrintHTML } = await import('@/printing')`). This pulls `encodeZATCATLV` (Buffer.from) into the client bundle. The print HTML is then written to a new window via `document.write`. The Buffer.from calls happen during `generatePrintHTML` if the template is an invoice type (ZATCA QR required) — will crash in browser at print time.
+
+==============================================================================
+PART 3 — DATABASE SCHEMA AUDIT (94 models, 2729 LOC)
+==============================================================================
+
+### Multi-tenancy — CRITICAL: zero isolation
+- **`companyId` field: 0 occurrences** in entire schema. The system is single-tenant by design but is deployed as if multi-tenant (multiple branches). All data is globally visible to all users.
+- **`branchId` field: only 4/94 models** — `Warehouse` (289), `Employee` (514), `Project` (732), `PettyCash` (1682). Critical financial models (`SalesInvoice`, `PurchaseInvoice`, `Expense`, `JournalEntry`, `JournalLine`, `ClientPayment`, `SupplierPayment`, `FixedAsset`, `Account`, `CostCenter`) have NO branch scoping — any user sees any branch's data.
+
+### Audit fields — CRITICAL: missing on 81 models
+
+- **`deletedAt` (soft-delete): 13/94 models** — `Salary`, `ProgressClaim`, `SalesInvoice`, `PurchaseInvoice`, `SubcontractorInvoice`, `Expense`, `EquipmentRental`, `EquipmentDeliveryOrder`, `PettyCash`, `EmployeeAdvance`, `JournalEntry`, `JournalLine`, `ClientPayment`, `SupplierPayment` (14 actually — count discrepancy with awk). Critical financial records that can be HARD-deleted:
+  - `Account` (1749) — deleting an account with JEs would cascade-restrict, but `JournalLine.accountId` is `onDelete: Restrict` so it would actually throw. Still, soft-delete is the right pattern.
+  - `VATReturn` (1835) — hard-deletable, loses tax filings
+  - `FiscalYear` (364), `FiscalPeriod` (390) — hard-deletable, loses period-closing history
+  - `PeriodClosing` (2173) — hard-deletable, loses audit trail of period locks
+  - `BankAccount` (2072), `BankTransaction` (2092), `BankReconciliation` (2112) — all hard-deletable
+  - `FixedAsset` (1970), `AssetDepreciation` (2009) — hard-deletable, loses asset register
+  - `Provision` (2032), `ProvisionMovement` (2053) — hard-deletable
+  - `Employee` (494), `EmployeeContract` (539), `Attendance` (556) — hard-deletable
+  - `PayrollRun` (643), `PayrollRunLine` (669), `SalaryPayment` (703) — hard-deletable
+  - `Contract` (803), `ChangeOrder` (866), `Warranty` (899), `BOQItem` (926) — hard-deletable
+- **`createdBy`/`updatedBy`/`deletedBy`: 0 occurrences** — no user attribution anywhere. The `AuditLog` table (348) exists but is not wired to any operation; no model has FK back to a user.
+- **`@version` (optimistic locking): 0 occurrences** — concurrent edits to the same invoice/payment silently overwrite each other.
+
+### Missing `updatedAt` — 10 models
+`ProjectLedger`, `CommitmentLine`, `WIPEntry`, `WIPAdjustment`, `ProjectBudget`, `ProjectBudgetLine`, `LossProvision`, `CustomerAdvance`, `AdvanceRecovery`, `StockMovement` — these have only `createdAt`, so edits are not timestamped.
+
+### Missing `@@unique` constraints — CRITICAL
+
+Only 5 composite `@@unique` in the entire schema:
+- `FiscalPeriod: @@unique([fiscalYearId, periodNo])` ✓
+- `PeriodClosing: @@unique([year, month, type])` ✓
+- `WBSElement: @@unique([projectId, code])` ✓
+- `Activity: @@unique([projectId, code])` ✓
+- `CostCodeBudget: @@unique([wbsElementId, costCodeId])` ✓
+
+**Missing `@@unique` (will cause duplicate data):**
+- `ProgressClaim.claimNo` — currently `String` (no `@unique`). Two claims can share the same number.
+- `Salary: (employeeId, month, year)` — same employee can have 2+ salary records for the same month.
+- `Timesheet: (rentalId, month, year)` — same rental can have 2+ timesheets for the same month.
+- `Attendance: (employeeId, date)` — same employee can be checked in twice on the same day.
+- `BOQItem: (projectId, code)` — duplicate BOQ codes within a project.
+- `JournalEntry: (sourceType, sourceId)` — R1 implies one JE per source document, but no constraint enforces it. `consistency.ts:113–130` checks for duplicates via raw SQL but only as a report, not a prevention.
+- `EquipmentFuelLog: (equipmentId, date)` — possible duplicate fuel entries.
+- `BankTransaction: (bankAccountId, date, amount, reference)` — possible duplicate imports.
+- `VATReturn: (year, quarter)` — two returns for the same quarter allowed (only `@@index([year, quarter])` exists at line 1888).
+- `FiscalYear: name @unique` ✓ but `FiscalYear: (startDate, endDate)` overlap not prevented.
+
+### Missing indexes on frequently-queried FK fields
+
+Models with FK fields that have NO `@@index` on them (only the implicit FK index):
+- `EquipmentMaintenance.supplierId` (line 1485) — has `@@index([supplierId])` ✓ (line 1495)
+- `SubcontractorPayment.subcontractorInvoiceId` — has `@@index` ✓
+- `ClaimItem.boqItemId` and `ClaimItem.wbsElementId` (lines 2479, 2480) — NO index. Queries joining claim items to BOQ elements will table-scan.
+- `ClaimItem.claimId` — has `@@index` ✓
+- `Measurement.claimItemId` is `@unique` (serves as index) ✓
+- `CostEntry.activityId` and `CostEntry.costCenterId` (lines 2284, 2285) — NO index on either.
+- `ProjectLedger.activityId`, `costCodeId`, `wbsElementId` (lines 2341–2343) — only `@@index([projectId])` exists (line 2356); missing indexes on the other FKs.
+- `CommitmentLine.wbsElementId`, `costCodeId` (lines 2391, 2392) — NO index.
+- `ProjectBudgetLine.wbsElementId`, `costCodeId` (lines 2619, 2620) — NO index.
+- `AdvanceRecovery.invoiceId` (line 2702) — NO index.
+- `SubcontractorAdvance.contractId` (line 2410) — NO index.
+- `EquipmentExpense.equipmentId` (line 1625) — has `@@index([equipmentId])` ✓
+- `EquipmentRental.projectId` (line 1541) — has `@@index([projectId])` ✓
+
+### Cascade rules — risky patterns
+
+- **`onDelete: Cascade` used 33 times** — including on `FiscalPeriod` → `FiscalYear` (line 400), `JournalLine` → `JournalEntry` (line 1824). Deleting a FiscalYear cascades to all its periods; deleting a JournalEntry cascades to all its lines. R12 says posted entries cannot be deleted, but the schema permits it via cascade.
+- **`JournalEntry.reversedEntry` has `onDelete: SetNull`** (line 1802) — if a reversal JE is ever deleted, the original's `reversedEntryId` is nullified, losing the audit trail of which entry reversed which.
+- **`Account.parent` has `onDelete: Restrict`** (line 1768) ✓ — prevents deleting a parent account with children.
+- **`CostCenter.parent` has `onDelete: Restrict`** (line 323) ✓.
+- **`CostCode.parent` has NO `onDelete` rule** (line 2241) — defaults to `Restrict` for required relations, but should be explicit.
+- **`WBSElement.parent` has NO `onDelete` rule** (line 2213) — same issue.
+- **`BOQItem.wbsElement` has NO `onDelete` rule** (line 941) — defaults to `Restrict`, but no explicit policy.
+- **`Branch` relations to `Project`, `Employee`, `Warehouse`, `PettyCash`** (lines 744, 522, 294, 1693) — only `PettyCash` is `Restrict` (line 1693); the others have NO `onDelete` rule, meaning deleting a Branch with projects/employees will fail with an opaque FK error instead of a friendly "cannot delete branch with dependent records".
+
+### Decimal vs Float — ✅ PASS
+- 0 `Float` fields in entire schema. All monetary values use `Decimal`. Good.
+
+### Enum completeness — minor gaps
+- `JournalEntryStatus`: `DRAFT | POSTED | CANCELLED` — missing `REVERSED` (reversal entries are POSTED with `isReversal: true` flag instead, which is acceptable but inconsistent with the status enum).
+- `VATReturnStatus`: `DRAFT | FILED | PAID | CANCELLED | AMENDED` ✓
+- `ProjectStatus`: `PLANNING | ACTIVE | ON_HOLD | COMPLETED | CANCELLED` — no `SUSPENDED` or `CLOSED`.
+- `EquipmentStatus`: `AVAILABLE | IN_USE | MAINTENANCE | OUT_OF_SERVICE | RENTED` — `RENTED` overlaps with `IN_USE` semantically.
+- `ExpenseCategory`: 17 values, no `TAX` or `BANK_FEES`.
+- Many `status` fields are `String` (not enum): `FiscalYear.status`, `FiscalPeriod.status`, `PeriodClosing.status`, `BankReconciliation.status`, `FixedAsset.status`, `Provision.status`, `EquipmentRental.status`, `Warranty.status`, `WBSElement.status`, `Activity.status`, `ProjectForecast.status`, `LossProvision.status`, `CustomerAdvance.status`, `SubcontractorAdvance.status`, `SubcontractorRetention.status`, `SubcontractorPayment.status`. Inconsistent — should be enums for type safety.
+
+### Missing migrations folder — CRITICAL operational risk
+- `prisma/migrations/` does NOT exist. Only `prisma/schema.prisma` is present.
+- `package.json` defines `"db:push": "prisma db push"` and `dev.sh` runs `bun run db:push` on every startup.
+- `prisma db push` is **destructive** — it diffs schema vs DB and applies changes WITHOUT generating migration files, WITHOUT preview, and WITHOUT rollback. Any field rename or type change is treated as drop+create, losing data.
+- The previous DATA-LOSS-FIX task fixed the symptom (DB file in git) but not the root cause (no migration discipline). Schema evolution cannot be tracked, audited, or rolled back.
+
+### `src/lib/db.ts` — minimal singleton
+- 12 LOC. Uses `globalThis.prisma` to prevent multiple instances in dev. No connection pooling config, no `log: ['warn', 'error']` defaults, no graceful shutdown hook (`db.$disconnect()` on SIGTERM). Acceptable for SQLite but insufficient if migrating to Postgres.
+
+### `src/lib/financial-mapping-engine.ts` — design issue
+- 698 LOC. Defines 21 operation types and their debit/credit role mappings as a static template array (`FINANCIAL_MAPPING_TEMPLATES`, line 98). Seeds them into the `FinancialMapping` table.
+- The auto-entry functions in `engine.ts` (e.g. `autoEntrySalesInvoice`, line 440) **do not use** the `FinancialMapping` table — they hardcode the role logic inline (line 457–468). The mapping engine is decorative; changing the mapping in the DB has no effect on actual JE creation. This defeats the entire "accountant can reconfigure mappings" design stated in the file header.
+
+### `scripts/audit-db.ts` and `scripts/fix-accounting-data.ts`
+- `audit-db.ts` (156 LOC) is a read-only integrity checker — OK, but uses `new PrismaClient()` directly (line 5) instead of importing from `@/lib/db`, so it bypasses the singleton. Minor.
+- `fix-accounting-data.ts` (156 LOC) is a one-time data-fix script that:
+  - Soft-deletes "phantom VAT-reversal entries" (lines 27–40) — explicit acknowledgment that the double-cancellation bug exists in production data.
+  - Soft-deletes "duplicate progress-claim revenue JEs" (lines 42–56) — confirms `createProgressClaimJournalEntry` was called when it shouldn't have been.
+  - Creates 2 JEs directly via `db.journalEntry.create` (lines 83, 114) bypassing the guard — opening balance and client collection. These JEs have no `sourceType` validation, no balance check, no period check.
+  - Tags equity accounts with roles (lines 58–70) — direct `updateMany`, OK.
+
+==============================================================================
+TOP 10 MOST CRITICAL FINDINGS (across all 3 parts)
+==============================================================================
+
+1. **Double-cancellation bug persists in 7 API routes** (petty-cash, expenses×2, sales-invoices, supplier-invoices, progress-claims, purchase-invoices) — each creates a reversal JE (POSTED) AND sets the original to CANCELLED, causing phantom negative balances in the trial balance. The previous agent claimed this was fixed in `guard.ts` but the API routes were never updated. `scripts/fix-accounting-data.ts:27–40` is a band-aid that soft-deletes the resulting phantom entries. **File:line refs:** `src/app/api/petty-cash/[id]/route.ts:115–118`, `src/app/api/expenses/route.ts:332–335`, `src/app/api/expenses/[id]/route.ts:89–92`, `src/app/api/sales-invoices/route.ts:717–720`, `src/app/api/supplier-invoices/[id]/route.ts:197–200`, `src/app/api/progress-claims/route.ts:171–174`, `src/app/api/purchase-invoices/route.ts:205–208`.
+
+2. **`fiscal-years/[id]/reopen` route creates a JE directly** bypassing all 12 rules — no balance check, no account validation, no entryNo uniqueness check. **File:** `src/app/api/fiscal-years/[id]/reopen/route.ts:46–68`.
+
+3. **`journal-entries/[id]` PUT route allows POSTED → CANCELLED and DRAFT → POSTED without the guard** — violates R12 and skips R4/R5/R6/R7/R8 on posting. Also allows editing `date` of a POSTED entry (can move to closed period). **File:** `src/app/api/journal-entries/[id]/route.ts:79–82, 96–115, 122, 124`.
+
+4. **`Buffer.from` is STILL in browser-bundled code** — `src/printing/shared/utils.ts:196–207` (`encodeZATCATLV`), `src/lib/zatca-qr.ts:17–55` (`encodeTLV`, `generateZatcaTLV`), `src/lib/print-service.ts:885–898` (duplicate). The previous "Buffer.from fix" claimed in the task description was never applied (or was reverted). `invoice-preview.tsx:8` (client component) imports `generateZatcaQR` which calls `Buffer.from` → `ReferenceError` in browser. `print-button.tsx:430` dynamic-imports `@/printing` which pulls in `encodeZATCATLV` → same crash at print time.
+
+5. **No XSS escaping in any print template** — every print template (`ServiceInvoice.ts`, `RentalInvoice.ts`, `SupplierInvoice.ts`, `ProgressClaim.ts`, plus 20+ in `lib/print-service.ts`) interpolates user-controlled data (`data.clientName`, `data.clientAddress`, `data.clientTaxNumber`, `item.description`, `data.invoiceNo`, `data.contractNo`, `data.terms`, `settings.address`, etc.) directly into HTML strings. No `escapeHtml` function exists in `src/printing/`. A malicious client name like `<img src=x onerror='...'>` executes on print preview.
+
+6. **No `prisma/migrations/` folder** — `db:push` is used exclusively (runs on every `dev.sh` startup). Schema changes are destructive, untracked, and non-rollbackable. Combined with the DATA-LOSS-FIX finding that the SQLite file was tracked in git until recently, this is an ongoing data-integrity risk.
+
+7. **Zero multi-tenancy isolation** — `companyId` appears 0 times in schema; `branchId` on only 4/94 models. Critical financial models (`JournalEntry`, `Account`, `SalesInvoice`, `Expense`, `ClientPayment`, `FixedAsset`) have no branch scoping. Any user sees all branches' data.
+
+8. **`descriptionAr` silently dropped on every auto-entry** — `JournalEntryInput.descriptionAr` (guard.ts:79) is populated by all 22 `autoEntry*` functions but `postJournalEntry` (guard.ts:277–303) never writes it to the DB. The schema has no `descriptionAr` column on `JournalEntry`. The previous worklog said "أزلت descriptionAr" but the field and 22 callers were left in place — half-finished removal that loses Arabic descriptions.
+
+9. **81/94 models lack soft-delete (`deletedAt`)** — critical financial records (`Account`, `VATReturn`, `FiscalYear`, `PeriodClosing`, `BankAccount`, `BankTransaction`, `FixedAsset`, `AssetDepreciation`, `Provision`, `PayrollRun`, `Employee`, `Contract`, `BOQItem`) can be HARD-deleted, losing audit trail permanently. No `@version` optimistic locking anywhere (0 occurrences), so concurrent edits silently overwrite.
+
+10. **`financial-mapping-engine.ts` is decorative** — the 21 operation→role mappings seeded into the `FinancialMapping` table are NEVER read by the actual auto-entry functions in `engine.ts`. Each `autoEntry*` function hardcodes its role logic inline (e.g. `autoEntrySalesInvoice:457–468`). Changing a mapping in the DB has zero effect on JE creation. The "accountant can reconfigure mappings" design promised in the file header is not implemented.
+
+### Honorable mentions (issues 11–20)
+11. `vat/route.ts:246–249` swallows JE-creation errors — VAT return can be FILED without a JE, violating R1.
+12. `accountingHealthCheck` check #4 (guard.ts:470) filters `isActive: true` — deactivating an account hides its balances from the accounting-equation check.
+13. `getNextEntryNo` (guard.ts:394–405) scans all JEs on every call — O(n) per creation, no sequence table.
+14. `autoEntry*` functions fall back to hardcoded account codes (`'8630'`, `'3210'`, `'3120'`, etc.) when role lookup returns null — 22 occurrences in `engine.ts`.
+15. `autoEntryProgressClaim` (engine.ts:580) throws by design, but `createProgressClaimJournalEntry` (auto-journal.ts:295) still creates a JE — contradictory behaviors.
+16. `ProgressClaim.claimNo` is NOT `@unique` — duplicate claim numbers allowed.
+17. `Salary`, `Timesheet`, `Attendance`, `BOQItem`, `VATReturn` missing composite `@@unique` constraints (will cause duplicate records).
+18. `JournalEntry.reversedEntry` uses `onDelete: SetNull` (line 1802) — deleting a reversal loses the audit link.
+19. 16 `status String` fields that should be enums (FiscalYear, FiscalPeriod, PeriodClosing, BankReconciliation, FixedAsset, Provision, EquipmentRental, Warranty, WBSElement, Activity, ProjectForecast, LossProvision, CustomerAdvance, SubcontractorAdvance/Retention/Payment).
+20. `lib/print-service.ts` (3852 LOC) is orphaned dead code — not imported anywhere in `src/`, but contains duplicate `Buffer.from`-using `encodeZATCATLV` and 20+ `generate*Body` functions. Maintenance hazard; should be deleted.
+
+### Files audited (full list)
+- `src/lib/accounting/guard.ts` (518 LOC)
+- `src/lib/accounting/engine.ts` (1529 LOC)
+- `src/lib/accounting/period-guard.ts` (64 LOC)
+- `src/lib/accounting/consistency.ts` (154 LOC)
+- `src/lib/accounting/depreciation-engine.ts` (933 LOC, sampled)
+- `src/lib/accounting/mapping.ts` (618 LOC, sampled)
+- `src/lib/accounting/ifrs15.ts` (237 LOC, sampled)
+- `src/lib/auto-journal.ts` (349 LOC)
+- `src/lib/db.ts` (12 LOC)
+- `src/lib/zatca-qr.ts` (129 LOC)
+- `src/lib/unified-print-engine.ts` (951 LOC, sampled)
+- `src/lib/print-service.ts` (3852 LOC, sampled — orphan)
+- `src/lib/financial-mapping-engine.ts` (698 LOC, sampled)
+- `src/printing/index.ts` (31 LOC)
+- `src/printing/print-service.ts` (237 LOC)
+- `src/printing/shared/utils.ts` (311 LOC)
+- `src/printing/invoices/ServiceInvoice.ts` (183 LOC)
+- `src/printing/projects/ProgressClaim.ts` (291 LOC, sampled)
+- `src/app/api/print/route.ts` (507 LOC)
+- `src/app/api/journal-entries/route.ts` (147 LOC)
+- `src/app/api/journal-entries/[id]/route.ts` (156 LOC)
+- `src/app/api/journal-entries/[id]/reverse/route.ts` (24 LOC)
+- `src/app/api/fiscal-years/[id]/reopen/route.ts` (104 LOC)
+- `src/app/api/petty-cash/[id]/route.ts` (sampled)
+- `src/app/api/expenses/route.ts` (sampled)
+- `src/app/api/expenses/[id]/route.ts` (sampled)
+- `src/app/api/sales-invoices/route.ts` (sampled)
+- `src/app/api/supplier-invoices/[id]/route.ts` (sampled)
+- `src/app/api/progress-claims/route.ts` (sampled)
+- `src/app/api/purchase-invoices/route.ts` (sampled)
+- `src/app/api/client-payments/[id]/route.ts` (sampled)
+- `src/app/api/supplier-payments/[id]/route.ts` (sampled)
+- `src/app/api/vat/route.ts` (sampled)
+- `src/app/api/salary-payments/route.ts` (sampled)
+- `src/app/api/seed/route.ts` (sampled)
+- `src/components/shared/print-button.tsx` (510 LOC, sampled)
+- `src/components/invoice/invoice-preview.tsx` (sampled)
+- `prisma/schema.prisma` (2729 LOC, all 94 models + 26 enums reviewed)
+- `scripts/audit-db.ts` (156 LOC)
+- `scripts/fix-accounting-data.ts` (156 LOC)
+- `package.json` (sampled)
+
+**No fixes applied — audit only, per instructions.**

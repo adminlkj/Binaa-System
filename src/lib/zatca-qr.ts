@@ -9,24 +9,65 @@
 //   Tag 3 (0x03): Invoice date (ISO 8601 format)
 //   Tag 4 (0x04): Total amount (including VAT)
 //   Tag 5 (0x05): VAT amount
+//
+// ISOMORPHIC: This module is imported by both server (API routes) AND
+// browser (invoice-preview.tsx). It MUST NOT use Node-only APIs like Buffer.
+// Uses TextEncoder + Uint8Array (Web Standards) instead.
 // ============================================================================
 
 /**
- * Encodes a single TLV field: Tag (1 byte) + Length (1-2 bytes) + Value
+ * Convert a Uint8Array to a base64 string (isomorphic).
+ * Uses btoa in browser, Buffer in Node.
  */
-function encodeTLV(tag: number, value: string): Buffer {
-  const valueBuffer = Buffer.from(value, 'utf-8')
-  // For values longer than 255 bytes, use 2-byte length
-  if (valueBuffer.length > 255) {
-    return Buffer.concat([
-      Buffer.from([tag, valueBuffer.length & 0xff, (valueBuffer.length >> 8) & 0xff]),
-      valueBuffer,
-    ])
+function uint8ToBase64(bytes: Uint8Array): string {
+  if (typeof btoa === 'function') {
+    let binary = ''
+    const chunkSize = 0x8000 // avoid call stack overflow on large arrays
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize)
+      binary += String.fromCharCode.apply(null, Array.from(chunk) as number[])
+    }
+    return btoa(binary)
   }
-  return Buffer.concat([
-    Buffer.from([tag, valueBuffer.length]),
-    valueBuffer,
-  ])
+  // Node fallback
+  return Buffer.from(bytes).toString('base64')
+}
+
+/**
+ * Encodes a single TLV field: Tag (1 byte) + Length (1-2 bytes) + Value
+ * Returns Uint8Array (Web Standards, works in browser + Node).
+ */
+function encodeTLV(tag: number, value: string): Uint8Array {
+  const encoder = new TextEncoder()
+  const valueBytes = encoder.encode(value)
+  // For values longer than 255 bytes, use 2-byte length
+  if (valueBytes.length > 255) {
+    const out = new Uint8Array(3 + valueBytes.length)
+    out[0] = tag
+    out[1] = valueBytes.length & 0xff
+    out[2] = (valueBytes.length >> 8) & 0xff
+    out.set(valueBytes, 3)
+    return out
+  }
+  const out = new Uint8Array(2 + valueBytes.length)
+  out[0] = tag
+  out[1] = valueBytes.length
+  out.set(valueBytes, 2)
+  return out
+}
+
+/**
+ * Concatenate multiple Uint8Array into one.
+ */
+function concatBytes(arrays: Uint8Array[]): Uint8Array {
+  const totalLen = arrays.reduce((s, a) => s + a.length, 0)
+  const out = new Uint8Array(totalLen)
+  let offset = 0
+  for (const a of arrays) {
+    out.set(a, offset)
+    offset += a.length
+  }
+  return out
 }
 
 /**
@@ -44,7 +85,7 @@ export function generateZatcaTLV(params: {
 }): string {
   const { sellerName, vatNumber, invoiceDate, totalAmount, vatAmount } = params
 
-  const tlvBuffers = [
+  const tlvBytes = [
     encodeTLV(0x01, sellerName),
     encodeTLV(0x02, vatNumber),
     encodeTLV(0x03, invoiceDate),
@@ -52,7 +93,7 @@ export function generateZatcaTLV(params: {
     encodeTLV(0x05, Number(vatAmount).toFixed(2)),
   ]
 
-  return Buffer.concat(tlvBuffers).toString('base64')
+  return uint8ToBase64(concatBytes(tlvBytes))
 }
 
 /**

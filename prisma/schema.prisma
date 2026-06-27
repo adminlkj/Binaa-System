@@ -1902,6 +1902,7 @@ model ClientPayment {
   receivingAccountId  String?
   receivingAccountCode String?
   receivingAccountName String?
+  paymentType         String    @default("PAYMENT") // PAYMENT | RENTAL
   reference           String?
   notes               String?
   journalEntryId      String?
@@ -1916,6 +1917,7 @@ model ClientPayment {
   @@index([invoiceId])
   @@index([date])
   @@index([clientId, date])
+  @@index([paymentType])
 }
 
 // ============ SUPPLIER PAYMENTS ============

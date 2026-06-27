@@ -1,8 +1,10 @@
 import { db } from '@/lib/db'
+import { reverseEntry } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 // ============ POST: Reopen a closed fiscal year (admin override) ============
-// Removes the closing marker, reopens all 12 periods, and optionally reverses the closing JE
+// Removes the closing marker, reopens all 12 periods, and optionally reverses the closing JE.
+// The reversal now goes through reverseEntry() so all R1-R12 rules are enforced centrally.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -29,11 +31,12 @@ export async function POST(
     let reversalEntryId: string | null = null
     let reversalEntryNo: string | null = null
 
-    // Optionally reverse the closing JE
+    // Optionally reverse the closing JE using the unified reverseEntry().
+    // This enforces all R1-R12 rules (balance, period, entryNo uniqueness, etc.)
+    // instead of bypassing them with direct db.journalEntry.create.
     if (reverseJE && fiscalYear.closingJournalEntryId) {
       const closingJE = await db.journalEntry.findUnique({
         where: { id: fiscalYear.closingJournalEntryId },
-        include: { lines: true },
       })
 
       if (closingJE && closingJE.status === 'POSTED' && !closingJE.isReversal) {
@@ -42,30 +45,9 @@ export async function POST(
           where: { reversedEntryId: closingJE.id, deletedAt: null },
         })
         if (!existingReversal) {
-          const reversalNo = `JE-REVERSE-CLOSE-${fiscalYear.name}-${Date.now()}`
-          const reversal = await db.journalEntry.create({
-            data: {
-              entryNo: reversalNo,
-              date: new Date(),
-              description: `Reversal of year-end closing - ${fiscalYear.name}`,
-              descriptionAr: `قيد عكسي لإعادة فتح السنة المالية ${fiscalYear.name}`,
-              status: 'POSTED',
-              sourceType: 'YEAR_REOPEN',
-              sourceId: id,
-              isSystem: true,
-              isReversal: true,
-              reversedEntryId: closingJE.id,
-              lines: {
-                create: closingJE.lines.map((line) => ({
-                  accountId: line.accountId,
-                  debit: line.credit, // swap debit/credit
-                  credit: line.debit,
-                  description: line.description,
-                  costCenterId: line.costCenterId,
-                })),
-              },
-            },
-          })
+          // Use reverseEntry — it creates a proper reversal with swapped debit/credit,
+          // keeps the original POSTED, and enforces all guard rules.
+          const reversal = await reverseEntry(closingJE.id, db)
           reversalEntryId = reversal.id
           reversalEntryNo = reversal.entryNo
         }
@@ -98,6 +80,7 @@ export async function POST(
     })
   } catch (error) {
     console.error('Error reopening fiscal year:', error)
-    return NextResponse.json({ error: 'فشل في إعادة فتح السنة المالية' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في إعادة فتح السنة المالية'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

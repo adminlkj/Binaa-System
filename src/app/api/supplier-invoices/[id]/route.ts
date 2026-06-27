@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryPurchaseInvoice, initializeChartOfAccounts, createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { autoEntryPurchaseInvoice, initializeChartOfAccounts, reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 // Valid status transitions for Supplier Invoices
@@ -170,34 +170,9 @@ export async function PUT(
         })
 
         if (originalEntry) {
-          // Get account codes for reversal lines
-          const accountIds = originalEntry.lines.map(l => l.accountId)
-          const accounts = await tx.account.findMany({ where: { id: { in: accountIds } } })
-          const accountMap = new Map(accounts.map(a => [a.id, a.code]))
-
-          const resolvedReversalLines = originalEntry.lines.map(line => ({
-            accountCode: accountMap.get(line.accountId) || '',
-            debit: line.credit,
-            credit: line.debit,
-            costCenterId: line.costCenterId || undefined,
-            description: `Reversal: ${line.description || ''}`,
-          }))
-
-          await createJournalEntry({
-            entryNo: `JE-REV-SI-${Date.now()}`,
-            date: new Date(),
-            description: `Reversal for Supplier Invoice ${existing.invoiceNo}`,
-            descriptionAr: `قيد عكسي لفاتورة مورد ${existing.invoiceNo}`,
-            lines: resolvedReversalLines,
-            sourceType: 'SUPPLIER_INVOICE_REVERSAL',
-            sourceId: existing.invoiceNo,
-          }, tx)
-
-          // Cancel the original entry
-          await tx.journalEntry.update({
-            where: { id: existing.journalEntryId! },
-            data: { status: 'CANCELLED' },
-          })
+          // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
+          // Avoids double-cancellation bug + Decimal conversion bug.
+          await reverseEntry(existing.journalEntryId!, tx)
         }
 
         // Create new entry with updated values

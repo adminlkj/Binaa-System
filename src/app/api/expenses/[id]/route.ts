@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 // GET /api/expenses/[id] — Get a single expense
@@ -58,39 +58,9 @@ export async function DELETE(
     // Do all operations in a transaction
     await db.$transaction(async (tx: PrismaTransaction) => {
       if (existing.journalEntryId) {
-        const originalEntry = await tx.journalEntry.findUnique({
-          where: { id: existing.journalEntryId, deletedAt: null },
-          include: { lines: { where: { deletedAt: null } } },
-        })
-
-        if (originalEntry) {
-          const accountIds = originalEntry.lines.map(l => l.accountId)
-          const accounts = await tx.account.findMany({ where: { id: { in: accountIds } } })
-          const accountMap = new Map(accounts.map(a => [a.id, a.code]))
-
-          const reversalLines = originalEntry.lines.map(line => ({
-            accountCode: accountMap.get(line.accountId) || '',
-            debit: line.credit,
-            credit: line.debit,
-            costCenterId: line.costCenterId || undefined,
-            description: `Reversal: ${line.description || ''}`,
-          }))
-
-          await createJournalEntry({
-            entryNo: `JE-REV-EXP-DEL-${Date.now()}`,
-            date: new Date(),
-            description: `Reversal for deleted Expense: ${existing.description}`,
-            descriptionAr: `قيد عكسي لحذف مصروف: ${existing.description}`,
-            lines: reversalLines,
-            sourceType: 'EXPENSE_DELETE',
-            sourceId: existing.id,
-          }, tx)
-
-          await tx.journalEntry.update({
-            where: { id: existing.journalEntryId },
-            data: { status: 'CANCELLED' },
-          })
-        }
+        // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
+        // Avoids double-cancellation bug + Decimal conversion bug.
+        await reverseEntry(existing.journalEntryId, tx)
       }
 
       await tx.expense.delete({ where: { id } })

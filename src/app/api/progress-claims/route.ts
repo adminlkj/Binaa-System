@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { type PrismaTransaction } from '@/lib/auto-journal'
-import { createJournalEntry } from '@/lib/accounting/engine'
+import { reverseEntry } from '@/lib/accounting/engine'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
@@ -146,32 +146,9 @@ export async function PUT(request: Request) {
         })
 
         if (originalEntry) {
-          const accountIds = originalEntry.lines.map(l => l.accountId)
-          const accounts = await tx.account.findMany({ where: { id: { in: accountIds } } })
-          const accountMap = new Map(accounts.map(a => [a.id, a.code]))
-
-          const resolvedReversalLines = originalEntry.lines.map(line => ({
-            accountCode: accountMap.get(line.accountId) || '',
-            debit: toNumber(line.credit),
-            credit: toNumber(line.debit),
-            costCenterId: line.costCenterId || undefined,
-            description: `Reversal: ${line.description || ''}`,
-          }))
-
-          await createJournalEntry({
-            entryNo: `JE-REV-PC-${Date.now()}`,
-            date: new Date(),
-            description: `Reversal for Progress Claim ${existing.claimNo}`,
-            descriptionAr: `قيد عكسي لمستخلص ${existing.claimNo}`,
-            lines: resolvedReversalLines,
-            sourceType: 'PROGRESS_CLAIM_REVERSAL',
-            sourceId: existing.claimNo,
-          }, tx)
-
-          await tx.journalEntry.update({
-            where: { id: existing.journalEntryId! },
-            data: { status: 'CANCELLED' },
-          })
+          // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
+          // Avoids double-cancellation bug.
+          await reverseEntry(existing.journalEntryId!, tx)
         }
 
         // Detach the cancelled JE — a fresh JE will be created only when an

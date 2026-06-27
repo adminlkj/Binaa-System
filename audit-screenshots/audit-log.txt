@@ -1,0 +1,1499 @@
+=== AUDIT LOG START ===
+==========================================
+MODULE: 03-contracts (ref=@e11)
+TIMESTAMP: 19:54:35
+MAIN_CONTENT_LINES: 37
+--- CONSOLE ---
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "المشاريع" [level=1, ref=e55]
+  - paragraph
+  - button "طباعة" [ref=e56]
+  - button "تحديث" [ref=e57]
+  - button "مشروع جديد" [ref=e58]
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+    - StaticText "تنفيذي: 0"
+  - paragraph
+    - StaticText "تأجير: 0"
+  - textbox "بحث بالاسم أو الكود أو العميل..." [ref=e62]
+  - combobox [expanded=false, ref=e59]: كل الحالات
+    - generic [ref=e63] clickable [onclick]
+  - combobox [expanded=false, ref=e60]: كل الأنواع
+    - generic [ref=e64] clickable [onclick]
+  - button "إنشاء مشروع" [ref=e61]
+- heading "المشاريع" [level=1, ref=e55]
+- button "طباعة" [ref=e56]
+- button "تحديث" [ref=e57]
+- button "مشروع جديد" [ref=e58]
+- paragraph
+  - StaticText "تنفيذي: 0"
+- paragraph
+==========================================
+
+==========================================
+MODULE: 04-boq (ref=@e12)
+TIMESTAMP: 19:54:38
+MAIN_CONTENT_LINES: 33
+--- CONSOLE ---
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "فواتير المبيعات" [level=1, ref=e55]
+  - paragraph
+  - button "تحديث" [ref=e56]
+  - button "إنشاء فاتورة" [ref=e57]
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - textbox "بحث برقم الفاتورة أو العميل..." [ref=e62]
+  - combobox [expanded=false, ref=e58]: كل الحالات
+    - generic [ref=e63] clickable [onclick]
+  - combobox [expanded=false, ref=e59]: كل المصادر
+    - generic [ref=e64] clickable [onclick]
+  - combobox [expanded=false, ref=e60]: كل الأنشطة
+    - generic [ref=e65] clickable [onclick]
+  - button "إنشاء فاتورة" [ref=e61]
+- heading "فواتير المبيعات" [level=1, ref=e55]
+- button "تحديث" [ref=e56]
+- button "إنشاء فاتورة" [ref=e57]
+- textbox "بحث برقم الفاتورة أو العميل..." [ref=e62]
+- combobox [expanded=false, ref=e58]: كل الحالات
+  - generic [ref=e63] clickable [onclick]
+- combobox [expanded=false, ref=e59]: كل المصادر
+  - generic [ref=e64] clickable [onclick]
+==========================================
+
+==========================================
+MODULE: 05-progress-claims (ref=@e13)
+TIMESTAMP: 19:54:42
+MAIN_CONTENT_LINES: 33
+--- CONSOLE ---
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "تحصيلات العملاء" [level=1, ref=e55]
+  - paragraph
+  - button "طباعة" [ref=e56]
+  - button "تصدير CSV" [ref=e57]
+  - button "تحديث" [ref=e58]
+  - button "تحصيل جديد" [ref=e59]
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - combobox [expanded=false, ref=e60]: كل العملاء
+    - generic [ref=e63] clickable [onclick]
+  - textbox "بحث بالعميل أو المرجع..." [ref=e64]
+  - combobox [expanded=false, ref=e61]: الكل
+    - generic [ref=e65] clickable [onclick]
+  - button "تحصيل جديد" [ref=e62]
+- heading "تحصيلات العملاء" [level=1, ref=e55]
+- button "طباعة" [ref=e56]
+- button "تصدير CSV" [ref=e57]
+- button "تحديث" [ref=e58]
+- button "تحصيل جديد" [ref=e59]
+- combobox [expanded=false, ref=e60]: كل العملاء
+  - generic [ref=e63] clickable [onclick]
+- textbox "بحث بالعميل أو المرجع..." [ref=e64]
+==========================================
+
+==========================================
+MODULE: 06-sales-invoices (ref=@e14)
+TIMESTAMP: 19:54:46
+MAIN_CONTENT_LINES: 33
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "تحصيلات العملاء" [level=1, ref=e49]
+  - paragraph
+  - button "طباعة" [ref=e50]
+  - button "تصدير CSV" [ref=e51]
+  - button "تحديث" [ref=e52]
+  - button "تحصيل جديد" [ref=e53]
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - combobox [expanded=false, ref=e54]: كل العملاء
+    - generic [ref=e57] clickable [onclick]
+  - textbox "بحث بالعميل أو المرجع..." [ref=e58]
+  - combobox [expanded=false, ref=e55]: الكل
+    - generic [ref=e59] clickable [onclick]
+  - button "تحصيل جديد" [ref=e56]
+- heading "تحصيلات العملاء" [level=1, ref=e49]
+- button "طباعة" [ref=e50]
+- button "تصدير CSV" [ref=e51]
+- button "تحديث" [ref=e52]
+- button "تحصيل جديد" [ref=e53]
+- combobox [expanded=false, ref=e54]: كل العملاء
+  - generic [ref=e57] clickable [onclick]
+- textbox "بحث بالعميل أو المرجع..." [ref=e58]
+==========================================
+
+==========================================
+MODULE: 07-client-payments (ref=@e15)
+TIMESTAMP: 19:54:49
+MAIN_CONTENT_LINES: 33
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "تحصيلات العملاء" [level=1, ref=e42]
+  - paragraph
+  - button "طباعة" [ref=e43]
+  - button "تصدير CSV" [ref=e44]
+  - button "تحديث" [ref=e45]
+  - button "تحصيل جديد" [ref=e46]
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - combobox [expanded=false, ref=e47]: كل العملاء
+    - generic [ref=e50] clickable [onclick]
+  - textbox "بحث بالعميل أو المرجع..." [ref=e51]
+  - combobox [expanded=false, ref=e48]: الكل
+    - generic [ref=e52] clickable [onclick]
+  - button "تحصيل جديد" [ref=e49]
+- heading "تحصيلات العملاء" [level=1, ref=e42]
+- button "طباعة" [ref=e43]
+- button "تصدير CSV" [ref=e44]
+- button "تحديث" [ref=e45]
+- button "تحصيل جديد" [ref=e46]
+- combobox [expanded=false, ref=e47]: كل العملاء
+  - generic [ref=e50] clickable [onclick]
+- textbox "بحث بالعميل أو المرجع..." [ref=e51]
+==========================================
+
+==========================================
+MODULE: 08-equipment (ref=@e17)
+TIMESTAMP: 19:55:08
+MAIN_CONTENT_LINES: 26
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "طلبات الشراء" [level=1, ref=e42]
+  - paragraph
+  - button "طباعة" [ref=e43]
+  - button [ref=e44]
+  - button [ref=e45]
+  - button "طلب جديد" [ref=e46]
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - textbox "بحث بالرقم أو المشروع..." [ref=e49]
+  - combobox [expanded=false, ref=e47]: كل الحالات
+    - generic [ref=e50] clickable [onclick]
+  - button "طلب جديد" [ref=e48]
+- heading "طلبات الشراء" [level=1, ref=e42]
+- button "طباعة" [ref=e43]
+- button [ref=e44]
+- button [ref=e45]
+- button "طلب جديد" [ref=e46]
+- textbox "بحث بالرقم أو المشروع..." [ref=e49]
+- combobox [expanded=false, ref=e47]: كل الحالات
+  - generic [ref=e50] clickable [onclick]
+- button "طلب جديد" [ref=e48]
+==========================================
+
+==========================================
+MODULE: 09-rental-contracts (ref=@e18)
+TIMESTAMP: 19:55:11
+MAIN_CONTENT_LINES: 27
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "أوامر الشراء" [level=1, ref=e42]
+  - paragraph
+  - button "طباعة" [ref=e43]
+  - button [ref=e44]
+  - button [ref=e45]
+  - button "أمر شراء جديد" [ref=e46]
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - textbox "بحث بالرقم أو اسم المورد..." [ref=e49]
+  - combobox [expanded=false, ref=e47]: كل الحالات
+    - generic [ref=e50] clickable [onclick]
+  - button "إنشاء أمر شراء" [ref=e48]
+- heading "أوامر الشراء" [level=1, ref=e42]
+- button "طباعة" [ref=e43]
+- button [ref=e44]
+- button [ref=e45]
+- button "أمر شراء جديد" [ref=e46]
+- textbox "بحث بالرقم أو اسم المورد..." [ref=e49]
+- combobox [expanded=false, ref=e47]: كل الحالات
+  - generic [ref=e50] clickable [onclick]
+- button "إنشاء أمر شراء" [ref=e48]
+==========================================
+
+==========================================
+MODULE: 10-delivery-orders (ref=@e19)
+TIMESTAMP: 19:55:15
+MAIN_CONTENT_LINES: 27
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "الاستلام" [level=1, ref=e42]
+  - paragraph
+  - button "طباعة" [ref=e43]
+  - button [ref=e44]
+  - button [ref=e45]
+  - button "استلام جديد" [ref=e46]
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - textbox "بحث بالرقم أو المورد..." [ref=e49]
+  - combobox [expanded=false, ref=e47]: كل الحالات
+    - generic [ref=e50] clickable [onclick]
+  - button "استلام جديد" [ref=e48]
+- heading "الاستلام" [level=1, ref=e42]
+- button "طباعة" [ref=e43]
+- button [ref=e44]
+- button [ref=e45]
+- button "استلام جديد" [ref=e46]
+- textbox "بحث بالرقم أو المورد..." [ref=e49]
+- combobox [expanded=false, ref=e47]: كل الحالات
+  - generic [ref=e50] clickable [onclick]
+- button "استلام جديد" [ref=e48]
+==========================================
+
+==========================================
+MODULE: 11-timesheets (ref=@e20)
+TIMESTAMP: 19:55:18
+MAIN_CONTENT_LINES: 31
+--- CONSOLE ---
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "فواتير الموردين" [level=1, ref=e42]
+  - paragraph
+  - button "طباعة" [ref=e43]
+  - button [ref=e44]
+  - button [ref=e45]
+  - button "فاتورة جديدة" [ref=e46]
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - StaticText "0.00"
+  - image "﷼"
+  - paragraph
+  - paragraph
+  - textbox "بحث بالرقم أو اسم المورد..." [ref=e49]
+  - combobox [expanded=false, ref=e47]: كل الحالات
+    - generic [ref=e50] clickable [onclick]
+  - button "إنشاء فاتورة" [ref=e48]
+- heading "فواتير الموردين" [level=1, ref=e42]
+- button "طباعة" [ref=e43]
+- button [ref=e44]
+- button [ref=e45]
+- button "فاتورة جديدة" [ref=e46]
+- textbox "بحث بالرقم أو اسم المورد..." [ref=e49]
+- combobox [expanded=false, ref=e47]: كل الحالات
+  - generic [ref=e50] clickable [onclick]
+==========================================
+
+==========================================
+MODULE: 12-rental-invoices (ref=@e21)
+TIMESTAMP: 19:55:22
+MAIN_CONTENT_LINES: 15
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "سداد الموردين" [level=1, ref=e42]
+  - button "طباعة" [ref=e43]
+  - button [ref=e44]
+  - button [ref=e45]
+  - button "سداد جديد" [ref=e46]
+  - textbox "بحث باسم المورد أو المرجع..." [ref=e48]
+  - button "سداد جديد" [ref=e47]
+- heading "سداد الموردين" [level=1, ref=e42]
+- button "طباعة" [ref=e43]
+- button [ref=e44]
+- button [ref=e45]
+- button "سداد جديد" [ref=e46]
+- textbox "بحث باسم المورد أو المرجع..." [ref=e48]
+- button "سداد جديد" [ref=e47]
+==========================================
+
+==========================================
+MODULE: 13-rental-payments (ref=@e22)
+TIMESTAMP: 19:55:26
+MAIN_CONTENT_LINES: 15
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "سداد الموردين" [level=1, ref=e37]
+  - button "طباعة" [ref=e38]
+  - button [ref=e39]
+  - button [ref=e40]
+  - button "سداد جديد" [ref=e41]
+  - textbox "بحث باسم المورد أو المرجع..." [ref=e43]
+  - button "سداد جديد" [ref=e42]
+- heading "سداد الموردين" [level=1, ref=e37]
+- button "طباعة" [ref=e38]
+- button [ref=e39]
+- button [ref=e40]
+- button "سداد جديد" [ref=e41]
+- textbox "بحث باسم المورد أو المرجع..." [ref=e43]
+- button "سداد جديد" [ref=e42]
+==========================================
+
+==========================================
+MODULE: 14-employees (ref=@e24)
+TIMESTAMP: 19:55:32
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "المحاسبة" [level=1, ref=e37]
+  - paragraph
+  - button [ref=e38]
+  - tablist [ref=e39] focusable [tabindex]
+    - tab "شجرة الحسابات" [selected, ref=e41]
+    - tab "ربط الحسابات بالنظام" [ref=e42]
+    - tab "محرك الربط المحاسبي" [ref=e43]
+    - tab "أثر الحسابات" [ref=e44]
+    - tab "فحص السلامة" [ref=e45]
+    - tab "قيود اليومية" [ref=e46]
+    - tab "دفتر الأستاذ" [ref=e47]
+    - tab "ميزان المراجعة" [ref=e48]
+  - tabpanel "شجرة الحسابات" [ref=e40] focusable [tabindex]
+    - heading "لا توجد حسابات" [level=3, ref=e49]
+    - button "تهيئة دليل الحسابات" [ref=e50]
+- heading "المحاسبة" [level=1, ref=e37]
+- button [ref=e38]
+- tablist [ref=e39] focusable [tabindex]
+  - tab "شجرة الحسابات" [selected, ref=e41]
+  - tab "ربط الحسابات بالنظام" [ref=e42]
+  - tab "محرك الربط المحاسبي" [ref=e43]
+  - tab "أثر الحسابات" [ref=e44]
+  - tab "فحص السلامة" [ref=e45]
+  - tab "قيود اليومية" [ref=e46]
+  - tab "دفتر الأستاذ" [ref=e47]
+  - tab "ميزان المراجعة" [ref=e48]
+- tabpanel "شجرة الحسابات" [ref=e40] focusable [tabindex]
+  - heading "لا توجد حسابات" [level=3, ref=e49]
+  - button "تهيئة دليل الحسابات" [ref=e50]
+==========================================
+
+==========================================
+MODULE: 15-employee-contracts (ref=@e25)
+TIMESTAMP: 19:55:36
+MAIN_CONTENT_LINES: 161
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "الإهلاك" [level=1, ref=e37]
+  - paragraph
+    - StaticText "إدارة الأصول الثابتة — أدخل البيانات الأساسية والنظام يحسب الإهلاك ويُنشئ القيود تلقائياً"
+  - button "إضافة أصل" [ref=e38]
+  - tablist [ref=e39] focusable [tabindex]
+    - tab "الأصول الثابتة" [selected, ref=e41]
+      - StaticText "الأصول الثابتة"
+    - tab "تشغيل الإهلاك" [ref=e42]
+      - StaticText "تشغيل الإهلاك"
+    - tab "سجلات الإهلاك" [ref=e43]
+      - StaticText "سجلات الإهلاك"
+    - tab "تقرير الإهلاك" [ref=e44]
+      - StaticText "تقرير الإهلاك"
+  - tabpanel "الأصول الثابتة" [ref=e40] focusable [tabindex]
+    - paragraph
+      - StaticText "إجمالي الأصول"
+    - StaticText "0.00"
+    - image "﷼"
+    - paragraph
+      - StaticText "إجمالي التكلفة"
+    - StaticText "0.00"
+    - image "﷼"
+    - paragraph
+      - StaticText "مجمع الإهلاك"
+    - StaticText "0.00"
+    - image "﷼"
+    - paragraph
+      - StaticText "صافي القيمة الدفترية"
+    - StaticText "0.00"
+==========================================
+
+==========================================
+MODULE: 16-work-teams (ref=@e26)
+TIMESTAMP: 19:55:39
+MAIN_CONTENT_LINES: 50
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "السنوات المالية" [level=1, ref=e37]
+  - paragraph
+    - StaticText "إدارة السنوات المالية والفترات الشهرية وإقفال السنة مع التسويات والترحيلات التلقائية"
+  - button "تحديث" [ref=e38]
+  - button "سنة مالية جديدة" [ref=e39]
+  - paragraph
+    - StaticText "السنة الحالية"
+  - paragraph
+    - StaticText "— لا توجد —"
+  - paragraph
+    - StaticText "إجمالي السنوات"
+  - paragraph
+    - StaticText "0"
+  - paragraph
+    - StaticText "0 مفتوحة، 0 مغلقة"
+  - paragraph
+    - StaticText "آخر سنة مغلقة"
+  - paragraph
+    - StaticText "— لا توجد —"
+  - paragraph
+    - StaticText "صافي ربح السنة الحالية"
+  - paragraph
+    - StaticText "0.00"
+  - heading "قائمة السنوات المالية" [level=3, ref=e40]
+  - StaticText "0"
+  - StaticText " "
+  - StaticText "سنة"
+  - heading "لا توجد سنوات مالية بعد" [level=3, ref=e41]
+  - paragraph
+==========================================
+
+==========================================
+MODULE: 17-attendance (ref=@e27)
+TIMESTAMP: 19:55:43
+MAIN_CONTENT_LINES: 14
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "ضريبة القيمة المضافة" [level=1, ref=e37]
+  - paragraph
+  - button [ref=e38]
+  - tablist [ref=e39] focusable [tabindex]
+    - tab "ملخص الضريبة" [selected, ref=e41]
+    - tab "الإقرار الضريبي" [ref=e42]
+  - tabpanel "ملخص الضريبة" [ref=e40] focusable [tabindex]
+- heading "ضريبة القيمة المضافة" [level=1, ref=e37]
+- button [ref=e38]
+- tablist [ref=e39] focusable [tabindex]
+  - tab "ملخص الضريبة" [selected, ref=e41]
+  - tab "الإقرار الضريبي" [ref=e42]
+- tabpanel "ملخص الضريبة" [ref=e40] focusable [tabindex]
+==========================================
+
+==========================================
+MODULE: 18-payroll-runs (ref=@e28)
+TIMESTAMP: 19:55:46
+MAIN_CONTENT_LINES: 204
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e37]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e38] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e41]
+    - tab "تقارير المشاريع" [ref=e42]
+    - tab "تقارير التأجير" [ref=e43]
+    - tab "التقارير المالية" [ref=e44]
+    - tab "تقارير المشتريات" [ref=e45]
+    - tab "تقارير العملاء" [ref=e46]
+    - tab "تقارير الضريبة" [ref=e47]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e39] focusable [tabindex]
+    - tab "قائمة الدخل" [selected, ref=e48]
+    - tab "الميزانية" [ref=e49]
+    - tab "ميزان المراجعة" [ref=e50]
+    - tab "التدفق النقدي" [ref=e51]
+    - tab "الأستاذ العام" [ref=e52]
+    - tab "كشف حساب" [ref=e53]
+    - tab "مراكز التكلفة" [ref=e54]
+    - tab "الأعمال تحت التنفيذ" [ref=e55]
+    - tab "مطابقة الضريبة" [ref=e56]
+  - tabpanel "قائمة الدخل" [ref=e40] focusable [tabindex]
+    - heading "قائمة الدخل" [level=3, ref=e57]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e58]
+    - button "تصدير" [ref=e59]
+    - button "طباعة" [ref=e60]
+      - StaticText "طباعة"
+==========================================
+
+==========================================
+MODULE: 19-salaries-advances (ref=@e29)
+TIMESTAMP: 19:55:50
+MAIN_CONTENT_LINES: 204
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "قائمة الدخل" [selected, ref=e43]
+    - tab "الميزانية" [ref=e44]
+    - tab "ميزان المراجعة" [ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+    - tab "الأستاذ العام" [ref=e47]
+    - tab "كشف حساب" [ref=e48]
+    - tab "مراكز التكلفة" [ref=e49]
+    - tab "الأعمال تحت التنفيذ" [ref=e50]
+    - tab "مطابقة الضريبة" [ref=e51]
+  - tabpanel "قائمة الدخل" [ref=e35] focusable [tabindex]
+    - heading "قائمة الدخل" [level=3, ref=e52]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e53]
+    - button "تصدير" [ref=e54]
+    - button "طباعة" [ref=e55]
+      - StaticText "طباعة"
+==========================================
+
+==========================================
+MODULE: 20-resource-distribution (ref=@e30)
+TIMESTAMP: 19:55:54
+MAIN_CONTENT_LINES: 204
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "قائمة الدخل" [selected, ref=e43]
+    - tab "الميزانية" [ref=e44]
+    - tab "ميزان المراجعة" [ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+    - tab "الأستاذ العام" [ref=e47]
+    - tab "كشف حساب" [ref=e48]
+    - tab "مراكز التكلفة" [ref=e49]
+    - tab "الأعمال تحت التنفيذ" [ref=e50]
+    - tab "مطابقة الضريبة" [ref=e51]
+  - tabpanel "قائمة الدخل" [ref=e35] focusable [tabindex]
+    - heading "قائمة الدخل" [level=3, ref=e52]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e53]
+    - button "تصدير" [ref=e54]
+    - button "طباعة" [ref=e55]
+      - StaticText "طباعة"
+==========================================
+
+==========================================
+MODULE: 21-purchase-requests (ref=@e32)
+TIMESTAMP: 19:56:04
+MAIN_CONTENT_LINES: 204
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "قائمة الدخل" [selected, ref=e43]
+    - tab "الميزانية" [ref=e44]
+    - tab "ميزان المراجعة" [ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+    - tab "الأستاذ العام" [ref=e47]
+    - tab "كشف حساب" [ref=e48]
+    - tab "مراكز التكلفة" [ref=e49]
+    - tab "الأعمال تحت التنفيذ" [ref=e50]
+    - tab "مطابقة الضريبة" [ref=e51]
+  - tabpanel "قائمة الدخل" [ref=e35] focusable [tabindex]
+    - heading "قائمة الدخل" [level=3, ref=e52]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e53]
+    - button "تصدير" [ref=e54]
+    - button "طباعة" [ref=e55]
+      - StaticText "طباعة"
+==========================================
+
+==========================================
+MODULE: 22-purchase-orders (ref=@e33)
+TIMESTAMP: 19:56:07
+MAIN_CONTENT_LINES: 91
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [selected, ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "ميزان المراجعة" [selected, ref=e43]
+    - tab "ملخص الإيرادات" [ref=e44]
+    - tab "ملخص المصروفات" [ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+  - tabpanel "ميزان المراجعة" [ref=e35] focusable [tabindex]
+    - heading "ميزان المراجعة" [level=3, ref=e47]
+    - button [ref=e48]
+    - button "تصدير" [ref=e49]
+    - button "طباعة" [ref=e50]
+      - StaticText "طباعة"
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e54]: 0
+        - spinbutton "Day" [ref=e55]: 0
+        - spinbutton "Year" [ref=e56]: 0
+==========================================
+
+==========================================
+MODULE: 23-goods-receipt (ref=@e34)
+TIMESTAMP: 19:56:11
+MAIN_CONTENT_LINES: 41
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [selected, ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "ميزان المراجعة" [ref=e43]
+    - tab "ملخص الإيرادات" [ref=e44]
+    - tab "ملخص المصروفات" [selected, ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+  - tabpanel "ملخص المصروفات" [ref=e35] focusable [tabindex]
+    - heading "ملخص المصروفات" [level=3, ref=e47]
+    - button [ref=e48]
+    - button "طباعة" [ref=e49]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e36]
+  - tab "تقارير المشاريع" [ref=e37]
+  - tab "تقارير التأجير" [ref=e38]
+  - tab "التقارير المالية" [selected, ref=e39]
+  - tab "تقارير المشتريات" [ref=e40]
+  - tab "تقارير العملاء" [ref=e41]
+  - tab "تقارير الضريبة" [ref=e42]
+- tablist [ref=e34] focusable [tabindex]
+==========================================
+
+==========================================
+MODULE: 24-supplier-invoices (ref=@e35)
+TIMESTAMP: 19:56:14
+MAIN_CONTENT_LINES: 41
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [selected, ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "ميزان المراجعة" [ref=e43]
+    - tab "ملخص الإيرادات" [ref=e44]
+    - tab "ملخص المصروفات" [selected, ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+  - tabpanel "ملخص المصروفات" [ref=e35] focusable [tabindex]
+    - heading "ملخص المصروفات" [level=3, ref=e47]
+    - button [ref=e48]
+    - button "طباعة" [ref=e49]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e36]
+  - tab "تقارير المشاريع" [ref=e37]
+  - tab "تقارير التأجير" [ref=e38]
+  - tab "التقارير المالية" [selected, ref=e39]
+  - tab "تقارير المشتريات" [ref=e40]
+  - tab "تقارير العملاء" [ref=e41]
+  - tab "تقارير الضريبة" [ref=e42]
+- tablist [ref=e34] focusable [tabindex]
+==========================================
+
+==========================================
+MODULE: 25-supplier-payments (ref=@e36)
+TIMESTAMP: 19:56:18
+MAIN_CONTENT_LINES: 204
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [selected, ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - StaticText "جميع التقارير المالية مصدرها قيود اليومية المرحّلة فقط"
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "قائمة الدخل" [selected, ref=e43]
+    - tab "الميزانية" [ref=e44]
+    - tab "ميزان المراجعة" [ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+    - tab "الأستاذ العام" [ref=e47]
+    - tab "كشف حساب" [ref=e48]
+    - tab "مراكز التكلفة" [ref=e49]
+    - tab "الأعمال تحت التنفيذ" [ref=e50]
+    - tab "مطابقة الضريبة" [ref=e51]
+  - tabpanel "قائمة الدخل" [ref=e35] focusable [tabindex]
+    - heading "قائمة الدخل" [level=3, ref=e52]
+    - StaticText "من القيود المرحّلة"
+    - button [ref=e53]
+    - button "تصدير" [ref=e54]
+    - button "طباعة" [ref=e55]
+      - StaticText "طباعة"
+==========================================
+
+==========================================
+MODULE: 26-equipment-operations (ref=@e38)
+TIMESTAMP: 19:56:21
+MAIN_CONTENT_LINES: 39
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [selected, ref=e38]
+    - tab "التقارير المالية" [ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "استخدام المعدات" [selected, ref=e43]
+    - tab "إيرادات حسب العميل" [ref=e44]
+    - tab "حالة المعدات" [ref=e45]
+  - tabpanel "استخدام المعدات" [ref=e35] focusable [tabindex]
+    - heading "تقرير استخدام المعدات" [level=3, ref=e46]
+    - button [ref=e47]
+    - button "طباعة" [ref=e48]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e36]
+  - tab "تقارير المشاريع" [ref=e37]
+  - tab "تقارير التأجير" [selected, ref=e38]
+  - tab "التقارير المالية" [ref=e39]
+  - tab "تقارير المشتريات" [ref=e40]
+  - tab "تقارير العملاء" [ref=e41]
+  - tab "تقارير الضريبة" [ref=e42]
+- tablist [ref=e34] focusable [tabindex]
+  - tab "استخدام المعدات" [selected, ref=e43]
+==========================================
+
+==========================================
+MODULE: 27-equipment-maintenance (ref=@e39)
+TIMESTAMP: 19:56:25
+MAIN_CONTENT_LINES: 91
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [selected, ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "ميزان المراجعة" [selected, ref=e43]
+    - tab "ملخص الإيرادات" [ref=e44]
+    - tab "ملخص المصروفات" [ref=e45]
+    - tab "التدفق النقدي" [ref=e46]
+  - tabpanel "ميزان المراجعة" [ref=e35] focusable [tabindex]
+    - heading "ميزان المراجعة" [level=3, ref=e47]
+    - button [ref=e48]
+    - button "تصدير" [ref=e49]
+    - button "طباعة" [ref=e50]
+      - StaticText "طباعة"
+    - LabelText
+      - StaticText "من"
+    - Date
+      - generic
+        - spinbutton "Month" [ref=e54]: 0
+        - spinbutton "Day" [ref=e55]: 0
+        - spinbutton "Year" [ref=e56]: 0
+==========================================
+
+==========================================
+MODULE: 28-fuel (ref=@e40)
+TIMESTAMP: 19:56:29
+MAIN_CONTENT_LINES: 92
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+    - StaticText "تقارير شاملة للمشاريع والتأجير والمالية"
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [ref=e39]
+    - tab "تقارير المشتريات" [selected, ref=e40]
+    - tab "تقارير العملاء" [ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "ملخص المشتريات" [selected, ref=e43]
+    - tab "أرصدة الموردين" [ref=e44]
+  - tabpanel "ملخص المشتريات" [ref=e35] focusable [tabindex]
+    - heading "ملخص المشتريات" [level=3, ref=e45]
+    - button [ref=e46]
+    - button "طباعة" [ref=e47]
+      - StaticText "طباعة"
+    - paragraph
+      - StaticText "إجمالي المشتريات"
+    - StaticText "0.00"
+    - image "﷼"
+    - paragraph
+      - StaticText "0 فاتورة"
+    - StaticText "حسب المورد"
+    - table
+      - rowgroup
+        - row
+==========================================
+
+==========================================
+MODULE: 29-subcontractors (ref=@e41)
+TIMESTAMP: 19:56:32
+MAIN_CONTENT_LINES: 40
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e36]
+    - tab "تقارير المشاريع" [ref=e37]
+    - tab "تقارير التأجير" [ref=e38]
+    - tab "التقارير المالية" [ref=e39]
+    - tab "تقارير المشتريات" [ref=e40]
+    - tab "تقارير العملاء" [selected, ref=e41]
+    - tab "تقارير الضريبة" [ref=e42]
+  - tablist [ref=e34] focusable [tabindex]
+    - tab "أرصدة العملاء" [selected, ref=e43]
+    - tab "تقرير التقادم" [ref=e44]
+  - tabpanel "أرصدة العملاء" [ref=e35] focusable [tabindex]
+    - heading "أرصدة العملاء" [level=3, ref=e45]
+    - button [ref=e46]
+    - button "تصدير" [ref=e47]
+    - button "طباعة" [ref=e48]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e36]
+  - tab "تقارير المشاريع" [ref=e37]
+  - tab "تقارير التأجير" [ref=e38]
+  - tab "التقارير المالية" [ref=e39]
+  - tab "تقارير المشتريات" [ref=e40]
+  - tab "تقارير العملاء" [selected, ref=e41]
+  - tab "تقارير الضريبة" [ref=e42]
+- tablist [ref=e34] focusable [tabindex]
+  - tab "أرصدة العملاء" [selected, ref=e43]
+==========================================
+
+==========================================
+MODULE: 30-expenses (ref=@e42)
+TIMESTAMP: 19:56:36
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 31-accounting (ref=@e44)
+TIMESTAMP: 19:56:46
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 32-depreciation (ref=@e45)
+TIMESTAMP: 19:56:50
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 33-financial-years (ref=@e46)
+TIMESTAMP: 19:56:53
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 34-vat (ref=@e47)
+TIMESTAMP: 19:56:57
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 35-reports (ref=@e48)
+TIMESTAMP: 19:57:00
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 36-clients (ref=@e50)
+TIMESTAMP: 19:57:04
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 37-suppliers (ref=@e51)
+TIMESTAMP: 19:57:07
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 38-inventory (ref=@e52)
+TIMESTAMP: 19:57:11
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 39-settings (ref=@e53)
+TIMESTAMP: 19:57:14
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
+==========================================
+MODULE: 40-accounting-mapping (ref=@e54)
+TIMESTAMP: 19:57:18
+MAIN_CONTENT_LINES: 32
+--- CONSOLE ---
+
+--- ERRORS ---
+
+--- MAIN SNAPSHOT (first 30 lines) ---
+- main
+  - heading "التقارير" [level=1, ref=e32]
+  - paragraph
+  - tablist [ref=e33] focusable [tabindex]
+    - tab "القوائم المالية" [ref=e37]
+    - tab "تقارير المشاريع" [ref=e38]
+    - tab "تقارير التأجير" [ref=e39]
+    - tab "التقارير المالية" [ref=e40]
+    - tab "تقارير المشتريات" [ref=e41]
+    - tab "تقارير العملاء" [ref=e42]
+    - tab "تقارير الضريبة" [selected, ref=e43]
+  - LabelText
+  - combobox [expanded=false, ref=e34]: 2026
+    - generic [ref=e44] clickable [onclick]
+  - LabelText
+  - combobox [expanded=false, ref=e35]: اختر الربع
+    - generic [ref=e45] clickable [onclick]
+  - button "طباعة" [ref=e36]
+- heading "التقارير" [level=1, ref=e32]
+- tablist [ref=e33] focusable [tabindex]
+  - tab "القوائم المالية" [ref=e37]
+  - tab "تقارير المشاريع" [ref=e38]
+  - tab "تقارير التأجير" [ref=e39]
+  - tab "التقارير المالية" [ref=e40]
+  - tab "تقارير المشتريات" [ref=e41]
+  - tab "تقارير العملاء" [ref=e42]
+  - tab "تقارير الضريبة" [selected, ref=e43]
+- combobox [expanded=false, ref=e34]: 2026
+  - generic [ref=e44] clickable [onclick]
+- combobox [expanded=false, ref=e35]: اختر الربع
+==========================================
+
