@@ -1,0 +1,502 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useMemo, useCallback } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  BookOpen, RefreshCw, FileText, ChevronLeft, Eye, TreePine,
+     7→     7→  ArrowUpDown, Calculator, Scale, Database, PlusCircle,
+     8→     8→  Lock, Shield, ChevronDown, ChevronRight, X, Info,
+     9→     9→  TrendingUp, BarChart3, PieChart, Building2, Truck,
+    10→    10→  CreditCard, Users, Package, Clock, AlertTriangle,
+    11→    11→  Wallet, Landmark, FileSpreadsheet, CircleDollarSign,
+    12→    12→  CalendarCheck, Wrench, Banknote, FolderClosed, CheckCircle2,
+    13→    13→  Printer, Download, Search,
+    14→    14→} from 'lucide-react'
+    15→    15→import { Card, CardContent } from '@/components/ui/card'
+    16→    16→import { Button } from '@/components/ui/button'
+    17→    17→import { Input } from '@/components/ui/input'
+    18→    18→import { Badge } from '@/components/ui/badge'
+    19→    19→import {
+    20→    20→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    21→    21→} from '@/components/ui/table'
+    22→    22→import {
+    23→    23→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    24→    24→} from '@/components/ui/select'
+    25→    25→import { Label } from '@/components/ui/label'
+    26→    26→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    27→    27→import { Separator } from '@/components/ui/separator'
+    28→    28→import {
+    29→    29→  Dialog, DialogContent, DialogHeader, DialogTitle,
+    30→    30→} from '@/components/ui/dialog'
+    31→    31→import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+    32→    32→import { MoneyDisplay } from '@/components/ui/money-display'
+    33→    33→import { ModuleLayout } from '@/components/shared/module-layout'
+    34→    34→import { PrintButton } from '@/components/shared/print-button'
+    35→    35→
+    36→    36→// ============ Types ============
+    37→    37→interface Account {
+    38→    38→  id: string; code: string; name: string; nameAr: string | null
+    39→    39→  type: string; parentId: string | null; isActive: boolean
+    40→    40→  activityType: string | null; isSystem: boolean; allowPosting: boolean
+    41→    41→  level: number; description: string | null; descriptionAr: string | null
+    42→    42→  parent: { id: string; code: string; name: string; nameAr: string | null } | null
+    43→    43→  children: { id: string; code: string; name: string; nameAr: string | null }[]
+    44→    44→  _count: { journalLines: number }
+    45→    45→  balance: number
+    46→    46→  normalBalance: string
+    47→    47→}
+    48→    48→
+    49→    49→interface JournalLine {
+    50→    50→  id: string; accountId: string; debit: number; credit: number
+    51→    51→  description: string | null; costCenterId: string | null
+    52→    52→  account: { id: string; code: string; name: string; nameAr: string | null }
+    53→    53→  costCenter: { id: string; code: string; name: string } | null
+    54→    54→}
+    55→    55→
+    56→    56→interface JournalEntry {
+    57→    57→  id: string; entryNo: string; date: string; description: string | null
+    58→    58→  status: string; sourceType: string | null; sourceId: string | null
+    59→    59→  createdAt: string
+    60→    60→  lines: JournalLine[]
+    61→    61→  totalDebit: number; totalCredit: number
+    62→    62→}
+    63→    63→
+    64→    64→interface StatementLine {
+    65→    65→  id: string; entryNo: string; date: string; description: string | null
+    66→    66→  lineDescription: string | null; debit: number; credit: number; balance: number; status: string
+    67→    67→}
+    68→    68→
+    69→    69→interface TrialBalanceItem {
+    70→    70→  account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+    71→    71→  totalDebit: number; totalCredit: number; netDebit: number; netCredit: number
+    72→    72→}
+    73→    73→
+    74→    74→// ============ Helpers ============
+    75→    75→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    76→    76→
+    77→    77→// ============ Type Config ============
+    78→    78→const typeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+    79→    79→  ASSET: { label: { ar: 'أصول', en: 'Asset' }, color: 'text-sky-700', bg: 'bg-sky-100' },
+    80→    80→  LIABILITY: { label: { ar: 'التزامات', en: 'Liability' }, color: 'text-orange-700', bg: 'bg-orange-100' },
+    81→    81→  EQUITY: { label: { ar: 'حقوق ملكية', en: 'Equity' }, color: 'text-purple-700', bg: 'bg-purple-100' },
+    82→    82→  REVENUE: { label: { ar: 'إيرادات', en: 'Revenue' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+    83→    83→  EXPENSE: { label: { ar: 'مصروفات', en: 'Expense' }, color: 'text-rose-700', bg: 'bg-rose-100' },
+    84→    84→}
+    85→    85→
+    86→    86→function TypeBadge({ type, lang }: { type: string; lang: 'ar' | 'en' }) {
+    87→    87→  const cfg = typeConfig[type] || typeConfig.ASSET
+    88→    88→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+    89→    89→}
+    90→    90→
+    91→    91→const activityConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string; dot: string }> = {
+    92→    92→  CONSTRUCTION: { label: { ar: 'مشاريع', en: 'Construction' }, color: 'text-blue-700', bg: 'bg-blue-100', dot: 'bg-blue-500' },
+    93→    93→  EQUIPMENT_RENTAL: { label: { ar: 'تأجير', en: 'Rental' }, color: 'text-orange-700', bg: 'bg-orange-100', dot: 'bg-orange-500' },
+    94→    94→  BOTH: { label: { ar: 'مشترك', en: 'Both' }, color: 'text-gray-700', bg: 'bg-gray-100', dot: 'bg-gray-500' },
+    95→    95→}
+    96→    96→
+    97→    97→function ActivityBadge({ activityType, lang }: { activityType: string | null; lang: 'ar' | 'en' }) {
+    98→    98→  const at = activityType || 'BOTH'
+    99→    99→  const cfg = activityConfig[at]
+   100→   100→  if (!cfg) return null
+   101→   101→  return (
+   102→   102→    <Badge className={`${cfg.bg} ${cfg.color} border-0 text-xs gap-1`}>
+   103→   103→      <span className={`size-1.5 rounded-full ${cfg.dot}`} />
+   104→   104→      {cfg.label[lang]}
+   105→   105→    </Badge>
+   106→   106→  )
+   107→   107→}
+   108→   108→
+   109→   109→const jeStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   110→   110→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+   111→   111→  POSTED: { label: { ar: 'مرحّل', en: 'Posted' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   112→   112→  CANCELLED: { label: { ar: 'ملغي', en: 'Cancelled' }, color: 'text-rose-700', bg: 'bg-rose-100' },
+   113→   113→}
+   114→   114→
+   115→   115→function JEStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   116→   116→  const cfg = jeStatusConfig[status] || jeStatusConfig.DRAFT
+   117→   117→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   118→   118→}
+   119→   119→
+   120→   120→const sourceTypeLabels: Record<string, { ar: string; en: string }> = {
+   121→   121→  SALES_INVOICE: { ar: 'فاتورة مبيعات', en: 'Sales Invoice' },
+   122→   122→  PURCHASE_INVOICE: { ar: 'فاتورة مشتريات', en: 'Purchase Invoice' },
+   123→   123→  PROGRESS_CLAIM: { ar: 'مستخلص', en: 'Progress Claim' },
+   124→   124→  EXPENSE: { ar: 'مصروف', en: 'Expense' },
+   125→   125→  CLIENT_PAYMENT: { ar: 'تحصيل عميل', en: 'Client Payment' },
+   126→   126→  SUPPLIER_PAYMENT: { ar: 'دفع مورد', en: 'Supplier Payment' },
+   127→   127→  EMPLOYEE_ADVANCE: { ar: 'سلفة موظف', en: 'Employee Advance' },
+   128→   128→  RENTAL_INVOICE: { ar: 'فاتورة تأجير', en: 'Rental Invoice' },
+   129→   129→  SALARY: { ar: 'رواتب', en: 'Salary' },
+   130→   130→  GOSI: { ar: 'تأمينات اجتماعية', en: 'GOSI' },
+   131→   131→  DEPRECIATION: { ar: 'إهلاك', en: 'Depreciation' },
+   132→   132→  PERIOD_CLOSING: { ar: 'إقفال فترة', en: 'Period Closing' },
+   133→   133→  ASSET_ACQUISITION: { ar: 'اقتناء أصل', en: 'Asset Acquisition' },
+   134→   134→  PROVISION: { ar: 'مخصص', en: 'Provision' },
+   135→   135→}
+   136→   136→
+   137→   137→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   138→   138→  return (
+   139→   139→    <div className="space-y-2">
+   140→   140→      {Array.from({ length: rows }).map((_, i) => (
+   141→   141→        <div key={i} className="flex gap-4 p-3">
+   142→   142→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   143→   143→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+   144→   144→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   145→   145→        </div>
+   146→   146→      ))}
+   147→   147→    </div>
+   148→   148→  )
+   149→   149→}
+   150→   150→
+   151→   151→function SectionTitle({ icon: Icon, title, lang }: { icon: React.ElementType; title: { ar: string; en: string }; lang: 'ar' | 'en' }) {
+   152→   152→  return (
+   153→   153→    <div className="flex items-center gap-2 mb-3">
+   154→   154→      <Icon className="size-5 text-emerald-600" />
+   155→   155→      <h3 className="text-lg font-bold">{title[lang]}</h3>
+   156→   156→    </div>
+   157→   157→  )
+   158→   158→}
+   159→   159→
+   160→   160→function SummaryCard({ title, value, icon: Icon, color = 'emerald', lang, isMoney = true }: {
+   161→   161→  title: string; value: number; icon: React.ElementType; color?: string; lang: 'ar' | 'en'; isMoney?: boolean
+   162→   162→}) {
+   163→   163→  const colors: Record<string, string> = {
+   164→   164→    emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
+   165→   165→    rose: 'bg-rose-50 border-rose-200 text-rose-700',
+   166→   166→    sky: 'bg-sky-50 border-sky-200 text-sky-700',
+   167→   167→    amber: 'bg-amber-50 border-amber-200 text-amber-700',
+   168→   168→    purple: 'bg-purple-50 border-purple-200 text-purple-700',
+   169→   169→    orange: 'bg-orange-50 border-orange-200 text-orange-700',
+   170→   170→    teal: 'bg-teal-50 border-teal-200 text-teal-700',
+   171→   171→  }
+   172→   172→  return (
+   173→   173→    <Card className={`${colors[color] || colors.emerald} border`}>
+   174→   174→      <CardContent className="p-4 text-center">
+   175→   175→        <div className="flex items-center justify-center gap-2 mb-1">
+   176→   176→          <Icon className="size-4" />
+   177→   177→          <p className="text-xs font-medium">{title}</p>
+   178→   178→        </div>
+   179→   179→        {isMoney ? (
+   180→   180→          <MoneyDisplay value={value} lang={lang} bold className="text-lg" />
+   181→   181→        ) : (
+   182→   182→          <p className="text-lg font-bold">{formatNumber(value)}</p>
+   183→   183→        )}
+   184→   184→      </CardContent>
+   185→   185→    </Card>
+   186→   186→  )
+   187→   187→}
+   188→   188→
+   189→   189→// ============ Account Detail Dialog ============
+   190→   190→function AccountDetailDialog({ account, open, onClose }: {
+   191→   191→  account: Account | null; open: boolean; onClose: () => void
+   192→   192→}) {
+   193→   193→  const { lang } = useAppStore()
+   194→   194→  if (!account) return null
+   195→   195→  return (
+   196→   196→    <Dialog open={open} onOpenChange={onClose}>
+   197→   197→      <DialogContent className="max-w-lg">
+   198→   198→        <DialogHeader>
+   199→   199→          <DialogTitle className="flex items-center gap-2">
+   200→   200→            <span className="font-mono">{account.code}</span>
+   201→   201→            <span>-</span>
+   202→   202→            <span>{lang === 'ar' && account.nameAr ? account.nameAr : account.name}</span>
+   203→   203→          </DialogTitle>
+   204→   204→        </DialogHeader>
+   205→   205→        <div className="space-y-4">
+   206→   206→          <div className="grid grid-cols-2 gap-3">
+   207→   207→            <div><p className="text-xs text-muted-foreground">{t('الاسم بالإنجليزي', 'English Name', lang)}</p><p className="font-medium">{account.name}</p></div>
+   208→   208→            <div><p className="text-xs text-muted-foreground">{t('الاسم بالعربي', 'Arabic Name', lang)}</p><p className="font-medium">{account.nameAr || '—'}</p></div>
+   209→   209→          </div>
+   210→   210→          <Separator />
+   211→   211→          <div className="flex flex-wrap gap-2">
+   212→   212→            <TypeBadge type={account.type} lang={lang} />
+   213→   213→            <ActivityBadge activityType={account.activityType} lang={lang} />
+   214→   214→            {account.isSystem && <Badge className="bg-amber-100 text-amber-700 border-0 gap-1"><Shield className="size-3" />{t('حساب نظامي', 'System', lang)}</Badge>}
+   215→   215→            {!account.allowPosting && <Badge className="bg-red-100 text-red-700 border-0 gap-1"><Lock className="size-3" />{t('رأسي', 'Header', lang)}</Badge>}
+   216→   216→            {account.allowPosting && <Badge className="bg-emerald-100 text-emerald-700 border-0 gap-1">{t('تفصيلي', 'Posting', lang)}</Badge>}
+   217→   217→          </div>
+   218→   218→          <div className="grid grid-cols-2 gap-3">
+   219→   219→            <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">{t('الرصيد الحالي', 'Current Balance', lang)}</p><MoneyDisplay value={account.balance} lang={lang} bold className={account.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></CardContent></Card>
+   220→   220→            <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-muted-foreground">{t('عدد القيود', 'Journal Lines', lang)}</p><p className="text-lg font-bold">{formatNumber(account._count.journalLines)}</p></CardContent></Card>
+   221→   221→          </div>
+   222→   222→        </div>
+   223→   223→      </DialogContent>
+   224→   224→    </Dialog>
+   225→   225→  )
+   226→   226→}
+   227→   227→
+   228→   228→// ============ Journal Entry Detail ============
+   229→   229→function JournalEntryDetail({ entry, onBack }: { entry: JournalEntry; onBack: () => void }) {
+   230→   230→  const { lang } = useAppStore()
+   231→   231→  return (
+   232→   232→    <div className="space-y-4">
+   233→   233→      <div className="flex items-center gap-3">
+   234→   234→        <Button variant="outline" size="icon" onClick={onBack}><ChevronLeft className="size-4" /></Button>
+   235→   235→        <div>
+   236→   236→          <h2 className="text-xl font-bold">{entry.entryNo}</h2>
+   237→   237→          <p className="text-sm text-muted-foreground">{entry.description || ''}</p>
+   238→   238→        </div>
+   239→   239→        <div className="mr-auto flex items-center gap-2">
+   240→   240→          <JEStatusBadge status={entry.status} lang={lang} />
+   241→   241→          {entry.sourceType && <Badge variant="outline" className="bg-gray-50">{sourceTypeLabels[entry.sourceType]?.[lang] || entry.sourceType}</Badge>}
+   242→   242→        </div>
+   243→   243→      </div>
+   244→   244→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   245→   245→        <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-gray-600">{t('التاريخ', 'Date', lang)}</p><p className="font-semibold">{formatDate(entry.date, lang)}</p></CardContent></Card>
+   246→   246→        <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('مدين', 'Debit', lang)}</p><MoneyDisplay value={entry.totalDebit} lang={lang} bold className="text-emerald-700" /></CardContent></Card>
+   247→   247→        <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('دائن', 'Credit', lang)}</p><MoneyDisplay value={entry.totalCredit} lang={lang} bold className="text-rose-700" /></CardContent></Card>
+   248→   248→        <Card className="bg-gray-50"><CardContent className="p-3 text-center"><p className="text-xs text-gray-600">{t('عدد البنود', 'Lines', lang)}</p><p className="font-semibold">{formatNumber(entry.lines.length)}</p></CardContent></Card>
+   249→   249→      </div>
+   250→   250→      <Card>
+   251→   251→        <CardContent className="p-0">
+   252→   252→          <div className="overflow-x-auto">
+   253→   253→            <Table>
+   254→   254→              <TableHeader>
+   255→   255→                <TableRow>
+   256→   256→                  <TableHead className="text-right">{t('الحساب', 'Account', lang)}</TableHead>
+   257→   257→                  <TableHead className="text-right">{t('مدين', 'Debit', lang)}</TableHead>
+   258→   258→                  <TableHead className="text-right">{t('دائن', 'Credit', lang)}</TableHead>
+   259→   259→                  <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   260→   260→                </TableRow>
+   261→   261→              </TableHeader>
+   262→   262→              <TableBody>
+   263→   263→                {entry.lines.map(line => (
+   264→   264→                  <TableRow key={line.id}>
+   265→   265→                    <TableCell className="font-medium">{line.account.code} - {lang === 'ar' && line.account.nameAr ? line.account.nameAr : line.account.name}</TableCell>
+   266→   266→                    <TableCell>{line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="sm" className="text-emerald-700" /> : ''}</TableCell>
+   267→   267→                    <TableCell>{line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="sm" className="text-rose-700" /> : ''}</TableCell>
+   268→   268→                    <TableCell className="text-muted-foreground">{line.description || '—'}</TableCell>
+   269→   269→                  </TableRow>
+   270→   270→                ))}
+   271→   271→              </TableBody>
+   272→   272→            </Table>
+   273→   273→          </div>
+   274→   274→        </CardContent>
+   275→   275→      </Card>
+   276→   276→    </div>
+   277→   277→  )
+   278→   278→}
+   279→   279→
+   280→   280→// ============ Tab 1: Chart of Accounts ============
+   281→   281→function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize, isInitializing }: {
+   282→   282→  accounts: Account[]; isLoading: boolean; onInitialize: () => void; onReInitialize: () => void; isInitializing: boolean
+   283→   283→}) {
+   284→   284→  const { lang } = useAppStore()
+   285→   285→  const [activityFilter, setActivityFilter] = useState<string>('all')
+   286→   286→  const [typeFilter, setTypeFilter] = useState<string>('all')
+   287→   287→  const [searchTerm, setSearchTerm] = useState('')
+   288→   288→  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+   289→   289→    const initial = new Set<string>()
+   290→   290→    accounts.forEach(a => { if (!a.parentId || a.level === 0) initial.add(a.id) })
+   291→   291→    return initial
+   292→   292→  })
+   293→   293→  const [selectedAccount, setSelectedAccount] = useState<Account | null>(null)
+   294→   294→  const [detailOpen, setDetailOpen] = useState(false)
+   295→   295→
+   296→   296→  const allParentIds = useMemo(() => {
+   297→   297→    const ids = new Set<string>()
+   298→   298→    accounts.forEach(a => { if (a.children && a.children.length > 0) ids.add(a.id) })
+   299→   299→    return ids
+   300→   300→  }, [accounts])
+   301→   301→
+   302→   302→  const rootAccounts = useMemo(() => {
+   303→   303→    return accounts.filter(a => !a.parentId).sort((a, b) => a.code.localeCompare(b.code))
+   304→   304→  }, [accounts])
+   305→   305→
+   306→   306→  const childMap = useMemo(() => {
+   307→   307→    const map = new Map<string, Account[]>()
+   308→   308→    accounts.forEach(a => { if (a.parentId) { const siblings = map.get(a.parentId) || []; siblings.push(a); map.set(a.parentId, siblings) } })
+   309→   309→    map.forEach((children) => children.sort((a, b) => a.code.localeCompare(b.code)))
+   310→   310→    return map
+   311→   311→  }, [accounts])
+   312→   312→
+   313→   313→  const filteredAccounts = useMemo(() => {
+   314→   314→    let filtered = accounts
+   315→   315→    if (activityFilter !== 'all') {
+   316→   316→      if (activityFilter === 'BOTH') filtered = filtered.filter(a => a.activityType === 'BOTH' || !a.activityType)
+   317→   317→      else filtered = filtered.filter(a => a.activityType === activityFilter)
+   318→   318→    }
+   319→   319→    if (typeFilter !== 'all') filtered = filtered.filter(a => a.type === typeFilter)
+   320→   320→    if (searchTerm) {
+   321→   321→      const term = searchTerm.toLowerCase()
+   322→   322→      filtered = filtered.filter(a => a.code.toLowerCase().includes(term) || a.name.toLowerCase().includes(term) || (a.nameAr && a.nameAr.toLowerCase().includes(term)))
+   323→   323→    }
+   324→   324→    return filtered
+   325→   325→  }, [accounts, activityFilter, typeFilter, searchTerm])
+   326→   326→
+   327→   327→  const flatAccounts = useMemo(() => {
+   328→   328→    function flatten(roots: Account[], level: number): (Account & { displayLevel: number })[] {
+   329→   329→      const result: (Account & { displayLevel: number })[] = []
+   330→   330→      for (const root of roots) {
+   331→   331→        if (!filteredAccounts.find(a => a.id === root.id)) continue
+   332→   332→        result.push({ ...root, displayLevel: level })
+   333→   333→        const children = childMap.get(root.id) || []
+   334→   334→        if (children.length > 0 && expandedIds.has(root.id)) result.push(...flatten(children, level + 1))
+   335→   335→      }
+   336→   336→      return result
+   337→   337→    }
+   338→   338→    return flatten(rootAccounts, 0)
+   339→   339→  }, [rootAccounts, filteredAccounts, childMap, expandedIds])
+   340→   340→
+   341→   341→  const toggleExpand = useCallback((id: string) => {
+   342→   342→    setExpandedIds(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next })
+   343→   343→  }, [])
+   344→   344→
+   345→   345→  const typeSummary = useMemo(() => { const s: Record<string, number> = {}; accounts.forEach(a => { s[a.type] = (s[a.type] || 0) + 1 }); return s }, [accounts])
+   346→   346→
+   347→   347→  if (isLoading) return <TableSkeleton />
+   348→   348→  if (accounts.length === 0) {
+   349→   349→    return (
+   350→   350→      <Card className="border-emerald-200 bg-emerald-50">
+   351→   351→        <CardContent className="p-6 flex flex-col items-center gap-4 text-center">
+   352→   352→          <Database className="size-12 text-emerald-500" />
+   353→   353→          <div>
+   354→   354→            <h3 className="text-lg font-semibold text-emerald-800">{t('لا توجد حسابات', 'No Accounts Found', lang)}</h3>
+   355→   355→            <p className="text-sm text-emerald-600 mt-1">{t('قم بتهيئة دليل الحسابات الافتراضي', 'Initialize the default chart of accounts', lang)}</p>
+   356→   356→          </div>
+   357→   357→          <Button onClick={onInitialize} disabled={isInitializing} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+   358→   358→            {isInitializing ? <RefreshCw className="size-4 animate-spin" /> : <PlusCircle className="size-4" />}
+   359→   359→            {isInitializing ? t('جاري التهيئة...', 'Initializing...', lang) : t('تهيئة دليل الحسابات', 'Initialize Chart of Accounts', lang)}
+   360→   360→          </Button>
+   361→   361→        </CardContent>
+   362→   362→      </Card>
+   363→   363→    )
+   364→   364→  }
+   365→   365→
+   366→   366→  return (
+   367→   367→    <div className="space-y-4">
+   368→   368→      {/* Summary */}
+   369→   369→      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+   370→   370→        {Object.entries(typeSummary).map(([type, count]) => {
+   371→   371→          const cfg = typeConfig[type]
+   372→   372→          if (!cfg) return null
+   373→   373→          return <Card key={type} className={`${cfg.bg} border-0`}><CardContent className="p-3 text-center"><p className={`text-xs ${cfg.color}`}>{cfg.label[lang]}</p><p className={`text-lg font-bold ${cfg.color}`}>{count}</p></CardContent></Card>
+   374→   374→        })}
+   375→   375→      </div>
+   376→   376→
+   377→   377→      {/* Filters */}
+   378→   378→      <Card className="bg-gray-50/50">
+   379→   379→        <CardContent className="p-4">
+   380→   380→          <div className="flex flex-col sm:flex-row gap-3 items-end">
+   381→   381→            <div className="space-y-1 flex-1 min-w-[120px]">
+   382→   382→              <Label className="text-xs">{t('النشاط', 'Activity', lang)}</Label>
+   383→   383→              <Select value={activityFilter} onValueChange={setActivityFilter}>
+   384→   384→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   385→   385→                <SelectContent>
+   386→   386→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   387→   387→                  <SelectItem value="CONSTRUCTION">{t('مشاريع', 'Construction', lang)}</SelectItem>
+   388→   388→                  <SelectItem value="EQUIPMENT_RENTAL">{t('تأجير', 'Rental', lang)}</SelectItem>
+   389→   389→                  <SelectItem value="BOTH">{t('مشترك', 'Both', lang)}</SelectItem>
+   390→   390→                </SelectContent>
+   391→   391→              </Select>
+   392→   392→            </div>
+   393→   393→            <div className="space-y-1 flex-1 min-w-[120px]">
+   394→   394→              <Label className="text-xs">{t('النوع', 'Type', lang)}</Label>
+   395→   395→              <Select value={typeFilter} onValueChange={setTypeFilter}>
+   396→   396→                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+   397→   397→                <SelectContent>
+   398→   398→                  <SelectItem value="all">{t('الكل', 'All', lang)}</SelectItem>
+   399→   399→                  <SelectItem value="ASSET">{t('أصول', 'Asset', lang)}</SelectItem>
+   400→   400→                  <SelectItem value="LIABILITY">{t('التزامات', 'Liability', lang)}</SelectItem>
+   401→   401→                  <SelectItem value="EQUITY">{t('حقوق ملكية', 'Equity', lang)}</SelectItem>
+   402→   402→                  <SelectItem value="REVENUE">{t('إيرادات', 'Revenue', lang)}</SelectItem>
+   403→   403→                  <SelectItem value="EXPENSE">{t('مصروفات', 'Expense', lang)}</SelectItem>
+   404→   404→                </SelectContent>
+   405→   405→              </Select>
+   406→   406→            </div>
+   407→   407→            <div className="space-y-1 flex-1 min-w-[180px]">
+   408→   408→              <Label className="text-xs">{t('بحث', 'Search', lang)}</Label>
+   409→   409→              <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={t('بحث بالكود أو الاسم...', 'Search by code or name...', lang)} className="h-9" />
+   410→   410→            </div>
+   411→   411→            <div className="flex gap-1">
+   412→   412→              <Button variant="outline" size="sm" onClick={() => setExpandedIds(new Set(allParentIds))} className="text-xs gap-1 h-9"><ChevronDown className="size-3" />{t('توسيع', 'Expand', lang)}</Button>
+   413→   413→              <Button variant="outline" size="sm" onClick={() => setExpandedIds(new Set())} className="text-xs gap-1 h-9"><ChevronRight className="size-3" />{t('تقليص', 'Collapse', lang)}</Button>
+   414→   414→            </div>
+   415→   415→            <Button variant="outline" size="sm" onClick={onReInitialize} disabled={isInitializing} className="gap-2 text-xs h-9">
+   416→   416→              {isInitializing ? <RefreshCw className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+   417→   417→              {t('تحديث', 'Re-initialize', lang)}
+   418→   418→            </Button>
+   419→   419→          </div>
+   420→   420→        </CardContent>
+   421→   421→      </Card>
+   422→   422→
+   423→   423→      {/* Table */}
+   424→   424→      <Card>
+   425→   425→        <CardContent className="p-0">
+   426→   426→          <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+   427→   427→            <Table>
+   428→   428→              <TableHeader>
+   429→   429→                <TableRow>
+   430→   430→                  <TableHead className="text-right min-w-[120px]">{t('الكود', 'Code', lang)}</TableHead>
+   431→   431→                  <TableHead className="text-right min-w-[200px]">{t('اسم الحساب', 'Account Name', lang)}</TableHead>
+   432→   432→                  <TableHead className="text-right">{t('النوع', 'Type', lang)}</TableHead>
+   433→   433→                  <TableHead className="text-right">{t('النشاط', 'Activity', lang)}</TableHead>
+   434→   434→                  <TableHead className="text-right">{t('الرصيد', 'Balance', lang)}</TableHead>
+   435→   435→                  <TableHead className="text-right">{t('القيود', 'Entries', lang)}</TableHead>
+   436→   436→                </TableRow>
+   437→   437→              </TableHeader>
+   438→   438→              <TableBody>
+   439→   439→                {flatAccounts.map(a => {
+   440→   440→                  const hasChildren = childMap.has(a.id) && (childMap.get(a.id)?.length || 0) > 0
+   441→   441→                  const isExpanded = expandedIds.has(a.id)
+   442→   442→                  return (
+   443→   443→                    <TableRow key={a.id} className={`cursor-pointer hover:bg-emerald-50/30 ${a.displayLevel === 0 ? 'bg-gray-50/50 font-semibold' : ''} ${a.isSystem ? 'bg-amber-50/30' : ''}`}
+   444→   444→                      onClick={() => { setSelectedAccount(a); setDetailOpen(true) }}>
+   445→   445→                      <TableCell>
+   446→   446→                        <div className="flex items-center" style={{ paddingLeft: `${a.displayLevel * 24}px` }}>
+   447→   447→                          {hasChildren && <button onClick={(e) => { e.stopPropagation(); toggleExpand(a.id) }} className="mr-1 p-0.5 hover:bg-gray-200 rounded">{isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}</button>}
+   448→   448→                          {!hasChildren && a.displayLevel > 0 && <span className="text-gray-300 mr-1 ml-1 text-xs">└</span>}
+   449→   449→                          <span className="font-mono text-sm">{a.code}</span>
+   450→   450→                        </div>
+   451→   451→                      </TableCell>
+   452→   452→                      <TableCell>
+   453→   453→                        <span className={a.displayLevel === 0 ? 'font-bold' : ''}>
+   454→   454→                          {lang === 'ar' && a.nameAr ? a.nameAr : a.name}
+   455→   455→                        </span>
+   456→   456→                      </TableCell>
+   457→   457→                      <TableCell><TypeBadge type={a.type} lang={lang} /></TableCell>
+   458→   458→                      <TableCell><ActivityBadge activityType={a.activityType} lang={lang} /></TableCell>
+   459→   459→                      <TableCell><MoneyDisplay value={a.balance} lang={lang} size="sm" bold className={a.balance >= 0 ? 'text-emerald-700' : 'text-rose-700'} /></TableCell>
+   460→   460→                      <TableCell className="text-center">{formatNumber(a._count.journalLines)}</TableCell>
+   461→   461→                    </TableRow>
+   462→   462→                  )
+   463→   463→                })}
+   464→   464→              </TableBody>
+   465→   465→            </Table>
+   466→   466→          </div>
+   467→   467→        </CardContent>
+   468→   468→      </Card>
+   469→   469→
+   470→   470→      <AccountDetailDialog account={selectedAccount} open={detailOpen} onClose={() => setDetailOpen(false)} />
+   471→   471→    </div>
+   472→   472→  )
+   473→   473→}
+   474→   474→
+   475→   475→// ============ Tab 2: Journal Entries ============
+   476→   476→function JournalEntriesTab({ entries, isLoading, isError, refetch }: {
+   477→   477→  entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void
+   478→   478→}) {
+   479→   479→  const { lang } = useAppStore()
+   480→   480→  const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null)
+   481→   481→  const [statusFilter, setStatusFilter] = useState('all')
+   482→   482→  const [sourceFilter, setSourceFilter] = useState('all')
+   483→   483→  const [searchTerm, setSearchTerm] = useState('')
+   484→   484→
+   485→   485→  const filtered = useMemo(() => {
+   486→   486→    let f = entries
+   487→   487→    if (statusFilter !== 'all') f = f.filter(e => e.status === statusFilter)
+   488→   488→    if (sourceFilter !== 'all') f = f.filter(e => e.sourceType === sourceFilter)
+   489→   489→    if (searchTerm) {
+   490→   490→      const term = searchTerm.toLowerCase()
+   491→   491→      f = f.filter(e => e.entryNo.toLowerCase().includes(term) || (e.description || '').toLowerCase().includes(term))
+   492→   492→    }
+   493→   493→    return f
+   494→   494→  }, [entries, statusFilter, sourceFilter, searchTerm])
+   495→   495→
+   496→   496→  if (selectedEntry) return <JournalEntryDetail entry={selectedEntry} onBack={() => setSelectedEntry(null)} />
+   497→   497→  if (isLoading) return <TableSkeleton />
+   498→   498→  if (isError) return <div className="flex flex-col items-center gap-3 py-10"><p className="text-rose-600">{t('حدث خطأ', 'An error occurred', lang)}</p><Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry', lang)}</Button></div>
+   499→   499→
+   500→   500→  return (
+
+[showing lines 1-500 of 1944; use offset=501 with limit to continue reading]

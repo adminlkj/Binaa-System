@@ -1,0 +1,200 @@
+examples/websocket/frontend.tsx(4,20): error TS2307: Cannot find module 'socket.io-client' or its corresponding type declarations.
+examples/websocket/server.ts(2,24): error TS2307: Cannot find module 'socket.io' or its corresponding type declarations.
+skills/image-edit/scripts/image-edit.ts(10,4): error TS2561: Object literal may only specify known properties, but 'images' does not exist in type 'CreateImageEditBody'. Did you mean to write 'image'?
+skills/stock-analysis-skill/src/analyzer.ts(253,11): error TS2322: Type '({ type: string; image: { type: "base64"; data: string; mediaType: "image/png"; url?: undefined; } | { type: "url"; url: string; data?: undefined; mediaType?: undefined; }; } | { type: string; text: string; })[]' is not assignable to type 'string'.
+src/app/api/account-statement/customer/route.ts(64,77): error TS2339: Property 'where' does not exist on type '{ select?: SalesInvoiceSelect<DefaultArgs> | null | undefined; omit?: SalesInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SalesInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/customer/route.ts(90,78): error TS2339: Property 'where' does not exist on type '{ select?: ClientPaymentSelect<DefaultArgs> | null | undefined; omit?: ClientPaymentOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: ClientPaymentScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/customer/route.ts(111,19): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/customer/route.ts(126,20): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/customer/route.ts(154,63): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/customer/route.ts(155,59): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(68,77): error TS2339: Property 'where' does not exist on type '{ select?: SalesInvoiceSelect<DefaultArgs> | null | undefined; omit?: SalesInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SalesInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(92,76): error TS2339: Property 'where' does not exist on type '{ select?: ProgressClaimSelect<DefaultArgs> | null | undefined; omit?: ProgressClaimOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: ProgressClaimScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(123,61): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(124,63): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(138,75): error TS2339: Property 'where' does not exist on type '{ select?: PurchaseInvoiceSelect<DefaultArgs> | null | undefined; omit?: PurchaseInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: PurchaseInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(159,72): error TS2339: Property 'where' does not exist on type '{ select?: ExpenseSelect<DefaultArgs> | null | undefined; omit?: ExpenseOmit<DefaultArgs> | null | undefined; include?: ExpenseInclude<...> | ... 1 more ... | undefined; ... 5 more ...; distinct?: ExpenseScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(182,81): error TS2339: Property 'where' does not exist on type '{ select?: SubcontractorInvoiceSelect<DefaultArgs> | null | undefined; omit?: SubcontractorInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SubcontractorInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(202,77): error TS2339: Property 'where' does not exist on type '{ select?: EquipmentCostSelect<DefaultArgs> | null | undefined; omit?: EquipmentCostOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: EquipmentCostScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(221,72): error TS2339: Property 'where' does not exist on type '{ select?: LaborCostSelect<DefaultArgs> | null | undefined; omit?: LaborCostOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: LaborCostScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(238,70): error TS2339: Property 'where' does not exist on type '{ select?: SalarySelect<DefaultArgs> | null | undefined; omit?: SalaryOmit<DefaultArgs> | null | undefined; include?: SalaryInclude<...> | null | undefined; ... 5 more ...; distinct?: SalaryScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(244,9): error TS2353: Object literal may only specify known properties, and 'totalEarnings' does not exist in type 'SalarySelect<DefaultArgs>'.
+src/app/api/account-statement/project/route.ts(258,78): error TS2339: Property 'where' does not exist on type '{ select?: EquipmentFuelLogSelect<DefaultArgs> | null | undefined; omit?: EquipmentFuelLogOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: EquipmentFuelLogScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/project/route.ts(276,26): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(278,67): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(280,75): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(282,59): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(284,57): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(286,51): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(290,25): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(294,25): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(320,27): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(321,25): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(322,25): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(323,26): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(331,27): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(332,22): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(333,25): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(339,57): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/project/route.ts(350,31): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(361,24): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(373,29): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(383,24): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(395,27): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/project/route.ts(396,33): error TS2339: Property 'totalEarnings' does not exist on type '{ status: SalaryStatus; id: string; createdAt: Date; updatedAt: Date; basicSalary: Decimal; housingAllowance: Decimal; transportAllowance: Decimal; ... 13 more ...; netSalary: Decimal; }'.
+src/app/api/account-statement/project/route.ts(418,26): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/route.ts(68,54): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(68,110): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(104,9): error TS2322: Type '({ date: Date; description: string; debit: Decimal; credit: number; category: string; } | { date: Date; description: string; debit: number; credit: Decimal; category: string; })[]' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }[]'.
+  Type '{ date: Date; description: string; debit: Decimal; credit: number; category: string; } | { date: Date; description: string; debit: number; credit: Decimal; category: string; }' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }'.
+    Type '{ date: Date; description: string; debit: Decimal; credit: number; category: string; }' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }'.
+      Types of property 'debit' are incompatible.
+        Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(131,59): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(132,56): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(174,54): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(174,110): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(207,9): error TS2322: Type '({ date: Date; description: string; debit: number; credit: Decimal; category: string; } | { date: Date; description: string; debit: Decimal; credit: number; category: string; })[]' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }[]'.
+  Type '{ date: Date; description: string; debit: number; credit: Decimal; category: string; } | { date: Date; description: string; debit: Decimal; credit: number; category: string; }' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }'.
+    Type '{ date: Date; description: string; debit: number; credit: Decimal; category: string; }' is not assignable to type '{ date: Date; description: string; debit: number; credit: number; category: string; }'.
+      Types of property 'credit' are incompatible.
+        Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(234,59): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(235,56): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(323,5): error TS2365: Operator '+=' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(327,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(336,5): error TS2365: Operator '+=' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(340,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(356,22): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(356,34): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(370,22): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(370,33): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(387,50): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(388,51): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(480,5): error TS2365: Operator '+=' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(484,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(493,23): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(498,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(506,23): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(511,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(519,23): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/account-statement/route.ts(524,7): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/account-statement/route.ts(540,50): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(542,31): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(543,31): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/route.ts(544,34): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/supplier/route.ts(64,80): error TS2339: Property 'where' does not exist on type '{ select?: PurchaseInvoiceSelect<DefaultArgs> | null | undefined; omit?: PurchaseInvoiceOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: PurchaseInvoiceScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/supplier/route.ts(90,80): error TS2339: Property 'where' does not exist on type '{ select?: SupplierPaymentSelect<DefaultArgs> | null | undefined; omit?: SupplierPaymentOmit<DefaultArgs> | null | undefined; ... 6 more ...; distinct?: SupplierPaymentScalarFieldEnum | ... 1 more ... | undefined; } | undefined'.
+src/app/api/account-statement/supplier/route.ts(113,20): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/supplier/route.ts(126,19): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/account-statement/supplier/route.ts(156,63): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/account-statement/supplier/route.ts(157,59): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/advances/[id]/route.ts(14,27): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/advances/[id]/route.ts(15,23): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/advances/[id]/route.ts(28,9): error TS2322: Type 'string' is not assignable to type 'AdvanceStatus | EnumAdvanceStatusFieldUpdateOperationsInput | undefined'.
+src/app/api/advances/route.ts(43,9): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/advances/route.ts(93,30): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/bank-accounts/route.ts(29,44): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/bank-accounts/route.ts(29,58): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/bank-reconciliation/route.ts(41,25): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/bank-reconciliation/route.ts(44,25): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/bank-reconciliation/route.ts(60,44): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/bank-reconciliation/route.ts(60,58): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/bank-reconciliation/route.ts(131,44): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/bank-reconciliation/route.ts(131,58): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/business-flow/validate/route.ts(163,9): error TS2322: Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'WorkflowProgress'.
+src/app/api/business-flow/validate/route.ts(175,9): error TS2322: Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'WorkflowProgress'.
+src/app/api/business-flow/validate/route.ts(187,9): error TS2322: Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'WorkflowProgress' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'WorkflowProgress'.
+src/app/api/business-flow/validate/route.ts(201,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'CostRoutingResult'.
+src/app/api/business-flow/validate/route.ts(213,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'CostRoutingResult'.
+src/app/api/business-flow/validate/route.ts(225,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'CostRoutingResult'.
+src/app/api/business-flow/validate/route.ts(237,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'CostRoutingResult'.
+src/app/api/business-flow/validate/route.ts(249,9): error TS2322: Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'CostRoutingResult' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'CostRoutingResult'.
+src/app/api/business-flow/validate/route.ts(263,9): error TS2322: Type 'ProfitabilityResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'ProfitabilityResult' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'ProfitabilityResult'.
+src/app/api/business-flow/validate/route.ts(275,9): error TS2322: Type 'EquipmentProfitabilityResult' is not assignable to type 'Record<string, unknown> | ValidationResult'.
+  Type 'EquipmentProfitabilityResult' is not assignable to type 'Record<string, unknown>'.
+    Index signature for type 'string' is missing in type 'EquipmentProfitabilityResult'.
+src/app/api/change-orders/[id]/route.ts(44,34): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/change-orders/[id]/route.ts(44,48): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/change-orders/[id]/route.ts(45,42): error TS2365: Operator '+' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/change-orders/[id]/route.ts(47,22): error TS2365: Operator '+' cannot be applied to types 'number | import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'number | import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/change-orders/route.ts(65,43): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/client-payments/[id]/route.ts(107,43): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/client-payments/[id]/route.ts(107,64): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/client-payments/[id]/route.ts(113,20): error TS2365: Operator '<' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/contracts/[id]/route.ts(65,34): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/contracts/[id]/route.ts(65,42): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/contracts/[id]/route.ts(66,36): error TS2365: Operator '+' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/delivery-orders/[id]/route.ts(32,7): error TS2322: Type '{ name: string; code: string; id: string; nameAr: string | null; } | null' is not assignable to type 'null'.
+  Type '{ name: string; code: string; id: string; nameAr: string | null; }' is not assignable to type 'null'.
+src/app/api/delivery-orders/[id]/route.ts(39,7): error TS2322: Type '{ name: string; code: string; id: string; nameAr: string | null; } | null' is not assignable to type 'null'.
+  Type '{ name: string; code: string; id: string; nameAr: string | null; }' is not assignable to type 'null'.
+src/app/api/employee-contracts/route.ts(19,26): error TS2365: Operator '+' cannot be applied to types 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/employee-contracts/route.ts(56,26): error TS2365: Operator '+' cannot be applied to types 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal' and 'import("/home/z/my-project/node_modules/@prisma/client/runtime/library").Decimal'.
+src/app/api/equipment/operations/route.ts(69,34): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/equipment/operations/route.ts(83,22): error TS2365: Operator '>' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/equipment/operations/route.ts(84,34): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/equipment/rental-contracts/[id]/route.ts(102,33): error TS2365: Operator '>' cannot be applied to types 'number | Decimal' and 'number'.
+src/app/api/equipment/rental-contracts/[id]/route.ts(102,70): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/equipment/rental-contracts/[id]/route.ts(114,54): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/expenses/[id]/route.ts(84,13): error TS2322: Type '{ accountCode: string; debit: Decimal; credit: Decimal; costCenterId: string | undefined; description: string; }[]' is not assignable to type '{ accountCode: string; debit: number; credit: number; costCenterId?: string | undefined; description?: string | undefined; }[]'.
+  Type '{ accountCode: string; debit: Decimal; credit: Decimal; costCenterId: string | undefined; description: string; }' is not assignable to type '{ accountCode: string; debit: number; credit: number; costCenterId?: string | undefined; description?: string | undefined; }'.
+    Types of property 'debit' are incompatible.
+      Type 'Decimal' is not assignable to type 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(44,38): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(44,62): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(47,29): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(48,27): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(48,51): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(50,15): error TS2365: Operator '>=' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(50,48): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(50,72): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(113,40): error TS2365: Operator '+' cannot be applied to types 'Decimal' and 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(113,93): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(113,117): error TS2363: The right-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(114,30): error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+src/app/api/fixed-assets/depreciate/route.ts(120,50): error TS2345: Argument of type 'Decimal' is not assignable to parameter of type 'number'.
+src/app/api/fixed-assets/depreciate/route.ts(121,21): error TS2365: Operator '<=' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/goods-receipt/route.ts(123,57): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/goods-receipt/route.ts(125,42): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.
+src/app/api/payroll-runs/[id]/route.ts(74,15): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/payroll-runs/[id]/route.ts(75,15): error TS2322: Type 'Decimal' is not assignable to type 'number'.
+src/app/api/payroll-runs/route.ts(90,7): error TS2322: Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }[]' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }[]'.
+  Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }'.
+    Types of property 'basicSalary' are incompatible.
+      Type 'Decimal' is not assignable to type 'number'.
+src/app/api/payroll-runs/route.ts(97,7): error TS2322: Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }[]' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }[]'.
+  Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }'.
+    Types of property 'basicSalary' are incompatible.
+      Type 'Decimal' is not assignable to type 'number'.
+src/app/api/payroll-runs/route.ts(107,7): error TS2322: Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }[]' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }[]'.
+  Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }'.
+    Types of property 'basicSalary' are incompatible.
+      Type 'Decimal' is not assignable to type 'number'.
+src/app/api/payroll-runs/route.ts(120,7): error TS2322: Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }[]' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }[]'.
+  Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }'.
+    Types of property 'basicSalary' are incompatible.
+      Type 'Decimal' is not assignable to type 'number'.
+src/app/api/payroll-runs/route.ts(131,7): error TS2322: Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }[]' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }[]'.
+  Type '{ name: string; code: string; id: string; nameAr: string | null; basicSalary: Decimal; salaryType: string; housingAllowance: Decimal; transportAllowance: Decimal; ... 7 more ...; teamMemberships: { ...; }[]; }' is not assignable to type '{ id: string; code: string; name: string; nameAr: string | null; salaryType: string; basicSalary: number; housingAllowance: number; transportAllowance: number; otherAllowances: number; referenceMonthlySalary: number; ... 5 more ...; teamMemberships: { ...; }[]; }'.
+    Types of property 'basicSalary' are incompatible.
+      Type 'Decimal' is not assignable to type 'number'.
+src/app/api/payroll-runs/route.ts(206,55): error TS2365: Operator '+' cannot be applied to types 'number' and 'Decimal'.

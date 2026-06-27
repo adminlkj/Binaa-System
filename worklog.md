@@ -2738,3 +2738,42 @@ Stage Summary:
 - إمكانية العكس والتعديل والمتابعة
 - lint نظيف، dev server يعمل، 0 أخطاء runtime
 - الملف المضغوط محدّث (595 ملف، 1.5M)
+
+---
+Task ID: DATA-LOSS-FIX
+Agent: Z.ai Code (main)
+Task: Diagnose and fix the recurring data/modification loss issue reported by the user (16+ occurrences)
+
+Work Log:
+- Read package.json, git status, git log, .gitignore, .env, prisma schema header
+- Inspected .zscripts/dev.sh, start.sh, build.sh to understand startup flow
+- Discovered db/custom.db is TRACKED by git (git ls-files db/ → db/custom.db)
+- Discovered Binaa-ERP-System.zip (1.4MB) is TRACKED by git
+- Discovered 37 files in public/uploads/ are TRACKED by git
+- Inspected git reflog → found `reset: moving to HEAD` operations (×2) confirming platform runs git reset --hard between sessions
+- Verified dev.sh runs `bun run db:push` on every startup (prisma db push without migrations folder = risky)
+- Verified /api/seed route deletes ALL tables via deleteMany() with NO auth/confirmation
+- Verified dashboard.tsx SeedButton calls /api/seed with a single click (no confirmation dialog)
+- Ran DB integrity check via bun+prisma: 151 accounts, 5 journal entries, 0 employees, 0 projects, 0 invoices → confirms data was wiped previously
+- ROOT CAUSE CONFIRMED: db/custom.db tracked in git + platform git reset --hard between sessions = every user-entered data row destroyed on each new session
+
+Fixes Applied:
+- Created db/custom.db.backup-20260627-071111 (safety backup)
+- Updated .gitignore: added db/*.db, db/*.db-journal, db/*.db-wal, db/*.db-shm, db/*.db.backup-*, Binaa-ERP-System.zip, *.backup.zip, public/uploads/*
+- git rm --cached db/custom.db (untrack, keep on disk)
+- git rm --cached Binaa-ERP-System.zip (untrack, keep on disk)
+- git rm -r --cached public/uploads/ (untrack 37 files, keep on disk)
+- git rm -r --cached tool-results/ (untrack junk)
+- Created public/uploads/.gitkeep
+- Committed: 750ac9e "CRITICAL FIX: Stop tracking db/custom.db..."
+- Protected /api/seed POST with `confirm=WIPE_ALL_DATA` query param guard (returns 403 otherwise)
+- Rewrote SeedButton in dashboard.tsx to use AlertDialog with explicit warning + red confirm button
+- Committed: e9b7731 "SECURITY: Protect /api/seed with explicit confirmation guard + AlertDialog"
+- Added scripts/check-db.ts for DB integrity verification
+- Verified: lint passes, dev server HTTP 200, /api/seed returns 403 without confirm, DB intact on disk, DB no longer in git tracking
+
+Stage Summary:
+- ROOT CAUSE: SQLite database file (db/custom.db) was committed to git. The hosting platform executes `git reset --hard` between agent sessions. Each reset reverted the DB binary to the last committed version, destroying all data entered via the UI (employees, projects, invoices, journal entries, etc.). This explains 16+ data-loss incidents.
+- SECONDARY RISK: /api/seed endpoint wiped the entire DB on a single unconfirmed POST click.
+- RESOLUTION: Database, backup zip, and uploads are now gitignored and untracked. git operations can no longer touch live data. /api/seed now requires explicit confirmation parameter + UI AlertDialog.
+- ARTIFACTS: commits 750ac9e, e9b7731; updated .gitignore; protected seed route; AlertDialog on seed button

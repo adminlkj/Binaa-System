@@ -1,0 +1,298 @@
+/home/z/my-project/src/app/api/bank-reconciliation/route.ts:50:      const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/bank-reconciliation/route.ts:54:          journalEntry: {
+/home/z/my-project/src/app/api/bank-reconciliation/route.ts:124:      const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/bank-reconciliation/route.ts:128:          journalEntry: {
+/home/z/my-project/src/app/api/provisions/route.ts:62:    let journalEntryId: string | null = null
+/home/z/my-project/src/app/api/provisions/route.ts:65:      const entry = await db.journalEntry.create({
+/home/z/my-project/src/app/api/provisions/route.ts:91:      journalEntryId = entry.id
+/home/z/my-project/src/app/api/provisions/route.ts:96:        data: { journalEntryId },
+/home/z/my-project/src/app/api/provisions/route.ts:108:        journalEntryId,
+/home/z/my-project/src/app/api/provisions/route.ts:114:      journalEntryId,
+/home/z/my-project/src/app/api/bank-accounts/route.ts:22:          const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/bank-accounts/route.ts:26:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/gl-financial-summary/route.ts:18:  const result = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/gl-financial-summary/route.ts:23:      journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/expenses/route.ts:122:      // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/expenses/route.ts:166:    if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
+/home/z/my-project/src/app/api/expenses/route.ts:168:        const originalEntry = await tx.journalEntry.findUnique({
+/home/z/my-project/src/app/api/expenses/route.ts:169:          where: { id: existing.journalEntryId!, deletedAt: null },
+/home/z/my-project/src/app/api/expenses/route.ts:196:          await tx.journalEntry.update({
+/home/z/my-project/src/app/api/expenses/route.ts:197:            where: { id: existing.journalEntryId! },
+/home/z/my-project/src/app/api/expenses/route.ts:219:        updateData.journalEntryId = undefined // Will be set by createExpenseJournalEntry
+/home/z/my-project/src/app/api/expenses/[id]/route.ts:60:      if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/expenses/[id]/route.ts:61:        const originalEntry = await tx.journalEntry.findUnique({
+/home/z/my-project/src/app/api/expenses/[id]/route.ts:62:          where: { id: existing.journalEntryId, deletedAt: null },
+/home/z/my-project/src/app/api/expenses/[id]/route.ts:89:          await tx.journalEntry.update({
+/home/z/my-project/src/app/api/expenses/[id]/route.ts:90:            where: { id: existing.journalEntryId },
+/home/z/my-project/src/app/api/suppliers/[id]/accounting/route.ts:40:    const journalCount = await db.journalEntry.count({
+/home/z/my-project/src/app/api/suppliers/[id]/accounting/route.ts:45:    const lastEntry = await db.journalEntry.findFirst({
+/home/z/my-project/src/app/api/suppliers/[id]/accounting/route.ts:63:      journalEntryCount: journalCount,
+/home/z/my-project/src/app/api/client-payments/route.ts:150:      // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/client-payments/[id]/route.ts:51:    if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/client-payments/[id]/route.ts:54:        await reverseEntry(existing.journalEntryId!, tx)
+/home/z/my-project/src/app/api/client-payments/[id]/route.ts:59:          data: { journalEntryId: null },
+/home/z/my-project/src/app/api/client-payments/[id]/route.ts:140:        // 8. Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/client-payments/[id]/route.ts:198:    if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/period-closing/route.ts:61:      const lines = await tx.journalLine.findMany({
+/home/z/my-project/src/app/api/period-closing/route.ts:64:          journalEntry: {
+/home/z/my-project/src/app/api/period-closing/route.ts:145:        const entry = await tx.journalEntry.create({
+/home/z/my-project/src/app/api/period-closing/route.ts:201:      const closingEntry = await tx.journalEntry.findUnique({
+/home/z/my-project/src/app/api/period-closing/route.ts:215:        await tx.journalEntry.create({
+/home/z/my-project/src/app/api/financial-statements/balance-sheet/route.ts:47:  const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-statements/balance-sheet/route.ts:51:      journalEntry: {
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:38:    const lines = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:43:        journalEntry: {
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:87:    const endLines = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:92:        journalEntry: { status: 'POSTED', deletedAt: null, ...toDateFilter },
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:99:    const startLines = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:104:        journalEntry: { status: 'POSTED', deletedAt: null, ...fromDateFilter },
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:190:      const begLines = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:195:          journalEntry: {
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:205:      const endLines = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:210:          journalEntry: {
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:246:      const agg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:251:          journalEntry: { status: 'POSTED', deletedAt: null, ...periodDateFilter },
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:258:      const agg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/financial-statements/cash-flow/route.ts:263:          journalEntry: { status: 'POSTED', deletedAt: null, ...periodDateFilter },
+/home/z/my-project/src/app/api/financial-statements/income/route.ts:46:  const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-statements/income/route.ts:50:      journalEntry: {
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:21:    const journalEntry = await db.journalEntry.findFirst({
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:53:    if (!journalEntry) {
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:61:    const totalDebit = journalEntry.lines.reduce((s, l) => s + toNumber(l.debit), 0)
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:62:    const totalCredit = journalEntry.lines.reduce((s, l) => s + toNumber(l.credit), 0)
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:67:      journalEntry: {
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:68:        id: journalEntry.id,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:69:        entryNo: journalEntry.entryNo,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:70:        date: journalEntry.date,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:71:        description: journalEntry.description,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:72:        status: journalEntry.status,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:73:        sourceType: journalEntry.sourceType,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:74:        sourceId: journalEntry.sourceId,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:75:        isReversal: journalEntry.isReversal,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:76:        reversedEntryId: journalEntry.reversedEntryId,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:77:        createdAt: journalEntry.createdAt,
+/home/z/my-project/src/app/api/journal-entries/by-source/route.ts:78:        lines: journalEntry.lines.map(l => ({
+/home/z/my-project/src/app/api/dashboard/route.ts:64:  const result = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:69:      journalEntry: jeWhere,
+/home/z/my-project/src/app/api/dashboard/route.ts:244:      ? await db.journalLine.findMany({
+/home/z/my-project/src/app/api/dashboard/route.ts:248:            journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/dashboard/route.ts:306:      ? await db.journalLine.groupBy({
+/home/z/my-project/src/app/api/dashboard/route.ts:312:            journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/dashboard/route.ts:364:    const recentEntries = await db.journalEntry.findMany({
+/home/z/my-project/src/app/api/journal-entries/route.ts:34:    const total = await db.journalEntry.count({
+/home/z/my-project/src/app/api/journal-entries/route.ts:39:    const entries = await db.journalEntry.findMany({
+/home/z/my-project/src/app/api/journal-entries/route.ts:64:    const sourceTypes = await db.journalEntry.findMany({
+/home/z/my-project/src/app/api/journal-entries/route.ts:151:    const entry = await db.journalEntry.create({
+/home/z/my-project/src/app/api/journal-entries/[id]/route.ts:12:    const entry = await db.journalEntry.findUnique({
+/home/z/my-project/src/app/api/journal-entries/[id]/route.ts:62:    const existing = await db.journalEntry.findUnique({
+/home/z/my-project/src/app/api/journal-entries/[id]/route.ts:124:    const updated = await db.journalEntry.update({
+/home/z/my-project/src/app/api/contracts/route.ts:40:      paymentTerms, salesOrderNo, journalEntryId,
+/home/z/my-project/src/app/api/contracts/route.ts:99:        journalEntryId: journalEntryId || null,
+/home/z/my-project/src/app/api/journal-entries/by-account/route.ts:33:    const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/journal-entries/by-account/route.ts:37:        journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/journal-entries/by-account/route.ts:40:        journalEntry: {
+/home/z/my-project/src/app/api/journal-entries/by-account/route.ts:51:      orderBy: { journalEntry: { date: 'desc' } },
+/home/z/my-project/src/app/api/journal-entries/by-account/route.ts:67:      const je = line.journalEntry
+/home/z/my-project/src/app/api/contracts/[id]/route.ts:82:        journalEntryId: body.journalEntryId !== undefined ? (body.journalEntryId || null) : existing.journalEntryId,
+/home/z/my-project/src/app/api/equipment/fuel/route.ts:89:          data: { journalEntryId: entry.id },
+/home/z/my-project/src/app/api/equipment/fuel/route.ts:97:    // Refetch to include journalEntryId
+/home/z/my-project/src/app/api/account-statement/route.ts:152:    const arAgg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/account-statement/route.ts:158:        journalEntry: jeWhere,
+/home/z/my-project/src/app/api/account-statement/route.ts:293:    const apAgg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/account-statement/route.ts:299:        journalEntry: jeWhere,
+/home/z/my-project/src/app/api/account-statement/route.ts:346:    journalWhere.journalEntry = {
+/home/z/my-project/src/app/api/account-statement/route.ts:352:    journalWhere.journalEntry = { status: 'POSTED', deletedAt: null }
+/home/z/my-project/src/app/api/account-statement/route.ts:356:  const journalLines = costCenter
+/home/z/my-project/src/app/api/account-statement/route.ts:357:    ? await db.journalLine.findMany({
+/home/z/my-project/src/app/api/account-statement/route.ts:364:          journalEntry: { select: { date: true, description: true, entryNo: true } },
+/home/z/my-project/src/app/api/account-statement/route.ts:366:        orderBy: { journalEntry: { date: 'asc' } },
+/home/z/my-project/src/app/api/account-statement/route.ts:385:  for (const jl of journalLines) {
+/home/z/my-project/src/app/api/account-statement/route.ts:395:          date: new Date(jl.journalEntry.date).toISOString().split('T')[0],
+/home/z/my-project/src/app/api/account-statement/route.ts:396:          description: `${jl.journalEntry.entryNo} - ${jl.account.name}`,
+/home/z/my-project/src/app/api/account-statement/route.ts:409:          date: new Date(jl.journalEntry.date).toISOString().split('T')[0],
+/home/z/my-project/src/app/api/account-statement/route.ts:410:          description: `${jl.journalEntry.entryNo} - ${jl.account.name}`,
+/home/z/my-project/src/app/api/equipment/expenses/route.ts:68:      const journalEntry = await autoEntryEquipmentCost({
+/home/z/my-project/src/app/api/equipment/expenses/route.ts:77:      // Store journalEntryId on the expense
+/home/z/my-project/src/app/api/equipment/expenses/route.ts:78:      if (journalEntry?.id) {
+/home/z/my-project/src/app/api/equipment/expenses/route.ts:81:          data: { journalEntryId: journalEntry.id },
+/home/z/my-project/src/app/api/equipment/expenses/route.ts:89:    // Re-fetch with journalEntryId
+/home/z/my-project/src/app/api/supplier-invoices/route.ts:188:      // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:93:          let journalEntryId = existing.journalEntryId
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:95:          if (!journalEntryId) {
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:98:              const journalEntry = await autoEntryPurchaseInvoice({
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:110:              journalEntryId = journalEntry.id
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:120:              journalEntryId,
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:165:    if (existing.journalEntryId && (body.subtotal !== undefined || body.totalAmount !== undefined || body.vatAmount !== undefined)) {
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:167:        const originalEntry = await tx.journalEntry.findUnique({
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:168:          where: { id: existing.journalEntryId!, deletedAt: null },
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:197:          await tx.journalEntry.update({
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:198:            where: { id: existing.journalEntryId! },
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:222:        body.journalEntryId = newJournalEntry.id
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:230:        if (body.journalEntryId !== undefined) updateData.journalEntryId = body.journalEntryId
+/home/z/my-project/src/app/api/supplier-invoices/[id]/route.ts:256:    if (body.journalEntryId !== undefined) updateData.journalEntryId = body.journalEntryId
+/home/z/my-project/src/app/api/projects/[id]/route.ts:166:      accounting: project.salesInvoices.filter(si => si.journalEntryId).length +
+/home/z/my-project/src/app/api/projects/[id]/route.ts:167:        project.purchaseInvoices.filter(pi => pi.journalEntryId).length +
+/home/z/my-project/src/app/api/projects/[id]/route.ts:168:        project.expenses.filter(e => e.journalEntryId).length +
+/home/z/my-project/src/app/api/projects/[id]/route.ts:169:        project.subcontractorInvoices.filter(si => si.journalEntryId).length,
+/home/z/my-project/src/app/api/purchase-invoices/route.ts:133:      // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/purchase-invoices/route.ts:173:    if (existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
+/home/z/my-project/src/app/api/purchase-invoices/route.ts:175:        const originalEntry = await tx.journalEntry.findUnique({
+/home/z/my-project/src/app/api/purchase-invoices/route.ts:176:          where: { id: existing.journalEntryId!, deletedAt: null },
+/home/z/my-project/src/app/api/purchase-invoices/route.ts:205:          await tx.journalEntry.update({
+/home/z/my-project/src/app/api/purchase-invoices/route.ts:206:            where: { id: existing.journalEntryId! },
+/home/z/my-project/src/app/api/purchase-invoices/route.ts:228:        updateData.journalEntryId = undefined // Will be set by createPurchaseInvoiceJournalEntry
+/home/z/my-project/src/app/api/cost-centers/route.ts:10:        _count: { select: { journalLines: true } },
+/home/z/my-project/src/app/api/payroll-runs/[id]/route.ts:54:        let journalEntryId: string | null = existing.journalEntryId
+/home/z/my-project/src/app/api/payroll-runs/[id]/route.ts:114:            journalEntryId = entry.id
+/home/z/my-project/src/app/api/payroll-runs/[id]/route.ts:125:            journalEntryId,
+/home/z/my-project/src/app/api/equipment/maintenance/route.ts:116:          data: { journalEntryId: entry.id },
+/home/z/my-project/src/app/api/equipment/maintenance/route.ts:124:    // Refetch to include journalEntryId
+/home/z/my-project/src/app/api/petty-cash/route.ts:47:        const journalEntry = await autoEntryPettyCash({
+/home/z/my-project/src/app/api/petty-cash/route.ts:54:        // Store journalEntryId on the petty cash entry
+/home/z/my-project/src/app/api/petty-cash/route.ts:55:        if (journalEntry) {
+/home/z/my-project/src/app/api/petty-cash/route.ts:58:            data: { journalEntryId: journalEntry.id },
+/home/z/my-project/src/app/api/petty-cash/route.ts:65:      // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/petty-cash/[id]/route.ts:41:    if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/petty-cash/[id]/route.ts:85:    if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/petty-cash/[id]/route.ts:87:        const originalEntry = await db.journalEntry.findUnique({
+/home/z/my-project/src/app/api/petty-cash/[id]/route.ts:88:          where: { id: existing.journalEntryId, deletedAt: null },
+/home/z/my-project/src/app/api/petty-cash/[id]/route.ts:115:          await db.journalEntry.update({
+/home/z/my-project/src/app/api/petty-cash/[id]/route.ts:116:            where: { id: existing.journalEntryId },
+/home/z/my-project/src/app/api/seed/route.ts:16:    await db.journalLine.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:17:    await db.journalEntry.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:564:    const finalJournalEntryCount = await db.journalEntry.count({ where: { deletedAt: null } })
+/home/z/my-project/src/app/api/progress-claims/route.ts:141:    if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
+/home/z/my-project/src/app/api/progress-claims/route.ts:143:        const originalEntry = await tx.journalEntry.findUnique({
+/home/z/my-project/src/app/api/progress-claims/route.ts:144:          where: { id: existing.journalEntryId!, deletedAt: null },
+/home/z/my-project/src/app/api/progress-claims/route.ts:171:          await tx.journalEntry.update({
+/home/z/my-project/src/app/api/progress-claims/route.ts:172:            where: { id: existing.journalEntryId! },
+/home/z/my-project/src/app/api/progress-claims/route.ts:179:        updateData.journalEntryId = null
+/home/z/my-project/src/app/api/advances/route.ts:41:      const journalEntry = await autoEntryEmployeeAdvance({
+/home/z/my-project/src/app/api/advances/route.ts:47:      // Store journalEntryId on the advance
+/home/z/my-project/src/app/api/advances/route.ts:48:      if (journalEntry) {
+/home/z/my-project/src/app/api/advances/route.ts:51:          data: { journalEntryId: journalEntry.id },
+/home/z/my-project/src/app/api/advances/route.ts:58:    // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/progress-claims/[id]/route.ts:76:      if (newStatus === 'APPROVED' && !existing.journalEntryId) {
+/home/z/my-project/src/app/api/supplier-payments/route.ts:146:      // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/supplier-payments/[id]/route.ts:50:    if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/supplier-payments/[id]/route.ts:53:        await reverseEntry(existing.journalEntryId!, tx)
+/home/z/my-project/src/app/api/supplier-payments/[id]/route.ts:58:          data: { journalEntryId: null },
+/home/z/my-project/src/app/api/supplier-payments/[id]/route.ts:139:        // 8. Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/supplier-payments/[id]/route.ts:196:    if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/financial-reports/route.ts:41:  const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-reports/route.ts:44:      journalEntry: entryWhere,
+/home/z/my-project/src/app/api/financial-reports/route.ts:192:  const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-reports/route.ts:195:      journalEntry: entryWhere,
+/home/z/my-project/src/app/api/financial-reports/route.ts:332:  const periodLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-reports/route.ts:335:      journalEntry: {
+/home/z/my-project/src/app/api/financial-reports/route.ts:365:  const beforePeriodLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-reports/route.ts:368:      journalEntry: {
+/home/z/my-project/src/app/api/reports/project-costs/route.ts:124:  const agg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/reports/project-costs/route.ts:130:      journalEntry: {
+/home/z/my-project/src/app/api/reports/project-profitability/route.ts:46:      const revenueLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/reports/project-profitability/route.ts:50:          journalEntry: {
+/home/z/my-project/src/app/api/reports/project-profitability/route.ts:64:      const costLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/reports/project-profitability/route.ts:68:          journalEntry: {
+/home/z/my-project/src/app/api/reports/route.ts:57:  const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/reports/route.ts:61:      journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:120:  const result = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/reports/route.ts:122:    where: { account: accountWhere, deletedAt: null, journalEntry: jeWhere },
+/home/z/my-project/src/app/api/reports/route.ts:154:  const agg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/reports/route.ts:159:      journalEntry: jeWhere,
+/home/z/my-project/src/app/api/reports/route.ts:435:          ? await db.journalLine.groupBy({
+/home/z/my-project/src/app/api/reports/route.ts:441:                journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:549:          const expenseLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/reports/route.ts:553:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:773:          const revenueLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/reports/route.ts:777:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:781:              journalEntry: { select: { date: true } },
+/home/z/my-project/src/app/api/reports/route.ts:786:            const month = new Date(line.journalEntry.date).toISOString().slice(0, 7)
+/home/z/my-project/src/app/api/reports/route.ts:825:          const agg = await db.journalLine.groupBy({
+/home/z/my-project/src/app/api/reports/route.ts:831:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:871:          const cashAgg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/reports/route.ts:876:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:888:          const cashLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/reports/route.ts:892:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:895:              journalEntry: { select: { date: true } },
+/home/z/my-project/src/app/api/reports/route.ts:900:            const month = new Date(line.journalEntry.date).toISOString().slice(0, 7)
+/home/z/my-project/src/app/api/reports/route.ts:917:          const apAgg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/reports/route.ts:922:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:933:          const payrollAgg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/reports/route.ts:938:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/reports/route.ts:949:          const arAgg = await db.journalLine.aggregate({
+/home/z/my-project/src/app/api/reports/route.ts:954:              journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/salary-payments/route.ts:161:            data: { journalEntryId: entry.id },
+/home/z/my-project/src/app/api/salary-payments/route.ts:228:            data: { journalEntryId: entry.id },
+/home/z/my-project/src/app/api/clients/[id]/accounting/route.ts:40:    const journalCount = await db.journalEntry.count({
+/home/z/my-project/src/app/api/clients/[id]/accounting/route.ts:45:    const lastEntry = await db.journalEntry.findFirst({
+/home/z/my-project/src/app/api/clients/[id]/accounting/route.ts:63:      journalEntryCount: journalCount,
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:23:    const results: { assetId: string; assetCode: string; depreciationAmount: number; journalEntryId?: string }[] = []
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:38:            journalEntryId: existingDep.journalEntryId || undefined,
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:67:        let journalEntryId: string | null = null
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:72:          const entry = await tx.journalEntry.create({
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:98:          journalEntryId = entry.id
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:108:            journalEntryId,
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:129:          journalEntryId: journalEntryId || undefined,
+/home/z/my-project/src/app/api/fixed-assets/route.ts:107:      const entry = await db.journalEntry.create({
+/home/z/my-project/src/app/api/fixed-assets/route.ts:137:        data: { journalEntryId: entry.id },
+/home/z/my-project/src/app/api/reports/project-wip/route.ts:56:      const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/reports/project-wip/route.ts:61:          journalEntry: {
+/home/z/my-project/src/app/api/vat/route.ts:236:        let journalEntryId: string | null = null
+/home/z/my-project/src/app/api/vat/route.ts:245:          journalEntryId = je.id
+/home/z/my-project/src/app/api/vat/route.ts:256:            journalEntryId,
+/home/z/my-project/src/app/api/vat/route.ts:325:        if (existing.journalEntryId) {
+/home/z/my-project/src/app/api/vat/route.ts:327:            await reverseEntry(existing.journalEntryId, tx)
+/home/z/my-project/src/app/api/sales-invoices/route.ts:275:    // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/sales-invoices/route.ts:501:    // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/sales-invoices/route.ts:638:    // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/sales-invoices/route.ts:683:    if (existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
+/home/z/my-project/src/app/api/sales-invoices/route.ts:687:        const originalEntry = await tx.journalEntry.findUnique({
+/home/z/my-project/src/app/api/sales-invoices/route.ts:688:          where: { id: existing.journalEntryId!, deletedAt: null },
+/home/z/my-project/src/app/api/sales-invoices/route.ts:717:          await tx.journalEntry.update({
+/home/z/my-project/src/app/api/sales-invoices/route.ts:718:            where: { id: existing.journalEntryId! },
+/home/z/my-project/src/app/api/project-controls/[projectId]/backfill/route.ts:18:      const expenses = await db.expense.findMany({ where: { projectId, journalEntryId: { not: null } } })
+/home/z/my-project/src/app/api/project-controls/[projectId]/backfill/route.ts:41:            journalEntryId: exp.journalEntryId,
+/home/z/my-project/src/app/api/financial-summary/route.ts:22:    const balanceAggregates = await db.journalLine.groupBy({
+/home/z/my-project/src/app/api/financial-summary/route.ts:27:        journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/print/route.ts:375:      const je = await db.journalEntry.findUnique({
+/home/z/my-project/src/app/api/accounts/statement/route.ts:46:    const journalEntryFilter: Record<string, unknown> = {
+/home/z/my-project/src/app/api/accounts/statement/route.ts:56:      journalEntryFilter.date = dateFilter
+/home/z/my-project/src/app/api/accounts/statement/route.ts:59:    // Query journal lines where accountId matches and journalEntry.status = 'POSTED'
+/home/z/my-project/src/app/api/accounts/statement/route.ts:60:    const journalLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/accounts/statement/route.ts:64:        journalEntry: journalEntryFilter,
+/home/z/my-project/src/app/api/accounts/statement/route.ts:67:        journalEntry: {
+/home/z/my-project/src/app/api/accounts/statement/route.ts:78:        { journalEntry: { date: 'asc' } },
+/home/z/my-project/src/app/api/accounts/statement/route.ts:79:        { journalEntry: { entryNo: 'asc' } },
+/home/z/my-project/src/app/api/accounts/statement/route.ts:92:      const beforeDateLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/accounts/statement/route.ts:96:          journalEntry: {
+/home/z/my-project/src/app/api/accounts/statement/route.ts:121:    const statementLines = journalLines.map((line) => {
+/home/z/my-project/src/app/api/accounts/statement/route.ts:132:        date: line.journalEntry.date,
+/home/z/my-project/src/app/api/accounts/statement/route.ts:133:        entryNo: line.journalEntry.entryNo,
+/home/z/my-project/src/app/api/accounts/statement/route.ts:134:        description: line.journalEntry.description || line.description || '',
+/home/z/my-project/src/app/api/accounts/statement/route.ts:142:    const totalDebit = journalLines.reduce((sum, line) => sum + toNumber(line.debit), 0)
+/home/z/my-project/src/app/api/accounts/statement/route.ts:143:    const totalCredit = journalLines.reduce((sum, line) => sum + toNumber(line.credit), 0)
+/home/z/my-project/src/app/api/rental-payments/route.ts:154:      // Re-fetch to include journalEntryId
+/home/z/my-project/src/app/api/accounts/initialize/route.ts:36:        _count: { select: { journalLines: true } },
+/home/z/my-project/src/app/api/accounts/route.ts:26:        _count: { select: { journalLines: true } },
+/home/z/my-project/src/app/api/accounts/route.ts:33:    const balances = await db.journalLine.groupBy({
+/home/z/my-project/src/app/api/accounts/route.ts:38:        journalEntry: { status: 'POSTED', deletedAt: null },
+/home/z/my-project/src/app/api/accounts/route.ts:58:        entryCount: account._count.journalLines,
+/home/z/my-project/src/app/api/cost-centers/[id]/route.ts:17:        _count: { select: { journalLines: true } },
+/home/z/my-project/src/app/api/cost-centers/[id]/route.ts:97:        _count: { select: { journalLines: true, children: true } },
+/home/z/my-project/src/app/api/cost-centers/[id]/route.ts:109:    if (existing._count.journalLines > 0) {
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:37:      whereClause.journalEntry = { status: 'POSTED', deletedAt: null, date: dateFilter }
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:39:      whereClause.journalEntry = { status: 'POSTED', deletedAt: null }
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:42:    const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:45:        journalEntry: {
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:56:        journalEntry: { date: 'asc' },
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:76:        entryNo: line.journalEntry.entryNo,
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:77:        date: line.journalEntry.date,
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:78:        description: line.journalEntry.description,
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:83:        status: line.journalEntry.status,
+/home/z/my-project/src/app/api/accounts/[id]/route.ts:213:    const lineCount = await db.journalLine.count({ where: { accountId: id } })
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:57:    let journalEntryId = existing.journalEntryId
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:77:        journalEntryId = entry.id
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:110:        ...(journalEntryId !== existing.journalEntryId && { journalEntryId }),
+/home/z/my-project/src/app/api/salaries/route.ts:47:    let journalEntryId: string | null = null
+/home/z/my-project/src/app/api/salaries/route.ts:96:        journalEntryId = entry.id
+/home/z/my-project/src/app/api/salaries/route.ts:134:        journalEntryId,

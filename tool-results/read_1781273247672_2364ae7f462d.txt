@@ -1,0 +1,970 @@
+     1→# Work Log - Binaa ERP
+     2→
+     3→---
+     4→Task ID: decimal-fix-1
+     5→Agent: Main Agent
+     6→Task: Fix decimal places from 2 to 4 across the entire system
+     7→
+     8→Work Log:
+     9→- Updated core formatting functions: formatAmount, formatMoney in money-display.tsx (2→4)
+    10→- Updated currency-symbol.tsx formatCurrencyString and CurrencyText (2→4)
+    11→- Updated app-store.ts formatAmount, formatSAR (2→4)
+    12→- Updated company-context.tsx CurrencyAmount and formatAmountWithSymbol (2→4)
+    13→- Updated export-csv.ts number formatting (2→4)
+    14→- Updated print-service.ts formatAmount and formatMoneyPrint (2→4)
+    15→- Changed step="0.01" to step="0.0001" in 63 instances across 25 component files
+    16→- Changed .toFixed(2) to .toFixed(4) for monetary amounts in 17 files (40+ instances)
+    17→- Kept percentage/ratio formatting at 2 decimal places (correct behavior)
+    18→- Browser tested: supplier payments form accepts 4 decimal places (e.g., 2231.5213)
+    19→- Browser tested: amounts display with 4 decimal places across all sections
+    20→- Lint passes cleanly, no console errors
+    21→
+    22→Stage Summary:
+    23→- All monetary input fields now accept 4 decimal places (step=0.0001)
+    24→- All monetary displays now show 4 decimal places (formatAmount, MoneyDisplay, etc.)
+    25→- Print templates use 4 decimal places
+    26→- CSV exports use 4 decimal places
+    27→- Percentages and ratios remain at 2 decimal places (correct)
+    28→
+    29→---
+    30→Task ID: settings-save-fix
+    31→Agent: Main Agent
+    32→Task: Fix settings save not persisting - race condition in CompanySettingsTab
+    33→
+    34→Work Log:
+    35→- Diagnosed race condition in settings save flow
+    36→- Root cause: settingsLoadedRef.current was set to false in onSuccess, causing useEffect to fire with stale query data before refetch completed, overwriting form with old values
+    37→- Fix: Replaced settingsLoadedRef pattern with lastSyncedIdRef that tracks settings.id instead
+    38→- The form now only syncs from query data on initial load (when settings.id changes)
+    39→- After save, the form keeps its current values (already correct) instead of re-syncing from potentially stale query data
+    40→- Tested: changing single and multiple fields, saving, and reloading - all persist correctly
+    41→- No console errors, lint passes
+    42→
+    43→Stage Summary:
+    44→- Settings save now works correctly - changes persist in DB and form retains values
+    45→- Removed race condition between mutation success and query refetch
+    46→- CompanyProvider still gets fresh data via invalidateQueries
+    47→
+    48→---
+    49→Task ID: 2
+    50→Agent: Rental Modules Fixer
+    51→Task: Comprehensive review and fix of ALL rental-related modules
+    52→
+    53→Work Log:
+    54→
+    55→**Core Utility Fixes (app-store.ts):**
+    56→
+    57→1. `formatNumber()`: Changed signature from `(value: number)` → `(value: number | undefined | null)`, added null/NaN guard returning `'0'`
+    58→2. `formatSAR()`: Changed signature from `(value: number)` → `(value: number | undefined | null)`, added null/NaN guard defaulting to 0 before `.toLocaleString()` — this was a crash risk across ALL modules using formatSAR
+    59→
+    60→**Frontend Module Fixes - Unsafe .toFixed() / .reduce() / .toString():**
+    61→
+    62→3. `rental-invoices.tsx` CSV export: Fixed `inv.totalAmount.toFixed(2)` → `(inv.totalAmount ?? 0).toFixed(2)`, same for paidAmount and outstanding
+    63→4. `rental-invoices.tsx` detail: Fixed `invoice.totalAmount - invoice.paidAmount` → `(invoice.totalAmount ?? 0) - (invoice.paidAmount ?? 0)` for outstanding amount
+    64→5. `rental-invoices.tsx` summary: Fixed `invoices.reduce((s, i) => s + i.totalAmount, 0)` → `s + (i.totalAmount ?? 0)` for totalRevenue and totalPaid
+    65→6. `service-invoices.tsx` CSV export: Same .toFixed() fixes as rental-invoices
+    66→7. `service-invoices.tsx` detail: Fixed `formatSAR(invoice.totalAmount - invoice.paidAmount, lang)` → `formatSAR((invoice.totalAmount ?? 0) - (invoice.paidAmount ?? 0), lang)`
+    67→8. `service-invoices.tsx` summary: Fixed reduce operations for totalRevenue and totalPaid with `?? 0`
+    68→9. `service-invoices.tsx` detail: Fixed `invoice.discountAmount > 0` → `(invoice.discountAmount ?? 0) > 0`
+    69→10. `rental-payments.tsx`: Fixed `filtered.reduce((s, p) => s + p.amount, 0)` → `s + (p.amount ?? 0)`
+    70→11. `rental-contracts.tsx`: Fixed `timesheets.reduce((s, ts) => s + ts.totalAmount, 0)` → `s + (ts.totalAmount ?? 0)` and same for workedHours
+    71→12. `rental-contracts.tsx`: Fixed contract value calculations with `?? 0` for referenceRate, dailyRate, monthlyRate, lumpSumAmount (2 locations: list view and detail view)
+    72→13. `rental-contracts.tsx`: Fixed `contract.deliveryFeesType !== 'NONE'` → `(contract.deliveryFeesType ?? 'NONE') !== 'NONE'`
+    73→14. `rental-section.tsx`: Fixed `filtered.reduce((s, p) => s + p.amount, 0)` → `s + (p.amount ?? 0)`
+    74→15. `rental-section.tsx`: Fixed `(inv.totalAmount - inv.paidAmount).toString()` → `((inv.totalAmount ?? 0) - (inv.paidAmount ?? 0)).toString()`
+    75→16. `rental-section.tsx`: Fixed `i.totalAmount - i.paidAmount` in MoneyDisplay → `(i.totalAmount ?? 0) - (i.paidAmount ?? 0)`
+    76→
+    77→**Frontend Module Fixes - Unsafe Property Access (client?.name):**
+    78→
+    79→17. `rental-invoices.tsx`: Fixed `inv.client.name` → `inv.client?.name || '—'` in search filter, table cells, detail header, and info cards (4 locations)
+    80→18. `service-invoices.tsx`: Fixed `inv.client.name` → `inv.client?.name || '—'` in search filter and table cell (2 locations)
+    81→19. `rental-payments.tsx`: Fixed `p.client.name` → `p.client?.name || '—'` in search filter and table cell (2 locations)
+    82→20. `rental-section.tsx`: Fixed `p.client.name` → `p.client?.name || '—'` in search filter and table cell (2 locations)
+    83→
+    84→**API Route Fixes - Missing Fields:**
+    85→
+    86→21. `client-payments/route.ts` GET: Added `sourceType: true, invoiceType: true` to invoice select — was causing rental-payments filter to always fail since these fields were missing from API response
+    87→22. `client-payments/route.ts` POST: Added `sourceType: true, invoiceType: true` to invoice select in create response and re-fetch
+    88→23. `client-payments/[id]/route.ts` GET: Added `sourceType: true, invoiceType: true` to invoice select
+    89→24. `client-payments/[id]/route.ts` PATCH: Added `sourceType: true, invoiceType: true` to invoice select in update response
+    90→
+    91→**API Route Fixes - Business Logic:**
+    92→
+    93→25. `client-payments/[id]/route.ts` DELETE: Fixed incorrect status reversion: when deleting a payment causes paidAmount to become 0, invoice status was incorrectly set to 'DRAFT' — changed to 'SENT' since the invoice was already issued
+    94→
+    95→**Type Interface Fixes:**
+    96→
+    97→26. `rental-section.tsx` ClientPaymentItem: Added `sourceType?: string; invoiceType?: string` to invoice interface to match API response
+    98→
+    99→**Unused Import Cleanup:**
+   100→
+   101→27. `rental-contracts.tsx`: Removed unused `XCircle` import from lucide-react
+   102→28. `rental-invoices.tsx`: Removed unused `Textarea` and `formatSAR` imports
+   103→
+   104→**Verification:**
+   105→- `bun run lint`: 0 errors (1 pre-existing warning in unrelated file)
+   106→- `bun run build`: Compiled successfully, no type errors
+   107→
+   108→Stage Summary:
+   109→- Fixed 2 core utility functions (formatNumber, formatSAR) to handle null/undefined values
+   110→- Fixed 16 unsafe number operations across 5 rental modules (.toFixed, .reduce, .toString on potentially undefined values)
+   111→- Fixed 8 unsafe property access patterns (client.name → client?.name) across 4 rental modules
+   112→- Fixed 4 API route invoice selects missing sourceType/invoiceType fields (caused rental payment filtering to fail)
+   113→- Fixed 1 incorrect business logic (payment deletion reverting invoice to DRAFT instead of SENT)
+   114→- Fixed 1 type interface (rental-section ClientPaymentItem)
+   115→- Removed 3 unused imports (XCircle, Textarea, formatSAR)
+   116→- All changes pass lint and build with zero errors
+   117→
+   118→---
+   119→Task ID: 3
+   120→Agent: Project Modules Fixer
+   121→Task: Comprehensive review and fix of ALL project-related modules
+   122→
+   123→Work Log:
+   124→
+   125→**Frontend Module Fixes - Unsafe Number Operations (.toFixed() / .toLocaleString() / .toString()):**
+   126→
+   127→1. `projects.tsx` (line 603): Fixed `Math.abs(costSheet.profitMargin).toFixed(2)` → `Math.abs(costSheet.profitMargin ?? 0).toFixed(2)` - profitMargin could be null/undefined from API
+   128→2. `fuel.tsx` (line 253): Fixed `totalLiters.toLocaleString(...)` → `(totalLiters ?? 0).toLocaleString(...)` - totalLiters could be NaN if API returns null values
+   129→3. `fuel.tsx` (line 285): Fixed `p.liters.toLocaleString(...)` → `(p.liters ?? 0).toLocaleString(...)` - project fuel cost liters
+   130→4. `fuel.tsx` (line 341): Fixed `f.liters.toLocaleString(...)` → `(f.liters ?? 0).toLocaleString(...)` - direct API data
+   131→5. `equipment-operations.tsx` (lines 278, 304): Fixed `totalHours.toFixed(1)` → `(totalHours ?? 0).toFixed(1)` and `p.hours.toFixed(1)` → `(p.hours ?? 0).toFixed(1)`
+   132→6. `progress-claims.tsx` (lines 229, 248, 268, 433): Fixed 4 `.toFixed()` calls with `?? 0` null safety for existingPercentage, cumulativePercentage, rate, and claim.vatRate
+   133→7. `progress-claims.tsx` (line 361): Fixed `(val.claimedAmount / contractValueExVat).toFixed(1)` → `((val.claimedAmount ?? 0) / contractValueExVat).toFixed(1)`
+   134→8. `purchase-orders.tsx` (line 473): Fixed `(order.vatRate * 100).toFixed(0)` → `((order.vatRate ?? 0) * 100).toFixed(0)`
+   135→9. `rental-invoices.tsx` (line 662): Fixed `(invoice.vatRate * 100).toFixed(0)` → `((invoice.vatRate ?? 0) * 100).toFixed(0)`
+   136→10. `service-invoices.tsx` (line 657): Fixed `(invoice.vatRate * 100).toFixed(0)` → `((invoice.vatRate ?? 0) * 100).toFixed(0)`
+   137→11. `contracts.tsx` (lines 378, 382, 397): Fixed `(rate * 100).toFixed(0)` → `((rate ?? 0) * 100).toFixed(0)` and `vatAmount.toFixed(2)` → `(vatAmount ?? 0).toFixed(2)`
+   138→12. `contracts.tsx` (lines 637-645): Fixed `c.value.toString()`, `c.vatRate.toString()`, `c.deliveryFees.toString()` → with `?? 0` safety
+   139→13. `rental-contracts.tsx` (lines 925, 1006): Fixed `calculatedHourlyRate.toFixed(2)` → `(calculatedHourlyRate ?? 0).toFixed(2)`
+   140→14. `equipment.tsx` (line 941): Fixed `computed.profitMargin.toFixed(1)` → `(computed.profitMargin ?? 0).toFixed(1)`
+   141→15. `resource-distribution.tsx` (line 246): Fixed `costData.totalCost` → `costData?.totalCost ?? 0` and `row.value` → `row.value ?? 0`
+   142→16. `projects-section.tsx` (lines 682, 949, 989): Fixed `cs.profitMargin.toFixed(2)` → `(cs.profitMargin ?? 0).toFixed(2)` and `budgetVariancePct.toFixed(2)` → `(budgetVariancePct ?? 0).toFixed(2)`
+   143→17. `client-payments.tsx` (lines 173-180): Fixed `remainingBalance` computation and `.toFixed(2)` with `?? 0` safety
+   144→
+   145→**Frontend Module Fixes - Unsafe .reduce() Operations (potential NaN from null values):**
+   146→
+   147→18. `projects.tsx` (lines 745-750): Fixed all 5 reduce operations with `?? 0` for purchaseTotal, expenseTotal, laborTotal, equipmentTotal, subcontractorTotal
+   148→19. `projects.tsx` (lines 1034-1038): Fixed 4 reduce operations for extractsTotal, invoicesTotal, paidTotal, collectionsTotal
+   149→20. `progress-claims.tsx` (lines 368-370): Fixed 3 reduce operations for totalClaimedAmount, paidAmount, pendingAmount
+   150→21. `labor.tsx` (lines 202-204): Fixed 3 reduce operations for totalLabor, totalWorkers, avgDailyRate
+   151→22. `equipment-operations.tsx` (line 196): Fixed `op.hours` → `op.hours ?? 0` in reduce
+   152→23. `fuel.tsx` (lines 177-178): Fixed 2 reduce operations for totalLiters, totalCost
+   153→24. `equipment-maintenance.tsx` (line 181): Fixed reduce for totalCost
+   154→25. `purchase-orders.tsx` (line 599): Fixed reduce for totalPOAmount
+   155→26. `boq.tsx` (lines 215, 312): Fixed 2 reduce operations for grandTotal, categoryTotal
+   156→27. `work-teams.tsx` (lines 229, 249, 293): Fixed 3 reduce operations with `m.employee?.basicSalary ?? 0`
+   157→28. `goods-receipt.tsx` (lines 130-132, 212, 457-458): Fixed 6 reduce operations with `?? 0` for totalOrdered, totalAmount, selectedPO total, receipt totals
+   158→29. `projects-section.tsx` (lines 435, 612-613, 750, 796, 863-864, 1002-1004, 1058): Fixed 10+ reduce operations with `?? 0`
+   159→
+   160→**API Route Fixes:**
+   161→
+   162→30. `labor-costs/route.ts`: Added missing field validation (projectId, description, workers, days, dailyRate, date required) and NaN check for parsed numbers. Cleaned up data creation to use destructured validated variables.
+   163→31. `subcontractors/route.ts`: Added missing name validation on POST create
+   164→
+   165→**Type Mismatch Fixes:**
+   166→
+   167→32. `goods-receipt.tsx` (line 40): Added missing `status: string` to `PurchaseOrderOption` interface (was causing TS2339 error on `po.status`)
+   168→33. `supplier-invoices.tsx` (line 37): Added missing `status: string` to `GROption` interface (was causing TS2339 error on `gr.status`)
+   169→34. `equipment.tsx` (line 106): Fixed `rental: { rate: number }` → `rental: { hourlyRate: number }` to match Prisma schema (was causing TS2339 error)
+   170→35. `sales.tsx` (line 46): Fixed `rental: { rate: number }` → `rental: { hourlyRate: number }` to match Prisma schema
+   171→
+   172→Stage Summary:
+   173→- Fixed 29 unsafe `.toFixed()` / `.toLocaleString()` / `.toString()` calls across 12+ module files
+   174→- Fixed 12+ unsafe `.reduce()` operations that could produce NaN from null/undefined API values
+   175→- Fixed 2 API routes with missing validation (labor-costs, subcontractors)
+   176→- Fixed 4 TypeScript type mismatches causing compile errors (PurchaseOrderOption, GROption, rental.rate → hourlyRate)
+   177→- All changes ensure runtime safety when API returns null/undefined for numeric fields
+   178→
+   179→---
+   180→Task ID: 4
+   181→Agent: Finance & HR Modules Fixer
+   182→Task: Comprehensive review and fix of ALL finance and HR modules
+   183→
+   184→Work Log:
+   185→
+   186→**Frontend Module Fixes - Unsafe Number Operations:**
+   187→
+   188→1. `vat.tsx` (lines 311-315): Fixed `declaration.totalSales.toFixed(2)` etc. → `(declaration.totalSales ?? 0).toFixed(2)` for all 5 VAT declaration fields in CSV export (totalSales, outputVat, totalPurchases, inputVat, netVat)
+   189→
+   190→2. `attendance.tsx` (lines 442-443): Fixed `s.totalWorkHours.toFixed(1)` → `(s.totalWorkHours ?? 0).toFixed(1)` and `s.totalOvertime.toFixed(1)` → `(s.totalOvertime ?? 0).toFixed(1)` in employee summary table
+   191→
+   192→3. `expenses.tsx` (line 332): Fixed `(parsedVatRate * 100).toFixed(0)` → `((parsedVatRate ?? 0) * 100).toFixed(0)` in VAT display label
+   193→
+   194→4. `expenses.tsx` (lines 420-422): Fixed CSV export format functions: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for amount, vatAmount, totalAmount columns
+   195→
+   196→5. `supplier-invoices.tsx` (line 427): Fixed `(invoice.vatRate * 100).toFixed(0)` → `((invoice.vatRate ?? 0) * 100).toFixed(0)` in invoice detail
+   197→
+   198→6. `supplier-invoices.tsx` (lines 490-492): Fixed CSV format functions: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for subtotal, vatAmount, totalAmount
+   199→
+   200→7. `sales.tsx` (line 1048): Fixed `(invoice.vatRate * 100).toFixed(0)` → `((invoice.vatRate ?? 0) * 100).toFixed(0)` in invoice detail
+   201→
+   202→8. `settings.tsx` (line 629): Fixed `(form.defaultVatRate * 100).toFixed(0)` → `((form.defaultVatRate ?? 0) * 100).toFixed(0)` in VAT percentage display
+   203→
+   204→9. `reports.tsx` (lines 208-213): Fixed 6 CSV format functions: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for contractValue, invoiced, collected, totalCosts, grossProfit, profitMargin
+   205→
+   206→10. `reports.tsx` (lines 566-567): Fixed trial balance CSV format: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for netDebit, netCredit
+   207→
+   208→11. `reports.tsx` (lines 789-791): Fixed supplier balances CSV format: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for totalPurchased, totalPaid, balanceOwed
+   209→
+   210→12. `reports.tsx` (lines 896-899): Fixed client balances CSV format: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for totalInvoiced, totalPaid, balanceReceivable, overdue
+   211→
+   212→13. `reports.tsx` (line 1087): Fixed VAT calc print: `vatCalcData.autoCalc.outputVat.toFixed(2)` → `(vatCalcData.autoCalc.outputVat ?? 0).toFixed(2)` for outputVat, inputVat, netVat
+   213→
+   214→14. `supplier-payments.tsx` (line 299): Fixed CSV format: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for amount
+   215→
+   216→15. `rental-invoices.tsx` (line 529): Fixed CSV export: `inv.client.name` → `inv.client?.name || ''`, `inv.totalAmount.toFixed(2)` → `(inv.totalAmount ?? 0).toFixed(2)`, `inv.paidAmount.toFixed(2)` → `(inv.paidAmount ?? 0).toFixed(2)`
+   217→
+   218→16. `service-invoices.tsx` (line 706): Fixed CSV export: `inv.client.name` → `inv.client?.name || ''`, `inv.totalAmount.toFixed(2)` → `(inv.totalAmount ?? 0).toFixed(2)`, `inv.paidAmount.toFixed(2)` → `(inv.paidAmount ?? 0).toFixed(2)`
+   219→
+   220→17. `equipment.tsx` (lines 1432-1434): Fixed CSV format: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for hourlyRate, dailyRate, monthlyRate
+   221→
+   222→18. `purchase-orders.tsx` (line 609): Fixed CSV format: `Number(v).toFixed(2)` → `(Number(v) || 0).toFixed(2)` for totalAmount
+   223→
+   224→**API Route Fixes - NaN Prevention:**
+   225→
+   226→19. `employees/[id]/route.ts` (line 42): Fixed `parseFloat(body.basicSalary)` → `parseFloat(body.basicSalary) || 0` to prevent NaN when basicSalary is empty string
+   227→
+   228→20. `advances/route.ts` (line 27): Fixed `parseFloat(body.amount)` → `parseFloat(body.amount) || 0` in create mutation
+   229→
+   230→21. `petty-cash/route.ts` (line 32): Fixed `parseFloat(body.amount)` → `parseFloat(body.amount) || 0` in create mutation
+   231→
+   232→22. `salaries/route.ts` (line 37): Fixed `parseFloat(body.basicSalary)` → `parseFloat(body.basicSalary) || 0` to prevent NaN
+   233→
+   234→23. `employee-contracts/route.ts` (line 32): Fixed `parseFloat(body.basicSalary)` → `parseFloat(body.basicSalary) || 0` to prevent NaN
+   235→
+   236→24. `supplier-payments/route.ts` (lines 69, 87, 108): Fixed `amount` → `parseFloat(amount) || 0` in create, accounting entry, and invoice update
+   237→
+   238→25. `supplier-payments/[id]/route.ts` (line 54): Fixed `body.amount` → `parseFloat(body.amount) || 0` in update
+   239→
+   240→26. `journal-entries/route.ts` (lines 11-12): Fixed page/pageSize parsing to prevent division by zero: added `Math.max(1, ...)` and `|| 1` fallback
+   241→
+   242→**Verification:**
+   243→- `bun run lint`: 0 errors (1 pre-existing warning in unrelated file)
+   244→- `bun run build`: Compiled successfully, no type errors
+   245→
+   246→Stage Summary:
+   247→- Fixed 18 unsafe number operations in frontend modules (`.toFixed()` on potentially undefined/null values)
+   248→- Fixed 7 unsafe `parseFloat()` calls in API routes (returning NaN instead of 0 for invalid inputs)
+   249→- Fixed division-by-zero risk in journal entries pagination
+   250→- All changes pass lint and build with zero errors
+   251→
+   252→---
+   253→Task ID: 5
+   254→Agent: Main Agent
+   255→Task: Fix print functionality, professional rental invoice, and invoice actions
+   256→
+   257→Work Log:
+   258→- Fixed PrintButton API map URLs (timesheet-report, rental-contract, supplier-invoice, fuel-report, maintenance-report, rental-payment)
+   259→- Added data transformation function in PrintButton to flatten nested API response data for print service
+   260→- Created dedicated generateTimesheetBody() function in print-service.ts for professional timesheet reports
+   261→- Removed orphan PrintButton from timesheets list header that had no documentId
+   262→- Redesigned rental invoice template with professional A4 layout including: company header, parties section, items table, billing summary, ZATCA QR code, bank details, stamp/signature areas, amount in words, and image export (JPG/PNG)
+   263→- Added invoice status actions in rental-invoices.tsx: Send (DRAFT→SENT), Revert to Draft (any→DRAFT), Cancel (any→CANCELLED), Delete (DRAFT/CANCELLED only)
+   264→- Updated sales-invoices/[id] API with DELETE handler and PATCH handler that reverses timesheet/progress claim status when invoice is reverted or cancelled
+   265→- Added CANCELLED status to the filter dropdown
+   266→- All status changes properly reflect on linked timesheets (revert to APPROVED when invoice is reverted/cancelled/deleted)
+   267→- Verified end-to-end workflow via browser: create timesheet → submit → approve → create rental invoice → view detail → print
+   268→
+   269→Stage Summary:
+   270→- Print functionality fully working for rental invoices and timesheets
+   271→- Professional A4 rental invoice with QR code, bank details, stamps, image export
+   272→- Invoice actions (send, revert to draft, cancel, delete) working with proper status flow
+   273→- Timesheet status properly managed when invoice status changes
+   274→
+   275→---
+   276→Task ID: 1
+   277→Agent: Main Agent
+   278→Task: Fix rental invoice creation and all field name mismatches
+   279→
+   280→Work Log:
+   281→- Identified root cause: `EquipmentRental` model uses `hourlyRate` not `rate`, `pricingType` not `rateType`, `paymentDuration` not `paymentTerms`
+   282→- Fixed `GET /api/sales-invoices` route (3 occurrences of `rate: true` → `hourlyRate: true`)
+   283→- Fixed `POST /api/sales-invoices` createInvoiceFromTimesheet (rental select + hourlyRate calculation)
+   284→- Fixed `GET /api/sales-invoices/[id]` route (timesheet rental select)
+   285→- Fixed `PATCH /api/sales-invoices` route (timesheet rental select)
+   286→- Fixed `GET /api/projects/[id]/route.ts` (rental select)
+   287→- Fixed `GET /api/reports/route.ts` (rental select + calculation)
+   288→- Fixed `GET /api/equipment/[id]/route.ts` (rental select)
+   289→- Fixed frontend `rental-invoices.tsx`: Added `sourceType: 'TIMESHEET'` to mutation, fixed `rental?.rate` → `rental?.hourlyRate`, `rental?.client?.id` → `rental?.clientId`, improved error handling
+   290→- Fixed frontend `equipment.tsx`: `ts.rental?.rate` → `ts.rental?.hourlyRate`
+   291→- Fixed frontend `sales.tsx`: 2 occurrences of `rental?.rate` → `rental?.hourlyRate`
+   292→
+   293→Stage Summary:
+   294→- Rental invoice creation now works via `POST /api/sales-invoices` with `sourceType: 'TIMESHEET'`
+   295→- All field name mismatches between frontend and Prisma schema are fixed
+   296→- Invoice RNT-2026-0001 created successfully: 230hrs × 934.62 = 214,961.54 + 3,000 delivery + 32,694.23 VAT = 250,655.77 SAR
+   297→
+   298→---
+   299→Task ID: 2
+   300→Agent: Main Agent
+   301→Task: Fix delivery orders equipment status handling
+   302→
+   303→Work Log:
+   304→- Fixed DELIVERED→CANCELLED not reverting equipment status from IN_USE to AVAILABLE
+   305→- Updated both `/api/delivery-orders/route.ts` and `/api/delivery-orders/[id]/route.ts`
+   306→
+   307→Stage Summary:
+   308→- Equipment status properly reverts when a DELIVERED order is cancelled
+   309→- PENDING→CANCELLED still works correctly (no status change needed)
+   310→
+   311→---
+   312→Task ID: 3
+   313→Agent: Main Agent
+   314→Task: Professional rental invoice design
+   315→
+   316→Work Log:
+   317→- Added rental-specific fields to InvoiceData interface: equipmentName, operatingHours, hourlyRate, salesOrderNo
+   318→- Added dedicated "Equipment & Rental Data" section in InvoicePreview for RENTAL invoice type
+   319→- Enhanced print service with rental equipment section (styled with amber theme)
+   320→- Added CSS for `.rental-equipment-section` in print service
+   321→- Updated Project & Contract Data section to include salesOrderNo
+   322→
+   323→Stage Summary:
+   324→- Rental invoices now display equipment name, operating hours, hourly rate, rental period, contract no, sales order no
+   325→- Print service generates professional rental invoice with dedicated equipment data section
+   326→- Invoice preview shows amber-themed rental data panel for RENTAL invoices
+   327→
+   328→---
+   329→Task ID: 1
+   330→Agent: full-stack-developer
+   331→Task: Fix PrintButton API URLs, data transformation, and timesheet print template
+   332→
+   333→Work Log:
+   334→- Read and analyzed PrintButton component (`src/components/shared/print-button.tsx`)
+   335→- Read and analyzed print-service.ts (`src/lib/print-service.ts`) - identified `generateDocumentBody` switch and `generateGenericTableBody` fallback
+   336→- Read and analyzed timesheets.tsx (`src/components/modules/timesheets.tsx`) - found orphan PrintButton at line 587
+   337→- Verified all actual API routes by listing `/src/app/api/` directory
+   338→- Fixed apiMap URLs in PrintButton:
+   339→  - `timesheet-report`: `/api/timesheets/${id}` → `/api/equipment/timesheets/${id}`
+   340→  - `rental-contract`: `/api/rental-contracts/${id}` → `/api/equipment/rental-contracts/${id}`
+   341→  - `supplier-invoice`: `/api/purchase-invoices?id=` → `/api/supplier-invoices/${id}`
+   342→  - `fuel-report`: `/api/fuel/${id}` → `/api/equipment/fuel/${id}`
+   343→  - `maintenance-report`: `/api/equipment-maintenance/${id}` → `/api/equipment/maintenance/${id}`
+   344→  - `purchase-order`: kept `/api/purchase-orders/${id}` (has [id] route)
+   345→  - `rental-payment`: `/api/rental-payments/${id}` → `/api/client-payments/${id}` (rental-payments doesn't exist)
+   346→- Added `transformDataForPrint()` function to PrintButton that flattens nested API response objects (client, equipment, project, contract, rental, invoice) into flat fields expected by print service templates
+   347→- Added `generateTimesheetBody()` function in print-service.ts with professional timesheet report template including: contract info, period info, status badge, equipment/client party cards, operating data section, billing summary (subtotal, VAT, delivery fees, total)
+   348→- Updated `generateDocumentBody()` switch to route `timesheet-report` to `generateTimesheetBody()` instead of `generateGenericTableBody()`
+   349→- Removed orphan `<PrintButton type="timesheet-report" size="icon" />` from timesheets.tsx header (had no documentId, served no purpose)
+   350→- Ran `bun run lint` - 0 errors (1 pre-existing unrelated warning)
+   351→- Checked dev server log - no errors
+   352→
+   353→Stage Summary:
+   354→- Fixed 6 incorrect API URLs in PrintButton apiMap to match actual route paths
+   355→- Added comprehensive data transformation layer that flattens nested API objects for all document types, with specific handling for service-invoice, rental-invoice, timesheet-report, rental-contract, equipment-report, and supplier-invoice
+   356→- Created dedicated `generateTimesheetBody` template replacing the generic "No data to display" fallback with professional timesheet report layout
+   357→- Removed non-functional header PrintButton from timesheets list view
+   358→- All changes pass lint with no new errors
+   359→
+   360→---
+   361→Task ID: 3
+   362→Agent: full-stack-developer
+   363→Task: Design professional A4 rental invoice template
+   364→
+   365→Work Log:
+   366→- Read existing print-service.ts (2432 lines), zatca-qr.ts, amount-to-words.ts, and print-button.tsx to understand current architecture
+   367→- Analyzed Prisma schema for SalesInvoice and SalesInvoiceItem models to understand data structure
+   368→- Installed html2canvas@1.4.1 package for image export functionality
+   369→- Created `encodeZATCATLV()` function for server-side TLV base64 encoding of ZATCA QR data
+   370→- Created `getRentalInvoiceCSS()` with 500+ lines of professional CSS for A4 portrait layout
+   371→- Created `generateRentalInvoiceHeader()` with dual-language header, logo, company details, and document title
+   372→- Created `generateRentalInvoiceFooter()` with company contact info and ERP branding
+   373→- Created `rentalStatusBadge()` for colored status badges (DRAFT, PAID, OVERDUE, etc.)
+   374→- Created `currencyDisplay()` supporting both text (ر.س/SAR) and image currency symbols
+   375→- Created `generateRentalInvoiceBody()` with all 9 required sections:
+   376→  1. Invoice info grid (9 fields in 2 columns: invoice number, date, due date, contract, payment terms, status badge, delivery period, operating hours, sales order)
+   377→  2. Parties section (Company/From and Client/To cards with name, address, tax number, CR)
+   378→  3. Items table with 6 columns (#, Description, Qty, Unit, Unit Price, Total)
+   379→  4. Billing summary (subtotal, delivery fees, delivery VAT, VAT 15%, grand total with currency symbol)
+   380→  5. Amount in words (Arabic and English)
+   381→  6. ZATCA QR code section with TLV base64 encoding and client-side rendering via qrcode.js CDN
+   382→  7. Bank details (bank name, IBAN, account name)
+   383→  8. Terms and conditions
+   384→  9. Signature boxes (Company Stamp & Signature / Customer Stamp & Signature)
+   385→- Updated `generateDocumentBody()` dispatcher to route rental-invoice to new `generateRentalInvoiceBody()`
+   386→- Updated `generatePrintHTML()` to use specialized rental invoice template with:
+   387→  - QRCode.js CDN for client-side QR rendering
+   388→  - html2canvas CDN for image export
+   389→  - 4 export buttons: Print, Download JPG, Download PNG, Close
+   390→  - Inline JavaScript for image export with loading states and error handling
+   391→- Maintained backward compatibility: service-invoice and all other document types unchanged
+   392→- Ran lint: 0 errors, 1 pre-existing warning in unrelated file
+   393→- Verified dev server running without issues
+   394→
+   395→Stage Summary:
+   396→- Complete professional rental invoice template with A4 portrait layout
+   397→- ZATCA-compliant QR code using TLV encoding (seller name, VAT number, date, total, VAT amount)
+   398→- Image export functionality (JPG/PNG) using html2canvas
+   399→- Dual-language (Arabic/English) support throughout
+   400→- Currency symbol image support (settings.currencySymbolImage)
+   401→- All required sections implemented: header, info grid, parties, items table, billing summary, amount in words, QR code, bank info, signatures, terms, footer
+   402→- Key artifacts: modified `/home/z/my-project/src/lib/print-service.ts`
+   403→
+   404→---
+   405→Task ID: 5
+   406→Agent: Print Service Currency Symbol Fixer
+   407→Task: Fix print-service currency symbols to appear next to ALL monetary amounts
+   408→
+   409→Work Log:
+   410→- Read full print-service.ts (2548 lines) and print-button.tsx to understand current architecture
+   411→- Verified that `fmtMoney()` helper already exists and is used in all template body functions (rental invoice, service invoice, extract, supplier invoice, purchase order, tax declaration, generic table, payment voucher, salary slip, timesheet)
+   412→- Verified that `currencyDisplay()` already handles `settings.currencySymbolImage` for both image and text fallback
+   413→- Verified that `print-button.tsx` already processes `currencySymbolImage` via `/api/remove-bg` and passes it to `generatePrintHTML()`
+   414→- Found and fixed CSS `.ri-currency-img` styling in `getSharedCSS()` (shared template CSS):
+   415→  - Changed `height: 1.3em` → `height: 0.9em` (better inline text fit per spec)
+   416→  - Changed `display: inline` → `display: inline-block` (proper inline-block rendering)
+   417→  - Added `margin: 0 2px` (spacing between number and symbol)
+   418→  - Removed `max-width: 2em` and `object-fit: contain` (no longer needed)
+   419→- Found and fixed identical CSS `.ri-currency-img` styling in `getRentalInvoiceCSS()` (rental invoice template CSS):
+   420→  - Same changes as above: height 0.9em, inline-block, margin 0 2px
+   421→- Updated `currencyDisplay()` to use language-aware `alt` attribute on currency symbol image:
+   422→  - Changed `alt="SAR"` → `alt="${lang === 'ar' ? 'ر.س' : 'SAR'}"`
+   423→- Fixed timesheet subtotal label (line 2353) that used `formatMoneyPrint(hourlyRate)` without currency symbol:
+   424→  - Changed to `fmtMoney(hourlyRate, settings, lang)` so the hourly rate in the subtotal calculation breakdown also shows the currency symbol
+   425→- Ran TypeScript type check: no errors in modified files (all errors are pre-existing and unrelated)
+   426→
+   427→Stage Summary:
+   428→- Currency symbol image now properly sized at 0.9em height for clean inline display with monetary amounts
+   429→- CSS updated in both shared and rental invoice template stylesheets
+   430→- `fmtMoney()` confirmed used in ALL 10+ template body functions for ALL monetary amounts (line items, subtotals, VAT, delivery fees, totals, salary components, tax items, etc.)
+   431→- `currencyDisplay()` alt text now language-aware
+   432→- Timesheet subtotal label now includes currency symbol next to hourly rate
+   433→- `print-button.tsx` already correctly processes and passes `currencySymbolImage` with background removal
+   434→
+   435→---
+   436→Task ID: 1
+   437→Agent: Main Agent
+   438→Task: Fix MoneyDisplay formatAmount crash on undefined values + comprehensive system testing
+   439→
+   440→Work Log:
+   441→1. Fixed `formatAmount()` in money-display.tsx to handle undefined/null/NaN values gracefully (returns 0)
+   442→2. Fixed `formatMoney()` to accept undefined/null values
+   443→3. Fixed `MoneyDisplayProps.value` type to accept `number | undefined | null`
+   444→4. Fixed `employee-contracts/route.ts` API to compute and return `totalCompensation` field (was missing from DB schema, causing 0.00 display)
+   445→5. Also fixed `parseFloat(body.basicSalary) || 0` in POST endpoint
+   446→6. Launched 4 parallel subagents for comprehensive system review:
+   447→   - Agent 2: Fixed rental modules (30+ issues: unsafe .toFixed(), .reduce(), property access, API missing fields)
+   448→   - Agent 3: Fixed project modules (33+ issues: unsafe number operations, reduce, type mismatches, API validation)
+   449→   - Agent 4: Fixed finance/HR modules (26+ issues: unsafe .toFixed(), API NaN handling, division by zero)
+   450→   - Agent 5: Fixed print-service currency symbols (sized images properly, added missing fmtMoney call)
+   451→7. Ran lint: 0 errors, 1 pre-existing warning
+   452→8. Browser testing: ALL 28 sections tested without errors
+   453→9. Verified MoneyDisplay works correctly with Saudi Riyal symbol image
+   454→10. Verified print-service uses fmtMoney (52 times) for all amounts in all templates
+   455→
+   456→Stage Summary:
+   457→- Core MoneyDisplay crash fixed (undefined/null safety)
+   458→- totalCompensation computed field added to employee-contracts API
+   459→- 89+ individual fixes across all modules (unsafe number operations, null safety, API fixes)
+   460→- Print service properly shows currency symbol next to ALL amounts
+   461→- All 28 sections tested in browser: 0 runtime errors
+   462→- Lint: clean (0 errors)
+   463→
+   464→---
+   465→Task ID: 2b
+   466→Agent: Rental Print Button Fixer
+   467→Task: Fix ALL print buttons in the rental workflow modules
+   468→
+   469→Work Log:
+   470→
+   471→**Issue 1: Rental Invoice items missing `unit` field (print-button.tsx)**
+   472→- `transformDataForPrint('rental-invoice', data)` mapped items to `{ description, quantity, unitPrice, totalPrice }` but the template uses `item.unit` for the "Unit" column
+   473→- Fix: Added `unit: item.unit || ''` to the items mapping
+   474→- Also added `deliveryAmount → deliveryFees` mapping since SalesInvoice model uses `deliveryAmount` but the template reads `data.deliveryFees`
+   475→
+   476→**Issue 2: Rental Contract and Delivery Order using generic-table template instead of dedicated templates (print-service.ts)**
+   477→- Both `rental-contract` and `delivery-order` types were dispatched to `generateGenericTableBody()` which expects `columns`/`rows` arrays
+   478→- The API returns single contract/order objects with nested data — completely incompatible format
+   479→- Fix: Created `generateRentalContractBody()` — dedicated template showing contract info, pricing type, rates, parties (equipment + client), project info, delivery & references, total value, timesheets table, additional terms, bank info, signatures
+   480→- Fix: Created `generateDeliveryOrderBody()` — dedicated template showing order info, status, dates, parties (equipment + client), site/project info, notes, signatures
+   481→- Updated `generateDocumentBody()` dispatch to route these types to their dedicated templates
+   482→
+   483→**Issue 3: formatAmount/formatMoneyPrint null safety (print-service.ts)**
+   484→- `formatAmount(value)` called `value.toFixed(2)` directly — would crash if `undefined` or `NaN` slipped through
+   485→- Fix: Added guard `const safe = (typeof value === 'number' && !isNaN(value)) ? value : 0` before calling `.toFixed()`
+   486→
+   487→**Issue 4: Rental Payments header PrintButton has no data/documentId (rental-payments.tsx)**
+   488→- `<PrintButton type="rental-payment" size="icon" />` at line 129 had no `data` or `documentId` prop
+   489→- Would always show "فشل في تحميل بيانات المستند" alert
+   490→- Fix: Changed type to `generic-table` and passed `data` prop with columns/rows/infoItems/totals constructed from the `filtered` payments array
+   491→
+   492→**Issue 5: Delivery Orders header PrintButton has no data/documentId (delivery-orders.tsx)**
+   493→- `<PrintButton type="generic-table" size="icon" />` at line 616 had no `data` prop
+   494→- Would always show "فشل في تحميل بيانات المستند" alert
+   495→- Fix: Passed `data` prop with columns/rows/infoItems constructed from the `filtered` orders array
+   496→
+   497→**Issue 6: Client Payments header PrintButton type mismatch (client-payments.tsx)**
+   498→- `<PrintButton type="client-payment" data={printData} size="icon" />` at line 587
+   499→- `printData` was already structured as generic-table format (columns/rows/infoItems/totals)
+   500→- But `client-payment` type dispatches to `generatePaymentVoucherBody()` which expects `amount`, `clientName`, `paymentNo` etc.
+   501→- Fix: Changed type from `client-payment` to `generic-table` so it matches the data format
+   502→
+   503→**Issue 7: Client Payment / Rental Payment API field name mismatches (print-button.tsx)**
+   504→- `generatePaymentVoucherBody()` template expects `paymentMethod`, `paymentNo`, `description`
+   505→- ClientPayment API returns `receivedIn`, `reference`, `notes`
+   506→- Fix: Added `client-payment`/`rental-payment` case to `transformDataForPrint()` that maps:
+   507→  - `receivedIn` → `paymentMethod` (with TREASURY/BANK translation)
+   508→  - `reference` → `paymentNo`
+   509→  - `notes` → `description`
+   510→  - Also flattens `client` nested object and `invoice` nested object
+   511→
+   512→**Issue 8: Delivery Order transform missing (print-button.tsx)**
+   513→- No `delivery-order` case in `transformDataForPrint()` — fell through to default which only does basic client/equipment/project flattening
+   514→- Fix: Added `delivery-order` case that flattens client, equipment, project, and rental nested objects
+   515→
+   516→**Files Modified:**
+   517→1. `src/components/shared/print-button.tsx` — 6 changes (items unit field, deliveryAmount mapping, rental-contract transform, delivery-order transform, client-payment/rental-payment transform)
+   518→2. `src/lib/print-service.ts` — 4 changes (formatAmount null guard, generateRentalContractBody, generateDeliveryOrderBody, dispatch routing)
+   519→3. `src/components/modules/rental-payments.tsx` — 1 change (header PrintButton with data)
+   520→4. `src/components/modules/delivery-orders.tsx` — 1 change (header PrintButton with data)
+   521→5. `src/components/modules/client-payments.tsx` — 1 change (type client-payment → generic-table)
+   522→
+   523→**Build Verification:** ✓ Compiled successfully with no new errors
+   524→
+   525→---
+   526→Task ID: 4
+   527→Agent: Other Modules Print Button Fixer
+   528→Task: Fix ALL print buttons in remaining modules (HR, Finance, Operations, Settings)
+   529→
+   530→Work Log:
+   531→
+   532→## Category A: PrintButtons Without data/documentId (CRITICAL — Would Fail on Click)
+   533→
+   534→### 1. advances.tsx — `<PrintButton type="advance-voucher" size="icon" />` (NO data/documentId)
+   535→- Added `useMemo` import
+   536→- Created `printData` with columns (employee, date, amount, settled, remaining, status), rows from filtered advances, infoItems, and totals
+   537→- Added `align: 'amount'` to monetary columns (amount, settled, remaining)
+   538→- Passed `data={printData}` to PrintButton
+   539→- Fixed null safety: `a.amount ?? 0`, `a.settledAmount ?? 0` in reduce operations
+   540→
+   541→### 2. petty-cash.tsx — `<PrintButton type="petty-cash-voucher" size="icon" />` (NO data/documentId)
+   542→- Added `useMemo` import, `formatSAR` import
+   543→- Created `printData` with columns (description, category, amount, date, reference), rows from filtered entries, infoItems, and totals
+   544→- Added `align: 'amount'` to amount column
+   545→- Passed `data={printData}` to PrintButton
+   546→- Fixed null safety: `e.amount ?? 0` in totalBalance reduce
+   547→
+   548→### 3. accounting.tsx — `<PrintButton type="journal-entry" size="sm" />` (NO data/documentId)
+   549→- Created `journalPrintData` with columns (entryNo, date, description, source, debit, credit, status), rows from filteredEntries, infoItems, and totals
+   550→- Added `align: 'amount'` to debit/credit columns
+   551→- Passed `data={journalPrintData}` to PrintButton
+   552→- Fixed null safety: `e.totalDebit ?? 0`, `e.totalCredit ?? 0` in reduce operations
+   553→
+   554→### 4. accounting.tsx — `<PrintButton type="trial-balance" size="sm" />` (NO data/documentId)
+   555→- Created `trialBalancePrintData` with columns (code, name, type, totalDebit, totalCredit, netDebit, netCredit), rows from safeTrialBalance, infoItems, and totals
+   556→- Added `align: 'amount'` to all monetary columns
+   557→- Passed `data={trialBalancePrintData}` to PrintButton
+   558→- Fixed null safety: `i.netDebit ?? 0`, `i.netCredit ?? 0`, etc. in reduce operations
+   559→
+   560→### 5. client-payments.tsx — `<PrintButton type="client-payment" size="icon" />` (header, NO data/documentId)
+   561→- Created `printData` with columns (client, date, amount, receivedIn, reference), rows from filtered payments, infoItems, and totals
+   562→- Added `align: 'amount'` to amount column
+   563→- Passed `data={printData}` to PrintButton
+   564→- Fixed null safety: `p.amount ?? 0` in reduce operations
+   565→
+   566→### 6. inventory.tsx — `<PrintButton type="generic-table" size="icon" />` (NO data)
+   567→- Added `useMemo` import
+   568→- Created `printData` with columns (code, name, type, purchasePrice, sellingPrice, quantity, warehouse), rows from items, infoItems
+   569→- Added `align: 'amount'` to purchasePrice/sellingPrice columns
+   570→- Passed `data={printData}` to PrintButton
+   571→
+   572→### 7. service-invoices.tsx — `<PrintButton type="generic-table" size="icon" />` (NO data)
+   573→- Created `printData` with columns (invoiceNo, client, date, totalAmount, paidAmount, status), rows from filtered invoices, infoItems, and totals
+   574→- Added `align: 'amount'` to totalAmount/paidAmount columns
+   575→- Passed `data={printData}` to PrintButton
+   576→
+   577→### 8. subcontractors.tsx — `<PrintButton type="generic-table" size="icon" />` (NO data)
+   578→- Added `useMemo` import
+   579→- Created `printData` with columns (code, name, specialty, contactPerson, phone, status), rows from filtered subcontractors, infoItems
+   580→- Passed `data={printData}` to PrintButton
+   581→
+   582→## Category B: Print Template Routing Fix (print-service.ts)
+   583→
+   584→### 9. Smart columns/rows detection in `generateDocumentBody()`
+   585→The key architectural fix: several document types (advance-voucher, petty-cash-voucher, client-payment, expense-report, salary-slip, timesheet-report, rental-contract) were hard-routed to their specialized template bodies, but the header PrintButtons now pass generic-table format data (columns/rows/infoItems). This would render incorrectly.
+   586→
+   587→**Solution:** Added columns/rows detection at the routing layer:
+   588→- `client-payment`, `supplier-payment`, `rental-payment`, `expense-report`, `advance-voucher`, `petty-cash-voucher`: If data has `columns` array → use `generateGenericTableBody`, otherwise → use `generatePaymentVoucherBody`
+   589→- `salary-slip`: If data has `columns` array → use `generateGenericTableBody`, otherwise → use `generateSalarySlipBody`
+   590→- `timesheet-report`: If data has `columns` array → use `generateGenericTableBody`, otherwise → use `generateTimesheetBody`
+   591→- `rental-contract`: If data has `columns` array → use `generateGenericTableBody`, otherwise → use `generateRentalContractBody`
+   592→
+   593→This ensures:
+   594→- Per-row print buttons (using `documentId`) still use specialized templates
+   595→- Header print buttons (using `data` with columns/rows) use generic table body
+   596→- Proper document titles are preserved for both cases
+   597→
+   598→## Category C: Missing `align: 'amount'` in Existing printData Columns
+   599→
+   600→These modules already had `data={printData}` but their monetary columns lacked `align: 'amount'`, causing amounts to render as plain text instead of formatted currency:
+   601→
+   602→### 10. salaries.tsx — Added `align: 'amount'` to: basicSalary, allowances, overtimeAmount, deductions, netSalary
+   603→### 11. employees.tsx — Added `align: 'amount'` to: basicSalary
+   604→### 12. work-teams.tsx — Added `align: 'amount'` to: totalCost
+   605→### 13. expenses.tsx — Added `align: 'amount'` to: amount, totalAmount
+   606→### 14. equipment.tsx — Added `align: 'amount'` to: hourlyRate
+   607→### 15. equipment-operations.tsx — Added `align: 'amount'` to: cost
+   608→### 16. equipment-maintenance.tsx — Added `align: 'amount'` to: cost
+   609→### 17. fuel.tsx — Added `align: 'amount'` to: costPerLiter, totalCost
+   610→### 18. employee-contracts.tsx — Added `align: 'amount'` to: basicSalary, totalCompensation
+   611→
+   612→## Files Modified (18 total)
+   613→
+   614→**New printData + data prop added:**
+   615→1. `src/components/modules/advances.tsx`
+   616→2. `src/components/modules/petty-cash.tsx`
+   617→3. `src/components/modules/accounting.tsx` (2 print buttons: journal-entry + trial-balance)
+   618→4. `src/components/modules/client-payments.tsx`
+   619→5. `src/components/modules/inventory.tsx`
+   620→6. `src/components/modules/service-invoices.tsx`
+   621→7. `src/components/modules/subcontractors.tsx`
+   622→
+   623→**Template routing fix:**
+   624→8. `src/lib/print-service.ts` — Smart columns/rows detection in generateDocumentBody
+   625→
+   626→**align:'amount' fixes:**
+   627→9. `src/components/modules/salaries.tsx`
+   628→10. `src/components/modules/employees.tsx`
+   629→11. `src/components/modules/work-teams.tsx`
+   630→12. `src/components/modules/expenses.tsx`
+   631→13. `src/components/modules/equipment.tsx`
+   632→14. `src/components/modules/equipment-operations.tsx`
+   633→15. `src/components/modules/equipment-maintenance.tsx`
+   634→16. `src/components/modules/fuel.tsx`
+   635→17. `src/components/modules/employee-contracts.tsx`
+   636→
+   637→**Build Verification:** ✓ No new TypeScript errors introduced. All pre-existing errors are from unrelated modules (API routes, section components, etc.)
+   638→
+   639→---
+   640→Task ID: 3
+   641→Agent: Project Print Button Fixer
+   642→Task: Fix ALL print buttons in the project/construction workflow modules
+   643→
+   644→Work Log:
+   645→
+   646→**Problem Summary:**
+   647→- Many header-level `<PrintButton>` components had no `data` prop and no `documentId`, causing "فشل في تحميل بيانات المستند" error
+   648→- Some used wrong `type` that didn't match their data structure (e.g., `supplier-payment` type with `generic-table` data)
+   649→- The `extract` type API URL was wrong (`/api/progress-claims?id=` instead of `/api/progress-claims/`)
+   650→- Missing `/api/progress-claims/[id]/route.ts` API endpoint
+   651→- `transformDataForPrint()` lacked `extract` and `purchase-order` cases for proper data flattening
+   652→- Non-RENTAL contracts used `generic-table` type with `documentId` which maps to empty API URL
+   653→
+   654→**Core Infrastructure Fixes:**
+   655→
+   656→1. **`print-button.tsx`** — Fixed `extract` API map URL from `/api/progress-claims?id=${documentId}` to `/api/progress-claims/${documentId}`
+   657→2. **`print-button.tsx`** — Added `case 'extract':` in `transformDataForPrint()` to flatten `project`→`projectName` and `contract`→`contractNo`/`contractValue`
+   658→3. **`print-button.tsx`** — Added `case 'purchase-order':` in `transformDataForPrint()` to flatten `project`→`projectName` and `supplier`→`supplierName`
+   659→4. **`/api/progress-claims/[id]/route.ts`** — Created new API endpoint to fetch a single progress claim by ID (was missing; row-level extract print would fail)
+   660→
+   661→**Module Fixes — Header-Level PrintButtons with Missing Data:**
+   662→
+   663→5. **`progress-claims.tsx`** — Changed header PrintButton from `type="extract"` (no data/documentId) to `type="generic-table" data={printData}`. Added `printData` useMemo with claim list columns/rows/infoItems/totals.
+   664→6. **`purchase-orders.tsx`** — Added `printData` useMemo and `data={printData}` to header PrintButton
+   665→7. **`supplier-invoices.tsx`** — Added `printData` useMemo and `data={printData}` to header PrintButton
+   666→8. **`boq.tsx`** — Added `printData` useMemo and `data={printData}` to header PrintButton
+   667→9. **`projects.tsx`** — Added `useMemo` import, created `printData` useMemo, added `data={printData}` to header PrintButton
+   668→10. **`purchase-requests.tsx`** — Added `printData` useMemo and `data={printData}` to header PrintButton
+   669→11. **`goods-receipt.tsx`** — Added `printData` useMemo and `data={printData}` to header PrintButton
+   670→12. **`subcontractors.tsx`** — Deduplicated `printData` definitions (was duplicated), kept the better one with `specialtyOptions` lookup
+   671→
+   672→**Module Fixes — Wrong Print Type (data mismatch):**
+   673→
+   674→13. **`supplier-payments.tsx`** — Changed `type="supplier-payment"` to `type="generic-table"` because `printData` has columns/rows/infoItems format (generic-table), not single-voucher format (supplier-payment)
+   675→14. **`advances.tsx`** — Changed `type="advance-voucher"` to `type="generic-table"` because `printData` has columns/rows/infoItems format
+   676→15. **`petty-cash.tsx`** — Changed `type="petty-cash-voucher"` to `type="generic-table"` because `printData` has columns/rows/infoItems format
+   677→16. **`accounting.tsx`** (journal entries) — Changed `type="journal-entry"` to `type="generic-table"` because `journalPrintData` has columns/rows format
+   678→17. **`accounting.tsx`** (trial balance) — Changed `type="trial-balance"` to `type="generic-table"` because `trialBalancePrintData` has columns/rows format
+   679→
+   680→**Module Fixes — Detail View PrintButton with Wrong API Mapping:**
+   681→
+   682→18. **`contracts.tsx`** — For non-RENTAL contracts, changed from `type="generic-table" documentId={contract.id}` (generic-table has empty API map) to passing inline `data` prop with contract info, project claims table, and infoItems. For RENTAL contracts, kept `type="rental-contract" documentId={contract.id}`.
+   683→
+   684→**Modules Already Fixed (no changes needed):**
+   685→
+   686→19. **`client-payments.tsx`** — Already had `printData` and `type="generic-table" data={printData}`
+   687→20. **`rental-payments.tsx`** — Already had inline data prop
+   688→21. **`delivery-orders.tsx`** — Already had inline data prop
+   689→22. **`inventory.tsx`** — Already had `printData` and `type="generic-table" data={printData}`
+   690→23. **`service-invoices.tsx`** — Already had `printData` and `type="generic-table" data={printData}`
+   691→
+   692→**Build Verification:** ✓ Compiled successfully with no errors. All 65 pages generated.
+   693→
+   694→---
+   695→Task ID: 2-4-5
+   696→Agent: Main Agent
+   697→Task: Fix all print buttons across rental workflow, project workflow, and other modules
+   698→
+   699→Work Log:
+   700→1. Identified 40+ PrintButton usages across all modules
+   701→2. Found critical issues:
+   702→   - Many header-level PrintButtons had no `data` or `documentId` prop → would always fail
+   703→   - API endpoint for extract was wrong (query param vs path param)
+   704→   - Missing `/api/progress-claims/[id]` route for single claim fetch
+   705→   - transformDataForPrint missing cases for extract, purchase-order, client-payment, rental-payment
+   706→   - Rental contract and delivery order had no dedicated templates
+   707→3. Subagents fixed:
+   708→   - Rental: 8 fixes (rental payments data, delivery orders data, client payments type, new templates, field mappings)
+   709→   - Projects: 13 fixes (8 header PrintButtons with missing data, 5 type corrections, new API route)
+   710→   - Other: 8 fixes (missing data props, smart template routing, amount column alignment)
+   711→4. Fixed all React hooks lint errors (useMemo conditional calls, dependency mismatches)
+   712→5. Converted problematic useMemo to plain objects for printData (memoization unnecessary)
+   713→6. Final lint: 0 errors, 0 warnings
+   714→
+   715→Browser Testing Results:
+   716→- ✅ Rental Invoice print: Professional A4 with QR, currency symbol on all amounts, parties info
+   717→- ✅ Employee Contracts print: Generic table with columns, data renders correctly
+   718→- ✅ Equipment Report print: Opens successfully
+   719→- ✅ Rental Contract print: Dedicated template with contract details, currency symbol
+   720→- ✅ Service Invoice print: Professional A4 with currency symbol on all amounts
+   721→- ✅ Delivery Order print: Opens successfully with order details
+   722→
+   723→Stage Summary:
+   724→- ALL print buttons now have data or documentId
+   725→- New dedicated templates for rental contract and delivery order
+   726→- Smart routing: columns/rows data auto-detected to use generic-table template
+   727→- Currency symbol (ر.س) appears next to ALL amounts in print templates
+   728→- 0 lint errors, 0 runtime errors
+   729→
+   730→---
+   731→Task ID: 3
+   732→Agent: step-change-agent
+   733→Task: Change step="0.01" to step="0.0001" in all component files
+   734→
+   735→Work Log:
+   736→- Changed step="0.01" to step="0.0001" in src/components/sections/rental-section.tsx (1 instance)
+   737→- Changed step="0.01" to step="0.0001" in src/components/modules/employees.tsx (1 instance)
+   738→- Changed step="0.01" to step="0.0001" in src/components/modules/purchases.tsx (3 instances)
+   739→- Changed step="0.01" to step="0.0001" in src/components/modules/contracts.tsx (4 instances)
+   740→- Changed step="0.01" to step="0.0001" in src/components/modules/fuel.tsx (1 instance)
+   741→- Changed step="0.01" to step="0.0001" in src/components/modules/employee-contracts.tsx (4 instances)
+   742→- Changed step="0.01" to step="0.0001" in src/components/modules/expenses.tsx (3 instances)
+   743→- Changed step="0.01" to step="0.0001" in src/components/modules/purchase-orders.tsx (2 instances)
+   744→- Changed step="0.01" to step="0.0001" in src/components/modules/petty-cash.tsx (1 instance)
+   745→- Changed step="0.01" to step="0.0001" in src/components/modules/advances.tsx (2 instances)
+   746→- Changed step="0.01" to step="0.0001" in src/components/modules/goods-receipt.tsx (1 instance)
+   747→- Changed step="0.01" to step="0.0001" in src/components/modules/rental-contracts.tsx (5 instances)
+   748→- Changed step="0.01" to step="0.0001" in src/components/modules/client-payments.tsx (1 instance)
+   749→- Changed step="0.01" to step="0.0001" in src/components/modules/salaries.tsx (6 instances)
+   750→- Changed step="0.01" to step="0.0001" in src/components/modules/inventory.tsx (4 instances)
+   751→- Changed step="0.01" to step="0.0001" in src/components/modules/equipment-maintenance.tsx (1 instance)
+   752→- Changed step="0.01" to step="0.0001" in src/components/modules/service-invoices.tsx (3 instances)
+   753→- Changed step="0.01" to step="0.0001" in src/components/modules/rental-payments.tsx (1 instance)
+   754→- Changed step="0.01" to step="0.0001" in src/components/modules/equipment.tsx (11 instances)
+   755→- Changed step="0.01" to step="0.0001" in src/components/modules/supplier-payments.tsx (1 instance)
+   756→- Changed step="0.01" to step="0.0001" in src/components/modules/labor.tsx (1 instance)
+   757→- Changed step="0.01" to step="0.0001" in src/components/modules/settings.tsx (1 instance)
+   758→- Changed step="0.01" to step="0.0001" in src/components/modules/projects.tsx (1 instance)
+   759→- Changed step="0.01" to step="0.0001" in src/components/modules/progress-claims.tsx (2 instances)
+   760→- Changed step="0.01" to step="0.0001" in src/components/modules/boq.tsx (2 instances)
+   761→
+   762→Stage Summary:
+   763→- Total: 63 instances of step="0.01" changed to step="0.0001" across 25 files
+   764→- All monetary input fields now accept 4 decimal places
+   765→- Verified: zero remaining step="0.01" in src/components/
+   766→- Verified: step="0.5" and step="0.1" (for hours/liters/etc.) were NOT modified
+   767→- No files outside src/components/ were touched
+   768→
+   769→---
+   770→Task ID: 4
+   771→Agent: tofix-agent
+   772→Task: Change .toFixed(2) to .toFixed(4) for monetary amounts in module files
+   773→
+   774→Work Log:
+   775→- Changed .toFixed(2) to .toFixed(4) in src/components/shared/print-button.tsx (totalAmount, vatAmount - lines 312-313)
+   776→- Changed .toFixed(2) to .toFixed(4) in src/components/invoice/invoice-preview.tsx (fmt helper line 138, operatingHours line 505, item.quantity line 559)
+   777→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/purchase-orders.tsx (totalAmount CSV export - line 636)
+   778→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/rental-contracts.tsx (calculatedHourlyRate - lines 925, 1006)
+   779→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/rental-payments.tsx (totalAmount - line 132)
+   780→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/vat.tsx (all 5 declaration fields: totalSales, outputVat, totalPurchases, inputVat, netVat - lines 311-315)
+   781→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/rental-invoices.tsx (CSV export totalAmount, paidAmount, outstanding - line 528)
+   782→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/supplier-invoices.tsx (subtotal, vatAmount, totalAmount - lines 517-519)
+   783→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/expenses.tsx (amount, vatAmount, totalAmount - lines 420-422)
+   784→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/reports.tsx (profitability cols lines 208-212, trial balance lines 566-567, supplier lines 789-791, client lines 896-899, VAT calc line 1087)
+   785→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/client-payments.tsx (remainingBalance - line 180)
+   786→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/service-invoices.tsx (CSV export totalAmount, paidAmount, outstanding - line 737)
+   787→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/equipment.tsx (hourlyRate, dailyRate, monthlyRate - lines 1432-1434)
+   788→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/supplier-payments.tsx (amount - line 299)
+   789→- Changed .toFixed(2) to .toFixed(4) in src/app/api/print/route.ts (totalAmount, vatAmount - lines 206-207)
+   790→- Changed .toFixed(2) to .toFixed(4) in src/lib/business-flow/engine.ts (supplier invoice remaining lines 666/678/679, client invoice remaining lines 722/734/735)
+   791→- Changed .toFixed(2) to .toFixed(4) in src/components/modules/contracts.tsx (vatAmount - line 382)
+   792→
+   793→Stage Summary:
+   794→- All monetary amount displays now show 4 decimal places
+   795→- Percentage and ratio formatting kept at 2 decimal places (projects-section.tsx profitMargin/variance%, finance-section.tsx currentRatio, projects.tsx profitMargin)
+   796→- Verified no .toFixed(2) remains in any of the edited files
+   797→- 17 files modified, 0 files with unintended changes
+   798→
+   799→---
+   800→Task ID: 1
+   801→Agent: Main Agent
+   802→Task: تحسين تحصيلات التأجير - إضافة تفاصيل الفاتورة، طرق الدفع الجديدة، وإصلاح حفظ الإعدادات
+   803→
+   804→Work Log:
+   805→- فحص مكون rental-payments.tsx الحالي
+   806→- إضافة بطاقة تفاصيل الفاتورة عند اختيار فاتورة في نموذج التحصيل (المبلغ قبل الضريبة، الضريبة، الإجمالي، المدفوع، المتبقي)
+   807→- تحديث طرق الدفع من (خزينة/بنك) إلى (نقدي/تحويل بنكي/شيك)
+   808→- تحديث rental-payments.tsx بالكامل مع واجهة محسنة
+   809→- تحديث client-payments.tsx ليشمل طرق الدفع الجديدة (CASH, BANK_TRANSFER, CHECK)
+   810→- تحديث rental-section.tsx ليشمل طرق الدفع الجديدة وبطاقة تفاصيل الفاتورة
+   811→- تحديث projects-section.tsx ليشمل تسميات وألوان طرق الدفع الجديدة
+   812→- تحديث API client-payments/route.ts لدعم طرق الدفع الجديدة
+   813→- تحديث accounting engine.ts لدعم طرق الدفع الجديدة في autoEntryClientPayment
+   814→- إضافة refetchOnMount: 'always' لاستعلام الإعدادات
+   815→- تحسين آلية مزامنة النموذج في settings.tsx
+   816→- اختبار المتصفح: تأكيد عمل بطاقة تفاصيل الفاتورة
+   817→- اختبار المتصفح: تأكيد عمل طرق الدفع الجديدة (نقدي، تحويل بنكي، شيك)
+   818→- اختبار المتصفح: تأكيد عمل حفظ الإعدادات بنجاح
+   819→
+   820→Stage Summary:
+   821→- بطاقة تفاصيل الفاتورة تظهر عند اختيار فاتورة في تحصيل التأجير (المبلغ قبل الضريبة، الضريبة، الإجمالي، المدفوع، المتبقي)
+   822→- طرق الدفع الجديدة: نقدي (CASH)، تحويل بنكي (BANK_TRANSFER)، شيك (CHECK)
+   823→- المحرك المحاسبي يتعامل مع طرق الدفع: CASH/TREASURY → حساب الخزينة (1110)، BANK/BANK_TRANSFER/CHECK → حساب البنوك (1120)
+   824→- حفظ الإعدادات يعمل بشكل صحيح مع تحسينات (refetchOnMount: 'always')
+   825→- الملفات المعدلة: rental-payments.tsx, client-payments.tsx, rental-section.tsx, projects-section.tsx, client-payments/route.ts, accounting/engine.ts, settings.tsx
+   826→
+   827→---
+   828→Task ID: 2
+   829→Agent: Main Agent
+   830→Task: تحسين شامل لفاتورة التأجير بناءً على 14 ملاحظة من المستخدم
+   831→
+   832→Work Log:
+   833→- إصلاح تبديل السجل التجاري والرقم الضريبي (س.ت للسجل، ض.ر للضريبي)
+   834→- إزالة رمز العملة المستقل من رأس الفاتورة
+   835→- إزالة "الحالة" من الفاتورة المطبوعة
+   836→- استبدال "نظام بِنَاء ERP" بحقوق النشر © شركة المنطقة الغربية للمقاولات العامة
+   837→- تغيير عرض المنازل العشرية من 4 إلى 2 في الطباعة (formatMoneyPrint + fmtPrint)
+   838→- إضافة قسم "بيانات التأجير" الشامل: رقم العقد، طلب البيع، طلب شراء العميل، أمر التوصيل، التايم شيت، شهر التشغيل، المعدة، ساعات التشغيل، الموقع
+   839→- تحسين عرض فترة التشغيل من "2026-08" إلى "أغسطس 2026 من 01/08/2026 إلى 31/08/2026"
+   840→- دمج رسوم النقل كبند في جدول البنود بدلاً من عرضها مرتين
+   841→- دمج ضريبة القيمة المضافة في سطر واحد (إزالة ضريبة النقل المنفصلة)
+   842→- تغيير تخطيط الإجماليات + QR إلى جانبي (مثل SAP/Odoo/Oracle)
+   843→- تحديث PrintButton transformDataForPrint لدعم timesheet و rental و deliveryOrders
+   844→- تحديث API sales-invoices/[id] لتضمين بيانات rental الإضافية (salesOrderNo, purchaseOrderNo, workLocation, deliveryOrders)
+   845→- إضافة CSS لقسم بيانات التأجير وتخطيط الإجماليات+QR الجانبي
+   846→
+   847→Stage Summary:
+   848→- 14 مشكلة تم معالجتها في قالب فاتورة التأجير
+   849→- الملفات المعدلة: print-service.ts, print-button.tsx, sales-invoices/[id]/route.ts
+   850→- عرض المبالغ في الطباعة أصبح بمنزلتين عشرية (224,307.69 بدلاً من 224307.6900)
+   851→- قسم "بيانات التأجير" يربط الفاتورة بدورة العمل الكاملة
+   852→- تخطيط احترافي للإجماليات و QR كود بجانب بعض
+   853→
+   854→---
+   855→Task ID: invoice-templates-migration
+   856→Agent: Main Agent
+   857→Task: Create 3 modular invoice template files for the new printing system
+   858→
+   859→Work Log:
+   860→- Created /src/printing/invoices/ directory for modular template files
+   861→- Created ServiceInvoice.ts: implements DocumentTemplate interface, migrates generateInvoiceBody from print-service.ts
+   862→  - requiresQR: true, requiresSignature: true, requiresBankInfo: true, requiresAmountInWords: true
+   863→  - hasCustomHeader: false, hasCustomFooter: false (uses default header/footer)
+   864→  - CSS: getDefaultCSS from shared/css
+   865→  - Body: parties section (from/to), invoice info grid, rental equipment section (if rental type), items table, totals (with optional delivery fees), amount in words, bank info, terms, signatures
+   866→  - Uses shared section functions: bankInfoSection, signaturesSection, amountInWordsSection, termsSection, totalsSection
+   867→  - Uses fmtMoney for all money displays with 4 decimal places
+   868→  - Supports ar/en bilingual via lang parameter
+   869→- Created RentalInvoice.ts: implements DocumentTemplate interface, migrates generateRentalInvoiceBody from print-service.ts
+   870→  - requiresQR: true, requiresSignature: true, requiresBankInfo: true, requiresAmountInWords: true
+   871→  - hasCustomHeader: true, hasCustomFooter: true (uses ri-header/ri-footer)
+   872→  - CSS: getRentalInvoiceCSS from shared/css
+   873→  - Body: invoice info (no status), rental data section, parties, items table (with delivery fees as line item), billing+QR section (side-by-side), amount in words, bank info, terms, signatures
+   874→  - getCustomHeader: generateRentalInvoiceHeader from shared/headers-footers
+   875→  - getCustomFooter: generateRentalInvoiceFooter from shared/headers-footers
+   876→  - getExtraScripts: html2canvas export script + QR CDN script
+   877→  - Uses 'ri' prefix for all shared section functions
+   878→  - Uses encodeZATCATLV for ZATCA QR code generation
+   879→  - Uses qrCodeSection and qrCodeScript from shared/sections
+   880→- Created SupplierInvoice.ts: implements DocumentTemplate interface, migrates generateSupplierInvoiceBody from print-service.ts
+   881→  - requiresQR: false, requiresSignature: true, requiresBankInfo: false, requiresAmountInWords: true
+   882→  - hasCustomHeader: false, hasCustomFooter: false
+   883→  - CSS: getDefaultCSS from shared/css
+   884→  - Body: parties (supplier/buyer), invoice info grid, items table, totals (subtotal + VAT + grand total), amount in words, signatures
+   885→  - No bank info section, no QR code, no terms section (matches original)
+   886→  - Uses shared section functions: signaturesSection, amountInWordsSection, totalsSection
+   887→- All templates import from shared modules (types, utils, css, sections, headers-footers)
+   888→- All templates export a const object implementing DocumentTemplate
+   889→- All money formatting uses fmtMoney with 4 decimal places
+   890→- All templates support ar/en bilingual
+   891→- Lint passes cleanly
+   892→
+   893→---
+   894→Task ID: modular-templates-phase2
+   895→Agent: Main Agent
+   896→Task: Create 7 template files for the modular printing system (procurement, operations, financial, reports)
+   897→
+   898→Work Log:
+   899→- Created /src/printing/procurement/PurchaseOrder.ts
+   900→  - Migrated from generatePurchaseOrderBody in print-service.ts
+   901→  - category: procurement, requiresSignature: true, requiresBankInfo/AmtWords/QR: false
+   902→  - Parties section (buyer/supplier), PO info grid, items table with fmtMoney, total, signatures
+   903→- Created /src/printing/procurement/DeliveryOrder.ts
+   904→  - Migrated from generateDeliveryOrderBody in print-service.ts
+   905→  - category: procurement, requiresSignature: true, requiresBankInfo/AmtWords/QR: false
+   906→  - Order info grid (order no, status, delivery/return dates), equipment/client party cards,
+   907→    site info section, notes section, signatures
+   908→- Created /src/printing/operations/Timesheet.ts
+   909→  - Migrated from generateTimesheetBody in print-service.ts
+   910→  - category: operation, requiresSignature/BankInfo/AmtWords: true, requiresQR: false
+   911→  - Contract info grid, period/status/invoice, equipment/client party cards,
+   912→    operating data section (hours, rate, SO/PO refs), totals with VAT/delivery,
+   913→    amount in words, bank info, signatures
+   914→- Created /src/printing/financial/PaymentVoucher.ts
+   915→  - Migrated from generatePaymentVoucherBody in print-service.ts
+   916→  - category: financial, requiresSignature/BankInfo/AmtWords: true, requiresQR: false
+   917→  - Voucher info (no, date, client/supplier, payment method), description block,
+   918→    total amount, amount in words, bank info, signatures
+   919→  - Handles: client-payment, supplier-payment, rental-payment, expense-report, advance-voucher, petty-cash-voucher
+   920→- Created /src/printing/financial/SalarySlip.ts
+   921→  - Migrated from generateSalarySlipBody in print-service.ts
+   922→  - category: financial, requiresSignature/AmtWords: true, requiresBankInfo/QR: false
+   923→  - Employee info (3-col grid), earnings/deductions table, net salary total,
+   924→    amount in words, signatures
+   925→- Created /src/printing/financial/RentalContract.ts
+   926→  - Migrated from generateRentalContractBody in print-service.ts
+   927→  - category: financial, requiresSignature/BankInfo/AmtWords: true, requiresQR: false
+   928→  - Contract info grid (no, status, pricing type, rate, dates), equipment/client party cards,
+   929→    project info section, delivery & references section, total value with amount in words,
+   930→    timesheets table, additional terms, bank info, signatures
+   931→- Created /src/printing/reports/GenericTable.ts
+   932→  - Migrated from generateGenericTableBody in print-service.ts
+   933→  - category: report, requiresSignature: true, requiresBankInfo/AmtWords/QR: false
+   934→  - Optional info items grid, dynamic columns/rows table with amount detection,
+   935→    optional totals section, signatures
+   936→  - Handles: generic-table, purchase-request, goods-receipt, attendance-report,
+   937→    equipment-report, fuel-report, maintenance-report, work-team-report,
+   938→    resource-distribution, journal-entry, trial-balance, account-statement
+   939→
+   940→All templates:
+   941→- Import from shared modules (types, utils, css, sections)
+   942→- Export a const template: DocumentTemplate object
+   943→- Use fmtMoney for all money displays (4 decimal places)
+   944→- Support ar/en bilingual labels
+   945→- Lint passes cleanly
+   946→
+   947→---
+   948→Task ID: printing-templates-phase2
+   949→Agent: Main Agent
+   950→Task: Create 6 new modular printing templates for accounting, tax, and projects
+   951→
+   952→Work Log:
+   953→- Created /src/printing/accounting/TrialBalance.ts - Trial balance template (no QR, CFO/GM signatures, accounting header/footer, debit/credit table with totals)
+   954→- Created /src/printing/accounting/IncomeStatement.ts - Income statement template (no QR, revenues/costs/profit layout with section headers, gross/net profit)
+   955→- Created /src/printing/accounting/GeneralLedger.ts - General ledger template (no QR, account info grid, journal entries table with date/description/debit/credit/balance, opening/closing balance)
+   956→- Created /src/printing/accounting/BalanceSheet.ts - Balance sheet template (no QR, assets/liabilities/equity sections with totals, grand total verification row)
+   957→- Created /src/printing/tax/VatReturn.ts - VAT return template (no QR, company info with VAT/CR numbers, output/input VAT sections, net VAT, payment status badge)
+   958→- Created /src/printing/projects/ProgressClaim.ts - Progress claim template (no QR, no signature - uses approvalsSection, claim/project/contract info, percentage breakdown, amount breakdown, amount in words, consultant/owner/contractor approvals)
+   959→
+   960→All templates:
+   961→- Import from shared modules (types, utils, sections, css, headers-footers)
+   962→- Export a const template: DocumentTemplate object
+   963→- Use fmtMoney for all money displays (4 decimal places)
+   964→- Support ar/en bilingual labels
+   965→- Accounting/tax templates use getAccountingCSS from shared/css
+   966→- Projects template uses getDefaultCSS from shared/css
+   967→- Accounting/tax templates use generateAccountingHeader/generateAccountingFooter from shared/headers-footers
+   968→- ProgressClaim uses approvalsSection from shared/sections
+   969→- Lint passes cleanly
+   970→

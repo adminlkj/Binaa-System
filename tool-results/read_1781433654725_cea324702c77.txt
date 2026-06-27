@@ -1,0 +1,779 @@
+     1→import { db } from '@/lib/db'
+     2→import { autoEntrySalesInvoice, autoEntryRentalInvoice, initializeChartOfAccounts, createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+     3→import { NextResponse } from 'next/server'
+     4→
+     5→export async function GET(request: Request) {
+     6→  try {
+     7→    const { searchParams } = new URL(request.url)
+     8→    const clientId = searchParams.get('clientId')
+     9→    const projectId = searchParams.get('projectId')
+    10→    const status = searchParams.get('status')
+    11→    const invoiceType = searchParams.get('invoiceType')
+    12→    const sourceType = searchParams.get('sourceType')
+    13→
+    14→    const where: Record<string, unknown> = {}
+    15→    if (clientId) where.clientId = clientId
+    16→    if (projectId) where.projectId = projectId
+    17→    if (status) where.status = status
+    18→    if (invoiceType) where.invoiceType = invoiceType
+    19→    if (sourceType) where.sourceType = sourceType
+    20→
+    21→    const invoices = await db.salesInvoice.findMany({
+    22→      where,
+    23→      include: {
+    24→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+    25→        project: { select: { id: true, name: true, nameAr: true, code: true, projectType: true } },
+    26→        contract: { select: { id: true, contractNo: true } },
+    27→        timesheet: {
+    28→          select: {
+    29→            id: true, operatingHours: true, month: true, year: true, status: true,
+    30→            project: { select: { id: true, name: true, code: true, projectType: true, client: { select: { id: true, name: true } } } },
+    31→            equipment: { select: { id: true, name: true, code: true, nameAr: true } },
+    32→            rental: { select: { id: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true } },
+    33→            contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
+    34→          },
+    35→        },
+    36→        progressClaim: {
+    37→          select: {
+    38→            id: true, claimNo: true, date: true, amount: true, vatAmount: true,
+    39→            totalAmount: true, status: true, invoiced: true,
+    40→            project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
+    41→            contract: { select: { id: true, contractNo: true } },
+    42→          },
+    43→        },
+    44→        items: true,
+    45→      },
+    46→      orderBy: { date: 'desc' },
+    47→    })
+    48→    return NextResponse.json(invoices)
+    49→  } catch (error) {
+    50→    console.error('Error fetching sales invoices:', error)
+    51→    return NextResponse.json({ error: 'فشل في تحميل فواتير المبيعات' }, { status: 500 })
+    52→  }
+    53→}
+    54→
+    55→export async function POST(request: Request) {
+    56→  try {
+    57→    const body = await request.json()
+    58→    const { sourceType } = body
+    59→
+    60→    // ===== MODE A: Create from ProgressClaim (Extract) =====
+    61→    if (sourceType === 'EXTRACT') {
+    62→      return await createInvoiceFromExtract(body)
+    63→    }
+    64→
+    65→    // ===== MODE B: Create from TimeSheet =====
+    66→    if (sourceType === 'TIMESHEET') {
+    67→      return await createInvoiceFromTimesheet(body)
+    68→    }
+    69→
+    70→    // ===== LEGACY MODE: Manual creation with items array =====
+    71→    return await createInvoiceManual(body)
+    72→  } catch (error) {
+    73→    console.error('Error creating sales invoice:', error)
+    74→    return NextResponse.json({ error: 'فشل في إنشاء فاتورة المبيعات' }, { status: 500 })
+    75→  }
+    76→}
+    77→
+    78→// ============================================================================
+    79→// MODE A: Create invoice from ProgressClaim (Extract)
+    80→// ============================================================================
+    81→async function createInvoiceFromExtract(body: Record<string, unknown>) {
+    82→  const { progressClaimId, date, dueDate, notes } = body
+    83→
+    84→  if (!progressClaimId || typeof progressClaimId !== 'string') {
+    85→    return NextResponse.json({ error: 'معرف المستخلص مطلوب' }, { status: 400 })
+    86→  }
+    87→
+    88→  if (!date || !dueDate) {
+    89→    return NextResponse.json({ error: 'التاريخ وتاريخ الاستحقاق مطلوبان' }, { status: 400 })
+    90→  }
+    91→
+    92→  // 1. Fetch the ProgressClaim and verify it exists
+    93→  const claim = await db.progressClaim.findUnique({
+    94→    where: { id: progressClaimId },
+    95→    include: {
+    96→      project: { select: { id: true, name: true, code: true, clientId: true, client: { select: { id: true, name: true } } } },
+    97→      contract: { select: { id: true, contractNo: true } },
+    98→    },
+    99→  })
+   100→
+   101→  if (!claim) {
+   102→    return NextResponse.json({ error: 'المستخلص غير موجود' }, { status: 404 })
+   103→  }
+   104→
+   105→  // 2. Verify the claim is APPROVED
+   106→  if (claim.status !== 'APPROVED') {
+   107→    return NextResponse.json({ error: 'يجب اعتماد المستخلص أولاً قبل إنشاء الفاتورة' }, { status: 400 })
+   108→  }
+   109→
+   110→  // 3. DUPLICATE PREVENTION: Check that the claim is NOT already invoiced
+   111→  if (claim.invoiced) {
+   112→    return NextResponse.json({ error: 'تم إصدار فاتورة لهذا المستخلص بالفعل' }, { status: 400 })
+   113→  }
+   114→
+   115→  // Also check via SalesInvoice table
+   116→  const existingInvoice = await db.salesInvoice.findFirst({
+   117→    where: { progressClaimId: claim.id },
+   118→  })
+   119→  if (existingInvoice) {
+   120→    return NextResponse.json({ error: 'يوجد فاتورة مرتبطة بهذا المستخلص بالفعل' }, { status: 400 })
+   121→  }
+   122→
+   123→  // 4. Auto-populate from claim
+   124→  const clientId = claim.project.clientId
+   125→  if (!clientId) {
+   126→    return NextResponse.json({ error: 'العميل غير محدد للمشروع' }, { status: 400 })
+   127→  }
+   128→  const projectId = claim.projectId
+   129→  const contractId = claim.contractId
+   130→  const subtotal = claim.amount
+   131→  const vatAmount = claim.vatAmount
+   132→  const totalAmount = claim.totalAmount
+   133→
+   134→  // 5. Generate invoice number: PCL-YEAR-SEQ
+   135→  const prefix = 'PCL'
+   136→  const year = new Date().getFullYear()
+   137→  const yearStr = String(year)
+   138→  const likePattern = `${prefix}-${yearStr}-`
+   139→
+   140→  const lastInvoice = await db.salesInvoice.findFirst({
+   141→    where: { invoiceNo: { startsWith: likePattern } },
+   142→    orderBy: { invoiceNo: 'desc' },
+   143→    select: { invoiceNo: true },
+   144→  })
+   145→
+   146→  let seq = 1
+   147→  if (lastInvoice) {
+   148→    const parts = lastInvoice.invoiceNo.split('-')
+   149→    const parsedSeq = parseInt(parts[2])
+   150→    if (!isNaN(parsedSeq)) {
+   151→      seq = parsedSeq + 1
+   152→    }
+   153→  }
+   154→  const invoiceNo = `${prefix}-${yearStr}-${String(seq).padStart(4, '0')}`
+   155→
+   156→  const invoiceDate = new Date(date as string)
+   157→  const invoiceDueDate = new Date(dueDate as string)
+   158→
+   159→  // 6-8. Create invoice + mark claim invoiced + create accounting entry (all in transaction)
+   160→  const result = await db.$transaction(async (tx: PrismaTransaction) => {
+   161→    // Create the invoice
+   162→    const invoice = await tx.salesInvoice.create({
+   163→      data: {
+   164→        invoiceNo,
+   165→        clientId,
+   166→        projectId,
+   167→        contractId,
+   168→        date: invoiceDate,
+   169→        dueDate: invoiceDueDate,
+   170→        subtotal,
+   171→        discountRate: 0,
+   172→        discountAmount: 0,
+   173→        netAmount: subtotal,
+   174→        vatRate: claim.vatRate,
+   175→        vatAmount,
+   176→        totalAmount,
+   177→        paidAmount: 0,
+   178→        status: 'DRAFT',
+   179→        invoiceType: 'PROGRESS_CLAIM',
+   180→        sourceType: 'EXTRACT',
+   181→        progressClaimId: claim.id,
+   182→        contractNo: claim.contract.contractNo,
+   183→        notes: (notes as string) || `فاتورة مستخلص رقم ${claim.claimNo}`,
+   184→        items: {
+   185→          create: [{
+   186→            description: `مستخلص رقم ${claim.claimNo} - ${claim.project.name}`,
+   187→            descriptionEn: `Progress Claim No. ${claim.claimNo} - ${claim.project.name}`,
+   188→            quantity: 1,
+   189→            unit: 'مستخلص',
+   190→            unitPrice: subtotal,
+   191→            totalPrice: subtotal,
+   192→            itemType: 'PROGRESS_CLAIM',
+   193→          }],
+   194→        },
+   195→      },
+   196→      include: {
+   197→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+   198→        project: { select: { id: true, name: true, nameAr: true, code: true } },
+   199→        contract: { select: { id: true, contractNo: true } },
+   200→        timesheet: { select: { id: true, month: true, year: true, operatingHours: true, status: true } },
+   201→        progressClaim: { select: { id: true, claimNo: true, status: true, invoiced: true } },
+   202→        items: true,
+   203→      },
+   204→    })
+   205→
+   206→    // Mark the ProgressClaim as invoiced
+   207→    await tx.progressClaim.update({
+   208→      where: { id: claim.id },
+   209→      data: { invoiced: true },
+   210→    })
+   211→
+   212→    // Create auto accounting entry
+   213→    try {
+   214→      await initializeChartOfAccounts()
+   215→      const journalEntry = await autoEntrySalesInvoice({
+   216→        invoiceNo: invoice.invoiceNo,
+   217→        clientId: invoice.clientId,
+   218→        subtotal: invoice.subtotal,
+   219→        vatRate: invoice.vatRate,
+   220→        vatAmount: invoice.vatAmount,
+   221→        totalAmount: invoice.totalAmount,
+   222→        invoiceType: 'PROGRESS_CLAIM',
+   223→        date: invoice.date,
+   224→        projectId: invoice.projectId || undefined,
+   225→      }, tx)
+   226→
+   227→      await tx.salesInvoice.update({
+   228→        where: { id: invoice.id },
+   229→        data: { journalEntryId: journalEntry.id },
+   230→      })
+   231→    } catch (accountingError) {
+   232→      console.error('Accounting entry failed for sales invoice from extract:', accountingError)
+   233→    }
+   234→
+   235→    // Re-fetch to include journalEntryId
+   236→    return await tx.salesInvoice.findUnique({
+   237→      where: { id: invoice.id },
+   238→      include: {
+   239→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+   240→        project: { select: { id: true, name: true, nameAr: true, code: true } },
+   241→        contract: { select: { id: true, contractNo: true } },
+   242→        timesheet: { select: { id: true, month: true, year: true, operatingHours: true, status: true } },
+   243→        progressClaim: { select: { id: true, claimNo: true, status: true, invoiced: true } },
+   244→        items: true,
+   245→      },
+   246→    })
+   247→  })
+   248→
+   249→  return NextResponse.json(result, { status: 201 })
+   250→}
+   251→
+   252→// ============================================================================
+   253→// MODE B: Create invoice from TimeSheet
+   254→// ============================================================================
+   255→async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
+   256→  const { timesheetId, date, dueDate, notes } = body
+   257→
+   258→  if (!timesheetId || typeof timesheetId !== 'string') {
+   259→    return NextResponse.json({ error: 'معرف التايم شيت مطلوب' }, { status: 400 })
+   260→  }
+   261→
+   262→  if (!date || !dueDate) {
+   263→    return NextResponse.json({ error: 'التاريخ وتاريخ الاستحقاق مطلوبان' }, { status: 400 })
+   264→  }
+   265→
+   266→  // 1. Fetch the Timesheet with its rental/contract/equipment relations
+   267→  const timesheet = await db.timesheet.findUnique({
+   268→    where: { id: timesheetId },
+   269→    include: {
+   270→      contract: {
+   271→        include: {
+   272→          rental: {
+   273→            select: { id: true, hourlyRate: true, pricingType: true, deliveryFees: true, deliveryFeesTaxable: true, clientId: true, status: true, salesOrderNo: true, paymentDuration: true },
+   274→          },
+   275→        },
+   276→      },
+   277→      equipment: { select: { id: true, code: true, name: true, nameAr: true } },
+   278→      project: { select: { id: true, name: true, code: true, clientId: true } },
+   279→      rental: {
+   280→        select: { id: true, hourlyRate: true, pricingType: true, deliveryFees: true, deliveryFeesTaxable: true, clientId: true, status: true, salesOrderNo: true, paymentDuration: true },
+   281→      },
+   282→    },
+   283→  })
+   284→
+   285→  if (!timesheet) {
+   286→    return NextResponse.json({ error: 'التايم شيت غير موجود' }, { status: 404 })
+   287→  }
+   288→
+   289→  // 2. Verify the Timesheet status is APPROVED (not DRAFT or INVOICED)
+   290→  if (timesheet.status !== 'APPROVED') {
+   291→    if (timesheet.status === 'INVOICED') {
+   292→      return NextResponse.json({ error: 'تم إصدار فاتورة لهذا التايم شيت بالفعل' }, { status: 400 })
+   293→    }
+   294→    return NextResponse.json({ error: 'يجب اعتماد التايم شيت أولاً قبل إنشاء الفاتورة' }, { status: 400 })
+   295→  }
+   296→
+   297→  // Also check if there's already an invoice linked
+   298→  const existingInvoice = await db.salesInvoice.findUnique({
+   299→    where: { timesheetId: timesheet.id },
+   300→  })
+   301→  if (existingInvoice) {
+   302→    return NextResponse.json({ error: 'تم إصدار فاتورة لهذا التايم شيت بالفعل' }, { status: 400 })
+   303→  }
+   304→
+   305→  // 4. Calculate: subtotal = operatingHours × hourlyRate (from contract)
+   306→  const rental = timesheet.rental || timesheet.contract.rental
+   307→  const hourlyRate = rental?.hourlyRate || timesheet.contract.hourlyRate || 0
+   308→  const operatingHours = timesheet.operatingHours
+   309→  const subtotal = Math.round(operatingHours * hourlyRate * 100) / 100
+   310→
+   311→  // 5. Add delivery fees if applicable (from rental contract)
+   312→  const deliveryFees = rental?.deliveryFees || timesheet.contract.deliveryFees || 0
+   313→  const deliveryFeesTaxable = rental?.deliveryFeesTaxable ?? timesheet.contract.deliveryFeesTaxable ?? true
+   314→  const includeDelivery = deliveryFees > 0
+   315→
+   316→  const vatRate = 0.15
+   317→  let deliveryVat = 0
+   318→  if (includeDelivery && deliveryFeesTaxable) {
+   319→    deliveryVat = Math.round(deliveryFees * vatRate * 100) / 100
+   320→  }
+   321→  const rentalVat = Math.round(subtotal * vatRate * 100) / 100
+   322→  const vatAmount = Math.round((rentalVat + deliveryVat) * 100) / 100
+   323→  const totalAmount = Math.round((subtotal + deliveryFees + vatAmount) * 100) / 100
+   324→
+   325→  // Get clientId from rental or project
+   326→  const clientId = rental?.clientId || timesheet.project.clientId
+   327→
+   328→  // Month names for description
+   329→  const monthNamesAr = [
+   330→    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+   331→    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+   332→  ]
+   333→  const monthLabel = `${monthNamesAr[timesheet.month - 1]} ${timesheet.year}`
+   334→  const equipmentName = timesheet.equipment.nameAr || timesheet.equipment.name
+   335→
+   336→  // 6. Generate invoice number: RNT-YEAR-SEQ
+   337→  const prefix = 'RNT'
+   338→  const year = new Date().getFullYear()
+   339→  const yearStr = String(year)
+   340→  const likePattern = `${prefix}-${yearStr}-`
+   341→
+   342→  const lastInvoice = await db.salesInvoice.findFirst({
+   343→    where: { invoiceNo: { startsWith: likePattern } },
+   344→    orderBy: { invoiceNo: 'desc' },
+   345→    select: { invoiceNo: true },
+   346→  })
+   347→
+   348→  let seq = 1
+   349→  if (lastInvoice) {
+   350→    const parts = lastInvoice.invoiceNo.split('-')
+   351→    const parsedSeq = parseInt(parts[2])
+   352→    if (!isNaN(parsedSeq)) {
+   353→      seq = parsedSeq + 1
+   354→    }
+   355→  }
+   356→  const invoiceNo = `${prefix}-${yearStr}-${String(seq).padStart(4, '0')}`
+   357→
+   358→  const invoiceDate = new Date(date as string)
+   359→  const invoiceDueDate = new Date(dueDate as string)
+   360→
+   361→  // 7. Create the invoice items
+   362→  const invoiceItems = [
+   363→    {
+   364→      description: `تأجير ${equipmentName} - ${monthLabel} - ${operatingHours} ساعة`,
+   365→      descriptionEn: `Equipment Rental - ${timesheet.equipment.name} - ${monthLabel} - ${operatingHours} hours`,
+   366→      quantity: operatingHours,
+   367→      unit: 'ساعة',
+   368→      unitPrice: hourlyRate,
+   369→      totalPrice: subtotal,
+   370→      itemType: 'RENTAL',
+   371→    },
+   372→  ]
+   373→
+   374→  // Add delivery fee as separate item if applicable
+   375→  if (includeDelivery && deliveryFees > 0) {
+   376→    invoiceItems.push({
+   377→      description: `رسوم نقل وتنزيل - ${equipmentName}`,
+   378→      descriptionEn: `Delivery Fees - ${timesheet.equipment.name}`,
+   379→      quantity: 1,
+   380→      unit: 'خدمة',
+   381→      unitPrice: deliveryFees,
+   382→      totalPrice: deliveryFees,
+   383→      itemType: 'DELIVERY',
+   384→    })
+   385→  }
+   386→
+   387→  // 8-9. Create invoice + mark timesheet + create accounting entry (all in transaction)
+   388→  const result = await db.$transaction(async (tx: PrismaTransaction) => {
+   389→    const invoice = await tx.salesInvoice.create({
+   390→      data: {
+   391→        invoiceNo,
+   392→        clientId,
+   393→        projectId: timesheet.projectId,
+   394→        contractId: timesheet.contractId,
+   395→        date: invoiceDate,
+   396→        dueDate: invoiceDueDate,
+   397→        subtotal,
+   398→        discountRate: 0,
+   399→        discountAmount: 0,
+   400→        netAmount: subtotal,
+   401→        vatRate,
+   402→        vatAmount,
+   403→        totalAmount,
+   404→        paidAmount: 0,
+   405→        status: 'DRAFT',
+   406→        invoiceType: 'RENTAL',
+   407→        sourceType: 'TIMESHEET',
+   408→        timesheetId: timesheet.id,
+   409→        contractNo: timesheet.contract.contractNo,
+   410→        contractType: timesheet.contract.contractType,
+   411→        contractPeriodStart: timesheet.contract.startDate,
+   412→        contractPeriodEnd: timesheet.contract.endDate,
+   413→        salesOrderNo: rental?.salesOrderNo || null,
+   414→        equipmentName: timesheet.equipment.name,
+   415→        operatingHours,
+   416→        hourlyRate,
+   417→        includeDelivery,
+   418→        deliveryAmount: deliveryFees,
+   419→        deliveryFeesTaxable,
+   420→        includeVat: true,
+   421→        deliveryMonth: `${timesheet.year}-${String(timesheet.month).padStart(2, '0')}`,
+   422→        paymentTerms: rental?.paymentDuration || timesheet.contract.paymentTerms || null,
+   423→        notes: (notes as string) || `فاتورة تأجير معدات - عقد ${timesheet.contract.contractNo} - ${monthLabel}`,
+   424→        items: {
+   425→          create: invoiceItems,
+   426→        },
+   427→      },
+   428→      include: {
+   429→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+   430→        project: { select: { id: true, name: true, nameAr: true, code: true } },
+   431→        contract: { select: { id: true, contractNo: true } },
+   432→        timesheet: { select: { id: true, month: true, year: true, operatingHours: true, status: true } },
+   433→        progressClaim: { select: { id: true, claimNo: true, status: true, invoiced: true } },
+   434→        items: true,
+   435→      },
+   436→    })
+   437→
+   438→    // Mark the Timesheet as INVOICED
+   439→    await tx.timesheet.update({
+   440→      where: { id: timesheet.id },
+   441→      data: { status: 'INVOICED', approvedDate: timesheet.approvedDate || new Date() },
+   442→    })
+   443→
+   444→    // Create auto accounting entry
+   445→    try {
+   446→      await initializeChartOfAccounts()
+   447→      const journalEntry = await autoEntryRentalInvoice({
+   448→        invoiceNo: invoice.invoiceNo,
+   449→        subtotal: invoice.subtotal,
+   450→        vatAmount: invoice.vatAmount,
+   451→        totalAmount: invoice.totalAmount,
+   452→        date: invoice.date,
+   453→        costCenterId: invoice.projectId || undefined,
+   454→      }, tx)
+   455→
+   456→      await tx.salesInvoice.update({
+   457→        where: { id: invoice.id },
+   458→        data: { journalEntryId: journalEntry.id },
+   459→      })
+   460→    } catch (accountingError) {
+   461→      console.error('Accounting entry failed for sales invoice from timesheet:', accountingError)
+   462→    }
+   463→
+   464→    // Re-fetch to include journalEntryId
+   465→    return await tx.salesInvoice.findUnique({
+   466→      where: { id: invoice.id },
+   467→      include: {
+   468→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+   469→        project: { select: { id: true, name: true, nameAr: true, code: true } },
+   470→        contract: { select: { id: true, contractNo: true } },
+   471→        timesheet: { select: { id: true, month: true, year: true, operatingHours: true, status: true } },
+   472→        progressClaim: { select: { id: true, claimNo: true, status: true, invoiced: true } },
+   473→        items: true,
+   474→      },
+   475→    })
+   476→  })
+   477→
+   478→  return NextResponse.json(result, { status: 201 })
+   479→}
+   480→
+   481→// ============================================================================
+   482→// LEGACY MODE: Manual creation with items array (backward compatibility)
+   483→// ============================================================================
+   484→async function createInvoiceManual(body: Record<string, unknown>) {
+   485→  const {
+   486→    clientId, projectId, contractId, date, dueDate, notes, items,
+   487→    vatRate = 0.15, discountRate = 0, discountAmount = 0,
+   488→    invoiceType = 'TAX_INVOICE', paymentTerms,
+   489→    referenceNo, contractNo, contractType, contractPeriodStart, contractPeriodEnd,
+   490→    deliveryMonth, includeDelivery = false, deliveryAmount = 0, includeVat = true,
+   491→  } = body as Record<string, unknown>
+   492→
+   493→  const typedItems = items as Array<{ description: string; descriptionEn?: string; quantity: number; unit?: string; unitPrice: number; itemType?: string }> | undefined
+   494→
+   495→  if (!clientId || !date || !dueDate || !typedItems?.length) {
+   496→    return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
+   497→  }
+   498→
+   499→  // Calculate totals from items
+   500→  const subtotal = typedItems.reduce((sum: number, item: { quantity: number; unitPrice: number }) => {
+   501→    return sum + (item.quantity * item.unitPrice)
+   502→  }, 0)
+   503→
+   504→  const finalDiscountAmount = (discountAmount as number) || (subtotal * (discountRate as number))
+   505→  const netAmount = subtotal - finalDiscountAmount
+   506→  const deliveryTotal = includeDelivery ? (deliveryAmount as number) : 0
+   507→  const vatAmount = includeVat ? (netAmount + deliveryTotal) * (vatRate as number) : 0
+   508→  const totalAmount = netAmount + deliveryTotal + vatAmount
+   509→
+   510→  // Auto-generate invoice number: TYPE-YEAR-SEQ format
+   511→  const typePrefixMap: Record<string, string> = {
+   512→    TAX_INVOICE: 'SRV',
+   513→    PROGRESS_CLAIM: 'PCL',
+   514→    RENTAL: 'RNT',
+   515→    SERVICE: 'SVC',
+   516→  }
+   517→  const prefix = typePrefixMap[invoiceType as string] || 'INV'
+   518→  const year = new Date().getFullYear()
+   519→  const yearStr = String(year)
+   520→  const likePattern = `${prefix}-${yearStr}-`
+   521→
+   522→  const lastInvoice = await db.salesInvoice.findFirst({
+   523→    where: { invoiceNo: { startsWith: likePattern } },
+   524→    orderBy: { invoiceNo: 'desc' },
+   525→    select: { invoiceNo: true },
+   526→  })
+   527→
+   528→  let seq = 1
+   529→  if (lastInvoice) {
+   530→    const parts = lastInvoice.invoiceNo.split('-')
+   531→    const parsedSeq = parseInt(parts[2])
+   532→    if (!isNaN(parsedSeq)) {
+   533→      seq = parsedSeq + 1
+   534→    }
+   535→  }
+   536→  const invoiceNo = `${prefix}-${yearStr}-${String(seq).padStart(4, '0')}`
+   537→
+   538→  // Create invoice + accounting entry in transaction
+   539→  const result = await db.$transaction(async (tx: PrismaTransaction) => {
+   540→    const invoice = await tx.salesInvoice.create({
+   541→      data: {
+   542→        invoiceNo,
+   543→        clientId: clientId as string,
+   544→        projectId: (projectId as string) || null,
+   545→        contractId: (contractId as string) || null,
+   546→        date: new Date(date as string),
+   547→        dueDate: new Date(dueDate as string),
+   548→        subtotal,
+   549→        discountRate: discountRate as number,
+   550→        discountAmount: finalDiscountAmount,
+   551→        netAmount,
+   552→        vatRate: vatRate as number,
+   553→        vatAmount,
+   554→        totalAmount,
+   555→        paidAmount: 0,
+   556→        status: 'DRAFT',
+   557→        invoiceType: invoiceType as string,
+   558→        notes: (notes as string) || null,
+   559→        paymentTerms: (paymentTerms as string) || null,
+   560→        referenceNo: (referenceNo as string) || null,
+   561→        contractNo: (contractNo as string) || null,
+   562→        contractType: (contractType as string) || null,
+   563→        contractPeriodStart: contractPeriodStart ? new Date(contractPeriodStart as string) : null,
+   564→        contractPeriodEnd: contractPeriodEnd ? new Date(contractPeriodEnd as string) : null,
+   565→        deliveryMonth: (deliveryMonth as string) || null,
+   566→        includeDelivery: includeDelivery as boolean,
+   567→        deliveryAmount: includeDelivery ? (deliveryAmount as number) : 0,
+   568→        includeVat: includeVat as boolean,
+   569→        items: {
+   570→          create: typedItems.map((item: { description: string; descriptionEn?: string; quantity: number; unit?: string; unitPrice: number; itemType?: string }) => ({
+   571→            description: item.description,
+   572→            descriptionEn: item.descriptionEn || null,
+   573→            quantity: item.quantity,
+   574→            unit: item.unit || null,
+   575→            unitPrice: item.unitPrice,
+   576→            totalPrice: item.quantity * item.unitPrice,
+   577→            itemType: item.itemType || 'PRODUCT',
+   578→          })),
+   579→        },
+   580→      },
+   581→      include: {
+   582→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+   583→        project: { select: { id: true, name: true, nameAr: true, code: true } },
+   584→        contract: { select: { id: true, contractNo: true } },
+   585→        items: true,
+   586→      },
+   587→    })
+   588→
+   589→    // Auto-create accounting journal entry and store journalEntryId
+   590→    try {
+   591→      await initializeChartOfAccounts()
+   592→
+   593→      let journalEntry
+   594→      if (invoiceType === 'RENTAL') {
+   595→        journalEntry = await autoEntryRentalInvoice({
+   596→          invoiceNo: invoice.invoiceNo,
+   597→          subtotal: invoice.subtotal,
+   598→          vatAmount: invoice.vatAmount,
+   599→          totalAmount: invoice.totalAmount,
+   600→          date: invoice.date,
+   601→          costCenterId: invoice.projectId || undefined,
+   602→        }, tx)
+   603→      } else {
+   604→        journalEntry = await autoEntrySalesInvoice({
+   605→          invoiceNo: invoice.invoiceNo,
+   606→          clientId: invoice.clientId,
+   607→          subtotal: invoice.subtotal,
+   608→          vatRate: invoice.vatRate,
+   609→          vatAmount: invoice.vatAmount,
+   610→          totalAmount: invoice.totalAmount,
+   611→          invoiceType: invoice.invoiceType,
+   612→          date: invoice.date,
+   613→          projectId: invoice.projectId || undefined,
+   614→        }, tx)
+   615→      }
+   616→
+   617→      // Store the journalEntryId on the invoice
+   618→      await tx.salesInvoice.update({
+   619→        where: { id: invoice.id },
+   620→        data: { journalEntryId: journalEntry.id },
+   621→      })
+   622→    } catch (accountingError) {
+   623→      console.error('Accounting entry failed for sales invoice:', accountingError)
+   624→      // Don't fail the invoice creation, just log the error
+   625→    }
+   626→
+   627→    // Re-fetch to include journalEntryId
+   628→    return await tx.salesInvoice.findUnique({
+   629→      where: { id: invoice.id },
+   630→      include: {
+   631→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+   632→        project: { select: { id: true, name: true, nameAr: true, code: true } },
+   633→        contract: { select: { id: true, contractNo: true } },
+   634→        items: true,
+   635→      },
+   636→    })
+   637→  })
+   638→
+   639→  return NextResponse.json(result, { status: 201 })
+   640→}
+   641→
+   642→// PUT: Update a sales invoice (with reversal for approved/posted invoices)
+   643→export async function PUT(request: Request) {
+   644→  try {
+   645→    const body = await request.json()
+   646→    const { id, ...updateData } = body
+   647→
+   648→    if (!id) {
+   649→      return NextResponse.json({ error: 'معرف الفاتورة مطلوب' }, { status: 400 })
+   650→    }
+   651→
+   652→    const existing = await db.salesInvoice.findUnique({ where: { id } })
+   653→    if (!existing) {
+   654→      return NextResponse.json({ error: 'الفاتورة غير موجودة' }, { status: 404 })
+   655→    }
+   656→
+   657→    // Cannot modify CANCELLED invoices
+   658→    if (existing.status === 'CANCELLED') {
+   659→      return NextResponse.json({ error: 'لا يمكن تعديل فاتورة ملغاة' }, { status: 400 })
+   660→    }
+   661→
+   662→    // If the invoice has been approved/posted (has a journal entry), create a reversal + new entry
+   663→    if (existing.journalEntryId && (updateData.subtotal !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
+   664→      // Perform reversal + new entry + update in a transaction
+   665→      await db.$transaction(async (tx: PrismaTransaction) => {
+   666→        // Create reversal entry for the original
+   667→        const originalEntry = await tx.journalEntry.findUnique({
+   668→          where: { id: existing.journalEntryId! },
+   669→          include: { lines: true },
+   670→        })
+   671→
+   672→        if (originalEntry) {
+   673→          // Create reversal entry (swap debit/credit)
+   674→          const accountIds = originalEntry.lines.map(l => l.accountId)
+   675→          const accounts = await tx.account.findMany({ where: { id: { in: accountIds } } })
+   676→          const accountMap = new Map(accounts.map(a => [a.id, a.code]))
+   677→
+   678→          const resolvedReversalLines = originalEntry.lines.map(line => ({
+   679→            accountCode: accountMap.get(line.accountId) || '',
+   680→            debit: line.credit,
+   681→            credit: line.debit,
+   682→            costCenterId: line.costCenterId || undefined,
+   683→            description: `Reversal: ${line.description || ''}`,
+   684→          }))
+   685→
+   686→          await createJournalEntry({
+   687→            entryNo: `JE-REV-SI-${Date.now()}`,
+   688→            date: new Date(),
+   689→            description: `Reversal for Sales Invoice ${existing.invoiceNo}`,
+   690→            descriptionAr: `قيد عكسي لفاتورة مبيعات ${existing.invoiceNo}`,
+   691→            lines: resolvedReversalLines,
+   692→            sourceType: 'SALES_INVOICE_REVERSAL',
+   693→            sourceId: existing.invoiceNo,
+   694→          }, tx)
+   695→
+   696→          // Cancel the original entry
+   697→          await tx.journalEntry.update({
+   698→            where: { id: existing.journalEntryId! },
+   699→            data: { status: 'CANCELLED' },
+   700→          })
+   701→        }
+   702→
+   703→        // Create new entry with updated values
+   704→        const newSubtotal = updateData.subtotal ?? existing.subtotal
+   705→        const newVatAmount = updateData.vatAmount ?? existing.vatAmount
+   706→        const newTotalAmount = updateData.totalAmount ?? existing.totalAmount
+   707→        const newInvoiceType = updateData.invoiceType ?? existing.invoiceType
+   708→        const newDate = updateData.date ? new Date(updateData.date) : existing.date
+   709→
+   710→        await initializeChartOfAccounts()
+   711→
+   712→        let newJournalEntry
+   713→        if (newInvoiceType === 'RENTAL') {
+   714→          newJournalEntry = await autoEntryRentalInvoice({
+   715→            invoiceNo: existing.invoiceNo,
+   716→            subtotal: newSubtotal,
+   717→            vatAmount: newVatAmount,
+   718→            totalAmount: newTotalAmount,
+   719→            date: newDate,
+   720→            costCenterId: existing.projectId || undefined,
+   721→          }, tx)
+   722→        } else {
+   723→          newJournalEntry = await autoEntrySalesInvoice({
+   724→            invoiceNo: existing.invoiceNo,
+   725→            clientId: existing.clientId,
+   726→            subtotal: newSubtotal,
+   727→            vatRate: existing.vatRate,
+   728→            vatAmount: newVatAmount,
+   729→            totalAmount: newTotalAmount,
+   730→            invoiceType: newInvoiceType,
+   731→            date: newDate,
+   732→            projectId: existing.projectId || undefined,
+   733→          }, tx)
+   734→        }
+   735→
+   736→        updateData.journalEntryId = newJournalEntry.id
+   737→      })
+   738→    }
+   739→
+   740→    // Update the invoice
+   741→    const updated = await db.salesInvoice.update({
+   742→      where: { id },
+   743→      data: {
+   744→        ...updateData,
+   745→        ...(updateData.date && { date: new Date(updateData.date) }),
+   746→        ...(updateData.dueDate && { dueDate: new Date(updateData.dueDate) }),
+   747→      },
+   748→      include: {
+   749→        client: { select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true } },
+   750→        project: { select: { id: true, name: true, nameAr: true, code: true } },
+   751→        contract: { select: { id: true, contractNo: true } },
+   752→        timesheet: {
+   753→          select: {
+   754→            id: true, operatingHours: true, month: true, year: true, status: true,
+   755→            project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
+   756→            equipment: { select: { id: true, name: true, code: true, nameAr: true } },
+   757→            rental: { select: { id: true, hourlyRate: true, deliveryFees: true, deliveryFeesTaxable: true } },
+   758→            contract: { select: { id: true, contractNo: true, hourlyRate: true, paymentTerms: true } },
+   759→          },
+   760→        },
+   761→        progressClaim: {
+   762→          select: {
+   763→            id: true, claimNo: true, date: true, amount: true, vatAmount: true,
+   764→            totalAmount: true, status: true, invoiced: true,
+   765→            project: { select: { id: true, name: true, code: true, client: { select: { id: true, name: true } } } },
+   766→            contract: { select: { id: true, contractNo: true } },
+   767→          },
+   768→        },
+   769→        items: true,
+   770→      },
+   771→    })
+   772→
+   773→    return NextResponse.json(updated)
+   774→  } catch (error) {
+   775→    console.error('Error updating sales invoice:', error)
+   776→    return NextResponse.json({ error: 'فشل في تحديث فاتورة المبيعات' }, { status: 500 })
+   777→  }
+   778→}
+   779→

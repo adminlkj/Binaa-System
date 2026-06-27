@@ -1,0 +1,252 @@
+/home/z/my-project/src/app/api/employees/route.ts:28:    const employees = await db.employee.findMany({
+/home/z/my-project/src/app/api/employees/route.ts:47:    const lastEmployee = await db.employee.findFirst({
+/home/z/my-project/src/app/api/employees/route.ts:60:    const employee = await db.employee.create({
+/home/z/my-project/src/app/api/employees/[id]/route.ts:7:    const employee = await db.employee.findUnique({
+/home/z/my-project/src/app/api/employees/[id]/route.ts:32:    const employee = await db.employee.update({
+/home/z/my-project/src/app/api/employees/[id]/route.ts:63:    await db.employee.delete({ where: { id } })
+/home/z/my-project/src/app/api/subcontractor-invoices/route.ts:15:    const invoices = await db.subcontractorInvoice.findMany({
+/home/z/my-project/src/app/api/subcontractor-invoices/route.ts:43:    const lastInvoice = await db.subcontractorInvoice.findFirst({
+/home/z/my-project/src/app/api/subcontractor-invoices/route.ts:55:    const invoice = await db.subcontractorInvoice.create({
+/home/z/my-project/src/app/api/petty-cash/route.ts:10:    const pettyCash = await db.pettyCash.findMany({
+/home/z/my-project/src/app/api/petty-cash/route.ts:28:    const pettyCash = await db.pettyCash.create({
+/home/z/my-project/src/app/api/petty-cash/route.ts:54:        await db.pettyCash.update({
+/home/z/my-project/src/app/api/petty-cash/route.ts:64:    const updatedPettyCash = await db.pettyCash.findUnique({
+/home/z/my-project/src/app/api/purchase-requests/route.ts:16:    const requests = await db.purchaseRequest.findMany({
+/home/z/my-project/src/app/api/purchase-requests/route.ts:41:    const lastRequest = await db.purchaseRequest.findFirst({
+/home/z/my-project/src/app/api/purchase-requests/route.ts:53:    const purchaseRequest = await db.purchaseRequest.create({
+/home/z/my-project/src/app/api/purchase-requests/[id]/route.ts:19:    const purchaseRequest = await db.purchaseRequest.findUnique({
+/home/z/my-project/src/app/api/purchase-requests/[id]/route.ts:49:    const existing = await db.purchaseRequest.findUnique({
+/home/z/my-project/src/app/api/purchase-requests/[id]/route.ts:87:      const updated = await db.purchaseRequest.update({
+/home/z/my-project/src/app/api/purchase-requests/[id]/route.ts:130:    const updated = await db.purchaseRequest.update({
+/home/z/my-project/src/app/api/purchase-requests/[id]/route.ts:156:    const existing = await db.purchaseRequest.findUnique({
+/home/z/my-project/src/app/api/purchase-requests/[id]/route.ts:173:    await db.purchaseRequestItem.deleteMany({ where: { requestId: id } })
+/home/z/my-project/src/app/api/purchase-requests/[id]/route.ts:174:    await db.purchaseRequest.delete({ where: { id } })
+/home/z/my-project/src/app/api/work-teams/route.ts:14:    const teams = await db.workTeam.findMany({
+/home/z/my-project/src/app/api/work-teams/route.ts:38:    const lastTeam = await db.workTeam.findFirst({
+/home/z/my-project/src/app/api/work-teams/route.ts:60:    const team = await db.workTeam.create({
+/home/z/my-project/src/app/api/work-teams/[id]/route.ts:7:    const team = await db.workTeam.findUnique({
+/home/z/my-project/src/app/api/work-teams/[id]/route.ts:34:    const team = await db.workTeam.update({
+/home/z/my-project/src/app/api/work-teams/[id]/route.ts:57:        const existing = await db.teamMember.findFirst({
+/home/z/my-project/src/app/api/work-teams/[id]/route.ts:61:          await db.teamMember.create({
+/home/z/my-project/src/app/api/work-teams/[id]/route.ts:75:        await db.teamMember.deleteMany({
+/home/z/my-project/src/app/api/work-teams/[id]/route.ts:82:    const updatedTeam = await db.workTeam.findUnique({
+/home/z/my-project/src/app/api/work-teams/[id]/route.ts:105:    await db.workTeam.delete({ where: { id } })
+/home/z/my-project/src/app/api/attendance/route.ts:20:    const attendance = await db.attendance.findMany({
+/home/z/my-project/src/app/api/attendance/route.ts:49:    const attendance = await db.attendance.create({
+/home/z/my-project/src/app/api/seed/route.ts:11:    await db.salesInvoiceItem.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:12:    await db.salesInvoice.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:15:    await db.journalLine.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:16:    await db.journalEntry.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:19:    await db.companySetting.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:22:    await db.purchaseInvoiceItem.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:23:    await db.purchaseRequestItem.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:24:    await db.purchaseOrderItem.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:27:    await db.goodsReceiptItem.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:28:    await db.goodsReceipt.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:29:    await db.purchaseInvoice.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:30:    await db.purchaseOrder.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:31:    await db.purchaseRequest.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:32:    await db.subcontractorInvoice.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:35:    await db.progressClaim.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:38:    await db.contract.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:41:    await db.bOQItem.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:44:    await db.expense.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:45:    await db.laborCost.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:46:    await db.equipmentCost.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:47:    await db.equipmentUsage.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:48:    await db.equipmentFuelLog.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:49:    await db.equipmentMaintenance.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:52:    await db.equipmentRental.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:53:    await db.equipmentExpense.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:54:    await db.equipmentDeliveryOrder.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:57:    await db.timesheet.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:60:    await db.pettyCash.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:61:    await db.employeeAdvance.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:64:    try { await db.clientPayment.deleteMany() } catch {}
+/home/z/my-project/src/app/api/seed/route.ts:65:    try { await db.supplierPayment.deleteMany() } catch {}
+/home/z/my-project/src/app/api/seed/route.ts:68:    await db.equipment.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:71:    await db.inventoryItem.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:74:    await db.employee.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:77:    await db.warehouse.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:80:    await db.project.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:83:    await db.client.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:84:    await db.supplier.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:85:    await db.subcontractor.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:88:    await db.costCenter.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:91:    await db.account.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:94:    await db.vATReturn.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:97:    await db.attachment.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:98:    await db.auditLog.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:101:    // await db.currency.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:104:    await db.branch.deleteMany()
+/home/z/my-project/src/app/api/seed/route.ts:113:    await db.companySetting.create({
+/home/z/my-project/src/app/api/seed/route.ts:135:    const branch = await db.branch.create({
+/home/z/my-project/src/app/api/seed/route.ts:145:    const warehouse = await db.warehouse.create({
+/home/z/my-project/src/app/api/seed/route.ts:158:      db.costCenter.create({ data: { code: 'CC-001', name: 'مشروع مجمع الملقا' } }),
+/home/z/my-project/src/app/api/seed/route.ts:159:      db.costCenter.create({ data: { code: 'CC-002', name: 'مشروع مدرسة النسيم' } }),
+/home/z/my-project/src/app/api/seed/route.ts:160:      db.costCenter.create({ data: { code: 'CC-003', name: 'مشروع فيلا الورود' } }),
+/home/z/my-project/src/app/api/seed/route.ts:165:      db.client.create({
+/home/z/my-project/src/app/api/seed/route.ts:172:      db.client.create({
+/home/z/my-project/src/app/api/seed/route.ts:179:      db.client.create({
+/home/z/my-project/src/app/api/seed/route.ts:186:      db.client.create({
+/home/z/my-project/src/app/api/seed/route.ts:193:      db.client.create({
+/home/z/my-project/src/app/api/seed/route.ts:204:      db.supplier.create({
+/home/z/my-project/src/app/api/seed/route.ts:211:      db.supplier.create({
+/home/z/my-project/src/app/api/seed/route.ts:218:      db.supplier.create({
+/home/z/my-project/src/app/api/seed/route.ts:225:      db.supplier.create({
+/home/z/my-project/src/app/api/seed/route.ts:232:      db.supplier.create({
+/home/z/my-project/src/app/api/seed/route.ts:243:      db.subcontractor.create({
+/home/z/my-project/src/app/api/seed/route.ts:250:      db.subcontractor.create({
+/home/z/my-project/src/app/api/seed/route.ts:257:      db.subcontractor.create({
+/home/z/my-project/src/app/api/seed/route.ts:264:      db.subcontractor.create({
+/home/z/my-project/src/app/api/seed/route.ts:275:      db.employee.create({ data: { code: 'EMP-001', name: 'م. عبدالله خالد العتيبي', nameAr: 'م. عبدالله خالد العتيبي', profession: 'مهندس مشروع', basicSalary: 15000, branchId: branch.id, phone: '0551234567', email: 'a.otibi@erp.sa', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:276:      db.employee.create({ data: { code: 'EMP-002', name: 'فهد محمد الشمري', nameAr: 'فهد محمد الشمري', profession: 'مراقب موقع', basicSalary: 10000, branchId: branch.id, phone: '0552345678', email: 'f.shamri@erp.sa', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:277:      db.employee.create({ data: { code: 'EMP-003', name: 'سعد ناصر القحطاني', nameAr: 'سعد ناصر القحطاني', profession: 'محاسب', basicSalary: 12000, branchId: branch.id, phone: '0553456789', email: 's.qahtani@erp.sa', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:278:      db.employee.create({ data: { code: 'EMP-004', name: 'محمد إبراهيم الحربي', nameAr: 'محمد إبراهيم الحربي', profession: 'مسؤول مشتريات', basicSalary: 9000, branchId: branch.id, phone: '0554567890', email: 'm.harbi@erp.sa', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:279:      db.employee.create({ data: { code: 'EMP-005', name: 'يوسف عبدالرحمن الدوسري', nameAr: 'يوسف عبدالرحمن الدوسري', profession: 'مهندس مدني', basicSalary: 14000, branchId: branch.id, phone: '0555678901', email: 'y.dosari@erp.sa', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:284:      db.project.create({
+/home/z/my-project/src/app/api/seed/route.ts:293:      db.project.create({
+/home/z/my-project/src/app/api/seed/route.ts:302:      db.project.create({
+/home/z/my-project/src/app/api/seed/route.ts:315:      db.contract.create({
+/home/z/my-project/src/app/api/seed/route.ts:323:      db.contract.create({
+/home/z/my-project/src/app/api/seed/route.ts:331:      db.contract.create({
+/home/z/my-project/src/app/api/seed/route.ts:343:      db.bOQItem.create({ data: { projectId: projects[0].id, code: 'BOQ1-001', description: 'أعمال الحفر والتسوية', unit: 'م²', quantity: 25000, unitPrice: 35, totalPrice: 875000, category: 'أعمال ترابية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:344:      db.bOQItem.create({ data: { projectId: projects[0].id, code: 'BOQ1-002', description: 'خرسانة عادية قواعد', unit: 'م³', quantity: 1200, unitPrice: 450, totalPrice: 540000, category: 'أعمال خرسانية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:345:      db.bOQItem.create({ data: { projectId: projects[0].id, code: 'BOQ1-003', description: 'خرسانة مسلحة أعمدة', unit: 'م³', quantity: 800, unitPrice: 850, totalPrice: 680000, category: 'أعمال خرسانية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:346:      db.bOQItem.create({ data: { projectId: projects[0].id, code: 'BOQ1-004', description: 'حديد تسليح', unit: 'طن', quantity: 350, unitPrice: 4200, totalPrice: 1470000, category: 'مواد هيكلية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:347:      db.bOQItem.create({ data: { projectId: projects[0].id, code: 'BOQ1-005', description: 'بلوك خرساني 20 سم', unit: 'م²', quantity: 15000, unitPrice: 65, totalPrice: 975000, category: 'أعمال بناء' } }),
+/home/z/my-project/src/app/api/seed/route.ts:351:      db.bOQItem.create({ data: { projectId: projects[1].id, code: 'BOQ2-001', description: 'أعمال الحفر', unit: 'م²', quantity: 8000, unitPrice: 30, totalPrice: 240000, category: 'أعمال ترابية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:352:      db.bOQItem.create({ data: { projectId: projects[1].id, code: 'BOQ2-002', description: 'خرسانة عادية', unit: 'م³', quantity: 450, unitPrice: 450, totalPrice: 202500, category: 'أعمال خرسانية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:353:      db.bOQItem.create({ data: { projectId: projects[1].id, code: 'BOQ2-003', description: 'خرسانة مسلحة', unit: 'م³', quantity: 600, unitPrice: 850, totalPrice: 510000, category: 'أعمال خرسانية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:357:      db.bOQItem.create({ data: { projectId: projects[2].id, code: 'BOQ3-001', description: 'أعمال الجبس والديكور', unit: 'م²', quantity: 3500, unitPrice: 85, totalPrice: 297500, category: 'أعمال تشطيب' } }),
+/home/z/my-project/src/app/api/seed/route.ts:358:      db.bOQItem.create({ data: { projectId: projects[2].id, code: 'BOQ3-002', description: 'أعمال الدهان', unit: 'م²', quantity: 4500, unitPrice: 35, totalPrice: 157500, category: 'أعمال تشطيب' } }),
+/home/z/my-project/src/app/api/seed/route.ts:359:      db.bOQItem.create({ data: { projectId: projects[2].id, code: 'BOQ3-003', description: 'أعمال السباكة', unit: 'م²', quantity: 1200, unitPrice: 60, totalPrice: 72000, category: 'أعمال صحية' } }),
+/home/z/my-project/src/app/api/seed/route.ts:364:      db.equipment.create({ data: { code: 'EQ-001', name: 'حفارة كاتربيلر 320', nameAr: 'حفارة كاتربيلر 320', type: 'حفارة', model: 'CAT 320', status: 'IN_USE', hourlyRate: 350, dailyRate: 2800, monthlyRate: 60000, isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:365:      db.equipment.create({ data: { code: 'EQ-002', name: 'رافعة برجية Liebherr', nameAr: 'رافعة برجية Liebherr', type: 'رافعة', model: 'Liebherr 150 EC-B', status: 'IN_USE', hourlyRate: 500, dailyRate: 4000, monthlyRate: 80000, isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:366:      db.equipment.create({ data: { code: 'EQ-003', name: 'خلاطة خرسانة', nameAr: 'خلاطة خرسانة', type: 'خلاطة', model: 'Elba 60', status: 'AVAILABLE', hourlyRate: 150, dailyRate: 1200, monthlyRate: 25000, isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:379:      const claim = await db.progressClaim.create({ data: claimData })
+/home/z/my-project/src/app/api/seed/route.ts:392:        await db.progressClaim.update({ where: { id: claim.id }, data: { journalEntryId: je.id } })
+/home/z/my-project/src/app/api/seed/route.ts:408:      const invoice = await db.salesInvoice.create({
+/home/z/my-project/src/app/api/seed/route.ts:430:        await db.salesInvoice.update({ where: { id: invoice.id }, data: { journalEntryId: je.id } })
+/home/z/my-project/src/app/api/seed/route.ts:438:      db.purchaseOrder.create({
+/home/z/my-project/src/app/api/seed/route.ts:447:      db.purchaseOrder.create({
+/home/z/my-project/src/app/api/seed/route.ts:465:      const invoice = await db.purchaseInvoice.create({
+/home/z/my-project/src/app/api/seed/route.ts:484:        await db.purchaseInvoice.update({ where: { id: invoice.id }, data: { journalEntryId: je.id } })
+/home/z/my-project/src/app/api/seed/route.ts:492:      db.subcontractorInvoice.create({
+/home/z/my-project/src/app/api/seed/route.ts:500:      db.subcontractorInvoice.create({
+/home/z/my-project/src/app/api/seed/route.ts:520:      const expense = await db.expense.create({ data: expData })
+/home/z/my-project/src/app/api/seed/route.ts:531:        await db.expense.update({ where: { id: expense.id }, data: { journalEntryId: je.id } })
+/home/z/my-project/src/app/api/seed/route.ts:539:      db.equipmentExpense.create({ data: { equipmentId: equipmentItems[0].id, category: 'FUEL', description: 'وقود حفارة', amount: 12000, date: new Date('2024-04-10') } }),
+/home/z/my-project/src/app/api/seed/route.ts:540:      db.equipmentExpense.create({ data: { equipmentId: equipmentItems[1].id, category: 'MAINTENANCE', description: 'صيانة رافعة', amount: 25000, date: new Date('2024-05-15') } }),
+/home/z/my-project/src/app/api/seed/route.ts:545:      db.inventoryItem.create({ data: { code: 'INV-001', name: 'أسمنت بورتلاندي', nameAr: 'أسمنت بورتلاندي', itemType: 'PRODUCT', unit: 'كيس', purchasePrice: 18, sellingPrice: 22, quantity: 500, minQuantity: 50, warehouseId: warehouse.id, category: 'مواد بناء', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:546:      db.inventoryItem.create({ data: { code: 'INV-002', name: 'حديد تسليح 12مم', nameAr: 'حديد تسليح 12مم', itemType: 'PRODUCT', unit: 'طن', purchasePrice: 3800, sellingPrice: 4200, quantity: 50, minQuantity: 10, warehouseId: warehouse.id, category: 'حديد', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:547:      db.inventoryItem.create({ data: { code: 'INV-003', name: 'بلوك خرساني 20سم', nameAr: 'بلوك خرساني 20سم', itemType: 'PRODUCT', unit: 'قطعة', purchasePrice: 3.5, sellingPrice: 4.5, quantity: 10000, minQuantity: 1000, warehouseId: warehouse.id, category: 'بلوك', isActive: true } }),
+/home/z/my-project/src/app/api/seed/route.ts:551:    const vatSalesInvoices = await db.salesInvoice.findMany({
+/home/z/my-project/src/app/api/seed/route.ts:555:    const vatPurchaseInvoices = await db.purchaseInvoice.findMany({
+/home/z/my-project/src/app/api/seed/route.ts:559:    const vatExpenses = await db.expense.findMany({
+/home/z/my-project/src/app/api/seed/route.ts:569:    await db.vATReturn.create({
+/home/z/my-project/src/app/api/seed/route.ts:588:    const finalAccountCount = await db.account.count()
+/home/z/my-project/src/app/api/seed/route.ts:589:    const finalJournalEntryCount = await db.journalEntry.count()
+/home/z/my-project/src/app/api/vat/route.ts:20:    const vatReturns = await db.vATReturn.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:33:      const salesInvoices = await db.salesInvoice.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:50:      const progressClaims = await db.progressClaim.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:67:      const purchaseInvoices = await db.purchaseInvoice.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:84:      const subcontractorInvoices = await db.subcontractorInvoice.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:101:      const expenses = await db.expense.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:176:    const existing = await db.vATReturn.findUnique({ where: { period } })
+/home/z/my-project/src/app/api/vat/route.ts:189:    const salesInvoices = await db.salesInvoice.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:201:    const progressClaims = await db.progressClaim.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:213:    const purchaseInvoices = await db.purchaseInvoice.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:230:    const subcontractorInvoices = await db.subcontractorInvoice.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:246:    const expenses = await db.expense.findMany({
+/home/z/my-project/src/app/api/vat/route.ts:270:    const vatReturn = await db.vATReturn.create({
+/home/z/my-project/src/app/api/vat/route.ts:320:    const existing = await db.vATReturn.findUnique({ where: { id } })
+/home/z/my-project/src/app/api/vat/route.ts:337:      const vatReturn = await db.vATReturn.update({
+/home/z/my-project/src/app/api/vat/route.ts:363:      const vatReturn = await db.vATReturn.update({
+/home/z/my-project/src/app/api/fixed-assets/route.ts:6:    const assets = await db.fixedAsset.findMany({
+/home/z/my-project/src/app/api/fixed-assets/route.ts:75:    const assetAccount = await db.account.findUnique({ where: { code: assetAccountCode } })
+/home/z/my-project/src/app/api/fixed-assets/route.ts:76:    const depExpenseAccount = await db.account.findUnique({ where: { code: depExpenseAccountCode } })
+/home/z/my-project/src/app/api/fixed-assets/route.ts:77:    const accumDepAccount = await db.account.findUnique({ where: { code: accumDepAccountCode } })
+/home/z/my-project/src/app/api/fixed-assets/route.ts:78:    const cashAccount = await db.account.findUnique({ where: { code: '1110' } })
+/home/z/my-project/src/app/api/fixed-assets/route.ts:85:    const fixedAsset = await db.fixedAsset.create({
+/home/z/my-project/src/app/api/fixed-assets/route.ts:107:      const entry = await db.journalEntry.create({
+/home/z/my-project/src/app/api/fixed-assets/route.ts:135:      await db.fixedAsset.update({
+/home/z/my-project/src/app/api/bank-accounts/route.ts:6:    const bankAccounts = await db.bankAccount.findMany({
+/home/z/my-project/src/app/api/bank-accounts/route.ts:22:          const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/bank-accounts/route.ts:55:    const bankAccount = await db.bankAccount.create({
+/home/z/my-project/src/app/api/vat/[id]/route.ts:14:    const existing = await db.vATReturn.findUnique({ where: { id } })
+/home/z/my-project/src/app/api/vat/[id]/route.ts:57:    const updated = await db.vATReturn.update({
+/home/z/my-project/src/app/api/vat/[id]/route.ts:76:    const vatReturn = await db.vATReturn.findUnique({ where: { id } })
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:14:    const assets = await db.fixedAsset.findMany({
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:26:      const existingDep = await db.assetDepreciation.findFirst({
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:48:          await db.fixedAsset.update({
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:58:        ? await db.account.findUnique({ where: { id: asset.depExpenseAccountId } })
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:61:        ? await db.account.findUnique({ where: { id: asset.accumDepAccountId } })
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:69:        const entry = await db.journalEntry.create({
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:99:      await db.assetDepreciation.create({
+/home/z/my-project/src/app/api/fixed-assets/depreciate/route.ts:113:      await db.fixedAsset.update({
+/home/z/my-project/src/app/api/salaries/auto-calculate/route.ts:18:    const contract = await db.employeeContract.findFirst({
+/home/z/my-project/src/app/api/salaries/auto-calculate/route.ts:41:    const attendanceRecords = await db.attendance.findMany({
+/home/z/my-project/src/app/api/salaries/auto-calculate/route.ts:67:    const pendingAdvances = await db.employeeAdvance.findMany({
+/home/z/my-project/src/app/api/advances/route.ts:7:    const advances = await db.employeeAdvance.findMany({
+/home/z/my-project/src/app/api/advances/route.ts:24:    const advance = await db.employeeAdvance.create({
+/home/z/my-project/src/app/api/advances/route.ts:49:        await db.employeeAdvance.update({
+/home/z/my-project/src/app/api/advances/route.ts:59:    const updatedAdvance = await db.employeeAdvance.findUnique({
+/home/z/my-project/src/app/api/advances/route.ts:82:    const existing = await db.employeeAdvance.findUnique({
+/home/z/my-project/src/app/api/advances/route.ts:96:    const advance = await db.employeeAdvance.update({
+/home/z/my-project/src/app/api/salaries/route.ts:19:    const salaries = await db.salary.findMany({
+/home/z/my-project/src/app/api/salaries/route.ts:52:      const employee = await db.employee.findUnique({
+/home/z/my-project/src/app/api/salaries/route.ts:60:      const allocation = await db.resourceAllocation.findFirst({
+/home/z/my-project/src/app/api/salaries/route.ts:73:        const project = await db.project.findUnique({
+/home/z/my-project/src/app/api/salaries/route.ts:78:          const costCenter = await db.costCenter.findFirst({
+/home/z/my-project/src/app/api/salaries/route.ts:105:          await db.equipmentCost.create({
+/home/z/my-project/src/app/api/salaries/route.ts:121:    const salary = await db.salary.create({
+/home/z/my-project/src/app/api/financial-reports/route.ts:39:  const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-reports/route.ts:161:  const lines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-reports/route.ts:284:  const periodLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/financial-reports/route.ts:314:  const beforePeriodLines = await db.journalLine.findMany({
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:11:    const salary = await db.salary.findUnique({
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:35:    const existing = await db.salary.findUnique({ where: { id } })
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:64:        const employee = await db.employee.findUnique({
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:81:        const allocation = await db.resourceAllocation.findFirst({
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:91:          await db.equipmentCost.create({
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:106:    const updated = await db.salary.update({
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:131:    const existing = await db.salary.findUnique({ where: { id } })
+/home/z/my-project/src/app/api/salaries/[id]/route.ts:144:    await db.salary.delete({ where: { id } })
+/home/z/my-project/src/app/api/advances/[id]/route.ts:9:    const existing = await db.employeeAdvance.findUnique({ where: { id } })
+/home/z/my-project/src/app/api/advances/[id]/route.ts:24:    const advance = await db.employeeAdvance.update({
+/home/z/my-project/src/app/api/equipment/operations/route.ts:17:    const operations = await db.equipmentOperation.findMany({
+/home/z/my-project/src/app/api/equipment/operations/route.ts:38:    const operation = await db.equipmentOperation.create({
+/home/z/my-project/src/app/api/equipment/operations/route.ts:55:    const equipment = await db.equipment.findUnique({
+/home/z/my-project/src/app/api/equipment/operations/route.ts:61:      await db.equipment.update({
+/home/z/my-project/src/app/api/equipment/operations/route.ts:71:        await db.equipmentCost.create({
+/home/z/my-project/src/app/api/dashboard/route.ts:10:    const activeProjects = await db.project.count({
+/home/z/my-project/src/app/api/dashboard/route.ts:13:    const totalProjects = await db.project.count()
+/home/z/my-project/src/app/api/dashboard/route.ts:14:    const contractAgg = await db.contract.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:21:    const activeEmployees = await db.employee.count({
+/home/z/my-project/src/app/api/dashboard/route.ts:26:    const equipmentByStatus = await db.equipment.groupBy({
+/home/z/my-project/src/app/api/dashboard/route.ts:61:        const salesAgg = await db.salesInvoice.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:69:        const claimsAgg = await db.progressClaim.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:80:        const expenseAgg = await db.expense.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:84:        const purchaseAgg = await db.purchaseInvoice.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:91:        const salaryAgg = await db.salary.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:99:        const laborAgg = await db.laborCost.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:103:        const equipCostAgg = await db.equipmentUsage.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:132:    const constructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION' } })
+/home/z/my-project/src/app/api/dashboard/route.ts:133:    const rentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL' } })
+/home/z/my-project/src/app/api/dashboard/route.ts:134:    const activeConstructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION', status: { in: ['ACTIVE', 'PLANNING'] } } })
+/home/z/my-project/src/app/api/dashboard/route.ts:135:    const activeRentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL', status: { in: ['ACTIVE', 'PLANNING'] } } })
+/home/z/my-project/src/app/api/dashboard/route.ts:138:    const constructionProjectIds = (await db.project.findMany({
+/home/z/my-project/src/app/api/dashboard/route.ts:142:    const rentalProjectIds = (await db.project.findMany({
+/home/z/my-project/src/app/api/dashboard/route.ts:148:    const constructionClaimsAgg = await db.progressClaim.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:152:    const constructionSalesAgg = await db.salesInvoice.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:159:    const rentalSalesAgg = await db.salesInvoice.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:172:    const constructionExpenseAgg = await db.expense.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:176:    const constructionPurchaseAgg = await db.purchaseInvoice.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:180:    const constructionLaborAgg = await db.laborCost.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:184:    const constructionEquipCostAgg = await db.equipmentCost.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:188:    const constructionSubcontractorAgg = await db.subcontractorInvoice.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:200:    const rentalExpenseAgg = await db.expense.aggregate({
+/home/z/my-project/src/app/api/dashboard/route.ts:204:    const rentalPurchaseAgg = await db.purchaseInvoice.aggregate({
+
+[Showing results with pagination = limit: 250]

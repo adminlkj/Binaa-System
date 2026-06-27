@@ -1,0 +1,842 @@
+     1→     1→// ============================================================================
+     2→     2→// نظام بِنَاء ERP - محرك التقارير الموحّد
+     3→     3→// Binaa ERP - Unified Report Engine
+     4→     4→// ============================================================================
+     5→     5→//
+     6→     6→// المصدر الحقيقي الوحيد لجميع التقارير المالية في النظام هو:
+     7→     7→//   JournalLine WHERE journalEntry.status = 'POSTED'
+     8→     8→//
+     9→     9→// لا يجوز لأي تقرير مالي أن يجمع الأرقام من الجداول التشغيلية مباشرةً
+    10→    10→// (فواتير، مصروفات، رواتب، ...). كل هذه الجداول تُرحّل قيودها إلى دفتر
+    11→    11→// اليومية، والتقارير تُقرأ من القيود المرحّلة فقط.
+    12→    12→//
+    13→    13→// This ensures:
+    14→    14→//   1. Single source of truth (no double-counting between operational & GL)
+    15→    15→//   2. Trial balance always ties to financial statements
+    16→    16→//   3. Reversals are respected (reversed entries net out)
+    17→    17→//   4. Audit trail is preserved
+    18→    18→// ============================================================================
+    19→    19→
+    20→    20→import { db } from '@/lib/db'
+    21→    21→import { toNumber } from '@/lib/decimal'
+    22→    22→import { Prisma } from '@prisma/client'
+    23→    23→
+    24→    24→// ---------------------------------------------------------------------------
+    25→    25→// Types
+    26→    26→// ---------------------------------------------------------------------------
+    27→    27→
+    28→    28→export interface DateRange {
+    29→    29→  from?: Date
+    30→    30→  to?: Date
+    31→    31→}
+    32→    32→
+    33→    33→export interface AccountBalance {
+    34→    34→  accountId: string
+    35→    35→  code: string
+    36→    36→  name: string
+    37→    37→  nameAr: string | null
+    38→    38→  type: string
+    39→    39→  accountRole: string | null
+    40→    40→  activityType: string | null
+    41→    41→  totalDebit: number
+    42→    42→  totalCredit: number
+    43→    43→  /** Signed balance respecting normal balance: ASSET/EXPENSE = debit-credit, others = credit-debit */
+    44→    44→  balance: number
+    45→    45→}
+    46→    46→
+    47→    47→export interface TrialBalanceRow extends AccountBalance {
+    48→    48→  netDebit: number // >0 if debit normal
+    49→    49→  netCredit: number // >0 if credit normal
+    50→    50→}
+    51→    51→
+    52→    52→export interface CostCenterBalance {
+    53→    53→  costCenterId: string
+    54→    54→  code: string
+    55→    55→  name: string
+    56→    56→  revenue: number
+    57→    57→  costs: number
+    58→    58→  net: number
+    59→    59→}
+    60→    60→
+    61→    61→// Normal balance by account type
+    62→    62→const NORMAL_BALANCE: Record<string, 'DEBIT' | 'CREDIT'> = {
+    63→    63→  ASSET: 'DEBIT',
+    64→    64→  LIABILITY: 'CREDIT',
+    65→    65→  EQUITY: 'CREDIT',
+    66→    66→  REVENUE: 'CREDIT',
+    67→    67→  EXPENSE: 'DEBIT',
+    68→    68→}
+    69→    69→
+    70→    70→function signForType(type: string): 1 | -1 {
+    71→    71→  return NORMAL_BALANCE[type] === 'DEBIT' ? 1 : -1
+    72→    72→}
+    73→    73→
+    74→    74→// ---------------------------------------------------------------------------
+    75→    75→// Core: build the where-clause for posted journal lines
+    76→    76→// ---------------------------------------------------------------------------
+    77→    77→
+    78→    78→function postedLinesWhere(extra: Prisma.JournalLineWhereInput = {}): Prisma.JournalLineWhereInput {
+    79→    79→  return {
+    80→    80→    deletedAt: null,
+    81→    81→    journalEntry: {
+    82→    82→      status: 'POSTED',
+    83→    83→      deletedAt: null,
+    84→    84→    },
+    85→    85→    ...extra,
+    86→    86→  }
+    87→    87→}
+    88→    88→
+    89→    89→function dateRangeFilter(range?: DateRange): Prisma.JournalLineWhereInput {
+    90→    90→  if (!range || (!range.from && !range.to)) return {}
+    91→    91→  return {
+    92→    92→    journalEntry: {
+    93→    93→      status: 'POSTED',
+    94→    94→      deletedAt: null,
+    95→    95→      date: {
+    96→    96→        ...(range.from && { gte: range.from }),
+    97→    97→        ...(range.to && { lte: range.to }),
+    98→    98→      },
+    99→    99→    },
+   100→   100→  }
+   101→   101→}
+   102→   102→
+   103→   103→// ---------------------------------------------------------------------------
+   104→   104→// Account-level balances
+   105→   105→// ---------------------------------------------------------------------------
+   106→   106→
+   107→   107→/**
+   108→   108→ * Get balances for all accounts of given types, sourced from posted JEs.
+   109→   109→ * Returns signed balances (respecting normal balance).
+   110→   110→ */
+   111→   111→export async function getAccountBalancesByType(
+   112→   112→  types: string[],
+   113→   113→  range?: DateRange
+   114→   114→): Promise<AccountBalance[]> {
+   115→   115→  const accounts = await db.account.findMany({
+   116→   116→    where: { type: { in: types }, isActive: true },
+   117→   117→    select: { id: true, code: true, name: true, nameAr: true, type: true, accountRole: true, activityType: true },
+   118→   118→    orderBy: { code: 'asc' },
+   119→   119→  })
+   120→   120→  if (accounts.length === 0) return []
+   121→   121→
+   122→   122→  const accountIds = accounts.map(a => a.id)
+   123→   123→
+   124→   124→  // Aggregate journal lines in one query
+   125→   125→  const aggregated = await db.journalLine.groupBy({
+   126→   126→    by: ['accountId'],
+   127→   127→    _sum: { debit: true, credit: true },
+   128→   128→    where: postedLinesWhere({
+   129→   129→      accountId: { in: accountIds },
+   130→   130→      ...dateRangeFilter(range),
+   131→   131→    }),
+   132→   132→  })
+   133→   133→
+   134→   134→  const sumMap = new Map<string, { debit: number; credit: number }>()
+   135→   135→  for (const a of aggregated) {
+   136→   136→    sumMap.set(a.accountId, {
+   137→   137→      debit: toNumber(a._sum.debit),
+   138→   138→      credit: toNumber(a._sum.credit),
+   139→   139→    })
+   140→   140→  }
+   141→   141→
+   142→   142→  return accounts.map(a => {
+   143→   143→    const sums = sumMap.get(a.id) || { debit: 0, credit: 0 }
+   144→   144→    const sign = signForType(a.type)
+   145→   145→    return {
+   146→   146→      accountId: a.id,
+   147→   147→      code: a.code,
+   148→   148→      name: a.name,
+   149→   149→      nameAr: a.nameAr,
+   150→   150→      type: a.type,
+   151→   151→      accountRole: a.accountRole,
+   152→   152→      activityType: a.activityType,
+   153→   153→      totalDebit: sums.debit,
+   154→   154→      totalCredit: sums.credit,
+   155→   155→      balance: sign * (sums.debit - sums.credit),
+   156→   156→    }
+   157→   157→  })
+   158→   158→}
+   159→   159→
+   160→   160→/**
+   161→   161→ * Get a single total balance for all accounts matching a role list.
+   162→   162→ */
+   163→   163→export async function getBalanceByRole(
+   164→   164→  roles: string[],
+   165→   165→  range?: DateRange
+   166→   166→): Promise<number> {
+   167→   167→  if (roles.length === 0) return 0
+   168→   168→  const accounts = await db.account.findMany({
+   169→   169→    where: { accountRole: { in: roles }, isActive: true },
+   170→   170→    select: { id: true, type: true },
+   171→   171→  })
+   172→   172→  if (accounts.length === 0) return 0
+   173→   173→  const accountIds = accounts.map(a => a.id)
+   174→   174→
+   175→   175→  const agg = await db.journalLine.aggregate({
+   176→   176→    _sum: { debit: true, credit: true },
+   177→   177→    where: postedLinesWhere({
+   178→   178→      accountId: { in: accountIds },
+   179→   179→      ...dateRangeFilter(range),
+   180→   180→    }),
+   181→   181→  })
+   182→   182→
+   183→   183→  const totalDebit = toNumber(agg._sum.debit)
+   184→   184→  const totalCredit = toNumber(agg._sum.credit)
+   185→   185→  // Use the type of the first account as representative (roles map to a single type normally)
+   186→   186→  const type = accounts[0]?.type || 'EXPENSE'
+   187→   187→  return signForType(type) * (totalDebit - totalCredit)
+   188→   188→}
+   189→   189→
+   190→   190→/**
+   191→   191→ * Get a single total balance for all accounts of a type.
+   192→   192→ */
+   193→   193→export async function getBalanceByType(
+   194→   194→  type: string,
+   195→   195→  range?: DateRange,
+   196→   196→  extra: { activityType?: string } = {}
+   197→   197→): Promise<number> {
+   198→   198→  const where: Prisma.AccountWhereInput = { type, isActive: true }
+   199→   199→  if (extra.activityType) {
+   200→   200→    where.activityType = { in: [extra.activityType, 'BOTH'] }
+   201→   201→  }
+   202→   202→  const accounts = await db.account.findMany({
+   203→   203→    where,
+   204→   204→    select: { id: true },
+   205→   205→  })
+   206→   206→  if (accounts.length === 0) return 0
+   207→   207→  const accountIds = accounts.map(a => a.id)
+   208→   208→
+   209→   209→  const agg = await db.journalLine.aggregate({
+   210→   210→    _sum: { debit: true, credit: true },
+   211→   211→    where: postedLinesWhere({
+   212→   212→      accountId: { in: accountIds },
+   213→   213→      ...dateRangeFilter(range),
+   214→   214→    }),
+   215→   215→  })
+   216→   216→
+   217→   217→  const totalDebit = toNumber(agg._sum.debit)
+   218→   218→  const totalCredit = toNumber(agg._sum.credit)
+   219→   219→  return signForType(type) * (totalDebit - totalCredit)
+   220→   220→}
+   221→   221→
+   222→   222→// ---------------------------------------------------------------------------
+   223→   223→// Trial Balance
+   224→   224→// ---------------------------------------------------------------------------
+   225→   225→
+   226→   226→export async function getTrialBalance(range?: DateRange): Promise<{
+   227→   227→  rows: TrialBalanceRow[]
+   228→   228→  totals: { totalDebit: number; totalCredit: number; totalNetDebit: number; totalNetCredit: number; isBalanced: boolean }
+   229→   229→}> {
+   230→   230→  const accounts = await db.account.findMany({
+   231→   231→    where: { isActive: true },
+   232→   232→    select: { id: true, code: true, name: true, nameAr: true, type: true, accountRole: true, activityType: true },
+   233→   233→    orderBy: { code: 'asc' },
+   234→   234→  })
+   235→   235→
+   236→   236→  if (accounts.length === 0) {
+   237→   237→    return { rows: [], totals: { totalDebit: 0, totalCredit: 0, totalNetDebit: 0, totalNetCredit: 0, isBalanced: true } }
+   238→   238→  }
+   239→   239→
+   240→   240→  const accountIds = accounts.map(a => a.id)
+   241→   241→  const aggregated = await db.journalLine.groupBy({
+   242→   242→    by: ['accountId'],
+   243→   243→    _sum: { debit: true, credit: true },
+   244→   244→    where: postedLinesWhere({
+   245→   245→      accountId: { in: accountIds },
+   246→   246→      ...dateRangeFilter(range),
+   247→   247→    }),
+   248→   248→  })
+   249→   249→
+   250→   250→  const sumMap = new Map<string, { debit: number; credit: number }>()
+   251→   251→  for (const a of aggregated) {
+   252→   252→    sumMap.set(a.accountId, {
+   253→   253→      debit: toNumber(a._sum.debit),
+   254→   254→      credit: toNumber(a._sum.credit),
+   255→   255→    })
+   256→   256→  }
+   257→   257→
+   258→   258→  const rows: TrialBalanceRow[] = []
+   259→   259→  let totalDebit = 0
+   260→   260→  let totalCredit = 0
+   261→   261→  let totalNetDebit = 0
+   262→   262→  let totalNetCredit = 0
+   263→   263→
+   264→   264→  for (const a of accounts) {
+   265→   265→    const sums = sumMap.get(a.id) || { debit: 0, credit: 0 }
+   266→   266→    const net = sums.debit - sums.credit
+   267→   267→    if (Math.abs(net) < 0.005 && sums.debit === 0 && sums.credit === 0) continue // skip zero accounts
+   268→   268→    const sign = signForType(a.type)
+   269→   269→    const balance = sign * net // signed balance (positive = normal side) — used by financial statements
+   270→   270→    // Trial balance columns show RAW net movement: if debits > credits → debit column,
+   271→   271→    // if credits > debits → credit column. This is independent of the account's normal balance.
+   272→   272→    // (A credit-balance account like Revenue with only credits MUST appear in the credit column,
+   273→   273→    //  not the debit column. The previous logic used `balance` which wrongly placed
+   274→   274→    //  credit-normal positive balances into the debit column.)
+   275→   275→    const netDebit = net > 0 ? net : 0
+   276→   276→    const netCredit = net < 0 ? Math.abs(net) : 0
+   277→   277→    rows.push({
+   278→   278→      accountId: a.id,
+   279→   279→      code: a.code,
+   280→   280→      name: a.name,
+   281→   281→      nameAr: a.nameAr,
+   282→   282→      type: a.type,
+   283→   283→      accountRole: a.accountRole,
+   284→   284→      activityType: a.activityType,
+   285→   285→      totalDebit: sums.debit,
+   286→   286→      totalCredit: sums.credit,
+   287→   287→      balance,
+   288→   288→      netDebit,
+   289→   289→      netCredit,
+   290→   290→    })
+   291→   291→    totalDebit += sums.debit
+   292→   292→    totalCredit += sums.credit
+   293→   293→    totalNetDebit += netDebit
+   294→   294→    totalNetCredit += netCredit
+   295→   295→  }
+   296→   296→
+   297→   297→  return {
+   298→   298→    rows,
+   299→   299→    totals: {
+   300→   300→      totalDebit,
+   301→   301→      totalCredit,
+   302→   302→      totalNetDebit,
+   303→   303→      totalNetCredit,
+   304→   304→      isBalanced: Math.abs(totalDebit - totalCredit) < 0.01,
+   305→   305→    },
+   306→   306→  }
+   307→   307→}
+   308→   308→
+   309→   309→// ---------------------------------------------------------------------------
+   310→   310→// Income Statement (قائمة الدخل)
+   311→   311→// ---------------------------------------------------------------------------
+   312→   312→
+   313→   313→export interface IncomeStatementData {
+   314→   314→  revenue: { accounts: AccountBalance[]; total: number }
+   315→   315→  expenses: { accounts: AccountBalance[]; total: number }
+   316→   316→  grossProfit: number // revenue - direct project costs
+   317→   317→  netIncome: number // revenue - all expenses
+   318→   318→  netProfitMargin: number
+   319→   319→}
+   320→   320→
+   321→   321→export async function getIncomeStatement(range?: DateRange): Promise<IncomeStatementData> {
+   322→   322→  const [revenueAccounts, expenseAccounts] = await Promise.all([
+   323→   323→    getAccountBalancesByType(['REVENUE'], range),
+   324→   324→    getAccountBalancesByType(['EXPENSE'], range),
+   325→   325→  ])
+   326→   326→
+   327→   327→  const totalRevenue = revenueAccounts.reduce((s, a) => s + a.balance, 0)
+   328→   328→  const totalExpenses = expenseAccounts.reduce((s, a) => s + a.balance, 0)
+   329→   329→
+   330→   330→  // Gross profit = revenue - direct project costs (PROJECT_COST + SUBCONTRACTOR_COST)
+   331→   331→  const directCostRoles = ['PROJECT_COST', 'SUBCONTRACTOR_COST', 'FUEL_EXPENSE', 'MAINTENANCE_EXPENSE', 'DRIVER_EXPENSE', 'TRANSPORT_EXPENSE', 'RENTAL_DEPRECIATION']
+   332→   332→  const grossCosts = expenseAccounts
+   333→   333→    .filter(a => a.accountRole && directCostRoles.includes(a.accountRole))
+   334→   334→    .reduce((s, a) => s + a.balance, 0)
+   335→   335→  const grossProfit = totalRevenue - grossCosts
+   336→   336→  const netIncome = totalRevenue - totalExpenses
+   337→   337→  const netProfitMargin = totalRevenue > 0 ? (netIncome / totalRevenue) * 100 : 0
+   338→   338→
+   339→   339→  return {
+   340→   340→    revenue: { accounts: revenueAccounts, total: totalRevenue },
+   341→   341→    expenses: { accounts: expenseAccounts, total: totalExpenses },
+   342→   342→    grossProfit,
+   343→   343→    netIncome,
+   344→   344→    netProfitMargin,
+   345→   345→  }
+   346→   346→}
+   347→   347→
+   348→   348→// ---------------------------------------------------------------------------
+   349→   349→// Balance Sheet (الميزانية العمومية)
+   350→   350→// ---------------------------------------------------------------------------
+   351→   351→
+   352→   352→export interface BalanceSheetData {
+   353→   353→  assets: { accounts: AccountBalance[]; total: number }
+   354→   354→  liabilities: { accounts: AccountBalance[]; total: number }
+   355→   355→  equity: { accounts: AccountBalance[]; total: number }
+   356→   356→  totalLiabilitiesAndEquity: number
+   357→   357→  isBalanced: boolean
+   358→   358→  /** Net income for the current period (revenue - expenses), shown as "Current Year Earnings" in equity */
+   359→   359→  currentYearEarnings: number
+   360→   360→}
+   361→   361→
+   362→   362→export async function getBalanceSheet(asOfDate?: Date): Promise<BalanceSheetData> {
+   363→   363→  const range: DateRange = asOfDate ? { to: asOfDate } : {}
+   364→   364→  const [assets, liabilities, equity, income] = await Promise.all([
+   365→   365→    getAccountBalancesByType(['ASSET'], range),
+   366→   366→    getAccountBalancesByType(['LIABILITY'], range),
+   367→   367→    getAccountBalancesByType(['EQUITY'], range),
+   368→   368→    getIncomeStatement(range),
+   369→   369→  ])
+   370→   370→
+   371→   371→  const totalAssets = assets.reduce((s, a) => s + a.balance, 0)
+   372→   372→  const totalLiabilities = liabilities.reduce((s, a) => s + a.balance, 0)
+   373→   373→
+   374→   374→  // Net income (revenue - expenses) for the period must be included in equity
+   375→   375→  // as "Current Year Earnings" until formally closed at period end.
+   376→   376→  // This is required by the accounting equation: Assets = Liabilities + Equity
+   377→   377→  // where Equity = Contributed Capital + Retained Earnings + Current Period Net Income.
+   378→   378→  const currentYearEarnings = income.netIncome
+   379→   379→
+   380→   380→  // Append a synthetic "Current Year Earnings" equity row so the user sees it.
+   381→   381→  // (If an account 5300 "أرباح/خسائر السنة الحالية" already has posted lines,
+   382→   382→  // those are shown separately — this synthetic row is the unclosed P&L balance.)
+   383→   383→  const equityWithEarnings: AccountBalance[] = [...equity]
+   384→   384→  if (Math.abs(currentYearEarnings) > 0.005) {
+   385→   385→    equityWithEarnings.push({
+   386→   386→      accountId: '__current_year_earnings__',
+   387→   387→      code: '5300',
+   388→   388→      name: 'Current Year Earnings (Unclosed P&L)',
+   389→   389→      nameAr: 'أرباح (خسائر) السنة الحالية - غير مُقفلة',
+   390→   390→      type: 'EQUITY',
+   391→   391→      accountRole: 'CURRENT_YEAR_EARNINGS',
+   392→   392→      activityType: 'BOTH',
+   393→   393→      totalDebit: currentYearEarnings < 0 ? Math.abs(currentYearEarnings) : 0,
+   394→   394→      totalCredit: currentYearEarnings > 0 ? currentYearEarnings : 0,
+   395→   395→      balance: currentYearEarnings, // equity is credit-normal, so positive net income = positive balance
+   396→   396→    })
+   397→   397→  }
+   398→   398→
+   399→   399→  const totalEquity = equityWithEarnings.reduce((s, a) => s + a.balance, 0)
+   400→   400→  const totalLiabilitiesAndEquity = totalLiabilities + totalEquity
+   401→   401→
+   402→   402→  return {
+   403→   403→    assets: { accounts: assets, total: totalAssets },
+   404→   404→    liabilities: { accounts: liabilities, total: totalLiabilities },
+   405→   405→    equity: { accounts: equityWithEarnings, total: totalEquity },
+   406→   406→    totalLiabilitiesAndEquity,
+   407→   407→    isBalanced: Math.abs(totalAssets - totalLiabilitiesAndEquity) < 0.01,
+   408→   408→    currentYearEarnings,
+   409→   409→  }
+   410→   410→}
+   411→   411→
+   412→   412→// ---------------------------------------------------------------------------
+   413→   413→// Cash Flow (قائمة التدفقات النقدية) — from posted JEs on cash/bank accounts
+   414→   414→// ---------------------------------------------------------------------------
+   415→   415→
+   416→   416→export interface CashFlowData {
+   417→   417→  inflows: number
+   418→   418→  outflows: number
+   419→   419→  netCashFlow: number
+   420→   420→  openingBalance: number
+   421→   421→  closingBalance: number
+   422→   422→  byAccount: { code: string; name: string; nameAr: string | null; inflows: number; outflows: number; net: number }[]
+   423→   423→  monthly: { month: string; inflows: number; outflows: number; net: number }[]
+   424→   424→}
+   425→   425→
+   426→   426→export async function getCashFlow(range?: DateRange): Promise<CashFlowData> {
+   427→   427→  // Cash & bank accounts
+   428→   428→  const accounts = await db.account.findMany({
+   429→   429→    where: { accountRole: { in: ['CASH', 'BANK'] }, isActive: true },
+   430→   430→    select: { id: true, code: true, name: true, nameAr: true },
+   431→   431→    orderBy: { code: 'asc' },
+   432→   432→  })
+   433→   433→
+   434→   434→  if (accounts.length === 0) {
+   435→   435→    return { inflows: 0, outflows: 0, netCashFlow: 0, openingBalance: 0, closingBalance: 0, byAccount: [], monthly: [] }
+   436→   436→  }
+   437→   437→
+   438→   438→  const accountIds = accounts.map(a => a.id)
+   439→   439→
+   440→   440→  // Lines within the period
+   441→   441→  const periodLines = await db.journalLine.findMany({
+   442→   442→    where: postedLinesWhere({
+   443→   443→      accountId: { in: accountIds },
+   444→   444→      ...dateRangeFilter(range),
+   445→   445→    }),
+   446→   446→    include: { journalEntry: { select: { date: true } }, account: { select: { code: true, name: true, nameAr: true } } },
+   447→   447→    orderBy: { journalEntry: { date: 'asc' } },
+   448→   448→  })
+   449→   449→
+   450→   450→  // Opening balance = sum of all lines BEFORE range.from
+   451→   451→  let openingWhere: Prisma.JournalLineWhereInput = postedLinesWhere({ accountId: { in: accountIds } })
+   452→   452→  if (range?.from) {
+   453→   453→    openingWhere = {
+   454→   454→      deletedAt: null,
+   455→   455→      journalEntry: {
+   456→   456→        status: 'POSTED',
+   457→   457→        deletedAt: null,
+   458→   458→        date: { lt: range.from },
+   459→   459→      },
+   460→   460→    }
+   461→   461→  }
+   462→   462→  const openingAgg = await db.journalLine.aggregate({
+   463→   463→    _sum: { debit: true, credit: true },
+   464→   464→    where: openingWhere,
+   465→   465→  })
+   466→   466→  const openingBalance = toNumber(openingAgg._sum.debit) - toNumber(openingAgg._sum.credit)
+   467→   467→
+   468→   468→  // Aggregate by account
+   469→   469→  const byAccountMap = new Map<string, { code: string; name: string; nameAr: string | null; inflows: number; outflows: number; net: number }>()
+   470→   470→  for (const a of accounts) {
+   471→   471→    byAccountMap.set(a.id, { code: a.code, name: a.name, nameAr: a.nameAr, inflows: 0, outflows: 0, net: 0 })
+   472→   472→  }
+   473→   473→
+   474→   474→  // Monthly aggregation
+   475→   475→  const monthlyMap = new Map<string, { inflows: number; outflows: number; net: number }>()
+   476→   476→
+   477→   477→  let totalInflows = 0
+   478→   478→  let totalOutflows = 0
+   479→   479→
+   480→   480→  for (const line of periodLines) {
+   481→   481→    const debit = toNumber(line.debit)
+   482→   482→    const credit = toNumber(line.credit)
+   483→   483→    const acc = byAccountMap.get(line.accountId)
+   484→   484→    if (acc) {
+   485→   485→      acc.inflows += debit
+   486→   486→      acc.outflows += credit
+   487→   487→      acc.net += debit - credit
+   488→   488→    }
+   489→   489→    totalInflows += debit
+   490→   490→    totalOutflows += credit
+   491→   491→
+   492→   492→    const monthKey = line.journalEntry.date.toISOString().slice(0, 7)
+   493→   493→    if (!monthlyMap.has(monthKey)) monthlyMap.set(monthKey, { inflows: 0, outflows: 0, net: 0 })
+   494→   494→    const m = monthlyMap.get(monthKey)!
+   495→   495→    m.inflows += debit
+   496→   496→    m.outflows += credit
+   497→   497→    m.net += debit - credit
+   498→   498→  }
+   499→   499→
+   500→   500→  const closingBalance = openingBalance + (totalInflows - totalOutflows)
+   501→   501→
+   502→   502→  return {
+   503→   503→    inflows: totalInflows,
+   504→   504→    outflows: totalOutflows,
+   505→   505→    netCashFlow: totalInflows - totalOutflows,
+   506→   506→    openingBalance,
+   507→   507→    closingBalance,
+   508→   508→    byAccount: Array.from(byAccountMap.values()),
+   509→   509→    monthly: Array.from(monthlyMap.entries())
+   510→   510→      .sort(([a], [b]) => a.localeCompare(b))
+   511→   511→      .map(([month, v]) => ({ month, ...v })),
+   512→   512→  }
+   513→   513→}
+   514→   514→
+   515→   515→// ---------------------------------------------------------------------------
+   516→   516→// General Ledger (دفتر الأستاذ العام) — line-level detail for an account
+   517→   517→// ---------------------------------------------------------------------------
+   518→   518→
+   519→   519→export interface GeneralLedgerLine {
+   520→   520→  date: Date
+   521→   521→  entryNo: string
+   522→   522→  description: string | null
+   523→   523→  lineDescription: string | null
+   524→   524→  debit: number
+   525→   525→  credit: number
+   526→   526→  balance: number
+   527→   527→  sourceType: string | null
+   528→   528→  costCenterCode: string | null
+   529→   529→}
+   530→   530→
+   531→   531→export interface GeneralLedgerData {
+   532→   532→  account: { id: string; code: string; name: string; nameAr: string | null; type: string }
+   533→   533→  openingBalance: number
+   534→   534→  lines: GeneralLedgerLine[]
+   535→   535→  totalDebit: number
+   536→   536→  totalCredit: number
+   537→   537→  closingBalance: number
+   538→   538→}
+   539→   539→
+   540→   540→export async function getGeneralLedger(
+   541→   541→  accountId: string,
+   542→   542→  range?: DateRange
+   543→   543→): Promise<GeneralLedgerData | null> {
+   544→   544→  const account = await db.account.findUnique({
+   545→   545→    where: { id: accountId },
+   546→   546→    select: { id: true, code: true, name: true, nameAr: true, type: true },
+   547→   547→  })
+   548→   548→  if (!account) return null
+   549→   549→
+   550→   550→  // Opening balance (before range.from)
+   551→   551→  let openingBalance = 0
+   552→   552→  if (range?.from) {
+   553→   553→    const openingAgg = await db.journalLine.aggregate({
+   554→   554→      _sum: { debit: true, credit: true },
+   555→   555→      where: {
+   556→   556→        deletedAt: null,
+   557→   557→        accountId,
+   558→   558→        journalEntry: { status: 'POSTED', deletedAt: null, date: { lt: range.from } },
+   559→   559→      },
+   560→   560→    })
+   561→   561→    const d = toNumber(openingAgg._sum.debit)
+   562→   562→    const c = toNumber(openingAgg._sum.credit)
+   563→   563→    openingBalance = signForType(account.type) * (d - c)
+   564→   564→  }
+   565→   565→
+   566→   566→  // Period lines
+   567→   567→  const lines = await db.journalLine.findMany({
+   568→   568→    where: {
+   569→   569→      deletedAt: null,
+   570→   570→      accountId,
+   571→   571→      journalEntry: {
+   572→   572→        status: 'POSTED',
+   573→   573→        deletedAt: null,
+   574→   574→        ...(range && (range.from || range.to) && {
+   575→   575→          date: {
+   576→   576→            ...(range.from && { gte: range.from }),
+   577→   577→            ...(range.to && { lte: range.to }),
+   578→   578→          },
+   579→   579→        }),
+   580→   580→      },
+   581→   581→    },
+   582→   582→    include: {
+   583→   583→      journalEntry: { select: { entryNo: true, date: true, description: true, sourceType: true } },
+   584→   584→      costCenter: { select: { code: true } },
+   585→   585→    },
+   586→   586→    orderBy: { journalEntry: { date: 'asc' } },
+   587→   587→  })
+   588→   588→
+   589→   589→  let running = openingBalance
+   590→   590→  const sign = signForType(account.type)
+   591→   591→  const glLines: GeneralLedgerLine[] = []
+   592→   592→  let totalDebit = 0
+   593→   593→  let totalCredit = 0
+   594→   594→
+   595→   595→  for (const l of lines) {
+   596→   596→    const debit = toNumber(l.debit)
+   597→   597→    const credit = toNumber(l.credit)
+   598→   598→    running += sign * (debit - credit)
+   599→   599→    totalDebit += debit
+   600→   600→    totalCredit += credit
+   601→   601→    glLines.push({
+   602→   602→      date: l.journalEntry.date,
+   603→   603→      entryNo: l.journalEntry.entryNo,
+   604→   604→      description: l.journalEntry.description,
+   605→   605→      lineDescription: l.description,
+   606→   606→      debit,
+   607→   607→      credit,
+   608→   608→      balance: running,
+   609→   609→      sourceType: l.journalEntry.sourceType,
+   610→   610→      costCenterCode: l.costCenter?.code || null,
+   611→   611→    })
+   612→   612→  }
+   613→   613→
+   614→   614→  return {
+   615→   615→    account: { id: account.id, code: account.code, name: account.name, nameAr: account.nameAr, type: account.type },
+   616→   616→    openingBalance,
+   617→   617→    lines: glLines,
+   618→   618→    totalDebit,
+   619→   619→    totalCredit,
+   620→   620→    closingBalance: running,
+   621→   621→  }
+   622→   622→}
+   623→   623→
+   624→   624→// ---------------------------------------------------------------------------
+   625→   625→// Cost Center / Project reports
+   626→   626→// ---------------------------------------------------------------------------
+   627→   627→
+   628→   628→/**
+   629→   629→ * Build a map of project.id → costCenter.id.
+   630→   630→ * Uses the direct Project.costCenterId link first, then falls back to code/name matching.
+   631→   631→ */
+   632→   632→export async function buildProjectCostCenterMap(projectIds: string[]): Promise<Map<string, string>> {
+   633→   633→  if (projectIds.length === 0) return new Map()
+   634→   634→  const projects = await db.project.findMany({
+   635→   635→    where: { id: { in: projectIds } },
+   636→   636→    select: { id: true, code: true, name: true, nameAr: true, costCenterId: true },
+   637→   637→  })
+   638→   638→  const result = new Map<string, string>()
+   639→   639→
+   640→   640→  // 1. Direct link via costCenterId
+   641→   641→  const linkedProjects = projects.filter(p => p.costCenterId)
+   642→   642→  for (const p of linkedProjects) result.set(p.id, p.costCenterId!)
+   643→   643→
+   644→   644→  // 2. Fallback for unlinked: match by code, then by name
+   645→   645→  const unlinked = projects.filter(p => !p.costCenterId)
+   646→   646→  if (unlinked.length > 0) {
+   647→   647→    const costCenters = await db.costCenter.findMany({ select: { id: true, code: true, name: true } })
+   648→   648→    for (const p of unlinked) {
+   649→   649→      let cc = costCenters.find(c => c.code === p.code)
+   650→   650→      if (!cc) {
+   651→   651→        const pName = (p.nameAr || p.name || '').trim()
+   652→   652→        cc = costCenters.find(c => pName.includes(c.name) || c.name.includes(pName))
+   653→   653→      }
+   654→   654→      if (!cc) {
+   655→   655→        const m = p.code.match(/(\d+)/)
+   656→   656→        if (m) cc = costCenters.find(c => c.code.includes(m[1]))
+   657→   657→      }
+   658→   658→      if (cc) result.set(p.id, cc.id)
+   659→   659→    }
+   660→   660→  }
+   661→   661→  return result
+   662→   662→}
+   663→   663→
+   664→   664→/**
+   665→   665→ * Get per-project revenue & cost from posted JEs via cost center.
+   666→   666→ */
+   667→   667→export async function getProjectBalances(
+   668→   668→  projectIds: string[],
+   669→   669→  range?: DateRange
+   670→   670→): Promise<Map<string, { revenue: number; costs: number; costCenterId: string | null }>> {
+   671→   671→  const result = new Map<string, { revenue: number; costs: number; costCenterId: string | null }>()
+   672→   672→  for (const pid of projectIds) result.set(pid, { revenue: 0, costs: 0, costCenterId: null })
+   673→   673→
+   674→   674→  const ccMap = await buildProjectCostCenterMap(projectIds)
+   675→   675→  const costCenterIds = [...ccMap.values()]
+   676→   676→  if (costCenterIds.length === 0) return result
+   677→   677→
+   678→   678→  // Reverse map: costCenterId → projectId
+   679→   679→  const ccToProject = new Map<string, string>()
+   680→   680→  for (const [pid, ccId] of ccMap) ccToProject.set(ccId, pid)
+   681→   681→  // Update costCenterId in result
+   682→   682→  for (const [pid, ccId] of ccMap) {
+   683→   683→    const r = result.get(pid)
+   684→   684→    if (r) r.costCenterId = ccId
+   685→   685→  }
+   686→   686→
+   687→   687→  const lines = await db.journalLine.findMany({
+   688→   688→    where: postedLinesWhere({
+   689→   689→      costCenterId: { in: costCenterIds },
+   690→   690→      ...dateRangeFilter(range),
+   691→   691→    }),
+   692→   692→    include: { account: { select: { type: true } }, costCenter: { select: { id: true } } },
+   693→   693→  })
+   694→   694→
+   695→   695→  for (const l of lines) {
+   696→   696→    const pid = ccToProject.get(l.costCenterId || '')
+   697→   697→    if (!pid) continue
+   698→   698→    const r = result.get(pid)
+   699→   699→    if (!r) continue
+   700→   700→    const debit = toNumber(l.debit)
+   701→   701→    const credit = toNumber(l.credit)
+   702→   702→    if (l.account.type === 'REVENUE') {
+   703→   703→      r.revenue += credit - debit
+   704→   704→    } else if (l.account.type === 'EXPENSE') {
+   705→   705→      r.costs += debit - credit
+   706→   706→    }
+   707→   707→  }
+   708→   708→
+   709→   709→  return result
+   710→   710→}
+   711→   711→
+   712→   712→/**
+   713→   713→ * Detailed project cost breakdown by account role, from posted JEs.
+   714→   714→ */
+   715→   715→export async function getProjectCostBreakdown(
+   716→   716→  projectId: string,
+   717→   717→  range?: DateRange
+   718→   718→): Promise<{
+   719→   719→  costCenterId: string | null
+   720→   720→  byRole: Map<string, number>
+   721→   721→  total: number
+   722→   722→  revenue: number
+   723→   723→}> {
+   724→   724→  const ccMap = await buildProjectCostCenterMap([projectId])
+   725→   725→  const costCenterId = ccMap.get(projectId) || null
+   726→   726→
+   727→   727→  const byRole = new Map<string, number>()
+   728→   728→  let total = 0
+   729→   729→  let revenue = 0
+   730→   730→
+   731→   731→  if (!costCenterId) {
+   732→   732→    return { costCenterId, byRole, total, revenue }
+   733→   733→  }
+   734→   734→
+   735→   735→  const lines = await db.journalLine.findMany({
+   736→   736→    where: postedLinesWhere({
+   737→   737→      costCenterId,
+   738→   738→      ...dateRangeFilter(range),
+   739→   739→    }),
+   740→   740→    include: { account: { select: { type: true, accountRole: true } } },
+   741→   741→  })
+   742→   742→
+   743→   743→  for (const l of lines) {
+   744→   744→    const debit = toNumber(l.debit)
+   745→   745→    const credit = toNumber(l.credit)
+   746→   746→    if (l.account.type === 'EXPENSE') {
+   747→   747→      const amt = debit - credit
+   748→   748→      const role = l.account.accountRole || 'OTHER'
+   749→   749→      byRole.set(role, (byRole.get(role) || 0) + amt)
+   750→   750→      total += amt
+   751→   751→    } else if (l.account.type === 'REVENUE') {
+   752→   752→      revenue += credit - debit
+   753→   753→    }
+   754→   754→  }
+   755→   755→
+   756→   756→  return { costCenterId, byRole, total, revenue }
+   757→   757→}
+   758→   758→
+   759→   759→// ---------------------------------------------------------------------------
+   760→   760→// Cost Center report (all cost centers)
+   761→   761→// ---------------------------------------------------------------------------
+   762→   762→
+   763→   763→export async function getCostCenterReport(range?: DateRange): Promise<CostCenterBalance[]> {
+   764→   764→  const costCenters = await db.costCenter.findMany({
+   765→   765→    where: { isActive: true },
+   766→   766→    select: { id: true, code: true, name: true },
+   767→   767→    orderBy: { code: 'asc' },
+   768→   768→  })
+   769→   769→  if (costCenters.length === 0) return []
+   770→   770→
+   771→   771→  const ccIds = costCenters.map(c => c.id)
+   772→   772→
+   773→   773→  const lines = await db.journalLine.findMany({
+   774→   774→    where: postedLinesWhere({
+   775→   775→      costCenterId: { in: ccIds },
+   776→   776→      ...dateRangeFilter(range),
+   777→   777→    }),
+   778→   778→    include: { account: { select: { type: true } }, costCenter: { select: { id: true } } },
+   779→   779→  })
+   780→   780→
+   781→   781→  const map = new Map<string, { revenue: number; costs: number }>()
+   782→   782→  for (const cc of costCenters) map.set(cc.id, { revenue: 0, costs: 0 })
+   783→   783→
+   784→   784→  for (const l of lines) {
+   785→   785→    const entry = map.get(l.costCenterId || '')
+   786→   786→    if (!entry) continue
+   787→   787→    const debit = toNumber(l.debit)
+   788→   788→    const credit = toNumber(l.credit)
+   789→   789→    if (l.account.type === 'REVENUE') entry.revenue += credit - debit
+   790→   790→    else if (l.account.type === 'EXPENSE') entry.costs += debit - credit
+   791→   791→  }
+   792→   792→
+   793→   793→  return costCenters.map(cc => {
+   794→   794→    const e = map.get(cc.id)!
+   795→   795→    return {
+   796→   796→      costCenterId: cc.id,
+   797→   797→      code: cc.code,
+   798→   798→      name: cc.name,
+   799→   799→      revenue: e.revenue,
+   800→   800→      costs: e.costs,
+   801→   801→      net: e.revenue - e.costs,
+   802→   802→    }
+   803→   803→  })
+   804→   804→}
+   805→   805→
+   806→   806→// ---------------------------------------------------------------------------
+   807→   807→// VAT Reconciliation (from posted JEs on VAT accounts)
+   808→   808→// ---------------------------------------------------------------------------
+   809→   809→
+   810→   810→export interface VATReconciliationData {
+   811→   811→  outputVat: number // VAT_OUTPUT credit balance
+   812→   812→  inputVat: number // VAT_INPUT debit balance
+   813→   813→  netVatDue: number // output - input (if positive, payable)
+   814→   814→  vatSettlement: number
+   815→   815→  outputAccounts: AccountBalance[]
+   816→   816→  inputAccounts: AccountBalance[]
+   817→   817→}
+   818→   818→
+   819→   819→export async function getVATReconciliation(range?: DateRange): Promise<VATReconciliationData> {
+   820→   820→  const [outputAccounts, inputAccounts] = await Promise.all([
+   821→   821→    getAccountBalancesByType(['LIABILITY'], range).then(list =>
+   822→   822→      list.filter(a => ['VAT_OUTPUT', 'VAT_DUE', 'VAT_SETTLEMENT'].includes(a.accountRole || ''))
+   823→   823→    ),
+   824→   824→    getAccountBalancesByType(['ASSET'], range).then(list =>
+   825→   825→      list.filter(a => a.accountRole === 'VAT_INPUT')
+   826→   826→    ),
+   827→   827→  ])
+   828→   828→
+   829→   829→  const outputVat = outputAccounts.reduce((s, a) => s + a.balance, 0)
+   830→   830→  const inputVat = inputAccounts.reduce((s, a) => s + a.balance, 0)
+   831→   831→  const netVatDue = outputVat - inputVat
+   832→   832→
+   833→   833→  return {
+   834→   834→    outputVat,
+   835→   835→    inputVat,
+   836→   836→    netVatDue,
+   837→   837→    vatSettlement: netVatDue,
+   838→   838→    outputAccounts,
+   839→   839→    inputAccounts,
+   840→   840→  }
+   841→   841→}
+   842→   842→

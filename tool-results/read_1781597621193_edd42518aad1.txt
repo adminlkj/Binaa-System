@@ -1,0 +1,502 @@
+     1→     1→     1→'use client'
+     2→     2→     2→
+     3→     3→     3→import React, { useState, useMemo } from 'react'
+     4→     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→     5→import {
+     6→     6→     6→  Truck, Plus, Search, RefreshCw, Wrench, Fuel, Clock,
+     7→     7→     7→  ArrowRight, DollarSign, Calendar, Shield, FileText, Receipt,
+     8→     8→     8→  Download, ChevronLeft, ChevronRight, Eye,
+     9→     9→     9→  TrendingUp, TrendingDown, BarChart3, Link2, Users,
+    10→    10→    10→  ArrowLeftRight, CheckCircle2, Circle, AlertCircle,
+    11→    11→    11→} from 'lucide-react'
+    12→    12→    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    13→    13→    13→import { Button } from '@/components/ui/button'
+    14→    14→    14→import { Input } from '@/components/ui/input'
+    15→    15→    15→import { Badge } from '@/components/ui/badge'
+    16→    16→    16→import {
+    17→    17→    17→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    18→    18→    18→} from '@/components/ui/table'
+    19→    19→    19→import {
+    20→    20→    20→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    21→    21→    21→} from '@/components/ui/dialog'
+    22→    22→    22→import {
+    23→    23→    23→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    24→    24→    24→} from '@/components/ui/select'
+    25→    25→    25→import { Label } from '@/components/ui/label'
+    26→    26→    26→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    27→    27→    27→import { Separator } from '@/components/ui/separator'
+    28→    28→    28→import { MoneyDisplay } from '@/components/ui/money-display'
+    29→    29→    29→import { ModuleLayout } from '@/components/shared/module-layout'
+    30→    30→    30→import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
+    31→    31→    31→import { AccountSelector } from '@/components/shared/account-selector'
+    32→    32→    32→import { useAppStore, formatSAR, formatNumber, formatDate, RENTAL_WORKFLOW } from '@/stores/app-store'
+    33→    33→    33→import type { NavItem } from '@/stores/app-store'
+    34→    34→    34→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    35→    35→    35→import { PrintButton } from '@/components/shared/print-button'
+    36→    36→    36→
+    37→    37→    37→// ============ Types ============
+    38→    38→    38→interface Supplier {
+    39→    39→    39→  id: string; code: string; name: string; nameAr: string | null
+    40→    40→    40→}
+    41→    41→    41→
+    42→    42→    42→interface Equipment {
+    43→    43→    43→  id: string; code: string; name: string; nameAr: string | null
+    44→    44→    44→  type: string | null; model: string | null; serialNumber: string | null
+    45→    45→    45→  status: string; ownershipType: string; supplierId: string | null; ownerId: string | null; clientId: string | null
+    46→    46→    46→  purchasePrice: number; sellingPrice: number
+    47→    47→    47→  hourlyRate: number; dailyRate: number; monthlyRate: number
+    48→    48→    48→  purchaseDate: string | null; warrantyExpiry: string | null
+    49→    49→    49→  isActive: boolean
+    50→    50→    50→  supplier: Supplier | null
+    51→    51→    51→  usages?: EquipmentUsage[]
+    52→    52→    52→  maintenance?: EquipmentMaintenance[]
+    53→    53→    53→  fuelLogs?: EquipmentFuelLog[]
+    54→    54→    54→  rentals?: EquipmentRental[]
+    55→    55→    55→  expenses?: EquipmentExpense[]
+    56→    56→    56→  deliveryOrders?: EquipmentDeliveryOrder[]
+    57→    57→    57→  timesheets?: EquipmentTimesheet[]
+    58→    58→    58→  operatorLogs?: EquipmentOperation[]
+    59→    59→    59→}
+    60→    60→    60→
+    61→    61→    61→interface EquipmentUsage {
+    62→    62→    62→  id: string; equipmentId: string; projectId: string
+    63→    63→    63→  date: string; hours: number; description: string | null; cost: number
+    64→    64→    64→  project: { id: string; code: string; name: string }
+    65→    65→    65→}
+    66→    66→    66→
+    67→    67→    67→interface EquipmentMaintenance {
+    68→    68→    68→  id: string; equipmentId: string; date: string; description: string
+    69→    69→    69→  cost: number; nextDate: string | null
+    70→    70→    70→}
+    71→    71→    71→
+    72→    72→    72→interface EquipmentFuelLog {
+    73→    73→    73→  id: string; equipmentId: string; date: string; liters: number
+    74→    74→    74→  costPerLiter: number; totalCost: number; projectId: string | null
+    75→    75→    75→  project?: { id: string; code: string; name: string } | null
+    76→    76→    76→}
+    77→    77→    77→
+    78→    78→    78→interface EquipmentRental {
+    79→    79→    79→  id: string; equipmentId: string; clientId: string; projectId: string | null
+    80→    80→    80→  startDate: string; endDate: string | null; rateType: string
+    81→    81→    81→  rate: number; totalAmount: number; status: string; notes: string | null
+    82→    82→    82→  deliveryFees: number; salesOrderNo: string | null; paymentTerms: string | null
+    83→    83→    83→  createdAt: string
+    84→    84→    84→  client: { id: string; code: string; name: string; nameAr: string | null }
+    85→    85→    85→  contract: { id: string; contractNo: string; hourlyRate: number; deliveryFees: number; salesOrderNo: string | null; paymentTerms: string | null }
+    86→    86→    86→  deliveryOrders: EquipmentDeliveryOrder[]
+    87→    87→    87→  timesheets: EquipmentTimesheet[]
+    88→    88→    88→}
+    89→    89→    89→
+    90→    90→    90→interface EquipmentExpense {
+    91→    91→    91→  id: string; equipmentId: string; category: string; description: string
+    92→    92→    92→  amount: number; date: string; reference: string | null
+    93→    93→    93→}
+    94→    94→    94→
+    95→    95→    95→interface EquipmentDeliveryOrder {
+    96→    96→    96→  id: string; orderNo: string; rentalId: string | null; equipmentId: string
+    97→    97→    97→  clientId: string | null; deliveryDate: string; returnDate: string | null
+    98→    98→    98→  status: string; site: string | null
+    99→    99→    99→  client?: { id: string; name: string } | null
+   100→   100→   100→  rental?: { id: string; contract: { contractNo: string } } | null
+   101→   101→   101→}
+   102→   102→   102→
+   103→   103→   103→interface EquipmentTimesheet {
+   104→   104→   104→  id: string; rentalId: string; contractId: string; projectId: string
+   105→   105→   105→  equipmentId: string; month: number; year: number; operatingHours: number
+   106→   106→   106→  status: string; notes: string | null
+   107→   107→   107→  project: { id: string; code: string; name: string }
+   108→   108→   108→  contract: { id: string; contractNo: string; hourlyRate: number }
+   109→   109→   109→  rental: { id: string; hourlyRate: number; client: { id: string; name: string } }
+   110→   110→   110→  invoice: { id: string; invoiceNo: string; totalAmount: number; status: string } | null
+   111→   111→   111→}
+   112→   112→   112→
+   113→   113→   113→interface EquipmentOperation {
+   114→   114→   114→  id: string; equipmentId: string; operatorId: string | null; projectId: string | null
+   115→   115→   115→  date: string; hours: number; notes: string | null
+   116→   116→   116→  operator: { id: string; name: string; nameAr: string | null } | null
+   117→   117→   117→  project: { id: string; code: string; name: string } | null
+   118→   118→   118→}
+   119→   119→   119→
+   120→   120→   120→interface ClientOption { id: string; code: string; name: string; nameAr: string | null }
+   121→   121→   121→interface ProjectOption { id: string; code: string; name: string }
+   122→   122→   122→
+   123→   123→   123→// ============ Constants ============
+   124→   124→   124→const statusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   125→   125→   125→  AVAILABLE: { label: { ar: 'متاحة', en: 'Available' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   126→   126→   126→  IN_USE: { label: { ar: 'قيد الاستخدام', en: 'In Use' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+   127→   127→   127→  MAINTENANCE: { label: { ar: 'صيانة', en: 'Maintenance' }, color: 'text-orange-700', bg: 'bg-orange-100' },
+   128→   128→   128→  OUT_OF_SERVICE: { label: { ar: 'خارج الخدمة', en: 'Out of Service' }, color: 'text-red-700', bg: 'bg-red-100' },
+   129→   129→   129→  RENTED: { label: { ar: 'مؤجرة', en: 'Rented' }, color: 'text-purple-700', bg: 'bg-purple-100' },
+   130→   130→   130→}
+   131→   131→   131→
+   132→   132→   132→const ownershipTypeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   133→   133→   133→  COMPANY_OWNED: { label: { ar: 'مملوكة للشركة', en: 'Company Owned' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   134→   134→   134→  LEASED_ASSET: { label: { ar: 'مستأجرة', en: 'Leased Asset' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+   135→   135→   135→  CUSTOMER_OWNED: { label: { ar: 'مملوكة للعميل', en: 'Customer Owned' }, color: 'text-purple-700', bg: 'bg-purple-100' },
+   136→   136→   136→}
+   137→   137→   137→
+   138→   138→   138→const rentalStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   139→   139→   139→  ACTIVE: { label: { ar: 'نشط', en: 'Active' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   140→   140→   140→  RETURNED: { label: { ar: 'مرتجع', en: 'Returned' }, color: 'text-gray-700', bg: 'bg-gray-100' },
+   141→   141→   141→  OVERDUE: { label: { ar: 'متأخر', en: 'Overdue' }, color: 'text-red-700', bg: 'bg-red-100' },
+   142→   142→   142→}
+   143→   143→   143→
+   144→   144→   144→const expenseCategoryLabels: Record<string, { ar: string; en: string }> = {
+   145→   145→   145→  RENT: { ar: 'إيجارات', en: 'Rent' },
+   146→   146→   146→  MAINTENANCE: { ar: 'صيانة', en: 'Maintenance' },
+   147→   147→   147→  TRANSPORT: { ar: 'نقل', en: 'Transport' },
+   148→   148→   148→  DELIVERY: { ar: 'توصيل', en: 'Delivery' },
+   149→   149→   149→  CONSUMABLES: { ar: 'مواد استهلاكية', en: 'Consumables' },
+   150→   150→   150→  SERVICES: { ar: 'خدمات', en: 'Services' },
+   151→   151→   151→  INSURANCE: { ar: 'تأمين', en: 'Insurance' },
+   152→   152→   152→  FUEL: { ar: 'وقود', en: 'Fuel' },
+   153→   153→   153→  PERMITS: { ar: 'تصاريح', en: 'Permits' },
+   154→   154→   154→  OFFICE: { ar: 'قرطاسية', en: 'Office' },
+   155→   155→   155→  HOSPITALITY: { ar: 'ضيافة', en: 'Hospitality' },
+   156→   156→   156→  OTHER: { ar: 'أخرى', en: 'Other' },
+   157→   157→   157→}
+   158→   158→   158→
+   159→   159→   159→const expenseCategoryOptions = Object.entries(expenseCategoryLabels).map(([key, val]) => ({
+   160→   160→   160→  value: key, ...val,
+   161→   161→   161→}))
+   162→   162→   162→
+   163→   163→   163→const rateTypeLabels: Record<string, { ar: string; en: string }> = {
+   164→   164→   164→  HOURLY: { ar: 'بالساعة', en: 'Hourly' },
+   165→   165→   165→  DAILY: { ar: 'يومي', en: 'Daily' },
+   166→   166→   166→  MONTHLY: { ar: 'شهري', en: 'Monthly' },
+   167→   167→   167→}
+   168→   168→   168→
+   169→   169→   169→const doStatusLabels: Record<string, { ar: string; en: string }> = {
+   170→   170→   170→  PENDING: { ar: 'معلق', en: 'Pending' },
+   171→   171→   171→  DELIVERED: { ar: 'تم التوصيل', en: 'Delivered' },
+   172→   172→   172→  RETURNED: { ar: 'مرتجع', en: 'Returned' },
+   173→   173→   173→  CANCELLED: { ar: 'ملغي', en: 'Cancelled' },
+   174→   174→   174→}
+   175→   175→   175→
+   176→   176→   176→const timesheetStatusLabels: Record<string, { ar: string; en: string }> = {
+   177→   177→   177→  DRAFT: { ar: 'مسودة', en: 'Draft' },
+   178→   178→   178→  SUBMITTED: { ar: 'مقدم', en: 'Submitted' },
+   179→   179→   179→  APPROVED: { ar: 'معتمد', en: 'Approved' },
+   180→   180→   180→  INVOICED: { ar: 'مفوتر', en: 'Invoiced' },
+   181→   181→   181→}
+   182→   182→   182→
+   183→   183→   183→// ============ Helper Components ============
+   184→   184→   184→function StatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   185→   185→   185→  const cfg = statusConfig[status] || statusConfig.AVAILABLE
+   186→   186→   186→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   187→   187→   187→}
+   188→   188→   188→
+   189→   189→   189→function OwnershipBadge({ ownershipType, lang }: { ownershipType: string; lang: 'ar' | 'en' }) {
+   190→   190→   190→  const cfg = ownershipTypeConfig[ownershipType] || ownershipTypeConfig.COMPANY_OWNED
+   191→   191→   191→  return <Badge className={`${cfg.bg} ${cfg.color} border-0 text-[10px]`}>{cfg.label[lang]}</Badge>
+   192→   192→   192→}
+   193→   193→   193→
+   194→   194→   194→function ActivityBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   195→   195→   195→  if (status === 'RENTED') {
+   196→   196→   196→    return <Badge className="bg-cyan-100 text-cyan-700 border-cyan-200 text-[10px] px-1.5 py-0 border">{lang === 'ar' ? 'تأجير' : 'Rental'}</Badge>
+   197→   197→   197→  }
+   198→   198→   198→  if (status === 'IN_USE') {
+   199→   199→   199→    return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] px-1.5 py-0 border">{lang === 'ar' ? 'تنفيذي' : 'Const.'}</Badge>
+   200→   200→   200→  }
+   201→   201→   201→  return null
+   202→   202→   202→}
+   203→   203→   203→
+   204→   204→   204→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   205→   205→   205→  return (
+   206→   206→   206→    <div className="space-y-2 p-4">
+   207→   207→   207→      {Array.from({ length: rows }).map((_, i) => (
+   208→   208→   208→        <div key={i} className="flex gap-4 p-3">
+   209→   209→   209→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   210→   210→   210→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+   211→   211→   211→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   212→   212→   212→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   213→   213→   213→        </div>
+   214→   214→   214→      ))}
+   215→   215→   215→    </div>
+   216→   216→   216→  )
+   217→   217→   217→}
+   218→   218→   218→
+   219→   219→   219→function CardSkeleton() {
+   220→   220→   220→  return (
+   221→   221→   221→    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   222→   222→   222→      {Array.from({ length: 4 }).map((_, i) => (
+   223→   223→   223→        <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />
+   224→   224→   224→      ))}
+   225→   225→   225→    </div>
+   226→   226→   226→  )
+   227→   227→   227→}
+   228→   228→   228→
+   229→   229→   229→const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+   230→   230→   230→const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+   231→   231→   231→function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string {
+   232→   232→   232→  if (lang === 'ar') return `${arabicMonths[month - 1]} ${year}`
+   233→   233→   233→  return `${englishMonths[month - 1]} ${year}`
+   234→   234→   234→}
+   235→   235→   235→
+   236→   236→   236→// ============ New Equipment Dialog ============
+   237→   237→   237→function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
+   238→   238→   238→  open: boolean; onOpenChange: (v: boolean) => void; suppliers: Supplier[]; clients: ClientOption[]
+   239→   239→   239→}) {
+   240→   240→   240→  const { lang } = useAppStore()
+   241→   241→   241→  const queryClient = useQueryClient()
+   242→   242→   242→  const [name, setName] = useState('')
+   243→   243→   243→  const [nameAr, setNameAr] = useState('')
+   244→   244→   244→  const [type, setType] = useState('')
+   245→   245→   245→  const [model, setModel] = useState('')
+   246→   246→   246→  const [serialNumber, setSerialNumber] = useState('')
+   247→   247→   247→  const [status, setStatus] = useState('AVAILABLE')
+   248→   248→   248→  const [ownershipType, setOwnershipType] = useState('COMPANY_OWNED')
+   249→   249→   249→  const [supplierId, setSupplierId] = useState('')
+   250→   250→   250→  const [ownerId, setOwnerId] = useState('')
+   251→   251→   251→  const [purchasePrice, setPurchasePrice] = useState('')
+   252→   252→   252→  const [sellingPrice, setSellingPrice] = useState('')
+   253→   253→   253→  const [hourlyRate, setHourlyRate] = useState('')
+   254→   254→   254→  const [dailyRate, setDailyRate] = useState('')
+   255→   255→   255→  const [monthlyRate, setMonthlyRate] = useState('')
+   256→   256→   256→  const [purchaseDate, setPurchaseDate] = useState('')
+   257→   257→   257→  const [warrantyExpiry, setWarrantyExpiry] = useState('')
+   258→   258→   258→  const [assetAccountId, setAssetAccountId] = useState<string | null>(null)
+   259→   259→   259→  const [assetAccountCode, setAssetAccountCode] = useState('2110')
+   260→   260→   260→  const [assetAccountNameAr, setAssetAccountNameAr] = useState('معدات وآليات')
+   261→   261→   261→
+   262→   262→   262→  React.useEffect(() => {
+   263→   263→   263→    if (open) {
+   264→   264→   264→      setName(''); setNameAr(''); setType(''); setModel('')
+   265→   265→   265→      setSerialNumber(''); setStatus('AVAILABLE'); setOwnershipType('COMPANY_OWNED'); setSupplierId(''); setOwnerId('')
+   266→   266→   266→      setPurchasePrice(''); setSellingPrice(''); setHourlyRate('')
+   267→   267→   267→      setDailyRate(''); setMonthlyRate(''); setPurchaseDate(''); setWarrantyExpiry('')
+   268→   268→   268→      setAssetAccountId(null); setAssetAccountCode('2110'); setAssetAccountNameAr('معدات وآليات')
+   269→   269→   269→    }
+   270→   270→   270→  }, [open])
+   271→   271→   271→
+   272→   272→   272→  const createMutation = useMutation({
+   273→   273→   273→    mutationFn: (data: Record<string, unknown>) =>
+   274→   274→   274→      fetch('/api/equipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   275→   275→   275→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   276→   276→   276→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment'] }); onOpenChange(false) },
+   277→   277→   277→  })
+   278→   278→   278→
+   279→   279→   279→  const handleSubmit = (e: React.FormEvent) => {
+   280→   280→   280→    e.preventDefault()
+   281→   281→   281→    createMutation.mutate({
+   282→   282→   282→      name, nameAr, type, model, serialNumber, status,
+   283→   283→   283→      ownershipType,
+   284→   284→   284→      supplierId: supplierId || null,
+   285→   285→   285→      ownerId: ownershipType === 'CUSTOMER_OWNED' ? (ownerId || null) : null,
+   286→   286→   286→      purchasePrice, sellingPrice, hourlyRate, dailyRate, monthlyRate,
+   287→   287→   287→      purchaseDate: purchaseDate || null,
+   288→   288→   288→      warrantyExpiry: warrantyExpiry || null,
+   289→   289→   289→      assetAccountId: assetAccountId || undefined,
+   290→   290→   290→      assetAccountCode: assetAccountCode || undefined,
+   291→   291→   291→    })
+   292→   292→   292→  }
+   293→   293→   293→
+   294→   294→   294→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   295→   295→   295→
+   296→   296→   296→  return (
+   297→   297→   297→    <Dialog open={open} onOpenChange={onOpenChange}>
+   298→   298→   298→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   299→   299→   299→        <DialogHeader>
+   300→   300→   300→          <DialogTitle>{t('معدة جديدة', 'New Equipment')}</DialogTitle>
+   301→   301→   301→          <DialogDescription>{t('إضافة معدة جديدة مع بيانات الشراء والتأجير', 'Add new equipment with purchase and rental details')}</DialogDescription>
+   302→   302→   302→        </DialogHeader>
+   303→   303→   303→        <form onSubmit={handleSubmit} className="space-y-4">
+   304→   304→   304→          <div className="space-y-2">
+   305→   305→   305→            <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">{t('المعلومات الأساسية', 'Basic Information')}</h4>
+   306→   306→   306→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   307→   307→   307→              <div className="space-y-2"><Label>{t('الاسم *', 'Name *')}</Label><Input value={name} onChange={e => setName(e.target.value)} placeholder={t('اسم المعدة', 'Equipment name')} required /></div>
+   308→   308→   308→              <div className="space-y-2"><Label>{t('الاسم بالعربي', 'Arabic Name')}</Label><Input value={nameAr} onChange={e => setNameAr(e.target.value)} placeholder={t('الاسم بالعربية', 'Arabic name')} /></div>
+   309→   309→   309→              <div className="space-y-2">
+   310→   310→   310→                <Label>{t('النوع', 'Type')}</Label>
+   311→   311→   311→                <Select value={type} onValueChange={setType}>
+   312→   312→   312→                  <SelectTrigger><SelectValue placeholder={t('اختر النوع', 'Select type')} /></SelectTrigger>
+   313→   313→   313→                  <SelectContent>
+   314→   314→   314→                    <SelectItem value="حفارة">{t('حفارة', 'Excavator')}</SelectItem>
+   315→   315→   315→                    <SelectItem value="شيول">{t('شيول', 'Shovel')}</SelectItem>
+   316→   316→   316→                    <SelectItem value="كرين">{t('كرين', 'Crane')}</SelectItem>
+   317→   317→   317→                    <SelectItem value="قلاب">{t('قلاب', 'Dump Truck')}</SelectItem>
+   318→   318→   318→                    <SelectItem value="بولدوزر">{t('بولدوزر', 'Bulldozer')}</SelectItem>
+   319→   319→   319→                    <SelectItem value="رافعة">{t('رافعة', 'Lift')}</SelectItem>
+   320→   320→   320→                    <SelectItem value="ضاغط">{t('ضاغط', 'Compressor')}</SelectItem>
+   321→   321→   321→                    <SelectItem value="أخرى">{t('أخرى', 'Other')}</SelectItem>
+   322→   322→   322→                  </SelectContent>
+   323→   323→   323→                </Select>
+   324→   324→   324→              </div>
+   325→   325→   325→              <div className="space-y-2"><Label>{t('الموديل', 'Model')}</Label><Input value={model} onChange={e => setModel(e.target.value)} placeholder={t('الموديل', 'Model')} /></div>
+   326→   326→   326→              <div className="space-y-2"><Label>{t('الرقم التسلسلي', 'Serial No.')}</Label><Input value={serialNumber} onChange={e => setSerialNumber(e.target.value)} placeholder={t('الرقم التسلسلي', 'Serial number')} /></div>
+   327→   327→   327→              <div className="space-y-2">
+   328→   328→   328→                <Label>{t('الحالة', 'Status')}</Label>
+   329→   329→   329→                <Select value={status} onValueChange={setStatus}>
+   330→   330→   330→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   331→   331→   331→                  <SelectContent>
+   332→   332→   332→                    {Object.entries(statusConfig).map(([k, v]) => (
+   333→   333→   333→                      <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+   334→   334→   334→                    ))}
+   335→   335→   335→                  </SelectContent>
+   336→   336→   336→                </Select>
+   337→   337→   337→              </div>
+   338→   338→   338→              <div className="space-y-2">
+   339→   339→   339→                <Label>{t('نوع الملكية', 'Ownership Type')}</Label>
+   340→   340→   340→                <Select value={ownershipType} onValueChange={v => { setOwnershipType(v); if (v !== 'LEASED_ASSET') setSupplierId(''); if (v !== 'CUSTOMER_OWNED') setOwnerId('') }}>
+   341→   341→   341→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   342→   342→   342→                  <SelectContent>
+   343→   343→   343→                    {Object.entries(ownershipTypeConfig).map(([k, v]) => (
+   344→   344→   344→                      <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+   345→   345→   345→                    ))}
+   346→   346→   346→                  </SelectContent>
+   347→   347→   347→                </Select>
+   348→   348→   348→              </div>
+   349→   349→   349→            </div>
+   350→   350→   350→          </div>
+   351→   351→   351→          {/* Ownership Info */}
+   352→   352→   352→          {ownershipType === 'LEASED_ASSET' && (
+   353→   353→   353→            <div className="p-3 rounded-lg border bg-amber-50 border-amber-200">
+   354→   354→   354→              <div className="flex items-center gap-2 mb-2">
+   355→   355→   355→                <Shield className="size-4 text-amber-600" />
+   356→   356→   356→                <span className="text-sm font-medium text-amber-700">{t('معلومات التأجير - المورد إلزامي', 'Lease Info - Supplier is required')}</span>
+   357→   357→   357→              </div>
+   358→   358→   358→            </div>
+   359→   359→   359→          )}
+   360→   360→   360→          {ownershipType === 'CUSTOMER_OWNED' && (
+   361→   361→   361→            <div className="p-3 rounded-lg border bg-purple-50 border-purple-200">
+   362→   362→   362→              <div className="flex items-center gap-2 mb-2">
+   363→   363→   363→                <Users className="size-4 text-purple-600" />
+   364→   364→   364→                <span className="text-sm font-medium text-purple-700">{t('معدات مملوكة للعميل - حدد المالك', 'Customer-owned equipment - select owner')}</span>
+   365→   365→   365→              </div>
+   366→   366→   366→            </div>
+   367→   367→   367→          )}
+   368→   368→   368→          {/* Asset Account Selection */}
+   369→   369→   369→          <div className="space-y-2">
+   370→   370→   370→            <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">{t('حساب الأصل الثابت', 'Fixed Asset Account')}</h4>
+   371→   371→   371→            <AccountSelector
+   372→   372→   372→              roles={['FIXED_ASSET']}
+   373→   373→   373→              value={assetAccountId}
+   374→   374→   374→              onValueChange={(id, account) => {
+   375→   375→   375→                setAssetAccountId(id)
+   376→   376→   376→                setAssetAccountCode(account.code)
+   377→   377→   377→                setAssetAccountNameAr(account.nameAr || account.name)
+   378→   378→   378→              }}
+   379→   379→   379→              label={t('حساب الأصل الثابت', 'Fixed Asset Account')}
+   380→   380→   380→              placeholder={t('اختر حساب الأصل...', 'Select asset account...')}
+   381→   381→   381→            />
+   382→   382→   382→            <p className="text-xs text-muted-foreground">{t('اختر حساب الأصل الثابت الذي سيُقيد في الجانب المدين عند شراء المعدة', 'Select the fixed asset account to be debited when purchasing equipment')}</p>
+   383→   383→   383→          </div>
+   384→   384→   384→
+   385→   385→   385→          <div className="space-y-2">
+   386→   386→   386→            <h4 className="font-semibold text-sm text-teal-700 border-b border-teal-200 pb-1">{t('معلومات الشراء', 'Purchase Information')}</h4>
+   387→   387→   387→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   388→   388→   388→              <div className="space-y-2">
+   389→   389→   389→                <Label>{t('المورد', 'Supplier')} {ownershipType === 'LEASED_ASSET' ? '*' : ''}</Label>
+   390→   390→   390→                <Select value={supplierId} onValueChange={setSupplierId}>
+   391→   391→   391→                  <SelectTrigger><SelectValue placeholder={t('اختر المورد', 'Select supplier')} /></SelectTrigger>
+   392→   392→   392→                  <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+   393→   393→   393→                </Select>
+   394→   394→   394→                {ownershipType === 'LEASED_ASSET' && !supplierId && <p className="text-xs text-amber-600">{t('المورد إلزامي للمعدات المستأجرة', 'Supplier is required for leased equipment')}</p>}
+   395→   395→   395→              </div>
+   396→   396→   396→              {ownershipType === 'CUSTOMER_OWNED' && (
+   397→   397→   397→                <div className="space-y-2">
+   398→   398→   398→                  <Label>{t('مالك المعدة *', 'Equipment Owner *')}</Label>
+   399→   399→   399→                  <Select value={ownerId} onValueChange={setOwnerId}>
+   400→   400→   400→                    <SelectTrigger><SelectValue placeholder={t('اختر العميل المالك', 'Select owner client')} /></SelectTrigger>
+   401→   401→   401→                    <SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+   402→   402→   402→                  </Select>
+   403→   403→   403→                </div>
+   404→   404→   404→              )}
+   405→   405→   405→              <div className="space-y-2"><Label>{t('سعر الشراء', 'Purchase Price')}</Label><Input type="number" min="0" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   406→   406→   406→              <div className="space-y-2"><Label>{t('سعر البيع/التأجير', 'Selling/Rental Price')}</Label><Input type="number" min="0" step="0.01" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   407→   407→   407→              <div className="space-y-2"><Label>{t('تاريخ الشراء', 'Purchase Date')}</Label><Input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} /></div>
+   408→   408→   408→              <div className="space-y-2"><Label>{t('انتهاء الضمان', 'Warranty Expiry')}</Label><Input type="date" value={warrantyExpiry} onChange={e => setWarrantyExpiry(e.target.value)} /></div>
+   409→   409→   409→            </div>
+   410→   410→   410→          </div>
+   411→   411→   411→          <div className="space-y-2">
+   412→   412→   412→            <h4 className="font-semibold text-sm text-purple-700 border-b border-purple-200 pb-1">{t('أسعار التأجير', 'Rental Rates')}</h4>
+   413→   413→   413→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   414→   414→   414→              <div className="space-y-2"><Label>{t('الأجر بالساعة', 'Hourly Rate')}</Label><Input type="number" min="0" step="0.01" value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   415→   415→   415→              <div className="space-y-2"><Label>{t('الأجر اليومي', 'Daily Rate')}</Label><Input type="number" min="0" step="0.01" value={dailyRate} onChange={e => setDailyRate(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   416→   416→   416→              <div className="space-y-2"><Label>{t('الأجر الشهري', 'Monthly Rate')}</Label><Input type="number" min="0" step="0.01" value={monthlyRate} onChange={e => setMonthlyRate(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   417→   417→   417→            </div>
+   418→   418→   418→          </div>
+   419→   419→   419→          {/* JE Preview for equipment purchase */}
+   420→   420→   420→          {purchasePrice && parseFloat(purchasePrice) > 0 && (
+   421→   421→   421→            <JePreview
+   422→   422→   422→              lines={[
+   423→   423→   423→                { accountCode: assetAccountCode, accountNameAr: assetAccountNameAr, debit: parseFloat(purchasePrice) || 0, credit: 0 },
+   424→   424→   424→                ...(ownershipType === 'LEASED_ASSET' && supplierId
+   425→   425→   425→                  ? [{ accountCode: '3210', accountNameAr: 'الموردون', debit: 0, credit: parseFloat(purchasePrice) || 0 }]
+   426→   426→   426→                  : [{ accountCode: '1110', accountNameAr: 'الصندوق', debit: 0, credit: parseFloat(purchasePrice) || 0 }]),
+   427→   427→   427→              ]}
+   428→   428→   428→              title={t('القيد المحاسبي المتوقع لشراء المعدة', 'Expected Journal Entry for Equipment Purchase')}
+   429→   429→   429→            />
+   430→   430→   430→          )}
+   431→   431→   431→
+   432→   432→   432→          <DialogFooter>
+   433→   433→   433→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
+   434→   434→   434→            <Button type="submit" disabled={createMutation.isPending || !name || (ownershipType === 'LEASED_ASSET' && !supplierId) || (ownershipType === 'CUSTOMER_OWNED' && !ownerId)} className="bg-emerald-600 hover:bg-emerald-700">
+   435→   435→   435→              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إضافة', 'Add')}
+   436→   436→   436→            </Button>
+   437→   437→   437→          </DialogFooter>
+   438→   438→   438→        </form>
+   439→   439→   439→      </DialogContent>
+   440→   440→   440→    </Dialog>
+   441→   441→   441→  )
+   442→   442→   442→}
+   443→   443→   443→
+   444→   444→   444→// ============ Add Rental Dialog ============
+   445→   445→   445→function AddRentalDialog({ open, onOpenChange, equipmentId, clients, projects }: {
+   446→   446→   446→  open: boolean; onOpenChange: (v: boolean) => void; equipmentId: string
+   447→   447→   447→  clients: ClientOption[]; projects: ProjectOption[]
+   448→   448→   448→}) {
+   449→   449→   449→  const { lang } = useAppStore()
+   450→   450→   450→  const queryClient = useQueryClient()
+   451→   451→   451→  const [clientId, setClientId] = useState('')
+   452→   452→   452→  const [projectId, setProjectId] = useState('')
+   453→   453→   453→  const [startDate, setStartDate] = useState('')
+   454→   454→   454→  const [endDate, setEndDate] = useState('')
+   455→   455→   455→  const [rateType, setRateType] = useState('DAILY')
+   456→   456→   456→  const [rate, setRate] = useState('')
+   457→   457→   457→  const [totalAmount, setTotalAmount] = useState('')
+   458→   458→   458→  const [notes, setNotes] = useState('')
+   459→   459→   459→
+   460→   460→   460→  React.useEffect(() => {
+   461→   461→   461→    if (open) { setClientId(''); setProjectId(''); setStartDate(''); setEndDate(''); setRateType('DAILY'); setRate(''); setTotalAmount(''); setNotes('') }
+   462→   462→   462→  }, [open])
+   463→   463→   463→
+   464→   464→   464→  const createMutation = useMutation({
+   465→   465→   465→    mutationFn: (data: Record<string, unknown>) =>
+   466→   466→   466→      fetch('/api/equipment/rentals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   467→   467→   467→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   468→   468→   468→    onSuccess: () => {
+   469→   469→   469→      queryClient.invalidateQueries({ queryKey: ['equipment-rentals'] })
+   470→   470→   470→      queryClient.invalidateQueries({ queryKey: ['equipment-detail'] })
+   471→   471→   471→      queryClient.invalidateQueries({ queryKey: ['equipment'] })
+   472→   472→   472→      onOpenChange(false)
+   473→   473→   473→    },
+   474→   474→   474→  })
+   475→   475→   475→
+   476→   476→   476→  const handleSubmit = (e: React.FormEvent) => {
+   477→   477→   477→    e.preventDefault()
+   478→   478→   478→    createMutation.mutate({ equipmentId, clientId, projectId: projectId || null, startDate, endDate: endDate || null, rateType, rate, totalAmount, notes: notes || null })
+   479→   479→   479→  }
+   480→   480→   480→
+   481→   481→   481→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   482→   482→   482→
+   483→   483→   483→  return (
+   484→   484→   484→    <Dialog open={open} onOpenChange={onOpenChange}>
+   485→   485→   485→      <DialogContent className="max-w-lg">
+   486→   486→   486→        <DialogHeader>
+   487→   487→   487→          <DialogTitle>{t('عقد تأجير جديد', 'New Rental Contract')}</DialogTitle>
+   488→   488→   488→          <DialogDescription>{t('إنشاء عقد تأجير جديد للمعدة', 'Create a new rental contract for equipment')}</DialogDescription>
+   489→   489→   489→        </DialogHeader>
+   490→   490→   490→        <form onSubmit={handleSubmit} className="space-y-4">
+   491→   491→   491→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   492→   492→   492→            <div className="space-y-2"><Label>{t('العميل *', 'Client *')}</Label><Select value={clientId} onValueChange={setClientId}><SelectTrigger><SelectValue placeholder={t('اختر العميل', 'Select client')} /></SelectTrigger><SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+   493→   493→   493→            <div className="space-y-2"><Label>{t('المشروع', 'Project')}</Label><Select value={projectId} onValueChange={setProjectId}><SelectTrigger><SelectValue placeholder={t('اختر المشروع', 'Select project')} /></SelectTrigger><SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+   494→   494→   494→            <div className="space-y-2"><Label>{t('تاريخ البداية *', 'Start Date *')}</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required /></div>
+   495→   495→   495→            <div className="space-y-2"><Label>{t('تاريخ النهاية', 'End Date')}</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+   496→   496→   496→            <div className="space-y-2"><Label>{t('نوع الأجر *', 'Rate Type *')}</Label><Select value={rateType} onValueChange={setRateType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(rateTypeLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v[lang]}</SelectItem>)}</SelectContent></Select></div>
+   497→   497→   497→            <div className="space-y-2"><Label>{t('الأجر *', 'Rate *')}</Label><Input type="number" min="0" step="0.01" value={rate} onChange={e => setRate(e.target.value)} dir="ltr" required /></div>
+   498→   498→   498→            <div className="space-y-2"><Label>{t('الإجمالي *', 'Total Amount *')}</Label><Input type="number" min="0" step="0.01" value={totalAmount} onChange={e => setTotalAmount(e.target.value)} dir="ltr" required /></div>
+   499→   499→   499→            <div className="space-y-2"><Label>{t('ملاحظات', 'Notes')}</Label><Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات', 'Notes')} /></div>
+   500→   500→   500→          </div>
+
+[showing lines 1-500 of 1690; use offset=501 with limit to continue reading]

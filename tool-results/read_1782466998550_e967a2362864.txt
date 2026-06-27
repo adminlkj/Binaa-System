@@ -1,0 +1,2002 @@
+     1→'use client'
+     2→
+     3→// ============================================================================
+     4→// Smart Depreciation Module — نظام بِنَاء ERP
+     5→// ----------------------------------------------------------------------------
+     6→// A complete, professional fixed-assets & depreciation screen with 4 tabs:
+     7→//
+     8→//   1. الأصول الثابتة (Fixed Assets)       — list + create + detail
+     9→//   2. تشغيل الإهلاك (Run Depreciation)    — preview + batch run
+    10→//   3. جدول الإهلاك (Depreciation Schedule)— historical records + JE detail
+    11→//   4. تقرير الإهلاك (Depreciation Report) — professional report + print/CSV
+    12→//
+    13→// All journal entries are generated server-side by the existing API routes:
+    14→//   - POST /api/fixed-assets              → acquisition JE (Dr FIXED_ASSET / Cr CASH|BANK)
+    15→//   - POST /api/fixed-assets/[id]/depreciate  → monthly depreciation JE
+    16→//   - POST /api/fixed-assets/depreciate-all   → batch monthly depreciation JE
+    17→//
+    18→// UI uses teal/emerald color scheme (accounting convention; NO indigo/blue).
+    19→// ============================================================================
+    20→
+    21→import React, { useState, useMemo } from 'react'
+    22→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+    23→import {
+    24→  TrendingDown, Plus, Search, RefreshCw, Settings2, CalendarClock,
+    25→  PlayCircle, FileBarChart2, Trash2, Eye, Building2, Car, MonitorCog,
+    26→  Boxes, Package, AlertTriangle, CheckCircle2, XCircle, Clock,
+    27→  Wallet, Landmark, Banknote, ArrowLeftRight, PiggyBank,
+    28→  Calendar, Layers, Activity,
+    29→} from 'lucide-react'
+    30→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    31→import { Button } from '@/components/ui/button'
+    32→import { Input } from '@/components/ui/input'
+    33→import { Label } from '@/components/ui/label'
+    34→import { Badge } from '@/components/ui/badge'
+    35→import { Switch } from '@/components/ui/switch'
+    36→import { Progress } from '@/components/ui/progress'
+    37→import { Separator } from '@/components/ui/separator'
+    38→import {
+    39→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    40→} from '@/components/ui/table'
+    41→import {
+    42→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    43→} from '@/components/ui/dialog'
+    44→import {
+    45→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    46→} from '@/components/ui/select'
+    47→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    48→import { ModuleLayout } from '@/components/shared/module-layout'
+    49→import { MoneyDisplay } from '@/components/ui/money-display'
+    50→import { useAppStore, formatDate } from '@/stores/app-store'
+    51→import { useToast } from '@/hooks/use-toast'
+    52→import { AccountSelector } from '@/components/shared/account-selector'
+    53→import { JePreview, type JePreviewLine } from '@/components/shared/je-preview'
+    54→import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+    55→import {
+    56→  TablePrintExportButtons,
+    57→  type PrintColumn,
+    58→  type PrintInfoItem,
+    59→  type PrintTotalItem,
+    60→} from '@/components/shared/table-print-export'
+    61→import type { CSVColumn } from '@/lib/export-csv'
+    62→
+    63→// ============ Types ============
+    64→
+    65→interface AccountLite {
+    66→  id: string
+    67→  code: string
+    68→  name: string
+    69→  nameAr: string | null
+    70→}
+    71→
+    72→interface DepreciationRecord {
+    73→  id: string
+    74→  fixedAssetId: string
+    75→  year: number
+    76→  month: number
+    77→  depreciationAmount: number
+    78→  journalEntryId: string | null
+    79→  createdAt: string
+    80→}
+    81→
+    82→interface FixedAsset {
+    83→  id: string
+    84→  assetCode: string
+    85→  name: string
+    86→  nameAr: string | null
+    87→  category: string
+    88→  acquisitionDate: string
+    89→  acquisitionCost: number
+    90→  residualValue: number
+    91→  usefulLifeMonths: number
+    92→  depreciationMethod: string
+    93→  accumulatedDepreciation: number
+    94→  netBookValue: number
+    95→  monthlyDepreciation: number
+    96→  remainingMonths: number
+    97→  status: string
+    98→  journalEntryId: string | null
+    99→  accountId: string | null
+   100→  depExpenseAccountId: string | null
+   101→  accumDepAccountId: string | null
+   102→  account: AccountLite | null
+   103→  depExpenseAccount: AccountLite | null
+   104→  accumDepAccount: AccountLite | null
+   105→  depreciations: DepreciationRecord[]
+   106→}
+   107→
+   108→interface ReportSummary {
+   109→  totalAssets: number
+   110→  totalCost: number
+   111→  totalAccumDep: number
+   112→  totalNetBookValue: number
+   113→  totalMonthlyDepreciation: number
+   114→  totalResidualValue: number
+   115→  activeCount: number
+   116→  fullyDepreciatedCount: number
+   117→  soldCount: number
+   118→  disposedCount: number
+   119→}
+   120→
+   121→interface ReportByCategory {
+   122→  category: string
+   123→  count: number
+   124→  cost: number
+   125→  accumDep: number
+   126→  nbv: number
+   127→  monthlyDep: number
+   128→}
+   129→
+   130→interface ReportMonthlyTrend {
+   131→  year: number
+   132→  month: number
+   133→  amount: number
+   134→  entries: number
+   135→}
+   136→
+   137→interface ReportResponse {
+   138→  perAsset: FixedAsset[]
+   139→  byCategory: ReportByCategory[]
+   140→  monthlyTrend: ReportMonthlyTrend[]
+   141→  summary: ReportSummary
+   142→  filters: {
+   143→    fromYear: number | null
+   144→    fromMonth: number | null
+   145→    toYear: number | null
+   146→    toMonth: number | null
+   147→  }
+   148→}
+   149→
+   150→interface BatchResultRow {
+   151→  assetId: string
+   152→  assetCode: string
+   153→  assetName: string
+   154→  status: 'DEPRECIATED' | 'SKIPPED_DUPLICATE' | 'SKIPPED_FULLY' | 'SKIPPED_NO_ACCOUNT' | 'SKIPPED_AT_RESIDUAL'
+   155→  depreciationAmount: number
+   156→  journalEntryId?: string
+   157→  journalEntryNo?: string
+   158→  reason?: string
+   159→}
+   160→
+   161→interface BatchResponse {
+   162→  message: string
+   163→  totalAssets: number
+   164→  depreciatedCount: number
+   165→  totalAmount: number
+   166→  journalEntriesCreated: number
+   167→  results: BatchResultRow[]
+   168→  year: number
+   169→  month: number
+   170→}
+   171→
+   172→// ============ Bilingual helper ============
+   173→const t = (lang: 'ar' | 'en', ar: string, en: string) => (lang === 'ar' ? ar : en)
+   174→
+   175→// ============ Constants: categories & statuses ============
+   176→type AssetCategoryKey =
+   177→  | 'EQUIPMENT' | 'VEHICLE' | 'OFFICE_EQUIPMENT' | 'SOFTWARE' | 'OTHER'
+   178→
+   179→interface CategoryConfig {
+   180→  key: AssetCategoryKey
+   181→  labelAr: string
+   182→  labelEn: string
+   183→  icon: React.ElementType
+   184→  color: string
+   185→}
+   186→
+   187→const CATEGORIES: CategoryConfig[] = [
+   188→  { key: 'EQUIPMENT',        labelAr: 'معدات وآليات',   labelEn: 'Equipment & Machinery', icon: Settings2,    color: 'teal' },
+   189→  { key: 'VEHICLE',          labelAr: 'مركبات',         labelEn: 'Vehicles',              icon: Car,          color: 'emerald' },
+   190→  { key: 'OFFICE_EQUIPMENT', labelAr: 'أثاث ومعدات مكتبية', labelEn: 'Office Equipment',  icon: MonitorCog,   color: 'cyan' },
+   191→  { key: 'SOFTWARE',         labelAr: 'برمجيات وقواعد بيانات', labelEn: 'Software',        icon: Boxes,        color: 'lime' },
+   192→  { key: 'OTHER',            labelAr: 'أصول أخرى',       labelEn: 'Other Assets',          icon: Package,      color: 'gray' },
+   193→]
+   194→
+   195→const CATEGORY_MAP: Record<string, CategoryConfig> = CATEGORIES.reduce(
+   196→  (acc, c) => { acc[c.key] = c; return acc },
+   197→  {} as Record<string, CategoryConfig>
+   198→)
+   199→
+   200→const categoryColorMap: Record<string, { bg: string; text: string; border: string; soft: string }> = {
+   201→  teal:    { bg: 'bg-teal-50',    text: 'text-teal-700',    border: 'border-teal-200',    soft: 'bg-teal-100' },
+   202→  emerald: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', soft: 'bg-emerald-100' },
+   203→  cyan:    { bg: 'bg-cyan-50',    text: 'text-cyan-700',    border: 'border-cyan-200',    soft: 'bg-cyan-100' },
+   204→  lime:    { bg: 'bg-lime-50',    text: 'text-lime-700',    border: 'border-lime-200',    soft: 'bg-lime-100' },
+   205→  gray:    { bg: 'bg-gray-50',    text: 'text-gray-700',    border: 'border-gray-200',    soft: 'bg-gray-100' },
+   206→}
+   207→
+   208→// Status configuration for assets
+   209→const assetStatusConfig: Record<string, { ar: string; en: string; cls: string; icon: React.ElementType }> = {
+   210→  ACTIVE:              { ar: 'نشط',              en: 'Active',              cls: 'bg-emerald-100 text-emerald-800', icon: CheckCircle2 },
+   211→  FULLY_DEPRECIATED:   { ar: 'مستهلك بالكامل',   en: 'Fully Depreciated',   cls: 'bg-gray-100 text-gray-700',       icon: CheckCircle2 },
+   212→  SOLD:                { ar: 'مبيع',             en: 'Sold',                cls: 'bg-amber-100 text-amber-800',     icon: ArrowLeftRight },
+   213→  DISPOSED:            { ar: 'متخلٍّ عنه',        en: 'Disposed',            cls: 'bg-rose-100 text-rose-800',       icon: XCircle },
+   214→}
+   215→
+   216→// Months list (1-12) with Arabic/English labels
+   217→const MONTHS = Array.from({ length: 12 }, (_, i) => {
+   218→  const d = new Date(2000, i, 1)
+   219→  return {
+   220→    value: i + 1,
+   221→    ar: d.toLocaleDateString('ar-SA-u-ca-gregory', { month: 'long' }),
+   222→    en: d.toLocaleDateString('en-US', { month: 'long' }),
+   223→  }
+   224→})
+   225→
+   226→// ============ Pure helpers ============
+   227→
+   228→function calcMonthlyDepreciation(cost: number, residual: number, lifeMonths: number): number {
+   229→  if (lifeMonths <= 0) return 0
+   230→  return Math.max(0, (cost - residual) / lifeMonths)
+   231→}
+   232→
+   233→function calcRemainingMonths(lifeMonths: number, totalMonthsElapsed: number): number {
+   234→  return Math.max(0, lifeMonths - totalMonthsElapsed)
+   235→}
+   236→
+   237→function formatMonthYear(year: number, month: number, lang: 'ar' | 'en'): string {
+   238→  const m = MONTHS.find((x) => x.value === month)
+   239→  if (!m) return `${month}/${year}`
+   240→  return `${m[lang]} ${year}`
+   241→}
+   242→
+   243→function getAssetName(asset: { name: string; nameAr: string | null }, lang: 'ar' | 'en'): string {
+   244→  return lang === 'ar' ? (asset.nameAr || asset.name) : asset.name
+   245→}
+   246→
+   247→// ============ Skeleton ============
+   248→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   249→  return (
+   250→    <div className="space-y-2 p-4">
+   251→      {Array.from({ length: rows }).map((_, i) => (
+   252→        <div key={i} className="flex gap-4 p-3">
+   253→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   254→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   255→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   256→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   257→        </div>
+   258→      ))}
+   259→    </div>
+   260→  )
+   261→}
+   262→
+   263→// ============ Summary Card ============
+   264→function SummaryCard({
+   265→  icon: Icon, label, value, sub, color = 'teal', showMoney = true,
+   266→}: {
+   267→  icon: React.ElementType
+   268→  label: string
+   269→  value: number
+   270→  sub?: string
+   271→  color?: keyof typeof categoryColorMap
+   272→  showMoney?: boolean
+   273→}) {
+   274→  const c = categoryColorMap[color] || categoryColorMap.teal
+   275→  return (
+   276→    <Card className={`${c.bg} ${c.border}`}>
+   277→      <CardContent className="p-4 flex items-center gap-3">
+   278→        <div className={`flex size-10 items-center justify-center rounded-lg ${c.soft} ${c.text} shrink-0`}>
+   279→          <Icon className="size-5" />
+   280→        </div>
+   281→        <div className="min-w-0 flex-1">
+   282→          <p className={`text-xs ${c.text} truncate`}>{label}</p>
+   283→          <div className={`${c.text} font-bold leading-tight`}>
+   284→            {showMoney ? (
+   285→              <MoneyDisplay value={value} size="md" inline showSymbol={false} />
+   286→            ) : (
+   287→              <span className="text-xl">{value}</span>
+   288→            )}
+   289→          </div>
+   290→          {sub && <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{sub}</p>}
+   291→        </div>
+   292→      </CardContent>
+   293→    </Card>
+   294→  )
+   295→}
+   296→
+   297→// ============ Asset Form Dialog ============
+   298→
+   299→interface AssetFormDialogProps {
+   300→  open: boolean
+   301→  onOpenChange: (open: boolean) => void
+   302→  editAsset?: FixedAsset | null
+   303→}
+   304→
+   305→function AssetFormDialog({ open, onOpenChange, editAsset }: AssetFormDialogProps) {
+   306→  const { lang } = useAppStore()
+   307→  const { toast } = useToast()
+   308→  const queryClient = useQueryClient()
+   309→  const isEdit = !!editAsset
+   310→
+   311→  // ---- Form state ----
+   312→  const [name, setName] = useState(editAsset?.name || '')
+   313→  const [nameAr, setNameAr] = useState(editAsset?.nameAr || '')
+   314→  const [category, setCategory] = useState<AssetCategoryKey>(
+   315→    (editAsset?.category as AssetCategoryKey) || 'EQUIPMENT'
+   316→  )
+   317→  const [acquisitionDate, setAcquisitionDate] = useState(() => {
+   318→    if (editAsset?.acquisitionDate) {
+   319→      const d = new Date(editAsset.acquisitionDate)
+   320→      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+   321→    }
+   322→    const now = new Date()
+   323→    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+   324→  })
+   325→  const [acquisitionCost, setAcquisitionCost] = useState(
+   326→    editAsset ? String(editAsset.acquisitionCost) : ''
+   327→  )
+   328→  const [residualValue, setResidualValue] = useState(
+   329→    editAsset ? String(editAsset.residualValue) : '0'
+   330→  )
+   331→  const [usefulLifeMonths, setUsefulLifeMonths] = useState(
+   332→    editAsset ? String(editAsset.usefulLifeMonths) : ''
+   333→  )
+   334→  const [depreciationMethod, setDepreciationMethod] = useState(
+   335→    editAsset?.depreciationMethod || 'STRAIGHT_LINE'
+   336→  )
+   337→
+   338→  // ---- Account selectors ----
+   339→  // For EQUIPMENT category, dep expense uses RENTAL_DEPRECIATION role.
+   340→  // For other categories, dep expense uses DEPRECIATION_EXPENSE role.
+   341→  const depExpenseRoles = useMemo(
+   342→    () => (category === 'EQUIPMENT' ? ['RENTAL_DEPRECIATION'] : ['DEPRECIATION_EXPENSE']),
+   343→    [category]
+   344→  )
+   345→
+   346→  const [fixedAssetAccountId, setFixedAssetAccountId] = useState<string | null>(
+   347→    editAsset?.accountId || null
+   348→  )
+   349→  const [fixedAssetAccountCode, setFixedAssetAccountCode] = useState(
+   350→    editAsset?.account?.code || ''
+   351→  )
+   352→  const [fixedAssetAccountNameAr, setFixedAssetAccountNameAr] = useState(
+   353→    editAsset?.account?.nameAr || editAsset?.account?.name || ''
+   354→  )
+   355→
+   356→  const [depExpenseAccountId, setDepExpenseAccountId] = useState<string | null>(
+   357→    editAsset?.depExpenseAccountId || null
+   358→  )
+   359→  const [depExpenseAccountCode, setDepExpenseAccountCode] = useState(
+   360→    editAsset?.depExpenseAccount?.code || ''
+   361→  )
+   362→  const [depExpenseAccountNameAr, setDepExpenseAccountNameAr] = useState(
+   363→    editAsset?.depExpenseAccount?.nameAr || editAsset?.depExpenseAccount?.name || ''
+   364→  )
+   365→
+   366→  const [accumDepAccountId, setAccumDepAccountId] = useState<string | null>(
+   367→    editAsset?.accumDepAccountId || null
+   368→  )
+   369→  const [accumDepAccountCode, setAccumDepAccountCode] = useState(
+   370→    editAsset?.accumDepAccount?.code || ''
+   371→  )
+   372→  const [accumDepAccountNameAr, setAccumDepAccountNameAr] = useState(
+   373→    editAsset?.accumDepAccount?.nameAr || editAsset?.accumDepAccount?.name || ''
+   374→  )
+   375→
+   376→  // ---- Acquisition payment account (CASH or BANK) ----
+   377→  const [paymentAccountId, setPaymentAccountId] = useState<string | null>(null)
+   378→  const [paymentAccountCode, setPaymentAccountCode] = useState('')
+   379→  const [paymentAccountNameAr, setPaymentAccountNameAr] = useState('')
+   380→
+   381→  const [skipAcquisitionEntry, setSkipAcquisitionEntry] = useState(false)
+   382→
+   383→  // ---- Computed amounts ----
+   384→  const parsedCost = parseFloat(acquisitionCost) || 0
+   385→  const parsedResidual = parseFloat(residualValue) || 0
+   386→  const parsedLife = parseInt(usefulLifeMonths) || 0
+   387→  const monthlyDep = calcMonthlyDepreciation(parsedCost, parsedResidual, parsedLife)
+   388→
+   389→  // ---- JE Preview lines (acquisition entry, only when creating) ----
+   390→  const jeLines = useMemo<JePreviewLine[]>(() => {
+   391→    if (isEdit) return []
+   392→    if (skipAcquisitionEntry || parsedCost <= 0) return []
+   393→    if (!fixedAssetAccountId || !paymentAccountId) return []
+   394→    return [
+   395→      {
+   396→        accountCode: fixedAssetAccountCode,
+   397→        accountNameAr: fixedAssetAccountNameAr,
+   398→        debit: parsedCost,
+   399→        credit: 0,
+   400→      },
+   401→      {
+   402→        accountCode: paymentAccountCode,
+   403→        accountNameAr: paymentAccountNameAr,
+   404→        debit: 0,
+   405→        credit: parsedCost,
+   406→      },
+   407→    ]
+   408→  }, [
+   409→    isEdit, skipAcquisitionEntry, parsedCost, fixedAssetAccountId, paymentAccountId,
+   410→    fixedAssetAccountCode, fixedAssetAccountNameAr, paymentAccountCode, paymentAccountNameAr,
+   411→  ])
+   412→
+   413→  // ---- Mutation: create ----
+   414→  const createMutation = useMutation({
+   415→    mutationFn: async (data: Record<string, unknown>) => {
+   416→      const res = await fetch('/api/fixed-assets', {
+   417→        method: 'POST',
+   418→        headers: { 'Content-Type': 'application/json' },
+   419→        body: JSON.stringify(data),
+   420→      })
+   421→      const json = await res.json()
+   422→      if (!res.ok) {
+   423→        throw new Error(json.error || json.details || 'Failed to create asset')
+   424→      }
+   425→      return json
+   426→    },
+   427→    onSuccess: () => {
+   428→      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] })
+   429→      queryClient.invalidateQueries({ queryKey: ['fixed-assets-report'] })
+   430→      toast({
+   431→        title: t(lang, 'تم الحفظ', 'Saved'),
+   432→        description: t(lang, 'تم تسجيل الأصل الثابت وقيد الاقتناء بنجاح', 'Asset and acquisition entry created successfully'),
+   433→      })
+   434→      onOpenChange(false)
+   435→    },
+   436→    onError: (err: Error) => {
+   437→      toast({
+   438→        title: t(lang, 'خطأ', 'Error'),
+   439→        description: err.message || t(lang, 'فشل في حفظ الأصل', 'Failed to save asset'),
+   440→        variant: 'destructive',
+   441→      })
+   442→    },
+   443→  })
+   444→
+   445→  // ---- Mutation: update ----
+   446→  const updateMutation = useMutation({
+   447→    mutationFn: async (data: Record<string, unknown>) => {
+   448→      const res = await fetch(`/api/fixed-assets/${editAsset!.id}`, {
+   449→        method: 'PUT',
+   450→        headers: { 'Content-Type': 'application/json' },
+   451→        body: JSON.stringify(data),
+   452→      })
+   453→      const json = await res.json()
+   454→      if (!res.ok) {
+   455→        throw new Error(json.error || 'Failed to update asset')
+   456→      }
+   457→      return json
+   458→    },
+   459→    onSuccess: () => {
+   460→      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] })
+   461→      queryClient.invalidateQueries({ queryKey: ['fixed-assets-report'] })
+   462→      toast({
+   463→        title: t(lang, 'تم التحديث', 'Updated'),
+   464→        description: t(lang, 'تم تحديث بيانات الأصل بنجاح', 'Asset updated successfully'),
+   465→      })
+   466→      onOpenChange(false)
+   467→    },
+   468→    onError: (err: Error) => {
+   469→      toast({
+   470→        title: t(lang, 'خطأ', 'Error'),
+   471→        description: err.message,
+   472→        variant: 'destructive',
+   473→      })
+   474→    },
+   475→  })
+   476→
+   477→  const handleSubmit = (e: React.FormEvent) => {
+   478→    e.preventDefault()
+   479→
+   480→    if (!name || !category || !acquisitionDate || parsedCost <= 0 || parsedLife <= 0) {
+   481→      toast({
+   482→        title: t(lang, 'تنبيه', 'Notice'),
+   483→        description: t(lang, 'الرجاء تعبئة جميع الحقول المطلوبة بشكل صحيح', 'Please fill all required fields correctly'),
+   484→        variant: 'destructive',
+   485→      })
+   486→      return
+   487→    }
+   488→    if (parsedResidual > parsedCost) {
+   489→      toast({
+   490→        title: t(lang, 'تنبيه', 'Notice'),
+   491→        description: t(lang, 'القيمة المتبقية لا يمكن أن تتجاوز تكلفة الاقتناء', 'Residual value cannot exceed acquisition cost'),
+   492→        variant: 'destructive',
+   493→      })
+   494→      return
+   495→    }
+   496→
+   497→    if (isEdit) {
+   498→      updateMutation.mutate({
+   499→        name,
+   500→        nameAr: nameAr || null,
+   501→        category,
+   502→        acquisitionDate,
+   503→        depreciationMethod,
+   504→        accountId: fixedAssetAccountId,
+   505→        depExpenseAccountId,
+   506→        accumDepAccountId,
+   507→      })
+   508→    } else {
+   509→      createMutation.mutate({
+   510→        name,
+   511→        nameAr: nameAr || null,
+   512→        category,
+   513→        acquisitionDate,
+   514→        acquisitionCost: parsedCost,
+   515→        residualValue: parsedResidual,
+   516→        usefulLifeMonths: parsedLife,
+   517→        depreciationMethod,
+   518→        accountId: fixedAssetAccountId,
+   519→        depExpenseAccountId,
+   520→        accumDepAccountId,
+   521→        paymentAccountId,
+   522→        paymentAccountCode,
+   523→        skipAcquisitionEntry,
+   524→      })
+   525→    }
+   526→  }
+   527→
+   528→  const submitDisabled = isEdit
+   529→    ? updateMutation.isPending
+   530→    : createMutation.isPending ||
+   531→      !name ||
+   532→      !category ||
+   533→      !acquisitionDate ||
+   534→      parsedCost <= 0 ||
+   535→      parsedLife <= 0 ||
+   536→      (!skipAcquisitionEntry && (!fixedAssetAccountId || !paymentAccountId))
+   537→
+   538→  return (
+   539→    <Dialog open={open} onOpenChange={onOpenChange}>
+   540→      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+   541→        <DialogHeader>
+   542→          <DialogTitle className="flex items-center gap-2">
+   543→            <span className="inline-flex size-8 items-center justify-center rounded-lg bg-teal-100 text-teal-700">
+   544→              <TrendingDown className="size-4" />
+   545→            </span>
+   546→            {isEdit
+   547→              ? t(lang, 'تعديل بيانات الأصل', 'Edit Asset')
+   548→              : t(lang, 'إضافة أصل ثابت جديد', 'Add New Fixed Asset')}
+   549→          </DialogTitle>
+   550→          <DialogDescription>
+   551→            {t(
+   552→              lang,
+   553→              'سيُنشأ قيد الاقتناء تلقائياً (مدين: الأصل الثابت / دائن: الصندوق أو البنك) عند الحفظ.',
+   554→              'An acquisition journal entry (Dr Fixed Asset / Cr Cash or Bank) will be created automatically on save.'
+   555→            )}
+   556→          </DialogDescription>
+   557→        </DialogHeader>
+   558→
+   559→        <form onSubmit={handleSubmit} className="space-y-4">
+   560→          {/* ── 1. Asset identification ─────────────────────────────── */}
+   561→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   562→            <div className="space-y-2 sm:col-span-2">
+   563→              <Label>{t(lang, 'اسم الأصل (إنجليزي) *', 'Asset Name (English) *')}</Label>
+   564→              <Input
+   565→                value={name}
+   566→                onChange={(e) => setName(e.target.value)}
+   567→                placeholder={t(lang, 'مثال: Excavator CAT 320', 'e.g., Excavator CAT 320')}
+   568→                dir="ltr"
+   569→                required
+   570→              />
+   571→            </div>
+   572→            <div className="space-y-2 sm:col-span-2">
+   573→              <Label>{t(lang, 'الاسم بالعربية', 'Arabic Name')}</Label>
+   574→              <Input
+   575→                value={nameAr}
+   576→                onChange={(e) => setNameAr(e.target.value)}
+   577→                placeholder={t(lang, 'مثال: حفارة كاتربيلر ٣٢٠', 'e.g., حفارة كاتربيلر ٣٢٠')}
+   578→                dir="rtl"
+   579→              />
+   580→            </div>
+   581→            <div className="space-y-2 sm:col-span-2">
+   582→              <Label>{t(lang, 'الفئة *', 'Category *')}</Label>
+   583→              <Select value={category} onValueChange={(v) => setCategory(v as AssetCategoryKey)}>
+   584→                <SelectTrigger className="w-full">
+   585→                  <SelectValue />
+   586→                </SelectTrigger>
+   587→                <SelectContent>
+   588→                  {CATEGORIES.map((c) => {
+   589→                const Icon = c.icon
+   590→                return (
+   591→                  <SelectItem key={c.key} value={c.key}>
+   592→                    <div className="flex items-center gap-2">
+   593→                      <Icon className="size-3.5" />
+   594→                      <span>{t(lang, c.labelAr, c.labelEn)}</span>
+   595→                    </div>
+   596→                  </SelectItem>
+   597→                )
+   598→              })}
+   599→                </SelectContent>
+   600→              </Select>
+   601→              <p className="text-xs text-muted-foreground">
+   602→                {category === 'EQUIPMENT'
+   603→                  ? t(lang, 'لمعدات التأجير — يُستخدم دور RENTAL_DEPRECIATION لمصروف الإهلاك.', 'For rental equipment — uses the RENTAL_DEPRECIATION role for the depreciation expense.')
+   604→                  : t(lang, 'للأصول الإدارية — يُستخدم دور DEPRECIATION_EXPENSE لمصروف الإهلاك.', 'For administrative assets — uses the DEPRECIATION_EXPENSE role for the depreciation expense.')}
+   605→              </p>
+   606→            </div>
+   607→          </div>
+   608→
+   609→          {/* ── 2. Financial data ───────────────────────────────────── */}
+   610→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   611→            <div className="space-y-2">
+   612→              <Label>{t(lang, 'تاريخ الاقتناء *', 'Acquisition Date *')}</Label>
+   613→              <Input
+   614→                type="date"
+   615→                value={acquisitionDate}
+   616→                onChange={(e) => setAcquisitionDate(e.target.value)}
+   617→                required
+   618→              />
+   619→            </div>
+   620→            <div className="space-y-2">
+   621→              <Label>{t(lang, 'طريقة الإهلاك', 'Depreciation Method')}</Label>
+   622→              <Select value={depreciationMethod} onValueChange={setDepreciationMethod}>
+   623→                <SelectTrigger className="w-full">
+   624→                  <SelectValue />
+   625→                </SelectTrigger>
+   626→                <SelectContent>
+   627→                  <SelectItem value="STRAIGHT_LINE">
+   628→                    {t(lang, 'القسط الثابت (Straight Line)', 'Straight Line')}
+   629→                  </SelectItem>
+   630→                </SelectContent>
+   631→              </Select>
+   632→            </div>
+   633→            <div className="space-y-2">
+   634→              <Label>{t(lang, 'تكلفة الاقتناء *', 'Acquisition Cost *')}</Label>
+   635→              <Input
+   636→                type="number"
+   637→                min="0"
+   638→                step="0.01"
+   639→                value={acquisitionCost}
+   640→                onChange={(e) => setAcquisitionCost(e.target.value)}
+   641→                placeholder="0.00"
+   642→                dir="ltr"
+   643→                disabled={isEdit}
+   644→                required
+   645→              />
+   646→              {isEdit && (
+   647→                <p className="text-xs text-amber-600 flex items-center gap-1">
+   648→                  <AlertTriangle className="size-3" />
+   649→                  {t(lang, 'لا يمكن تعديل التكلفة بعد بدء الإهلاك', 'Cost cannot be edited after depreciation has started')}
+   650→                </p>
+   651→              )}
+   652→            </div>
+   653→            <div className="space-y-2">
+   654→              <Label>{t(lang, 'القيمة المتبقية', 'Residual Value')}</Label>
+   655→              <Input
+   656→                type="number"
+   657→                min="0"
+   658→                step="0.01"
+   659→                value={residualValue}
+   660→                onChange={(e) => setResidualValue(e.target.value)}
+   661→                placeholder="0.00"
+   662→                dir="ltr"
+   663→                disabled={isEdit}
+   664→              />
+   665→            </div>
+   666→            <div className="space-y-2 sm:col-span-2">
+   667→              <Label>{t(lang, 'العمر الإنتاجي (أشهر) *', 'Useful Life (months) *')}</Label>
+   668→              <Input
+   669→                type="number"
+   670→                min="1"
+   671→                step="1"
+   672→                value={usefulLifeMonths}
+   673→                onChange={(e) => setUsefulLifeMonths(e.target.value)}
+   674→                placeholder={t(lang, 'مثال: 60', 'e.g., 60')}
+   675→                dir="ltr"
+   676→                disabled={isEdit}
+   677→                required
+   678→              />
+   679→            </div>
+   680→          </div>
+   681→
+   682→          {/* ── 3. Monthly depreciation preview ─────────────────────── */}
+   683→          {parsedCost > 0 && parsedLife > 0 && (
+   684→            <div className="rounded-lg bg-teal-50 border border-teal-200 px-3 py-2.5 flex items-center justify-between gap-3">
+   685→              <div className="flex items-center gap-2">
+   686→                <CalendarClock className="size-4 text-teal-700" />
+   687→                <div>
+   688→                  <p className="text-xs text-teal-700">
+   689→                    {t(lang, 'الإهلاك الشهري المتوقع', 'Expected Monthly Depreciation')}
+   690→                  </p>
+   691→                  <p className="text-xs text-muted-foreground">
+   692→                    {t(lang, `(التكلفة - القيمة المتبقية) ÷ العمر`, `(Cost - Residual) ÷ Life`)}
+   693→                  </p>
+   694→                </div>
+   695→              </div>
+   696→              <p className="text-lg font-bold text-teal-700">
+   697→                <MoneyDisplay value={monthlyDep} lang={lang} size="md" inline showSymbol={false} />
+   698→              </p>
+   699→            </div>
+   700→          )}
+   701→
+   702→          {/* ── 4. Account selectors ────────────────────────────────── */}
+   703→          <Separator />
+   704→          <div className="space-y-3">
+   705→            <div className="flex items-center gap-2">
+   706→              <PiggyBank className="size-4 text-teal-700" />
+   707→              <h4 className="text-sm font-semibold text-teal-800">
+   708→                {t(lang, 'الحسابات المرتبطة', 'Linked Accounts')}
+   709→              </h4>
+   710→            </div>
+   711→            <p className="text-xs text-muted-foreground">
+   712→              {t(
+   713→                lang,
+   714→                'تُعبأ الحسابات تلقائياً من الأدوار المحاسبية المعتمدة. يمكنك تجاوزها باختيار حساب محدد.',
+   715→                'Accounts are auto-filled from the approved accounting roles. You may override with a specific account.'
+   716→              )}
+   717→            </p>
+   718→
+   719→            <AccountSelector
+   720→              roles={['FIXED_ASSET']}
+   721→              value={fixedAssetAccountId}
+   722→              onValueChange={(id, acc) => {
+   723→                setFixedAssetAccountId(id)
+   724→                setFixedAssetAccountCode(acc.code)
+   725→                setFixedAssetAccountNameAr(acc.nameAr || acc.name)
+   726→              }}
+   727→              label={t(lang, 'حساب الأصل الثابت *', 'Fixed Asset Account *')}
+   728→              placeholder={t(lang, 'اختر حساب الأصل الثابت...', 'Select fixed asset account...')}
+   729→            />
+   730→
+   731→            <AccountSelector
+   732→              roles={depExpenseRoles}
+   733→              value={depExpenseAccountId}
+   734→              onValueChange={(id, acc) => {
+   735→                setDepExpenseAccountId(id)
+   736→                setDepExpenseAccountCode(acc.code)
+   737→                setDepExpenseAccountNameAr(acc.nameAr || acc.name)
+   738→              }}
+   739→              label={t(lang, 'حساب مصروف الإهلاك *', 'Depreciation Expense Account *')}
+   740→              placeholder={t(lang, 'اختر حساب مصروف الإهلاك...', 'Select depreciation expense account...')}
+   741→            />
+   742→
+   743→            <AccountSelector
+   744→              roles={['ACCUM_DEPRECIATION']}
+   745→              value={accumDepAccountId}
+   746→              onValueChange={(id, acc) => {
+   747→                setAccumDepAccountId(id)
+   748→                setAccumDepAccountCode(acc.code)
+   749→                setAccumDepAccountNameAr(acc.nameAr || acc.name)
+   750→              }}
+   751→              label={t(lang, 'حساب مجمع الإهلاك *', 'Accumulated Depreciation Account *')}
+   752→              placeholder={t(lang, 'اختر حساب مجمع الإهلاك...', 'Select accumulated depreciation account...')}
+   753→            />
+   754→          </div>
+   755→
+   756→          {/* ── 5. Acquisition JE (only when creating) ─────────────── */}
+   757→          {!isEdit && (
+   758→            <>
+   759→              <Separator />
+   760→              <div className="space-y-3">
+   761→                <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 bg-gray-50">
+   762→                  <div className="flex items-center gap-2">
+   763→                    <Switch
+   764→                      checked={!skipAcquisitionEntry}
+   765→                      onCheckedChange={(v) => setSkipAcquisitionEntry(!v)}
+   766→                    />
+   767→                    <div>
+   768→                      <p className="text-sm font-medium">
+   769→                        {t(lang, 'إنشاء قيد الاقتناء', 'Create Acquisition Journal Entry')}
+   770→                      </p>
+   771→                      <p className="text-xs text-muted-foreground">
+   772→                        {skipAcquisitionEntry
+   773→                          ? t(lang, 'بدون قيد — مناسبة للأصول المُسجلة مسبقاً', 'No entry — for assets recorded previously')
+   774→                          : t(lang, 'مدين: الأصل الثابت / دائن: الصندوق أو البنك', 'Dr Fixed Asset / Cr Cash or Bank')}
+   775→                      </p>
+   776→                    </div>
+   777→                  </div>
+   778→                </div>
+   779→
+   780→                {!skipAcquisitionEntry && (
+   781→                  <AccountSelector
+   782→                    roles={['CASH', 'BANK']}
+   783→                    value={paymentAccountId}
+   784→                    onValueChange={(id, acc) => {
+   785→                      setPaymentAccountId(id)
+   786→                      setPaymentAccountCode(acc.code)
+   787→                      setPaymentAccountNameAr(acc.nameAr || acc.name)
+   788→                    }}
+   789→                    label={t(lang, 'حساب السداد (صندوق / بنك) *', 'Payment Account (Cash / Bank) *')}
+   790→                    placeholder={t(lang, 'اختر حساب السداد...', 'Select payment account...')}
+   791→                  />
+   792→                )}
+   793→
+   794→                <JePreview lines={jeLines} title={t(lang, 'قيد الاقتناء المتوقع', 'Expected Acquisition Entry')} />
+   795→              </div>
+   796→            </>
+   797→          )}
+   798→
+   799→          <DialogFooter className="gap-2">
+   800→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+   801→              {t(lang, 'إلغاء', 'Cancel')}
+   802→            </Button>
+   803→            <Button
+   804→              type="submit"
+   805→              disabled={submitDisabled}
+   806→              className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
+   807→            >
+   808→              <Plus className="size-4" />
+   809→              {isEdit
+   810→                ? (updateMutation.isPending
+   811→                    ? t(lang, 'جاري التحديث...', 'Updating...')
+   812→                    : t(lang, 'حفظ التعديلات', 'Save Changes'))
+   813→                : (createMutation.isPending
+   814→                    ? t(lang, 'جاري الحفظ...', 'Saving...')
+   815→                    : t(lang, 'حفظ الأصل', 'Save Asset'))}
+   816→            </Button>
+   817→          </DialogFooter>
+   818→        </form>
+   819→      </DialogContent>
+   820→    </Dialog>
+   821→  )
+   822→}
+   823→
+   824→// ============ Asset Detail Dialog ============
+   825→
+   826→function AssetDetailDialog({
+   827→  asset,
+   828→  open,
+   829→  onOpenChange,
+   830→}: {
+   831→  asset: FixedAsset | null
+   832→  open: boolean
+   833→  onOpenChange: (open: boolean) => void
+   834→}) {
+   835→  const { lang } = useAppStore()
+   836→
+   837→  if (!asset) return null
+   838→
+   839→  const monthlyDep = calcMonthlyDepreciation(
+   840→    asset.acquisitionCost,
+   841→    asset.residualValue,
+   842→    asset.usefulLifeMonths
+   843→  )
+   844→  const remainingMonths = calcRemainingMonths(
+   845→    asset.usefulLifeMonths,
+   846→    asset.depreciations.length
+   847→  )
+   848→  const depProgress = asset.usefulLifeMonths > 0
+   849→    ? Math.min(100, Math.round((asset.depreciations.length / asset.usefulLifeMonths) * 100))
+   850→    : 0
+   851→  const statusCfg = assetStatusConfig[asset.status] || assetStatusConfig.ACTIVE
+   852→  const catCfg = CATEGORY_MAP[asset.category] || CATEGORY_MAP.OTHER
+   853→  const catColor = categoryColorMap[catCfg.color]
+   854→  const StatusIcon = statusCfg.icon
+   855→
+   856→  return (
+   857→    <Dialog open={open} onOpenChange={onOpenChange}>
+   858→      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
+   859→        <DialogHeader>
+   860→          <DialogTitle className="flex items-center gap-2 flex-wrap">
+   861→            <span className={`inline-flex size-8 items-center justify-center rounded-lg ${catColor.soft} ${catColor.text}`}>
+   862→              <catCfg.icon className="size-4" />
+   863→            </span>
+   864→            <span className="font-mono text-sm">{asset.assetCode}</span>
+   865→            <span>—</span>
+   866→            <span>{getAssetName(asset, lang)}</span>
+   867→            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${statusCfg.cls}`}>
+   868→              <StatusIcon className="size-3" />
+   869→              {t(lang, statusCfg.ar, statusCfg.en)}
+   870→            </span>
+   871→          </DialogTitle>
+   872→          <DialogDescription>
+   873→            {t(lang, 'تفاصيل الأصل الثابت وجدول الإهلاك الكامل', 'Asset details and full depreciation schedule')}
+   874→          </DialogDescription>
+   875→        </DialogHeader>
+   876→
+   877→        <div className="space-y-4">
+   878→          {/* Summary grid */}
+   879→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   880→            <Card className="bg-teal-50 border-teal-200">
+   881→              <CardContent className="p-3 text-center">
+   882→                <p className="text-xs text-teal-700">{t(lang, 'تكلفة الاقتناء', 'Acquisition Cost')}</p>
+   883→                <MoneyDisplay value={asset.acquisitionCost} lang={lang} bold className="text-teal-800" />
+   884→              </CardContent>
+   885→            </Card>
+   886→            <Card className="bg-amber-50 border-amber-200">
+   887→              <CardContent className="p-3 text-center">
+   888→                <p className="text-xs text-amber-700">{t(lang, 'مجمع الإهلاك', 'Accum. Dep.')}</p>
+   889→                <MoneyDisplay value={asset.accumulatedDepreciation} lang={lang} bold className="text-amber-800" />
+   890→              </CardContent>
+   891→            </Card>
+   892→            <Card className="bg-emerald-50 border-emerald-200">
+   893→              <CardContent className="p-3 text-center">
+   894→                <p className="text-xs text-emerald-700">{t(lang, 'صافي القيمة الدفترية', 'Net Book Value')}</p>
+   895→                <MoneyDisplay value={asset.netBookValue} lang={lang} bold className="text-emerald-800" />
+   896→              </CardContent>
+   897→            </Card>
+   898→            <Card className="bg-gray-50 border-gray-200">
+   899→              <CardContent className="p-3 text-center">
+   900→                <p className="text-xs text-gray-700">{t(lang, 'القيمة المتبقية', 'Residual')}</p>
+   901→                <MoneyDisplay value={asset.residualValue} lang={lang} bold className="text-gray-800" />
+   902→              </CardContent>
+   903→            </Card>
+   904→          </div>
+   905→
+   906→          {/* Progress + key metrics */}
+   907→          <Card>
+   908→            <CardContent className="p-4 space-y-3">
+   909→              <div className="flex items-center justify-between text-sm">
+   910→                <span className="text-muted-foreground">{t(lang, 'تقدم الإهلاك', 'Depreciation Progress')}</span>
+   911→                <span className="font-medium">
+   912→                  {asset.depreciations.length} / {asset.usefulLifeMonths} {t(lang, 'شهر', 'months')}
+   913→                  <span className="text-muted-foreground mx-1">·</span>
+   914→                  <span className="text-teal-700">{depProgress}%</span>
+   915→                </span>
+   916→              </div>
+   917→              <Progress value={depProgress} className="h-2 [&>div]:bg-teal-500" />
+   918→
+   919→              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm pt-2">
+   920→                <div>
+   921→                  <p className="text-xs text-muted-foreground">{t(lang, 'تاريخ الاقتناء', 'Acquisition Date')}</p>
+   922→                  <p className="font-medium">{formatDate(asset.acquisitionDate, lang)}</p>
+   923→                </div>
+   924→                <div>
+   925→                  <p className="text-xs text-muted-foreground">{t(lang, 'الإهلاك الشهري', 'Monthly Dep.')}</p>
+   926→                  <p className="font-medium"><MoneyDisplay value={monthlyDep} lang={lang} size="sm" inline showSymbol={false} /></p>
+   927→                </div>
+   928→                <div>
+   929→                  <p className="text-xs text-muted-foreground">{t(lang, 'الأشهر المتبقية', 'Remaining Months')}</p>
+   930→                  <p className="font-medium">{remainingMonths}</p>
+   931→                </div>
+   932→                <div>
+   933→                  <p className="text-xs text-muted-foreground">{t(lang, 'طريقة الإهلاك', 'Method')}</p>
+   934→                  <p className="font-medium">{t(lang, 'القسط الثابت', 'Straight Line')}</p>
+   935→                </div>
+   936→              </div>
+   937→            </CardContent>
+   938→          </Card>
+   939→
+   940→          {/* Linked accounts */}
+   941→          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   942→            <Card className="bg-slate-50">
+   943→              <CardContent className="p-3 space-y-1">
+   944→                <p className="text-xs text-muted-foreground flex items-center gap-1">
+   945→                  <PiggyBank className="size-3" /> {t(lang, 'حساب الأصل', 'Asset Account')}
+   946→                </p>
+   947→                {asset.account ? (
+   948→                  <p className="text-sm font-medium">
+   949→                    <span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border">{asset.account.code}</span>
+   950→                    {' '}
+   951→                    {asset.account.nameAr || asset.account.name}
+   952→                  </p>
+   953→                ) : <p className="text-xs text-rose-600">—</p>}
+   954→              </CardContent>
+   955→            </Card>
+   956→            <Card className="bg-slate-50">
+   957→              <CardContent className="p-3 space-y-1">
+   958→                <p className="text-xs text-muted-foreground flex items-center gap-1">
+   959→                  <TrendingDown className="size-3" /> {t(lang, 'مصروف الإهلاك', 'Dep. Expense')}
+   960→                </p>
+   961→                {asset.depExpenseAccount ? (
+   962→                  <p className="text-sm font-medium">
+   963→                    <span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border">{asset.depExpenseAccount.code}</span>
+   964→                    {' '}
+   965→                    {asset.depExpenseAccount.nameAr || asset.depExpenseAccount.name}
+   966→                  </p>
+   967→                ) : <p className="text-xs text-rose-600">—</p>}
+   968→              </CardContent>
+   969→            </Card>
+   970→            <Card className="bg-slate-50">
+   971→              <CardContent className="p-3 space-y-1">
+   972→                <p className="text-xs text-muted-foreground flex items-center gap-1">
+   973→                  <Layers className="size-3" /> {t(lang, 'مجمع الإهلاك', 'Accum. Dep.')}
+   974→                </p>
+   975→                {asset.accumDepAccount ? (
+   976→                  <p className="text-sm font-medium">
+   977→                    <span className="font-mono text-xs bg-white px-1.5 py-0.5 rounded border">{asset.accumDepAccount.code}</span>
+   978→                    {' '}
+   979→                    {asset.accumDepAccount.nameAr || asset.accumDepAccount.name}
+   980→                  </p>
+   981→                ) : <p className="text-xs text-rose-600">—</p>}
+   982→              </CardContent>
+   983→            </Card>
+   984→          </div>
+   985→
+   986→          {/* Depreciation schedule (historical) */}
+   987→          <Card>
+   988→            <CardHeader className="pb-2">
+   989→              <CardTitle className="text-sm flex items-center gap-2">
+   990→                <CalendarClock className="size-4 text-teal-700" />
+   991→                {t(lang, 'جدول الإهلاك التاريخي', 'Historical Depreciation Schedule')}
+   992→                <Badge variant="outline" className="ml-auto text-xs">
+   993→                  {asset.depreciations.length} {t(lang, 'قيد', 'entries')}
+   994→                </Badge>
+   995→              </CardTitle>
+   996→            </CardHeader>
+   997→            <CardContent className="p-0">
+   998→              {asset.depreciations.length === 0 ? (
+   999→                <div className="text-center py-6 text-sm text-muted-foreground">
+  1000→                  {t(lang, 'لا توجد قيود إهلاك لهذا الأصل بعد', 'No depreciation entries for this asset yet')}
+  1001→                </div>
+  1002→              ) : (
+  1003→                <div className="max-h-80 overflow-y-auto">
+  1004→                  <Table>
+  1005→                    <TableHeader className="sticky top-0 bg-white">
+  1006→                      <TableRow>
+  1007→                        <TableHead className="text-right text-xs h-9">{t(lang, 'الفترة', 'Period')}</TableHead>
+  1008→                        <TableHead className="text-right text-xs h-9">{t(lang, 'مبلغ الإهلاك', 'Dep. Amount')}</TableHead>
+  1009→                        <TableHead className="text-right text-xs h-9">{t(lang, 'القيد', 'JE')}</TableHead>
+  1010→                        <TableHead className="text-right text-xs h-9">{t(lang, 'التاريخ', 'Date')}</TableHead>
+  1011→                      </TableRow>
+  1012→                    </TableHeader>
+  1013→                    <TableBody>
+  1014→                      {asset.depreciations.map((d) => (
+  1015→                        <TableRow key={d.id}>
+  1016→                          <TableCell className="text-xs py-2">
+  1017→                            {formatMonthYear(d.year, d.month, lang)}
+  1018→                          </TableCell>
+  1019→                          <TableCell className="py-2">
+  1020→                            <MoneyDisplay value={d.depreciationAmount} lang={lang} size="sm" inline showSymbol={false} className="text-teal-700" />
+  1021→                          </TableCell>
+  1022→                          <TableCell className="py-2">
+  1023→                            {d.journalEntryId ? (
+  1024→                              <AccountingEntryDisplay journalEntryId={d.journalEntryId} lang={lang} />
+  1025→                            ) : (
+  1026→                              <span className="text-xs text-muted-foreground">—</span>
+  1027→                            )}
+  1028→                          </TableCell>
+  1029→                          <TableCell className="text-xs py-2 text-muted-foreground">
+  1030→                            {formatDate(d.createdAt, lang)}
+  1031→                          </TableCell>
+  1032→                        </TableRow>
+  1033→                      ))}
+  1034→                    </TableBody>
+  1035→                  </Table>
+  1036→                </div>
+  1037→              )}
+  1038→            </CardContent>
+  1039→          </Card>
+  1040→
+  1041→          {/* Acquisition JE */}
+  1042→          {asset.journalEntryId && (
+  1043→            <Card>
+  1044→              <CardHeader className="pb-2">
+  1045→                <CardTitle className="text-sm flex items-center gap-2">
+  1046→                  <Wallet className="size-4 text-teal-700" />
+  1047→                  {t(lang, 'قيد الاقتناء', 'Acquisition Journal Entry')}
+  1048→                </CardTitle>
+  1049→              </CardHeader>
+  1050→              <CardContent className="pt-0">
+  1051→                <AccountingEntryDisplay journalEntryId={asset.journalEntryId} lang={lang} />
+  1052→              </CardContent>
+  1053→            </Card>
+  1054→          )}
+  1055→        </div>
+  1056→
+  1057→        <DialogFooter>
+  1058→          <Button variant="outline" onClick={() => onOpenChange(false)}>
+  1059→            {t(lang, 'إغلاق', 'Close')}
+  1060→          </Button>
+  1061→        </DialogFooter>
+  1062→      </DialogContent>
+  1063→    </Dialog>
+  1064→  )
+  1065→}
+  1066→
+  1067→// ============ Tab 1: Fixed Assets ============
+  1068→
+  1069→function FixedAssetsTab({ assets, isLoading, isError, onRefresh }: {
+  1070→  assets: FixedAsset[]
+  1071→  isLoading: boolean
+  1072→  isError: boolean
+  1073→  onRefresh: () => void
+  1074→}) {
+  1075→  const { lang } = useAppStore()
+  1076→  const { toast } = useToast()
+  1077→  const queryClient = useQueryClient()
+  1078→
+  1079→  const [search, setSearch] = useState('')
+  1080→  const [categoryFilter, setCategoryFilter] = useState<string>('ALL')
+  1081→  const [statusFilter, setStatusFilter] = useState<string>('ALL')
+  1082→  const [dialogOpen, setDialogOpen] = useState(false)
+  1083→  const [dialogKey, setDialogKey] = useState(0)
+  1084→  const [editAsset, setEditAsset] = useState<FixedAsset | null>(null)
+  1085→  const [detailAsset, setDetailAsset] = useState<FixedAsset | null>(null)
+  1086→  const [detailOpen, setDetailOpen] = useState(false)
+  1087→
+  1088→  const openCreateDialog = () => {
+  1089→    setEditAsset(null)
+  1090→    setDialogKey((k) => k + 1)
+  1091→    setDialogOpen(true)
+  1092→  }
+  1093→
+  1094→  const openEditDialog = (asset: FixedAsset) => {
+  1095→    setEditAsset(asset)
+  1096→    setDialogKey((k) => k + 1)
+  1097→    setDialogOpen(true)
+  1098→  }
+  1099→
+  1100→  const openDetailDialog = (asset: FixedAsset) => {
+  1101→    setDetailAsset(asset)
+  1102→    setDetailOpen(true)
+  1103→  }
+  1104→
+  1105→  // Delete mutation (only allowed if no depreciations and no JE)
+  1106→  const deleteMutation = useMutation({
+  1107→    mutationFn: async (id: string) => {
+  1108→      const res = await fetch(`/api/fixed-assets/${id}`, { method: 'DELETE' })
+  1109→      const json = await res.json()
+  1110→      if (!res.ok) throw new Error(json.error || 'Failed to delete')
+  1111→      return json
+  1112→    },
+  1113→    onSuccess: () => {
+  1114→      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] })
+  1115→      queryClient.invalidateQueries({ queryKey: ['fixed-assets-report'] })
+  1116→      toast({
+  1117→        title: t(lang, 'تم الحذف', 'Deleted'),
+  1118→        description: t(lang, 'تم حذف الأصل بنجاح', 'Asset deleted successfully'),
+  1119→      })
+  1120→    },
+  1121→    onError: (err: Error) => {
+  1122→      toast({
+  1123→        title: t(lang, 'تعذّر الحذف', 'Cannot delete'),
+  1124→        description: err.message,
+  1125→        variant: 'destructive',
+  1126→      })
+  1127→    },
+  1128→  })
+  1129→
+  1130→  // Filtered assets
+  1131→  const filtered = useMemo(() => {
+  1132→    return assets.filter((a) => {
+  1133→      const matchCategory = categoryFilter === 'ALL' || a.category === categoryFilter
+  1134→      const matchStatus = statusFilter === 'ALL' || a.status === statusFilter
+  1135→      const q = search.trim().toLowerCase()
+  1136→      const matchSearch =
+  1137→        !q ||
+  1138→        a.assetCode.toLowerCase().includes(q) ||
+  1139→        a.name.toLowerCase().includes(q) ||
+  1140→        (a.nameAr || '').toLowerCase().includes(q)
+  1141→      return matchCategory && matchStatus && matchSearch
+  1142→    })
+  1143→  }, [assets, search, categoryFilter, statusFilter])
+  1144→
+  1145→  // Summary
+  1146→  const summary = useMemo(() => ({
+  1147→    totalAssets: assets.length,
+  1148→    totalCost: assets.reduce((s, a) => s + a.acquisitionCost, 0),
+  1149→    totalAccumDep: assets.reduce((s, a) => s + a.accumulatedDepreciation, 0),
+  1150→    totalNetBookValue: assets.reduce((s, a) => s + a.netBookValue, 0),
+  1151→  }), [assets])
+  1152→
+  1153→  return (
+  1154→    <div className="space-y-4">
+  1155→      {/* Summary cards */}
+  1156→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  1157→        <SummaryCard
+  1158→          icon={Building2}
+  1159→          label={t(lang, 'إجمالي الأصول', 'Total Assets')}
+  1160→          value={summary.totalAssets}
+  1161→          color="teal"
+  1162→          showMoney={false}
+  1163→        />
+  1164→        <SummaryCard
+  1165→          icon={Wallet}
+  1166→          label={t(lang, 'إجمالي التكلفة', 'Total Cost')}
+  1167→          value={summary.totalCost}
+  1168→          color="emerald"
+  1169→        />
+  1170→        <SummaryCard
+  1171→          icon={TrendingDown}
+  1172→          label={t(lang, 'إجمالي الإهلاك', 'Total Depreciation')}
+  1173→          value={summary.totalAccumDep}
+  1174→          color="amber"
+  1175→        />
+  1176→        <SummaryCard
+  1177→          icon={PiggyBank}
+  1178→          label={t(lang, 'صافي القيمة الدفترية', 'Net Book Value')}
+  1179→          value={summary.totalNetBookValue}
+  1180→          color="cyan"
+  1181→        />
+  1182→      </div>
+  1183→
+  1184→      {/* Toolbar */}
+  1185→      <Card>
+  1186→        <CardContent className="p-4 space-y-3">
+  1187→          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+  1188→            <div className="relative flex-1">
+  1189→              <Search className="absolute top-1/2 -translate-y-1/2 size-4 text-muted-foreground ltr:right-3 rtl:left-3" />
+  1190→              <Input
+  1191→                value={search}
+  1192→                onChange={(e) => setSearch(e.target.value)}
+  1193→                placeholder={t(lang, 'بحث بالكود أو الاسم...', 'Search by code or name...')}
+  1194→                className="ltr:pl-9 rtl:pr-9"
+  1195→              />
+  1196→            </div>
+  1197→            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+  1198→              <SelectTrigger className="w-full sm:w-44">
+  1199→                <SelectValue placeholder={t(lang, 'كل الفئات', 'All Categories')} />
+  1200→              </SelectTrigger>
+  1201→              <SelectContent>
+  1202→                <SelectItem value="ALL">{t(lang, 'كل الفئات', 'All Categories')}</SelectItem>
+  1203→                {CATEGORIES.map((c) => (
+  1204→                  <SelectItem key={c.key} value={c.key}>
+  1205→                    {t(lang, c.labelAr, c.labelEn)}
+  1206→                  </SelectItem>
+  1207→                ))}
+  1208→              </SelectContent>
+  1209→            </Select>
+  1210→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1211→              <SelectTrigger className="w-full sm:w-40">
+  1212→                <SelectValue placeholder={t(lang, 'كل الحالات', 'All Statuses')} />
+  1213→              </SelectTrigger>
+  1214→              <SelectContent>
+  1215→                <SelectItem value="ALL">{t(lang, 'كل الحالات', 'All Statuses')}</SelectItem>
+  1216→                {Object.entries(assetStatusConfig).map(([k, cfg]) => (
+  1217→                  <SelectItem key={k} value={k}>
+  1218→                    {t(lang, cfg.ar, cfg.en)}
+  1219→                  </SelectItem>
+  1220→                ))}
+  1221→              </SelectContent>
+  1222→            </Select>
+  1223→            <Button variant="outline" size="icon" onClick={onRefresh} title={t(lang, 'تحديث', 'Refresh')}>
+  1224→              <RefreshCw className="size-4" />
+  1225→            </Button>
+  1226→            <Button onClick={openCreateDialog} className="gap-2 bg-teal-600 hover:bg-teal-700 text-white">
+  1227→              <Plus className="size-4" />
+  1228→              <span className="hidden sm:inline">{t(lang, 'إضافة أصل', 'Add Asset')}</span>
+  1229→            </Button>
+  1230→          </div>
+  1231→          <p className="text-xs text-muted-foreground">
+  1232→            {t(lang, `عدد النتائج: ${filtered.length} من أصل ${assets.length}`, `Results: ${filtered.length} of ${assets.length}`)}
+  1233→          </p>
+  1234→        </CardContent>
+  1235→      </Card>
+  1236→
+  1237→      {/* Table */}
+  1238→      <Card>
+  1239→        <CardContent className="p-0">
+  1240→          {isLoading ? (
+  1241→            <TableSkeleton rows={6} />
+  1242→          ) : isError ? (
+  1243→            <div className="p-6 text-center text-sm text-rose-600">
+  1244→              {t(lang, 'فشل في تحميل الأصول', 'Failed to load assets')}
+  1245→            </div>
+  1246→          ) : filtered.length === 0 ? (
+  1247→            <div className="p-8 text-center text-sm text-muted-foreground">
+  1248→              <Building2 className="size-8 mx-auto mb-2 opacity-40" />
+  1249→              {t(lang, 'لا توجد أصول ثابتة مطابقة', 'No matching fixed assets')}
+  1250→            </div>
+  1251→          ) : (
+  1252→            <div className="max-h-[60vh] overflow-y-auto">
+  1253→              <Table>
+  1254→                <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur z-10">
+  1255→                  <TableRow>
+  1256→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الكود', 'Code')}</TableHead>
+  1257→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الاسم', 'Name')}</TableHead>
+  1258→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الفئة', 'Category')}</TableHead>
+  1259→                    <TableHead className="text-right text-xs h-10">{t(lang, 'تكلفة الاقتناء', 'Cost')}</TableHead>
+  1260→                    <TableHead className="text-right text-xs h-10">{t(lang, 'مجمع الإهلاك', 'Accum. Dep.')}</TableHead>
+  1261→                    <TableHead className="text-right text-xs h-10">{t(lang, 'صافي القيمة', 'NBV')}</TableHead>
+  1262→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الأشهر المتبقية', 'Rem. Months')}</TableHead>
+  1263→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الحالة', 'Status')}</TableHead>
+  1264→                    <TableHead className="text-right text-xs h-10">{t(lang, 'إجراءات', 'Actions')}</TableHead>
+  1265→                  </TableRow>
+  1266→                </TableHeader>
+  1267→                <TableBody>
+  1268→                  {filtered.map((a) => {
+  1269→                    const catCfg = CATEGORY_MAP[a.category] || CATEGORY_MAP.OTHER
+  1270→                    const catColor = categoryColorMap[catCfg.color]
+  1271→                    const CatIcon = catCfg.icon
+  1272→                    const statusCfg = assetStatusConfig[a.status] || assetStatusConfig.ACTIVE
+  1273→                    return (
+  1274→                      <TableRow key={a.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => openDetailDialog(a)}>
+  1275→                        <TableCell className="font-mono text-xs py-2">{a.assetCode}</TableCell>
+  1276→                        <TableCell className="py-2">
+  1277→                          <div className="flex items-center gap-2">
+  1278→                            <span className={`size-7 inline-flex items-center justify-center rounded ${catColor.soft} ${catColor.text} shrink-0`}>
+  1279→                              <CatIcon className="size-3.5" />
+  1280→                            </span>
+  1281→                            <div className="min-w-0">
+  1282→                              <p className="text-sm font-medium truncate">{getAssetName(a, lang)}</p>
+  1283→                              <p className="text-[10px] text-muted-foreground">{formatDate(a.acquisitionDate, lang)}</p>
+  1284→                            </div>
+  1285→                          </div>
+  1286→                        </TableCell>
+  1287→                        <TableCell className="py-2">
+  1288→                          <Badge variant="outline" className={`text-[10px] ${catColor.text} ${catColor.border} ${catColor.bg}`}>
+  1289→                            {t(lang, catCfg.labelAr, catCfg.labelEn)}
+  1290→                          </Badge>
+  1291→                        </TableCell>
+  1292→                        <TableCell className="py-2">
+  1293→                          <MoneyDisplay value={a.acquisitionCost} lang={lang} size="sm" inline showSymbol={false} />
+  1294→                        </TableCell>
+  1295→                        <TableCell className="py-2">
+  1296→                          <MoneyDisplay value={a.accumulatedDepreciation} lang={lang} size="sm" inline showSymbol={false} className="text-amber-700" />
+  1297→                        </TableCell>
+  1298→                        <TableCell className="py-2">
+  1299→                          <MoneyDisplay value={a.netBookValue} lang={lang} size="sm" inline showSymbol={false} className="text-emerald-700 font-semibold" />
+  1300→                        </TableCell>
+  1301→                        <TableCell className="py-2 text-center">
+  1302→                          <span className="text-xs font-medium">{a.remainingMonths}</span>
+  1303→                          <span className="text-[10px] text-muted-foreground"> / {a.usefulLifeMonths}</span>
+  1304→                        </TableCell>
+  1305→                        <TableCell className="py-2">
+  1306→                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${statusCfg.cls}`}>
+  1307→                            {t(lang, statusCfg.ar, statusCfg.en)}
+  1308→                          </span>
+  1309→                        </TableCell>
+  1310→                        <TableCell className="py-2">
+  1311→                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+  1312→                            <Button
+  1313→                              variant="ghost"
+  1314→                              size="icon"
+  1315→                              className="size-7"
+  1316→                              onClick={() => openDetailDialog(a)}
+  1317→                              title={t(lang, 'عرض التفاصيل', 'View Details')}
+  1318→                            >
+  1319→                              <Eye className="size-3.5" />
+  1320→                            </Button>
+  1321→                            <Button
+  1322→                              variant="ghost"
+  1323→                              size="icon"
+  1324→                              className="size-7"
+  1325→                              onClick={() => openEditDialog(a)}
+  1326→                              title={t(lang, 'تعديل', 'Edit')}
+  1327→                            >
+  1328→                              <Settings2 className="size-3.5" />
+  1329→                            </Button>
+  1330→                            <Button
+  1331→                              variant="ghost"
+  1332→                              size="icon"
+  1333→                              className="size-7 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+  1334→                              onClick={() => {
+  1335→                                if (confirm(t(lang, 'هل أنت متأكد من حذف هذا الأصل؟', 'Are you sure you want to delete this asset?'))) {
+  1336→                                  deleteMutation.mutate(a.id)
+  1337→                                }
+  1338→                              }}
+  1339→                              title={t(lang, 'حذف', 'Delete')}
+  1340→                              disabled={deleteMutation.isPending}
+  1341→                            >
+  1342→                              <Trash2 className="size-3.5" />
+  1343→                            </Button>
+  1344→                          </div>
+  1345→                        </TableCell>
+  1346→                      </TableRow>
+  1347→                    )
+  1348→                  })}
+  1349→                </TableBody>
+  1350→              </Table>
+  1351→            </div>
+  1352→          )}
+  1353→        </CardContent>
+  1354→      </Card>
+  1355→
+  1356→      {/* Dialogs */}
+  1357→      <AssetFormDialog
+  1358→        key={`asset-form-${dialogKey}`}
+  1359→        open={dialogOpen}
+  1360→        onOpenChange={setDialogOpen}
+  1361→        editAsset={editAsset}
+  1362→      />
+  1363→      <AssetDetailDialog
+  1364→        asset={detailAsset}
+  1365→        open={detailOpen}
+  1366→        onOpenChange={setDetailOpen}
+  1367→      />
+  1368→    </div>
+  1369→  )
+  1370→}
+  1371→
+  1372→// ============ Tab 2: Run Depreciation ============
+  1373→
+  1374→function RunDepreciationTab({ assets, onRefresh }: {
+  1375→  assets: FixedAsset[]
+  1376→  onRefresh: () => void
+  1377→}) {
+  1378→  const { lang } = useAppStore()
+  1379→  const { toast } = useToast()
+  1380→  const queryClient = useQueryClient()
+  1381→
+  1382→  const now = new Date()
+  1383→  const [year, setYear] = useState<number>(now.getFullYear())
+  1384→  const [month, setMonth] = useState<number>(now.getMonth() + 1)
+  1385→  const [confirmOpen, setConfirmOpen] = useState(false)
+  1386→  const [lastResult, setLastResult] = useState<BatchResponse | null>(null)
+  1387→
+  1388→  // Build a preview: which assets will be depreciated in this period
+  1389→  const preview = useMemo(() => {
+  1390→    return assets
+  1391→      .filter((a) => a.status === 'ACTIVE')
+  1392→      .map((a) => {
+  1393→        const alreadyDepreciated = a.depreciations.some(
+  1394→          (d) => d.year === year && d.month === month
+  1395→        )
+  1396→        const monthlyDep = calcMonthlyDepreciation(
+  1397→          a.acquisitionCost, a.residualValue, a.usefulLifeMonths
+  1398→        )
+  1399→        const newNBV = Math.max(a.residualValue, a.netBookValue - monthlyDep)
+  1400→        const atResidual = a.netBookValue <= a.residualValue + 0.01
+  1401→        return {
+  1402→          id: a.id,
+  1403→          assetCode: a.assetCode,
+  1404→          name: getAssetName(a, lang),
+  1405→          category: a.category,
+  1406→          monthlyDep,
+  1407→          currentNBV: a.netBookValue,
+  1408→          newNBV,
+  1409→          alreadyDepreciated,
+  1410→          atResidual,
+  1411→          willRun: !alreadyDepreciated && !atResidual && monthlyDep > 0,
+  1412→        }
+  1413→      })
+  1414→  }, [assets, year, month, lang])
+  1415→
+  1416→  const willRunList = preview.filter((p) => p.willRun)
+  1417→  const skipDupList = preview.filter((p) => p.alreadyDepreciated)
+  1418→  const skipResidualList = preview.filter((p) => p.atResidual && !p.alreadyDepreciated)
+  1419→  const totalAmount = willRunList.reduce((s, p) => s + p.monthlyDep, 0)
+  1420→
+  1421→  // Batch mutation
+  1422→  const batchMutation = useMutation({
+  1423→    mutationFn: async () => {
+  1424→      const res = await fetch('/api/fixed-assets/depreciate-all', {
+  1425→        method: 'POST',
+  1426→        headers: { 'Content-Type': 'application/json' },
+  1427→        body: JSON.stringify({ year, month }),
+  1428→      })
+  1429→      const json = await res.json()
+  1430→      if (!res.ok) throw new Error(json.error || 'Failed to run depreciation')
+  1431→      return json as BatchResponse
+  1432→    },
+  1433→    onSuccess: (data) => {
+  1434→      setLastResult(data)
+  1435→      queryClient.invalidateQueries({ queryKey: ['fixed-assets'] })
+  1436→      queryClient.invalidateQueries({ queryKey: ['fixed-assets-report'] })
+  1437→      queryClient.invalidateQueries({ queryKey: ['fixed-assets-schedule'] })
+  1438→      toast({
+  1439→        title: t(lang, 'تم تشغيل الإهلاك', 'Depreciation Run Completed'),
+  1440→        description: t(
+  1441→          lang,
+  1442→          `تم إهلاك ${data.depreciatedCount} أصل بقيمة إجمالية ${data.totalAmount.toFixed(2)}`,
+  1443→          `Depreciated ${data.depreciatedCount} assets totaling ${data.totalAmount.toFixed(2)}`
+  1444→        ),
+  1445→      })
+  1446→      setConfirmOpen(false)
+  1447→      onRefresh()
+  1448→    },
+  1449→    onError: (err: Error) => {
+  1450→      toast({
+  1451→        title: t(lang, 'فشل تشغيل الإهلاك', 'Depreciation Run Failed'),
+  1452→        description: err.message,
+  1453→        variant: 'destructive',
+  1454→      })
+  1455→      setConfirmOpen(false)
+  1456→    },
+  1457→  })
+  1458→
+  1459→  // Year options (last 5 years + next 1)
+  1460→  const yearOptions = useMemo(() => {
+  1461→    const y = now.getFullYear()
+  1462→    return [y - 5, y - 4, y - 3, y - 2, y - 1, y, y + 1]
+  1463→  }, [now])
+  1464→
+  1465→  return (
+  1466→    <div className="space-y-4">
+  1467→      {/* Period selector */}
+  1468→      <Card>
+  1469→        <CardContent className="p-4">
+  1470→          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+  1471→            <div className="flex-1">
+  1472→              <Label className="text-sm font-medium mb-1.5 block">
+  1473→                {t(lang, 'الفترة المراد إهلاكها', 'Period to Depreciate')}
+  1474→              </Label>
+  1475→              <div className="flex gap-2">
+  1476→                <Select value={String(month)} onValueChange={(v) => setMonth(parseInt(v))}>
+  1477→                  <SelectTrigger className="flex-1">
+  1478→                    <SelectValue />
+  1479→                  </SelectTrigger>
+  1480→                  <SelectContent>
+  1481→                    {MONTHS.map((m) => (
+  1482→                      <SelectItem key={m.value} value={String(m.value)}>
+  1483→                        {t(lang, m.ar, m.en)}
+  1484→                      </SelectItem>
+  1485→                    ))}
+  1486→                  </SelectContent>
+  1487→                </Select>
+  1488→                <Select value={String(year)} onValueChange={(v) => setYear(parseInt(v))}>
+  1489→                  <SelectTrigger className="w-32">
+  1490→                    <SelectValue />
+  1491→                  </SelectTrigger>
+  1492→                  <SelectContent>
+  1493→                    {yearOptions.map((y) => (
+  1494→                      <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+  1495→                    ))}
+  1496→                  </SelectContent>
+  1497→                </Select>
+  1498→              </div>
+  1499→            </div>
+  1500→            <Button
+  1501→              onClick={() => setConfirmOpen(true)}
+  1502→              disabled={batchMutation.isPending || willRunList.length === 0}
+  1503→              className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
+  1504→            >
+  1505→              <PlayCircle className="size-4" />
+  1506→              {batchMutation.isPending
+  1507→                ? t(lang, 'جاري التشغيل...', 'Running...')
+  1508→                : t(lang, 'تشغيل الإهلاك لجميع الأصول', 'Run Depreciation for All Assets')}
+  1509→            </Button>
+  1510→          </div>
+  1511→        </CardContent>
+  1512→      </Card>
+  1513→
+  1514→      {/* Summary cards */}
+  1515→      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+  1516→        <SummaryCard
+  1517→          icon={PlayCircle}
+  1518→          label={t(lang, 'سيتم إهلاكها', 'Will Depreciate')}
+  1519→          value={willRunList.length}
+  1520→          color="teal"
+  1521→          showMoney={false}
+  1522→        />
+  1523→        <SummaryCard
+  1524→          icon={Wallet}
+  1525→          label={t(lang, 'إجمالي مبلغ الإهلاك', 'Total Dep. Amount')}
+  1526→          value={totalAmount}
+  1527→          color="emerald"
+  1528→        />
+  1529→        <SummaryCard
+  1530→          icon={Clock}
+  1531→          label={t(lang, 'تم إهلاكها مسبقاً', 'Already Depreciated')}
+  1532→          value={skipDupList.length}
+  1533→          color="gray"
+  1534→          showMoney={false}
+  1535→        />
+  1536→        <SummaryCard
+  1537→          icon={CheckCircle2}
+  1538→          label={t(lang, 'وصلت للقيمة المتبقية', 'At Residual')}
+  1539→          value={skipResidualList.length}
+  1540→          color="cyan"
+  1541→          showMoney={false}
+  1542→        />
+  1543→      </div>
+  1544→
+  1545→      {/* Preview table */}
+  1546→      <Card>
+  1547→        <CardHeader className="pb-2">
+  1548→          <CardTitle className="text-sm flex items-center gap-2">
+  1549→            <CalendarClock className="size-4 text-teal-700" />
+  1550→            {t(lang, 'معاينة ما سيتم إهلاكه', 'Preview of What Will Be Depreciated')}
+  1551→            <Badge variant="outline" className="ml-auto text-xs">
+  1552→              {formatMonthYear(year, month, lang)}
+  1553→            </Badge>
+  1554→          </CardTitle>
+  1555→        </CardHeader>
+  1556→        <CardContent className="p-0">
+  1557→          {preview.length === 0 ? (
+  1558→            <div className="p-8 text-center text-sm text-muted-foreground">
+  1559→              <Building2 className="size-8 mx-auto mb-2 opacity-40" />
+  1560→              {t(lang, 'لا توجد أصول نشطة لإهلاكها', 'No active assets to depreciate')}
+  1561→            </div>
+  1562→          ) : (
+  1563→            <div className="max-h-[60vh] overflow-y-auto">
+  1564→              <Table>
+  1565→                <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur z-10">
+  1566→                  <TableRow>
+  1567→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الكود', 'Code')}</TableHead>
+  1568→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الاسم', 'Name')}</TableHead>
+  1569→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الإهلاك الشهري', 'Monthly Dep.')}</TableHead>
+  1570→                    <TableHead className="text-right text-xs h-10">{t(lang, 'صافي القيمة الحالي', 'Current NBV')}</TableHead>
+  1571→                    <TableHead className="text-right text-xs h-10">{t(lang, 'صافي القيمة بعد الإهلاك', 'New NBV')}</TableHead>
+  1572→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الحالة', 'Status')}</TableHead>
+  1573→                  </TableRow>
+  1574→                </TableHeader>
+  1575→                <TableBody>
+  1576→                  {preview.map((p) => {
+  1577→                    const catCfg = CATEGORY_MAP[p.category] || CATEGORY_MAP.OTHER
+  1578→                    const catColor = categoryColorMap[catCfg.color]
+  1579→                    return (
+  1580→                      <TableRow key={p.id} className={p.willRun ? '' : 'opacity-60'}>
+  1581→                        <TableCell className="font-mono text-xs py-2">{p.assetCode}</TableCell>
+  1582→                        <TableCell className="py-2">
+  1583→                          <div className="flex items-center gap-2">
+  1584→                            <span className={`size-2 rounded-full ${catColor.soft}`} />
+  1585→                            <span className="text-sm">{p.name}</span>
+  1586→                          </div>
+  1587→                        </TableCell>
+  1588→                        <TableCell className="py-2">
+  1589→                          <MoneyDisplay value={p.monthlyDep} lang={lang} size="sm" inline showSymbol={false} className="text-teal-700" />
+  1590→                        </TableCell>
+  1591→                        <TableCell className="py-2">
+  1592→                          <MoneyDisplay value={p.currentNBV} lang={lang} size="sm" inline showSymbol={false} />
+  1593→                        </TableCell>
+  1594→                        <TableCell className="py-2">
+  1595→                          <MoneyDisplay value={p.newNBV} lang={lang} size="sm" inline showSymbol={false} className="text-emerald-700" />
+  1596→                        </TableCell>
+  1597→                        <TableCell className="py-2">
+  1598→                          {p.willRun ? (
+  1599→                            <Badge className="bg-teal-100 text-teal-700 border-0 text-[10px]">
+  1600→                              <PlayCircle className="size-2.5 ml-1" />
+  1601→                              {t(lang, 'سيتم', 'Will Run')}
+  1602→                            </Badge>
+  1603→                          ) : p.alreadyDepreciated ? (
+  1604→                            <Badge className="bg-gray-100 text-gray-600 border-0 text-[10px]">
+  1605→                              <Clock className="size-2.5 ml-1" />
+  1606→                              {t(lang, 'تم مسبقاً', 'Already Done')}
+  1607→                            </Badge>
+  1608→                          ) : p.atResidual ? (
+  1609→                            <Badge className="bg-cyan-100 text-cyan-700 border-0 text-[10px]">
+  1610→                              <CheckCircle2 className="size-2.5 ml-1" />
+  1611→                              {t(lang, 'وصل للمتبقي', 'At Residual')}
+  1612→                            </Badge>
+  1613→                          ) : (
+  1614→                            <Badge className="bg-rose-100 text-rose-700 border-0 text-[10px]">
+  1615→                              {t(lang, 'تخطي', 'Skip')}
+  1616→                            </Badge>
+  1617→                          )}
+  1618→                        </TableCell>
+  1619→                      </TableRow>
+  1620→                    )
+  1621→                  })}
+  1622→                </TableBody>
+  1623→              </Table>
+  1624→            </div>
+  1625→          )}
+  1626→        </CardContent>
+  1627→      </Card>
+  1628→
+  1629→      {/* Last result card */}
+  1630→      {lastResult && (
+  1631→        <Card className="bg-emerald-50 border-emerald-200">
+  1632→          <CardHeader className="pb-2">
+  1633→            <CardTitle className="text-sm flex items-center gap-2 text-emerald-800">
+  1634→              <CheckCircle2 className="size-4" />
+  1635→              {t(lang, 'نتيجة آخر تشغيل', 'Last Run Result')}
+  1636→              <Badge variant="outline" className="ml-auto text-xs border-emerald-300 text-emerald-700 bg-white">
+  1637→                {formatMonthYear(lastResult.year, lastResult.month, lang)}
+  1638→              </Badge>
+  1639→            </CardTitle>
+  1640→          </CardHeader>
+  1641→          <CardContent className="space-y-3">
+  1642→            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1643→              <div className="text-center">
+  1644→                <p className="text-xs text-emerald-700">{t(lang, 'إجمالي الأصول', 'Total Assets')}</p>
+  1645→                <p className="text-xl font-bold text-emerald-800">{lastResult.totalAssets}</p>
+  1646→              </div>
+  1647→              <div className="text-center">
+  1648→                <p className="text-xs text-emerald-700">{t(lang, 'تم إهلاكها', 'Depreciated')}</p>
+  1649→                <p className="text-xl font-bold text-emerald-800">{lastResult.depreciatedCount}</p>
+  1650→              </div>
+  1651→              <div className="text-center">
+  1652→                <p className="text-xs text-emerald-700">{t(lang, 'القيود المنشأة', 'JE Created')}</p>
+  1653→                <p className="text-xl font-bold text-emerald-800">{lastResult.journalEntriesCreated}</p>
+  1654→              </div>
+  1655→              <div className="text-center">
+  1656→                <p className="text-xs text-emerald-700">{t(lang, 'إجمالي المبلغ', 'Total Amount')}</p>
+  1657→                <p className="text-xl font-bold text-emerald-800">
+  1658→                  <MoneyDisplay value={lastResult.totalAmount} lang={lang} size="md" inline showSymbol={false} />
+  1659→                </p>
+  1660→              </div>
+  1661→            </div>
+  1662→
+  1663→            {lastResult.results.filter((r) => r.status !== 'DEPRECIATED').length > 0 && (
+  1664→              <div className="rounded-lg bg-white/60 border border-emerald-200 p-3">
+  1665→                <p className="text-xs font-medium text-emerald-800 mb-2">
+  1666→                  {t(lang, 'أصول تم تخطيها', 'Skipped Assets')}
+  1667→                </p>
+  1668→                <ul className="text-xs text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
+  1669→                  {lastResult.results
+  1670→                    .filter((r) => r.status !== 'DEPRECIATED')
+  1671→                    .map((r, i) => (
+  1672→                      <li key={i} className="flex items-center gap-2">
+  1673→                        <span className="font-mono text-[10px] bg-white px-1 rounded">{r.assetCode}</span>
+  1674→                        <span>{r.assetName}</span>
+  1675→                        <span className="text-amber-700">— {r.reason || r.status}</span>
+  1676→                      </li>
+  1677→                    ))}
+  1678→                </ul>
+  1679→              </div>
+  1680→            )}
+  1681→          </CardContent>
+  1682→        </Card>
+  1683→      )}
+  1684→
+  1685→      {/* Confirmation dialog */}
+  1686→      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+  1687→        <DialogContent className="max-w-md">
+  1688→          <DialogHeader>
+  1689→            <DialogTitle className="flex items-center gap-2">
+  1690→              <AlertTriangle className="size-5 text-amber-600" />
+  1691→              {t(lang, 'تأكيد تشغيل الإهلاك', 'Confirm Depreciation Run')}
+  1692→            </DialogTitle>
+  1693→            <DialogDescription>
+  1694→              {t(
+  1695→                lang,
+  1696→                `سيتم إنشاء ${willRunList.length} قيد إهلاك للفترة ${formatMonthYear(year, month, lang)} بقيمة إجمالية ${totalAmount.toFixed(2)}. لا يمكن التراجع عن هذه العملية مباشرة — استخدم عكس القيود إذا لزم.`,
+  1697→                `${willRunList.length} depreciation entries will be created for ${formatMonthYear(year, month, lang)} totaling ${totalAmount.toFixed(2)}. This cannot be undone directly — use entry reversal if needed.`
+  1698→              )}
+  1699→            </DialogDescription>
+  1700→          </DialogHeader>
+  1701→          <DialogFooter className="gap-2">
+  1702→            <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+  1703→              {t(lang, 'إلغاء', 'Cancel')}
+  1704→            </Button>
+  1705→            <Button
+  1706→              onClick={() => batchMutation.mutate()}
+  1707→              disabled={batchMutation.isPending}
+  1708→              className="gap-2 bg-teal-600 hover:bg-teal-700 text-white"
+  1709→            >
+  1710→              <PlayCircle className="size-4" />
+  1711→              {batchMutation.isPending
+  1712→                ? t(lang, 'جاري التنفيذ...', 'Processing...')
+  1713→                : t(lang, 'تأكيد التشغيل', 'Confirm Run')}
+  1714→            </Button>
+  1715→          </DialogFooter>
+  1716→        </DialogContent>
+  1717→      </Dialog>
+  1718→    </div>
+  1719→  )
+  1720→}
+  1721→
+  1722→// ============ Tab 3: Depreciation Schedule (Historical) ============
+  1723→
+  1724→interface ScheduleRow extends DepreciationRecord {
+  1725→  fixedAsset: {
+  1726→    id: string
+  1727→    assetCode: string
+  1728→    name: string
+  1729→    nameAr: string | null
+  1730→    category: string
+  1731→  }
+  1732→}
+  1733→
+  1734→function ScheduleTab() {
+  1735→  const { lang } = useAppStore()
+  1736→  const queryClient = useQueryClient()
+  1737→
+  1738→  const [assetFilter, setAssetFilter] = useState<string>('ALL')
+  1739→  const [yearFilter, setYearFilter] = useState<string>('ALL')
+  1740→  const [monthFilter, setMonthFilter] = useState<string>('ALL')
+  1741→
+  1742→  // Fetch all assets (to build the schedule from depreciations)
+  1743→  const { data: assets = [], isLoading, isError, refetch } = useQuery<FixedAsset[]>({
+  1744→    queryKey: ['fixed-assets-schedule'],
+  1745→    queryFn: async () => {
+  1746→      const res = await fetch('/api/fixed-assets')
+  1747→      if (!res.ok) throw new Error('Failed')
+  1748→      const json = await res.json()
+  1749→      return json.data as FixedAsset[]
+  1750→    },
+  1751→  })
+  1752→
+  1753→  // Flatten to schedule rows
+  1754→  const allRows: ScheduleRow[] = useMemo(() => {
+  1755→    const rows: ScheduleRow[] = []
+  1756→    for (const a of assets) {
+  1757→      for (const d of a.depreciations) {
+  1758→        rows.push({
+  1759→          ...d,
+  1760→          fixedAsset: {
+  1761→            id: a.id,
+  1762→            assetCode: a.assetCode,
+  1763→            name: a.name,
+  1764→            nameAr: a.nameAr,
+  1765→            category: a.category,
+  1766→          },
+  1767→        })
+  1768→      }
+  1769→    }
+  1770→    return rows.sort((a, b) => {
+  1771→      if (a.year !== b.year) return b.year - a.year
+  1772→      return b.month - a.month
+  1773→    })
+  1774→  }, [assets])
+  1775→
+  1776→  // Distinct years for filter
+  1777→  const yearOptions = useMemo(() => {
+  1778→    const set = new Set<number>()
+  1779→    for (const r of allRows) set.add(r.year)
+  1780→    return Array.from(set).sort((a, b) => b - a)
+  1781→  }, [allRows])
+  1782→
+  1783→  const filtered = useMemo(() => {
+  1784→    return allRows.filter((r) => {
+  1785→      if (assetFilter !== 'ALL' && r.fixedAsset.id !== assetFilter) return false
+  1786→      if (yearFilter !== 'ALL' && String(r.year) !== yearFilter) return false
+  1787→      if (monthFilter !== 'ALL' && String(r.month) !== monthFilter) return false
+  1788→      return true
+  1789→    })
+  1790→  }, [allRows, assetFilter, yearFilter, monthFilter])
+  1791→
+  1792→  const totalAmount = filtered.reduce((s, r) => s + r.depreciationAmount, 0)
+  1793→
+  1794→  return (
+  1795→    <div className="space-y-4">
+  1796→      {/* Filters */}
+  1797→      <Card>
+  1798→        <CardContent className="p-4 space-y-3">
+  1799→          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+  1800→            <Select value={assetFilter} onValueChange={setAssetFilter}>
+  1801→              <SelectTrigger className="w-full sm:flex-1">
+  1802→                <SelectValue placeholder={t(lang, 'كل الأصول', 'All Assets')} />
+  1803→              </SelectTrigger>
+  1804→              <SelectContent>
+  1805→                <SelectItem value="ALL">{t(lang, 'كل الأصول', 'All Assets')}</SelectItem>
+  1806→                {assets.map((a) => (
+  1807→                  <SelectItem key={a.id} value={a.id}>
+  1808→                    <span className="font-mono text-xs">{a.assetCode}</span>
+  1809→                    {' — '}
+  1810→                    {getAssetName(a, lang)}
+  1811→                  </SelectItem>
+  1812→                ))}
+  1813→              </SelectContent>
+  1814→            </Select>
+  1815→            <Select value={yearFilter} onValueChange={setYearFilter}>
+  1816→              <SelectTrigger className="w-full sm:w-32">
+  1817→                <SelectValue placeholder={t(lang, 'كل السنين', 'All Years')} />
+  1818→              </SelectTrigger>
+  1819→              <SelectContent>
+  1820→                <SelectItem value="ALL">{t(lang, 'كل السنين', 'All Years')}</SelectItem>
+  1821→                {yearOptions.map((y) => (
+  1822→                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+  1823→                ))}
+  1824→              </SelectContent>
+  1825→            </Select>
+  1826→            <Select value={monthFilter} onValueChange={setMonthFilter}>
+  1827→              <SelectTrigger className="w-full sm:w-40">
+  1828→                <SelectValue placeholder={t(lang, 'كل الأشهر', 'All Months')} />
+  1829→              </SelectTrigger>
+  1830→              <SelectContent>
+  1831→                <SelectItem value="ALL">{t(lang, 'كل الأشهر', 'All Months')}</SelectItem>
+  1832→                {MONTHS.map((m) => (
+  1833→                  <SelectItem key={m.value} value={String(m.value)}>
+  1834→                    {t(lang, m.ar, m.en)}
+  1835→                  </SelectItem>
+  1836→                ))}
+  1837→              </SelectContent>
+  1838→            </Select>
+  1839→            <Button variant="outline" size="icon" onClick={() => refetch()} title={t(lang, 'تحديث', 'Refresh')}>
+  1840→              <RefreshCw className="size-4" />
+  1841→            </Button>
+  1842→          </div>
+  1843→          <p className="text-xs text-muted-foreground">
+  1844→            {t(lang, `عدد القيود: ${filtered.length} · الإجمالي: `, `Entries: ${filtered.length} · Total: `)}
+  1845→            <MoneyDisplay value={totalAmount} lang={lang} size="sm" inline showSymbol={false} className="text-teal-700 font-semibold" />
+  1846→          </p>
+  1847→        </CardContent>
+  1848→      </Card>
+  1849→
+  1850→      {/* Table */}
+  1851→      <Card>
+  1852→        <CardContent className="p-0">
+  1853→          {isLoading ? (
+  1854→            <TableSkeleton rows={6} />
+  1855→          ) : isError ? (
+  1856→            <div className="p-6 text-center text-sm text-rose-600">
+  1857→              {t(lang, 'فشل في تحميل البيانات', 'Failed to load data')}
+  1858→            </div>
+  1859→          ) : filtered.length === 0 ? (
+  1860→            <div className="p-8 text-center text-sm text-muted-foreground">
+  1861→              <CalendarClock className="size-8 mx-auto mb-2 opacity-40" />
+  1862→              {t(lang, 'لا توجد قيود إهلاك مطابقة', 'No matching depreciation entries')}
+  1863→            </div>
+  1864→          ) : (
+  1865→            <div className="max-h-[65vh] overflow-y-auto">
+  1866→              <Table>
+  1867→                <TableHeader className="sticky top-0 bg-muted/50 backdrop-blur z-10">
+  1868→                  <TableRow>
+  1869→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الأصل', 'Asset')}</TableHead>
+  1870→                    <TableHead className="text-right text-xs h-10">{t(lang, 'الفترة', 'Period')}</TableHead>
+  1871→                    <TableHead className="text-right text-xs h-10">{t(lang, 'مبلغ الإهلاك', 'Dep. Amount')}</TableHead>
+  1872→                    <TableHead className="text-right text-xs h-10">{t(lang, 'القيد المحاسبي', 'Journal Entry')}</TableHead>
+  1873→                    <TableHead className="text-right text-xs h-10">{t(lang, 'تاريخ الإنشاء', 'Created')}</TableHead>
+  1874→                  </TableRow>
+  1875→                </TableHeader>
+  1876→                <TableBody>
+  1877→                  {filtered.map((r) => {
+  1878→                    const catCfg = CATEGORY_MAP[r.fixedAsset.category] || CATEGORY_MAP.OTHER
+  1879→                    const catColor = categoryColorMap[catCfg.color]
+  1880→                    return (
+  1881→                      <TableRow key={r.id}>
+  1882→                        <TableCell className="py-2">
+  1883→                          <div className="flex items-center gap-2">
+  1884→                            <span className={`size-2 rounded-full ${catColor.soft}`} />
+  1885→                            <div className="min-w-0">
+  1886→                              <p className="text-sm font-medium truncate">
+  1887→                                {lang === 'ar' ? (r.fixedAsset.nameAr || r.fixedAsset.name) : r.fixedAsset.name}
+  1888→                              </p>
+  1889→                              <p className="text-[10px] text-muted-foreground font-mono">{r.fixedAsset.assetCode}</p>
+  1890→                            </div>
+  1891→                          </div>
+  1892→                        </TableCell>
+  1893→                        <TableCell className="py-2 text-xs">
+  1894→                          {formatMonthYear(r.year, r.month, lang)}
+  1895→                        </TableCell>
+  1896→                        <TableCell className="py-2">
+  1897→                          <MoneyDisplay value={r.depreciationAmount} lang={lang} size="sm" inline showSymbol={false} className="text-teal-700 font-semibold" />
+  1898→                        </TableCell>
+  1899→                        <TableCell className="py-2">
+  1900→                          {r.journalEntryId ? (
+  1901→                            <AccountingEntryDisplay journalEntryId={r.journalEntryId} lang={lang} />
+  1902→                          ) : (
+  1903→                            <span className="text-xs text-muted-foreground">—</span>
+  1904→                          )}
+  1905→                        </TableCell>
+  1906→                        <TableCell className="py-2 text-xs text-muted-foreground">
+  1907→                          {formatDate(r.createdAt, lang)}
+  1908→                        </TableCell>
+  1909→                      </TableRow>
+  1910→                    )
+  1911→                  })}
+  1912→                </TableBody>
+  1913→              </Table>
+  1914→            </div>
+  1915→          )}
+  1916→        </CardContent>
+  1917→      </Card>
+  1918→    </div>
+  1919→  )
+  1920→}
+  1921→
+  1922→// ============ Tab 4: Depreciation Report ============
+  1923→
+  1924→function ReportTab() {
+  1925→  const { lang } = useAppStore()
+  1926→
+  1927→  const { data: report, isLoading, isError, refetch } = useQuery<ReportResponse>({
+  1928→    queryKey: ['fixed-assets-report'],
+  1929→    queryFn: async () => {
+  1930→      const res = await fetch('/api/fixed-assets/report')
+  1931→      if (!res.ok) throw new Error('Failed')
+  1932→      return res.json()
+  1933→    },
+  1934→  })
+  1935→
+  1936→  // Build print/export columns
+  1937→  const printColumns: PrintColumn[] = [
+  1938→    { key: 'assetCode', label: t(lang, 'الكود', 'Code'), align: 'text', type: 'text' },
+  1939→    { key: 'name', label: t(lang, 'الاسم', 'Name'), align: 'text', type: 'text' },
+  1940→    { key: 'categoryLabel', label: t(lang, 'الفئة', 'Category'), align: 'text', type: 'text' },
+  1941→    { key: 'acquisitionCost', label: t(lang, 'تكلفة الاقتناء', 'Cost'), align: 'amount', type: 'amount' },
+  1942→    { key: 'accumulatedDepreciation', label: t(lang, 'مجمع الإهلاك', 'Accum. Dep.'), align: 'amount', type: 'amount' },
+  1943→    { key: 'netBookValue', label: t(lang, 'صافي القيمة', 'NBV'), align: 'amount', type: 'amount' },
+  1944→    { key: 'monthlyDepreciation', label: t(lang, 'الإهلاك الشهري', 'Monthly Dep.'), align: 'amount', type: 'amount' },
+  1945→    { key: 'remainingMonths', label: t(lang, 'الأشهر المتبقية', 'Rem. Months'), align: 'text', type: 'text' },
+  1946→    { key: 'statusLabel', label: t(lang, 'الحالة', 'Status'), align: 'text', type: 'text' },
+  1947→  ]
+  1948→
+  1949→  const csvColumns: CSVColumn[] = [
+  1950→    { key: 'assetCode', label: t(lang, 'الكود', 'Code') },
+  1951→    { key: 'name', label: t(lang, 'الاسم', 'Name') },
+  1952→    { key: 'categoryLabel', label: t(lang, 'الفئة', 'Category') },
+  1953→    { key: 'acquisitionCost', label: t(lang, 'تكلفة الاقتناء', 'Cost'), format: v => (Number(v) || 0).toFixed(2) },
+  1954→    { key: 'accumulatedDepreciation', label: t(lang, 'مجمع الإهلاك', 'Accum. Dep.'), format: v => (Number(v) || 0).toFixed(2) },
+  1955→    { key: 'netBookValue', label: t(lang, 'صافي القيمة', 'NBV'), format: v => (Number(v) || 0).toFixed(2) },
+  1956→    { key: 'monthlyDepreciation', label: t(lang, 'الإهلاك الشهري', 'Monthly Dep.'), format: v => (Number(v) || 0).toFixed(2) },
+  1957→    { key: 'remainingMonths', label: t(lang, 'الأشهر المتبقية', 'Rem. Months') },
+  1958→    { key: 'statusLabel', label: t(lang, 'الحالة', 'Status') },
+  1959→  ]
+  1960→
+  1961→  const printRows = useMemo(() => {
+  1962→    if (!report) return []
+  1963→    return report.perAsset.map((a) => ({
+  1964→      assetCode: a.assetCode,
+  1965→      name: getAssetName(a, lang),
+  1966→      categoryLabel: t(lang, CATEGORY_MAP[a.category]?.labelAr || a.category, CATEGORY_MAP[a.category]?.labelEn || a.category),
+  1967→      acquisitionCost: a.acquisitionCost,
+  1968→      accumulatedDepreciation: a.accumulatedDepreciation,
+  1969→      netBookValue: a.netBookValue,
+  1970→      monthlyDepreciation: a.monthlyDepreciation,
+  1971→      remainingMonths: a.remainingMonths,
+  1972→      statusLabel: t(lang, assetStatusConfig[a.status]?.ar || a.status, assetStatusConfig[a.status]?.en || a.status),
+  1973→    }))
+  1974→  }, [report, lang])
+  1975→
+  1976→  const infoItems: PrintInfoItem[] = report ? [
+  1977→    { label: t(lang, 'إجمالي الأصول', 'Total Assets'), value: String(report.summary.totalAssets) },
+  1978→    { label: t(lang, 'الأصول النشطة', 'Active'), value: String(report.summary.activeCount) },
+  1979→    { label: t(lang, 'مستهلكة بالكامل', 'Fully Depreciated'), value: String(report.summary.fullyDepreciatedCount) },
+  1980→    { label: t(lang, 'إجمالي التكلفة', 'Total Cost'), value: report.summary.totalCost.toFixed(2) },
+  1981→    { label: t(lang, 'إجمالي الإهلاك', 'Total Depreciation'), value: report.summary.totalAccumDep.toFixed(2) },
+  1982→    { label: t(lang, 'صافي القيمة الدفترية', 'Net Book Value'), value: report.summary.totalNetBookValue.toFixed(2) },
+  1983→  ] : []
+  1984→
+  1985→  const totals: PrintTotalItem[] = report ? [
+  1986→    { label: t(lang, 'إجمالي التكلفة', 'Total Cost'), value: report.summary.totalCost, isGrand: true },
+  1987→    { label: t(lang, 'إجمالي الإهلاك', 'Total Depreciation'), value: report.summary.totalAccumDep },
+  1988→    { label: t(lang, 'صافي القيمة الدفترية', 'Net Book Value'), value: report.summary.totalNetBookValue },
+  1989→  ] : []
+  1990→
+  1991→  return (
+  1992→    <div className="space-y-4">
+  1993→      {/* Toolbar */}
+  1994→      <Card>
+  1995→        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+  1996→          <div>
+  1997→            <h3 className="text-sm font-semibold flex items-center gap-2">
+  1998→              <FileBarChart2 className="size-4 text-teal-700" />
+  1999→              {t(lang, 'تقرير الإهلاك الشامل', 'Comprehensive Depreciation Report')}
+  2000→            </h3>
+
+[showing lines 1-2000 of 2296; use offset=2001 with limit to continue reading]

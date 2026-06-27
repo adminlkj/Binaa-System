@@ -1,0 +1,797 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  CreditCard, Plus, Search, RefreshCw, Eye, Trash2,
+     7→  Landmark, Building2, FileText, ArrowRight,
+     8→} from 'lucide-react'
+     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→import { Button } from '@/components/ui/button'
+    11→import { Input } from '@/components/ui/input'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Label } from '@/components/ui/label'
+    14→import { Textarea } from '@/components/ui/textarea'
+    15→import { Separator } from '@/components/ui/separator'
+    16→import {
+    17→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    18→} from '@/components/ui/table'
+    19→import {
+    20→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    21→} from '@/components/ui/select'
+    22→import {
+    23→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    24→} from '@/components/ui/dialog'
+    25→import {
+    26→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    27→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    28→} from '@/components/ui/alert-dialog'
+    29→import { Skeleton } from '@/components/ui/skeleton'
+    30→import { MoneyDisplay } from '@/components/ui/money-display'
+    31→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    32→import { PrintButton } from '@/components/shared/print-button'
+    33→import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
+    34→
+    35→// ============ Types ============
+    36→
+    37→interface ClientSummary { id: string; name: string; code: string }
+    38→
+    39→interface InvoiceSummary {
+    40→  id: string; invoiceNo: string; totalAmount: number; paidAmount: number
+    41→  status: string; projectId: string | null
+    42→  project?: { id: string; name: string; code: string } | null
+    43→}
+    44→
+    45→interface ClientPaymentItem {
+    46→  id: string
+    47→  clientId: string
+    48→  invoiceId: string | null
+    49→  amount: number
+    50→  date: string
+    51→  receivedIn: string
+    52→  reference: string | null
+    53→  notes: string | null
+    54→  journalEntryId: string | null
+    55→  createdAt: string
+    56→  client: ClientSummary
+    57→  invoice: InvoiceSummary | null
+    58→}
+    59→
+    60→// ============ Labels ============
+    61→
+    62→const labels = {
+    63→  title: { ar: 'تحصيلات العملاء', en: 'Client Payments' },
+    64→  subtitle: { ar: 'تسجيل ومتابعة تحصيلات العملاء', en: 'Record and track client payments' },
+    65→  newPayment: { ar: 'تحصيل جديد', en: 'New Payment' },
+    66→  search: { ar: 'بحث بالعميل أو المرجع...', en: 'Search by client or reference...' },
+    67→  client: { ar: 'العميل', en: 'Client' },
+    68→  invoice: { ar: 'الفاتورة', en: 'Invoice' },
+    69→  amount: { ar: 'المبلغ', en: 'Amount' },
+    70→  date: { ar: 'التاريخ', en: 'Date' },
+    71→  receivedIn: { ar: 'التحصيل في', en: 'Received In' },
+    72→  reference: { ar: 'المرجع', en: 'Reference' },
+    73→  notes: { ar: 'ملاحظات', en: 'Notes' },
+    74→  status: { ar: 'الحالة', en: 'Status' },
+    75→  actions: { ar: 'الإجراءات', en: 'Actions' },
+    76→  totalPayments: { ar: 'إجمالي التحصيلات', en: 'Total Payments' },
+    77→  treasury: { ar: 'الخزينة', en: 'Treasury' },
+    78→  bank: { ar: 'البنك', en: 'Bank' },
+    79→  remaining: { ar: 'المتبقي', en: 'Remaining' },
+    80→  accountingEntry: { ar: 'القيد المحاسبي', en: 'Accounting Entry' },
+    81→  selectClient: { ar: 'اختر العميل', en: 'Select Client' },
+    82→  selectInvoice: { ar: 'اختر الفاتورة', en: 'Select Invoice' },
+    83→  noInvoices: { ar: 'لا توجد فواتير غير مسددة', en: 'No unpaid invoices' },
+    84→  allClients: { ar: 'كل العملاء', en: 'All Clients' },
+    85→  deleteTitle: { ar: 'حذف التحصيل', en: 'Delete Payment' },
+    86→  deleteConfirm: { ar: 'هل أنت متأكد من حذف هذا التحصيل؟ سيتم عكس القيد المحاسبي.', en: 'Are you sure? The accounting entry will be reversed.' },
+    87→  noPayments: { ar: 'لا توجد تحصيلات', en: 'No payments found' },
+    88→  project: { ar: 'المشروع', en: 'Project' },
+    89→  balance: { ar: 'الرصيد المتبقي', en: 'Remaining Balance' },
+    90→  autoFill: { ar: 'تم تعبئة المبلغ تلقائياً من الفاتورة', en: 'Amount auto-filled from invoice' },
+    91→}
+    92→
+    93→// ============ Helpers ============
+    94→
+    95→function t(ar: string, en: string, lang: Lang) {
+    96→  return lang === 'ar' ? ar : en
+    97→}
+    98→
+    99→const receivedInLabels: Record<string, { ar: string; en: string }> = {
+   100→  TREASURY: { ar: 'الخزينة', en: 'Treasury' },
+   101→  BANK: { ar: 'البنك', en: 'Bank' },
+   102→  CASH: { ar: 'نقدي', en: 'Cash' },
+   103→  BANK_TRANSFER: { ar: 'تحويل بنكي', en: 'Bank Transfer' },
+   104→  CHECK: { ar: 'شيك', en: 'Check' },
+   105→}
+   106→
+   107→const receivedInColors: Record<string, string> = {
+   108→  TREASURY: 'bg-amber-100 text-amber-700 border-amber-200',
+   109→  BANK: 'bg-sky-100 text-sky-700 border-sky-200',
+   110→  CASH: 'bg-green-100 text-green-700 border-green-200',
+   111→  BANK_TRANSFER: 'bg-blue-100 text-blue-700 border-blue-200',
+   112→  CHECK: 'bg-purple-100 text-purple-700 border-purple-200',
+   113→}
+   114→
+   115→// ============ Skeleton ============
+   116→
+   117→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   118→  return (
+   119→    <div className="space-y-2 p-4">
+   120→      {Array.from({ length: rows }).map((_, i) => (
+   121→        <div key={i} className="flex gap-4 p-3">
+   122→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   123→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   124→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   125→        </div>
+   126→      ))}
+   127→    </div>
+   128→  )
+   129→}
+   130→
+   131→// ============ Add Payment Dialog ============
+   132→
+   133→function AddPaymentDialog({
+   134→  open,
+   135→  onClose,
+   136→}: {
+   137→  open: boolean
+   138→  onClose: () => void
+   139→}) {
+   140→  const { lang } = useAppStore()
+   141→  const queryClient = useQueryClient()
+   142→  const tt = (ar: string, en: string) => t(ar, en, lang)
+   143→
+   144→  const [clientId, setClientId] = useState('')
+   145→  const [invoiceId, setInvoiceId] = useState('')
+   146→  const [amount, setAmount] = useState('')
+   147→  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+   148→  const [receivedIn, setReceivedIn] = useState('TREASURY')
+   149→  const [reference, setReference] = useState('')
+   150→  const [notes, setNotes] = useState('')
+   151→
+   152→  // Fetch clients
+   153→  const { data: clients = [] } = useQuery<ClientSummary[]>({
+   154→    queryKey: ['clients-list'],
+   155→    queryFn: async () => {
+   156→      const res = await fetch('/api/clients')
+   157→      if (!res.ok) return []
+   158→      return res.json()
+   159→    },
+   160→  })
+   161→
+   162→  // Fetch unpaid invoices for selected client
+   163→  const { data: invoices = [] } = useQuery<InvoiceSummary[]>({
+   164→    queryKey: ['unpaid-invoices', clientId],
+   165→    queryFn: async () => {
+   166→      if (!clientId) return []
+   167→      const res = await fetch(`/api/sales-invoices?clientId=${clientId}&status=unpaid`)
+   168→      if (!res.ok) return []
+   169→      const data = await res.json()
+   170→      return data.filter((inv: InvoiceSummary) =>
+   171→        inv.status !== 'PAID' && inv.status !== 'CANCELLED' && inv.totalAmount - inv.paidAmount > 0
+   172→      )
+   173→    },
+   174→    enabled: !!clientId,
+   175→  })
+   176→
+   177→  // Selected invoice
+   178→  const selectedInvoice = invoices.find(inv => inv.id === invoiceId)
+   179→  const remainingBalance = selectedInvoice
+   180→    ? (selectedInvoice.totalAmount ?? 0) - (selectedInvoice.paidAmount ?? 0)
+   181→    : 0
+   182→
+   183→  // Auto-fill amount when invoice is selected
+   184→  React.useEffect(() => {
+   185→    if (selectedInvoice && remainingBalance > 0) {
+   186→      setAmount((remainingBalance ?? 0).toFixed(4))
+   187→    }
+   188→  }, [invoiceId, selectedInvoice, remainingBalance])
+   189→
+   190→  // Reset form when dialog opens/closes
+   191→  React.useEffect(() => {
+   192→    if (!open) {
+   193→      setClientId('')
+   194→      setInvoiceId('')
+   195→      setAmount('')
+   196→      setDate(new Date().toISOString().split('T')[0])
+   197→      setReceivedIn('TREASURY')
+   198→      setReference('')
+   199→      setNotes('')
+   200→    }
+   201→  }, [open])
+   202→
+   203→  const createMutation = useMutation({
+   204→    mutationFn: (data: Record<string, unknown>) =>
+   205→      fetch('/api/client-payments', {
+   206→        method: 'POST',
+   207→        headers: { 'Content-Type': 'application/json' },
+   208→        body: JSON.stringify(data),
+   209→      }).then(r => {
+   210→        if (!r.ok) throw new Error('Failed')
+   211→        return r.json()
+   212→      }),
+   213→    onSuccess: () => {
+   214→      queryClient.invalidateQueries({ queryKey: ['client-payments'] })
+   215→      onClose()
+   216→    },
+   217→  })
+   218→
+   219→  const handleSubmit = (e: React.FormEvent) => {
+   220→    e.preventDefault()
+   221→    const parsedAmount = parseFloat(amount) || 0
+   222→    if (!clientId || parsedAmount <= 0 || !date) return
+   223→
+   224→    createMutation.mutate({
+   225→      clientId,
+   226→      invoiceId: invoiceId || null,
+   227→      amount: parsedAmount,
+   228→      date,
+   229→      receivedIn,
+   230→      reference: reference || null,
+   231→      notes: notes || null,
+   232→    })
+   233→  }
+   234→
+   235→  return (
+   236→    <Dialog open={open} onOpenChange={onClose}>
+   237→      <DialogContent className="max-w-lg">
+   238→        <DialogHeader>
+   239→          <DialogTitle className="flex items-center gap-2">
+   240→            <CreditCard className="size-5 text-emerald-600" />
+   241→            {tt(labels.newPayment.ar, labels.newPayment.en)}
+   242→          </DialogTitle>
+   243→        </DialogHeader>
+   244→
+   245→        <form onSubmit={handleSubmit} className="space-y-4">
+   246→          {/* Client Selection */}
+   247→          <div className="space-y-2">
+   248→            <Label>{tt(labels.client.ar, labels.client.en)} *</Label>
+   249→            <Select value={clientId} onValueChange={v => { setClientId(v); setInvoiceId(''); setAmount('') }}>
+   250→              <SelectTrigger className="w-full">
+   251→                <SelectValue placeholder={tt(labels.selectClient.ar, labels.selectClient.en)} />
+   252→              </SelectTrigger>
+   253→              <SelectContent>
+   254→                {clients.map(c => (
+   255→                  <SelectItem key={c.id} value={c.id}>{c.name} ({c.code})</SelectItem>
+   256→                ))}
+   257→              </SelectContent>
+   258→            </Select>
+   259→          </div>
+   260→
+   261→          {/* Invoice Selection */}
+   262→          <div className="space-y-2">
+   263→            <Label>{tt(labels.invoice.ar, labels.invoice.en)}</Label>
+   264→            <Select value={invoiceId} onValueChange={setInvoiceId} disabled={!clientId}>
+   265→              <SelectTrigger className="w-full">
+   266→                <SelectValue placeholder={
+   267→                  !clientId
+   268→                    ? tt(labels.selectClient.ar, labels.selectClient.en)
+   269→                    : invoices.length === 0
+   270→                      ? tt(labels.noInvoices.ar, labels.noInvoices.en)
+   271→                      : tt(labels.selectInvoice.ar, labels.selectInvoice.en)
+   272→                } />
+   273→              </SelectTrigger>
+   274→              <SelectContent>
+   275→                {invoices.map(inv => {
+   276→                  const remaining = inv.totalAmount - inv.paidAmount
+   277→                  return (
+   278→                    <SelectItem key={inv.id} value={inv.id}>
+   279→                      {inv.invoiceNo} — {tt('متبقي', 'Remaining', lang)}: <MoneyDisplay value={remaining} lang={lang} size="sm" inline />
+   280→                    </SelectItem>
+   281→                  )
+   282→                })}
+   283→              </SelectContent>
+   284→            </Select>
+   285→          </div>
+   286→
+   287→          {/* Invoice Info */}
+   288→          {selectedInvoice && (
+   289→            <div className="p-3 rounded-lg border bg-emerald-50 text-sm space-y-1">
+   290→              <div className="flex justify-between">
+   291→                <span className="text-muted-foreground">{tt('إجمالي الفاتورة', 'Invoice Total', lang)}</span>
+   292→                <MoneyDisplay value={selectedInvoice.totalAmount} lang={lang} size="sm" inline bold />
+   293→              </div>
+   294→              <div className="flex justify-between">
+   295→                <span className="text-muted-foreground">{tt('المدفوع', 'Paid', lang)}</span>
+   296→                <MoneyDisplay value={selectedInvoice.paidAmount} lang={lang} size="sm" inline />
+   297→              </div>
+   298→              <Separator />
+   299→              <div className="flex justify-between font-bold text-emerald-700">
+   300→                <span>{tt(labels.remaining.ar, labels.remaining.en)}</span>
+   301→                <MoneyDisplay value={remainingBalance} lang={lang} size="sm" inline bold />
+   302→              </div>
+   303→            </div>
+   304→          )}
+   305→
+   306→          {/* Amount */}
+   307→          <div className="space-y-2">
+   308→            <Label>
+   309→              {tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *
+   310→              {selectedInvoice && (
+   311→                <span className="text-xs text-emerald-600 ml-2">({tt(labels.autoFill.ar, labels.autoFill.en)})</span>
+   312→              )}
+   313→            </Label>
+   314→            <Input
+   315→              type="number"
+   316→              step="0.0001"
+   317→              min="0.01"
+   318→              max={remainingBalance || undefined}
+   319→              value={amount}
+   320→              onChange={e => setAmount(e.target.value)}
+   321→              placeholder="0.00"
+   322→              required
+   323→            />
+   324→          </div>
+   325→
+   326→          {/* Date & Received In */}
+   327→          <div className="grid grid-cols-2 gap-4">
+   328→            <div className="space-y-2">
+   329→              <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
+   330→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   331→            </div>
+   332→            <div className="space-y-2">
+   333→              <Label>{tt(labels.receivedIn.ar, labels.receivedIn.en)}</Label>
+   334→              <Select value={receivedIn} onValueChange={setReceivedIn}>
+   335→                <SelectTrigger className="w-full">
+   336→                  <SelectValue />
+   337→                </SelectTrigger>
+   338→                <SelectContent>
+   339→                  <SelectItem value="CASH">
+   340→                    <span className="flex items-center gap-2">
+   341→                      <span className="size-2 rounded-full bg-green-500" />
+   342→                      {tt(receivedInLabels.CASH.ar, receivedInLabels.CASH.en)}
+   343→                    </span>
+   344→                  </SelectItem>
+   345→                  <SelectItem value="BANK_TRANSFER">
+   346→                    <span className="flex items-center gap-2">
+   347→                      <span className="size-2 rounded-full bg-blue-500" />
+   348→                      {tt(receivedInLabels.BANK_TRANSFER.ar, receivedInLabels.BANK_TRANSFER.en)}
+   349→                    </span>
+   350→                  </SelectItem>
+   351→                  <SelectItem value="CHECK">
+   352→                    <span className="flex items-center gap-2">
+   353→                      <span className="size-2 rounded-full bg-purple-500" />
+   354→                      {tt(receivedInLabels.CHECK.ar, receivedInLabels.CHECK.en)}
+   355→                    </span>
+   356→                  </SelectItem>
+   357→                  <SelectItem value="TREASURY">
+   358→                    <span className="flex items-center gap-2">
+   359→                      <Landmark className="size-3.5" />
+   360→                      {tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}
+   361→                    </span>
+   362→                  </SelectItem>
+   363→                  <SelectItem value="BANK">
+   364→                    <span className="flex items-center gap-2">
+   365→                      <Building2 className="size-3.5" />
+   366→                      {tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}
+   367→                    </span>
+   368→                  </SelectItem>
+   369→                </SelectContent>
+   370→              </Select>
+   371→            </div>
+   372→          </div>
+   373→
+   374→          {/* Reference */}
+   375→          <div className="space-y-2">
+   376→            <Label>{tt(labels.reference.ar, labels.reference.en)}</Label>
+   377→            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={tt('رقم الإيصال', 'Receipt No.', lang)} />
+   378→          </div>
+   379→
+   380→          {/* Notes */}
+   381→          <div className="space-y-2">
+   382→            <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
+   383→            <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes', lang)} rows={2} />
+   384→          </div>
+   385→
+   386→          <DialogFooter>
+   387→            <Button type="button" variant="outline" onClick={onClose}>
+   388→              {commonText.cancel[lang]}
+   389→            </Button>
+   390→            <Button
+   391→              type="submit"
+   392→              disabled={createMutation.isPending || !clientId || !amount || !date}
+   393→              className="bg-emerald-600 hover:bg-emerald-700 min-w-[140px]"
+   394→            >
+   395→              {createMutation.isPending ? tt('جاري الحفظ...', 'Saving...') : tt('تسجيل التحصيل', 'Record Payment')}
+   396→            </Button>
+   397→          </DialogFooter>
+   398→        </form>
+   399→      </DialogContent>
+   400→    </Dialog>
+   401→  )
+   402→}
+   403→
+   404→// ============ Payment Detail Dialog ============
+   405→
+   406→function PaymentDetailDialog({
+   407→  payment,
+   408→  open,
+   409→  onClose,
+   410→}: {
+   411→  payment: ClientPaymentItem | null
+   412→  open: boolean
+   413→  onClose: () => void
+   414→}) {
+   415→  const { lang } = useAppStore()
+   416→  const tt = (ar: string, en: string) => t(ar, en, lang)
+   417→
+   418→  if (!payment) return null
+   419→
+   420→  return (
+   421→    <Dialog open={open} onOpenChange={onClose}>
+   422→      <DialogContent className="max-w-md">
+   423→        <DialogHeader>
+   424→          <DialogTitle className="flex items-center gap-2">
+   425→            <CreditCard className="size-5 text-emerald-600" />
+   426→            {tt('تفاصيل التحصيل', 'Payment Details')}
+   427→          </DialogTitle>
+   428→        </DialogHeader>
+   429→
+   430→        <div className="space-y-3 text-sm">
+   431→          <div className="grid grid-cols-2 gap-3">
+   432→            <div>
+   433→              <p className="text-xs text-muted-foreground">{tt(labels.client.ar, labels.client.en)}</p>
+   434→              <p className="font-medium">{payment.client.name}</p>
+   435→            </div>
+   436→            <div>
+   437→              <p className="text-xs text-muted-foreground">{tt(labels.date.ar, labels.date.en)}</p>
+   438→              <p className="font-medium">{formatDate(payment.date, lang)}</p>
+   439→            </div>
+   440→            <div>
+   441→              <p className="text-xs text-muted-foreground">{tt(labels.amount.ar, labels.amount.en)}</p>
+   442→              <p className="font-bold text-emerald-700">
+   443→                <MoneyDisplay value={payment.amount} mode="system" lang={lang} bold size="md" />
+   444→              </p>
+   445→            </div>
+   446→            <div>
+   447→              <p className="text-xs text-muted-foreground">{tt(labels.receivedIn.ar, labels.receivedIn.en)}</p>
+   448→              <Badge variant="outline" className={receivedInColors[payment.receivedIn] || ''}>
+   449→                {receivedInLabels[payment.receivedIn]?.[lang] || payment.receivedIn}
+   450→              </Badge>
+   451→            </div>
+   452→          </div>
+   453→
+   454→          {payment.invoice && (
+   455→            <>
+   456→              <Separator />
+   457→              <div>
+   458→                <p className="text-xs text-muted-foreground">{tt(labels.invoice.ar, labels.invoice.en)}</p>
+   459→                <div className="flex items-center gap-2 mt-1">
+   460→                  <FileText className="size-4 text-muted-foreground" />
+   461→                  <span className="font-medium">{payment.invoice.invoiceNo}</span>
+   462→                  <span className="text-muted-foreground">—</span>
+   463→                  <MoneyDisplay value={payment.invoice.totalAmount} lang={lang} size="sm" inline />
+   464→                </div>
+   465→                {payment.invoice.project && (
+   466→                  <div className="flex items-center gap-2 mt-1 text-muted-foreground">
+   467→                    <Building2 className="size-3.5" />
+   468→                    <span className="text-xs">{payment.invoice.project.name}</span>
+   469→                  </div>
+   470→                )}
+   471→              </div>
+   472→            </>
+   473→          )}
+   474→
+   475→          {payment.reference && (
+   476→            <>
+   477→              <Separator />
+   478→              <div>
+   479→                <p className="text-xs text-muted-foreground">{tt(labels.reference.ar, labels.reference.en)}</p>
+   480→                <p className="font-medium">{payment.reference}</p>
+   481→              </div>
+   482→            </>
+   483→          )}
+   484→
+   485→          {payment.notes && (
+   486→            <div>
+   487→              <p className="text-xs text-muted-foreground">{tt(labels.notes.ar, labels.notes.en)}</p>
+   488→              <p>{payment.notes}</p>
+   489→            </div>
+   490→          )}
+   491→
+   492→          {/* Accounting Entry Link */}
+   493→          {payment.journalEntryId && (
+   494→            <>
+   495→              <Separator />
+   496→              <div className="p-3 rounded-lg border bg-sky-50">
+   497→                <div className="flex items-center gap-2 text-sky-700">
+   498→                  <FileText className="size-4" />
+   499→                  <span className="text-xs font-medium">{tt(labels.accountingEntry.ar, labels.accountingEntry.en)}</span>
+   500→                </div>
+   501→                <p className="text-xs text-muted-foreground mt-1">
+   502→                  {tt('تم إنشاء قيد محاسبي تلقائي', 'Auto journal entry created', lang)}
+   503→                </p>
+   504→                <p className="text-xs font-mono mt-0.5">{payment.journalEntryId}</p>
+   505→              </div>
+   506→            </>
+   507→          )}
+   508→        </div>
+   509→      </DialogContent>
+   510→    </Dialog>
+   511→  )
+   512→}
+   513→
+   514→// ============ Main Module ============
+   515→
+   516→export function ClientPaymentsModule() {
+   517→  const { lang } = useAppStore()
+   518→  const queryClient = useQueryClient()
+   519→  const tt = (ar: string, en: string) => t(ar, en, lang)
+   520→
+   521→  const [search, setSearch] = useState('')
+   522→  const [clientFilter, setClientFilter] = useState<string>('all')
+   523→  const [receivedInFilter, setReceivedInFilter] = useState<string>('all')
+   524→  const [showAddDialog, setShowAddDialog] = useState(false)
+   525→  const [detailPayment, setDetailPayment] = useState<ClientPaymentItem | null>(null)
+   526→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   527→
+   528→  // Fetch payments
+   529→  const { data: payments = [], isLoading, isError, refetch } = useQuery<ClientPaymentItem[]>({
+   530→    queryKey: ['client-payments'],
+   531→    queryFn: async () => {
+   532→      const res = await fetch('/api/client-payments')
+   533→      if (!res.ok) throw new Error('Failed')
+   534→      return res.json()
+   535→    },
+   536→    staleTime: 30000,
+   537→  })
+   538→
+   539→  // Fetch clients for filter
+   540→  const { data: clients = [] } = useQuery<ClientSummary[]>({
+   541→    queryKey: ['clients-list-for-payments'],
+   542→    queryFn: async () => {
+   543→      const res = await fetch('/api/clients')
+   544→      if (!res.ok) return []
+   545→      return res.json()
+   546→    },
+   547→  })
+   548→
+   549→  // Delete mutation
+   550→  const deleteMutation = useMutation({
+   551→    mutationFn: (id: string) =>
+   552→      fetch(`/api/client-payments/${id}`, { method: 'DELETE' }).then(r => {
+   553→        if (!r.ok) throw new Error()
+   554→        return r.json()
+   555→      }),
+   556→    onSuccess: () => {
+   557→      queryClient.invalidateQueries({ queryKey: ['client-payments'] })
+   558→      setDeleteId(null)
+   559→    },
+   560→  })
+   561→
+   562→  // Filter
+   563→  const filtered = useMemo(() => {
+   564→    return payments.filter(p => {
+   565→      const matchSearch = !search ||
+   566→        p.client.name.toLowerCase().includes(search.toLowerCase()) ||
+   567→        (p.reference && p.reference.toLowerCase().includes(search.toLowerCase())) ||
+   568→        (p.invoice?.invoiceNo && p.invoice.invoiceNo.toLowerCase().includes(search.toLowerCase()))
+   569→      const matchClient = clientFilter === 'all' || p.clientId === clientFilter
+   570→      const matchReceivedIn = receivedInFilter === 'all' || p.receivedIn === receivedInFilter
+   571→      return matchSearch && matchClient && matchReceivedIn
+   572→    })
+   573→  }, [payments, search, clientFilter, receivedInFilter])
+   574→
+   575→  // Stats
+   576→  const totalPayments = filtered.reduce((s, p) => s + (p.amount ?? 0), 0)
+   577→  const treasuryPayments = filtered.filter(p => p.receivedIn === 'TREASURY').reduce((s, p) => s + (p.amount ?? 0), 0)
+   578→  const bankPayments = filtered.filter(p => p.receivedIn === 'BANK').reduce((s, p) => s + (p.amount ?? 0), 0)
+   579→
+   580→  // Print data for client payments report
+   581→  const printData = useMemo(() => ({
+   582→    columns: [
+   583→      { key: 'client', label: lang === 'ar' ? 'العميل' : 'Client' },
+   584→      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+   585→      { key: 'amount', label: lang === 'ar' ? 'المبلغ' : 'Amount', align: 'amount' as const },
+   586→      { key: 'receivedIn', label: lang === 'ar' ? 'طريقة الاستلام' : 'Received In' },
+   587→      { key: 'reference', label: lang === 'ar' ? 'المرجع' : 'Reference' },
+   588→    ],
+   589→    rows: filtered.map(p => ({
+   590→      client: p.client?.name || '',
+   591→      date: formatDate(p.date, lang),
+   592→      amount: p.amount,
+   593→      receivedIn: receivedInLabels[p.receivedIn]?.[lang] || p.receivedIn,
+   594→      reference: p.reference || '',
+   595→    })),
+   596→    infoItems: [
+   597→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+   598→      { label: lang === 'ar' ? 'إجمالي التحصيلات' : 'Total Payments', value: String(totalPayments) },
+   599→    ],
+   600→    totals: [
+   601→      { label: lang === 'ar' ? 'إجمالي التحصيلات' : 'Total Payments', value: totalPayments, isGrand: true },
+   602→    ],
+   603→  }), [filtered, lang, totalPayments])
+   604→
+   605→  return (
+   606→    <ModuleLayout
+   607→      title={labels.title}
+   608→      subtitle={labels.subtitle}
+   609→      actions={
+   610→        <>
+   611→          <PrintButton type="generic-table" data={printData} size="icon" />
+   612→          <Button variant="outline" size="icon" onClick={() => refetch()} title={tt('تحديث', 'Refresh')}>
+   613→            <RefreshCw className="size-4" />
+   614→          </Button>
+   615→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setShowAddDialog(true)}>
+   616→            <Plus className="size-4" /> {tt(labels.newPayment.ar, labels.newPayment.en)}
+   617→          </Button>
+   618→        </>
+   619→      }
+   620→    >
+   621→      {/* Summary Cards */}
+   622→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   623→        <Card className="bg-emerald-50 border-emerald-200">
+   624→          <CardContent className="p-3">
+   625→            <p className="text-xs text-muted-foreground">{tt(labels.totalPayments.ar, labels.totalPayments.en)}</p>
+   626→            <MoneyDisplay value={totalPayments} lang={lang} size="xl" bold className="text-emerald-700" />
+   627→          </CardContent>
+   628→        </Card>
+   629→        <Card className="bg-amber-50 border-amber-200">
+   630→          <CardContent className="p-3">
+   631→            <p className="text-xs text-muted-foreground">{tt(labels.treasury.ar, labels.treasury.en)}</p>
+   632→            <MoneyDisplay value={treasuryPayments} lang={lang} size="xl" bold className="text-amber-700" />
+   633→          </CardContent>
+   634→        </Card>
+   635→        <Card className="bg-sky-50 border-sky-200">
+   636→          <CardContent className="p-3">
+   637→            <p className="text-xs text-muted-foreground">{tt(labels.bank.ar, labels.bank.en)}</p>
+   638→            <MoneyDisplay value={bankPayments} lang={lang} size="xl" bold className="text-sky-700" />
+   639→          </CardContent>
+   640→        </Card>
+   641→      </div>
+   642→
+   643→      {/* Filters */}
+   644→      <Card>
+   645→        <CardContent className="p-4">
+   646→          <div className="flex flex-col sm:flex-row gap-3">
+   647→            <Select value={clientFilter} onValueChange={setClientFilter}>
+   648→              <SelectTrigger className="w-full sm:w-52">
+   649→                <SelectValue placeholder={tt(labels.allClients.ar, labels.allClients.en)} />
+   650→              </SelectTrigger>
+   651→              <SelectContent>
+   652→                <SelectItem value="all">{tt(labels.allClients.ar, labels.allClients.en)}</SelectItem>
+   653→                {clients.map(c => (
+   654→                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+   655→                ))}
+   656→              </SelectContent>
+   657→            </Select>
+   658→            <div className="relative flex-1">
+   659→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   660→              <Input placeholder={tt(labels.search.ar, labels.search.en)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   661→            </div>
+   662→            <Select value={receivedInFilter} onValueChange={setReceivedInFilter}>
+   663→              <SelectTrigger className="w-full sm:w-36">
+   664→                <SelectValue placeholder={tt(labels.receivedIn.ar, labels.receivedIn.en)} />
+   665→              </SelectTrigger>
+   666→              <SelectContent>
+   667→                <SelectItem value="all">{tt('الكل', 'All', lang)}</SelectItem>
+   668→                <SelectItem value="CASH">{tt(receivedInLabels.CASH.ar, receivedInLabels.CASH.en)}</SelectItem>
+   669→                <SelectItem value="BANK_TRANSFER">{tt(receivedInLabels.BANK_TRANSFER.ar, receivedInLabels.BANK_TRANSFER.en)}</SelectItem>
+   670→                <SelectItem value="CHECK">{tt(receivedInLabels.CHECK.ar, receivedInLabels.CHECK.en)}</SelectItem>
+   671→                <SelectItem value="TREASURY">{tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}</SelectItem>
+   672→                <SelectItem value="BANK">{tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}</SelectItem>
+   673→              </SelectContent>
+   674→            </Select>
+   675→          </div>
+   676→        </CardContent>
+   677→      </Card>
+   678→
+   679→      {/* Table */}
+   680→      <Card>
+   681→        <CardContent className="p-0">
+   682→          {isLoading ? (
+   683→            <TableSkeleton />
+   684→          ) : isError ? (
+   685→            <div className="flex flex-col items-center gap-3 py-10">
+   686→              <p className="text-rose-600">{commonText.error[lang]}</p>
+   687→              <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   688→            </div>
+   689→          ) : filtered.length === 0 ? (
+   690→            <div className="flex flex-col items-center gap-3 py-10">
+   691→              <CreditCard className="size-12 text-gray-300" />
+   692→              <p className="text-muted-foreground">{tt(labels.noPayments.ar, labels.noPayments.en)}</p>
+   693→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setShowAddDialog(true)}>
+   694→                <Plus className="size-4 mr-1" /> {tt(labels.newPayment.ar, labels.newPayment.en)}
+   695→              </Button>
+   696→            </div>
+   697→          ) : (
+   698→            <div className="overflow-x-auto">
+   699→              <Table>
+   700→                <TableHeader>
+   701→                  <TableRow>
+   702→                    <TableHead className="text-right">{tt(labels.date.ar, labels.date.en)}</TableHead>
+   703→                    <TableHead className="text-right">{tt(labels.client.ar, labels.client.en)}</TableHead>
+   704→                    <TableHead className="text-right">{tt(labels.invoice.ar, labels.invoice.en)}</TableHead>
+   705→                    <TableHead className="text-right">{tt(labels.project.ar, labels.project.en)}</TableHead>
+   706→                    <TableHead className="text-right">{tt(labels.amount.ar, labels.amount.en)}</TableHead>
+   707→                    <TableHead className="text-right">{tt(labels.receivedIn.ar, labels.receivedIn.en)}</TableHead>
+   708→                    <TableHead className="text-right">{tt(labels.reference.ar, labels.reference.en)}</TableHead>
+   709→                    <TableHead className="text-right">{tt(labels.accountingEntry.ar, labels.accountingEntry.en)}</TableHead>
+   710→                    <TableHead className="text-right">{tt(labels.actions.ar, labels.actions.en)}</TableHead>
+   711→                  </TableRow>
+   712→                </TableHeader>
+   713→                <TableBody>
+   714→                  {filtered.map(p => (
+   715→                    <TableRow key={p.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setDetailPayment(p)}>
+   716→                      <TableCell className="whitespace-nowrap">{formatDate(p.date, lang)}</TableCell>
+   717→                      <TableCell className="font-medium">{p.client.name}</TableCell>
+   718→                      <TableCell>
+   719→                        {p.invoice ? (
+   720→                          <span className="flex items-center gap-1 text-sm">
+   721→                            <FileText className="size-3.5 text-muted-foreground" />
+   722→                            {p.invoice.invoiceNo}
+   723→                          </span>
+   724→                        ) : (
+   725→                          <span className="text-muted-foreground text-xs">—</span>
+   726→                        )}
+   727→                      </TableCell>
+   728→                      <TableCell>
+   729→                        {p.invoice?.project ? (
+   730→                          <span className="text-xs text-muted-foreground">{p.invoice.project.name}</span>
+   731→                        ) : (
+   732→                          <span className="text-muted-foreground text-xs">—</span>
+   733→                        )}
+   734→                      </TableCell>
+   735→                      <TableCell className="font-semibold">
+   736→                        <MoneyDisplay value={p.amount} lang={lang} size="sm" inline bold />
+   737→                      </TableCell>
+   738→                      <TableCell>
+   739→                        <Badge variant="outline" className={`text-[10px] ${receivedInColors[p.receivedIn] || ''}`}>
+   740→                          {receivedInLabels[p.receivedIn]?.[lang] || p.receivedIn}
+   741→                        </Badge>
+   742→                      </TableCell>
+   743→                      <TableCell className="text-xs text-muted-foreground">{p.reference || '—'}</TableCell>
+   744→                      <TableCell>
+   745→                        {p.journalEntryId ? (
+   746→                          <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">
+   747→                            {tt('قيد', 'JE', lang)}
+   748→                          </Badge>
+   749→                        ) : (
+   750→                          <span className="text-muted-foreground text-xs">—</span>
+   751→                        )}
+   752→                      </TableCell>
+   753→                      <TableCell>
+   754→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   755→                          <PrintButton type="client-payment" documentId={p.id} size="icon" />
+   756→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setDetailPayment(p)} title={tt('عرض', 'View')}>
+   757→                            <Eye className="size-4" />
+   758→                          </Button>
+   759→                          <Button variant="ghost" size="icon" className="size-8 text-rose-500" onClick={() => setDeleteId(p.id)} title={tt('حذف', 'Delete')}>
+   760→                            <Trash2 className="size-4" />
+   761→                          </Button>
+   762→                        </div>
+   763→                      </TableCell>
+   764→                    </TableRow>
+   765→                  ))}
+   766→                </TableBody>
+   767→              </Table>
+   768→            </div>
+   769→          )}
+   770→        </CardContent>
+   771→      </Card>
+   772→
+   773→      {/* Add Payment Dialog */}
+   774→      <AddPaymentDialog open={showAddDialog} onClose={() => setShowAddDialog(false)} />
+   775→
+   776→      {/* Detail Dialog */}
+   777→      <PaymentDetailDialog payment={detailPayment} open={!!detailPayment} onClose={() => setDetailPayment(null)} />
+   778→
+   779→      {/* Delete Confirmation */}
+   780→      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+   781→        <AlertDialogContent>
+   782→          <AlertDialogHeader>
+   783→            <AlertDialogTitle>{tt(labels.deleteTitle.ar, labels.deleteTitle.en)}</AlertDialogTitle>
+   784→            <AlertDialogDescription>{tt(labels.deleteConfirm.ar, labels.deleteConfirm.en)}</AlertDialogDescription>
+   785→          </AlertDialogHeader>
+   786→          <AlertDialogFooter>
+   787→            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+   788→            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+   789→              {commonText.delete[lang]}
+   790→            </AlertDialogAction>
+   791→          </AlertDialogFooter>
+   792→        </AlertDialogContent>
+   793→      </AlertDialog>
+   794→    </ModuleLayout>
+   795→  )
+   796→}
+   797→

@@ -1,0 +1,602 @@
+    36→
+    37→// ============ Types ============
+    38→interface ProjectOption { id: string; code: string; name: string }
+    39→
+    40→interface Expense {
+    41→  id: string; projectId: string | null; expenseType: string; category: string; description: string
+    42→  amount: number; vatRate: number; vatAmount: number | null; totalAmount: number; date: string
+    43→  reference: string | null; payFrom: string; attachmentPath: string | null; journalEntryId: string | null
+    44→  costCenterId?: string | null
+    45→  project: { id: string; code: string; name: string; projectType?: string } | null
+    46→  costCenter?: { id: string; code: string; name: string } | null
+    47→}
+    48→
+    49→// ============ Bilingual Helpers ============
+    50→const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
+    51→
+    52→// Project expenses - linked to projects
+    53→const projectExpenseCategoryLabels: Record<string, { ar: string; en: string }> = {
+    54→  RENT: { ar: 'إيجارات', en: 'Rent' },
+    55→  MAINTENANCE: { ar: 'صيانة', en: 'Maintenance' },
+    56→  TRANSPORT: { ar: 'نقل', en: 'Transport' },
+    57→  DELIVERY: { ar: 'توصيل', en: 'Delivery' },
+    58→  CONSUMABLES: { ar: 'مواد استهلاكية', en: 'Consumables' },
+    59→  SERVICES: { ar: 'خدمات', en: 'Services' },
+    60→  INSURANCE: { ar: 'تأمين', en: 'Insurance' },
+    61→  FUEL: { ar: 'وقود', en: 'Fuel' },
+    62→  DRIVERS: { ar: 'سائقين', en: 'Drivers' },
+    63→  PERMITS: { ar: 'تصاريح', en: 'Permits' },
+    64→  OTHER: { ar: 'أخرى', en: 'Other' },
+    65→}
+    66→
+    67→// Administrative expenses
+    68→const adminExpenseCategoryLabels: Record<string, { ar: string; en: string }> = {
+    69→  SALARIES: { ar: 'رواتب', en: 'Salaries' },
+    70→  INTERNET: { ar: 'إنترنت', en: 'Internet' },
+    71→  ELECTRICITY: { ar: 'كهرباء', en: 'Electricity' },
+    72→  WATER: { ar: 'مياه', en: 'Water' },
+    73→  MANAGEMENT_CARS: { ar: 'سيارات الإدارة', en: 'Management Cars' },
+    74→  RENT: { ar: 'إيجارات', en: 'Rent' },
+    75→  OFFICE: { ar: 'قرطاسية', en: 'Office' },
+    76→  HOSPITALITY: { ar: 'ضيافة', en: 'Hospitality' },
+    77→  OTHER: { ar: 'أخرى', en: 'Other' },
+    78→}
+    79→
+    80→const allCategoryLabels: Record<string, { ar: string; en: string }> = {
+    81→  ...projectExpenseCategoryLabels,
+    82→  ...adminExpenseCategoryLabels,
+    83→}
+    84→
+    85→const projectCategoryOptions = Object.entries(projectExpenseCategoryLabels).map(([key, val]) => ({
+    86→  value: key, ...val,
+    87→}))
+    88→
+    89→const adminCategoryOptions = Object.entries(adminExpenseCategoryLabels).map(([key, val]) => ({
+    90→  value: key, ...val,
+    91→}))
+    92→
+    93→const categoryColors: Record<string, string> = {
+    94→  RENT: 'bg-blue-100 text-blue-700',
+    95→  MAINTENANCE: 'bg-orange-100 text-orange-700',
+    96→  TRANSPORT: 'bg-teal-100 text-teal-700',
+    97→  DELIVERY: 'bg-cyan-100 text-cyan-700',
+    98→  CONSUMABLES: 'bg-amber-100 text-amber-700',
+    99→  SERVICES: 'bg-purple-100 text-purple-700',
+   100→  INSURANCE: 'bg-green-100 text-green-700',
+   101→  FUEL: 'bg-rose-100 text-rose-700',
+   102→  DRIVERS: 'bg-lime-100 text-lime-700',
+   103→  PERMITS: 'bg-emerald-100 text-emerald-700',
+   104→  OFFICE: 'bg-gray-100 text-gray-700',
+   105→  HOSPITALITY: 'bg-pink-100 text-pink-700',
+   106→  OTHER: 'bg-gray-100 text-gray-600',
+   107→  SALARIES: 'bg-emerald-100 text-emerald-700',
+   108→  INTERNET: 'bg-sky-100 text-sky-700',
+   109→  ELECTRICITY: 'bg-yellow-100 text-yellow-700',
+   110→  WATER: 'bg-blue-100 text-blue-700',
+   111→  MANAGEMENT_CARS: 'bg-violet-100 text-violet-700',
+   112→}
+   113→
+   114→// Reverse mapping: accountRole → category for backward compatibility
+   115→const ACCOUNT_ROLE_TO_CATEGORY: Record<string, string> = {
+   116→  FUEL_EXPENSE: 'FUEL',
+   117→  MAINTENANCE_EXPENSE: 'MAINTENANCE',
+   118→  DRIVER_EXPENSE: 'DRIVERS',
+   119→  TRANSPORT_EXPENSE: 'TRANSPORT',
+   120→  PROJECT_COST: 'CONSUMABLES',
+   121→  SUBCONTRACTOR_COST: 'SERVICES',
+   122→  PAYROLL_EXPENSE: 'SALARIES',
+   123→  GOSI_EXPENSE: 'SALARIES',
+   124→  ADMIN_EXPENSE: 'OTHER',
+   125→  DEPRECIATION_EXPENSE: 'OTHER',
+   126→  ZAKAT_EXPENSE: 'OTHER',
+   127→  RENTAL_DEPRECIATION: 'OTHER',
+   128→}
+   129→
+   130→const payFromLabels: Record<string, { ar: string; en: string; icon: React.ElementType }> = {
+   131→  TREASURY: { ar: 'الخزينة', en: 'Treasury', icon: Landmark },
+   132→  BANK: { ar: 'البنك', en: 'Bank', icon: Banknote },
+   133→  PETTY_CASH: { ar: 'الصندوق النقدي', en: 'Petty Cash', icon: Wallet },
+   134→}
+   135→
+   136→const payFromOptions = Object.entries(payFromLabels).map(([key, val]) => ({
+   137→  value: key, labelAr: val.ar, labelEn: val.en,
+   138→}))
+   139→
+   140→const adminCategoryKeys = new Set(Object.keys(adminExpenseCategoryLabels))
+   141→
+   142→function isProjectExpense(expense: Expense): boolean {
+   143→  return expense.projectId !== null
+   144→}
+   145→
+   146→function isAdminExpense(expense: Expense): boolean {
+   147→  return expense.projectId === null && adminCategoryKeys.has(expense.category)
+   148→}
+   149→
+   150→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   151→  return (
+   152→    <div className="space-y-2 p-4">
+   153→      {Array.from({ length: rows }).map((_, i) => (
+   154→        <div key={i} className="flex gap-4 p-3">
+   155→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   156→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   157→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   158→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   159→        </div>
+   160→      ))}
+   161→    </div>
+   162→  )
+   163→}
+   164→
+   165→// ============ Expense Form Dialog ============
+   166→interface ExpenseFormDialogProps {
+   167→  open: boolean; onOpenChange: (open: boolean) => void
+   168→  projects: ProjectOption[]; activeTab: 'project' | 'admin'
+   169→}
+   170→
+   171→function ExpenseFormDialog({
+   172→  open, onOpenChange, projects, activeTab: initialTab,
+   173→}: ExpenseFormDialogProps) {
+   174→  const { lang } = useAppStore()
+   175→  const queryClient = useQueryClient()
+   176→
+   177→  const [tab, setTab] = useState<'project' | 'admin'>(initialTab)
+   178→  const [projectId, setProjectId] = useState('')
+   179→  const [category, setCategory] = useState('')
+   180→  const [description, setDescription] = useState('')
+   181→  const [amount, setAmount] = useState('')
+   182→  const [vatAmount, setVatAmount] = useState('')
+   183→  const [date, setDate] = useState(() => {
+   184→    // Default to today's ISO date (yyyy-mm-dd) so the date picker never renders 0/0/0.
+   185→    const now = new Date()
+   186→    const y = now.getFullYear()
+   187→    const m = String(now.getMonth() + 1).padStart(2, '0')
+   188→    const d = String(now.getDate()).padStart(2, '0')
+   189→    return `${y}-${m}-${d}`
+   190→  })
+   191→  const [reference, setReference] = useState('')
+   192→  const [payFrom, setPayFrom] = useState('TREASURY')
+   193→  const [attachmentPath, setAttachmentPath] = useState('')
+   194→  const [vatRate, setVatRate] = useState('0.15')
+   195→
+   196→  // Account-based fields (replacing hardcoded payFrom & category)
+   197→  const [payingAccountId, setPayingAccountId] = useState<string | null>(null)
+   198→  const [payingAccountCode, setPayingAccountCode] = useState('')
+   199→  const [payingAccountName, setPayingAccountName] = useState('')
+   200→  const [expenseAccountId, setExpenseAccountId] = useState<string | null>(null)
+   201→  const [expenseAccountCode, setExpenseAccountCode] = useState('')
+   202→  const [expenseAccountNameAr, setExpenseAccountNameAr] = useState('')
+   203→  const [expenseAccountRole, setExpenseAccountRole] = useState<string | null>(null)
+   204→  const [expenseAccountActivityType, setExpenseAccountActivityType] = useState<string | null>(null)
+   205→  // Cost center (مركز التكلفة) — optional, linked to journal lines
+   206→  const [costCenterId, setCostCenterId] = useState<string>('')
+   207→
+   208→  // Fetch cost centers for selection
+   209→  const { data: costCenters = [] } = useQuery<{ id: string; code: string; name: string; parentId: string | null }[]>({
+   210→    queryKey: ['cost-centers-list'],
+   211→    queryFn: async () => {
+   212→      const res = await fetch('/api/cost-centers')
+   213→      if (!res.ok) return []
+   214→      return res.json()
+   215→    },
+   216→  })
+   217→
+   218→  React.useEffect(() => {
+   219→    if (open) {
+   220→      setTab(initialTab)
+   221→      setProjectId('')
+   222→      setCategory(''); setDescription('')
+   223→      setAmount(''); setVatAmount('')
+   224→      // Reset date to today's ISO date so the picker always shows a valid value.
+   225→      const now = new Date()
+   226→      const y = now.getFullYear()
+   227→      const m = String(now.getMonth() + 1).padStart(2, '0')
+   228→      const d = String(now.getDate()).padStart(2, '0')
+   229→      setDate(`${y}-${m}-${d}`)
+   230→      setReference(''); setPayFrom('TREASURY')
+   231→      setAttachmentPath(''); setVatRate('0.15')
+   232→      setPayingAccountId(null); setPayingAccountCode(''); setPayingAccountName('')
+   233→      setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr('')
+   234→      setExpenseAccountRole(null); setExpenseAccountActivityType(null)
+   235→      setCostCenterId('')
+   236→    }
+   237→  }, [open, initialTab])
+   238→
+   239→  // Auto-calc VAT if applicable
+   240→  const parsedAmount = parseFloat(amount) || 0
+   241→  const parsedVatRate = parseFloat(vatRate) || 0.15
+   242→  const autoVat = useMemo(() => {
+   243→    const manualVat = parseFloat(vatAmount)
+   244→    if (!isNaN(manualVat)) return manualVat
+   245→    return parsedAmount * parsedVatRate
+   246→  }, [amount, vatAmount, parsedAmount, parsedVatRate])
+   247→
+   248→  const totalAmount = parsedAmount + autoVat
+   249→
+   250→  // Compute JE preview lines
+   251→  const jeLines = useMemo<JePreviewLine[]>(() => {
+   252→    if (parsedAmount <= 0 || !expenseAccountId || !payingAccountId) return []
+   253→    const lines: JePreviewLine[] = []
+   254→    // Debit: Expense account
+   255→    lines.push({
+   256→      accountCode: expenseAccountCode,
+   257→      accountNameAr: expenseAccountNameAr,
+   258→      debit: parsedAmount,
+   259→      credit: 0,
+   260→    })
+   261→    // Debit: VAT Input (1410) if VAT > 0
+   262→    if (autoVat > 0) {
+   263→      lines.push({
+   264→        accountCode: '1410',
+   265→        accountNameAr: 'ضريبة مدخلات',
+   266→        debit: autoVat,
+   267→        credit: 0,
+   268→      })
+   269→    }
+   270→    // Credit: Paying account
+   271→    lines.push({
+   272→      accountCode: payingAccountCode,
+   273→      accountNameAr: payingAccountName,
+   274→      debit: 0,
+   275→      credit: totalAmount,
+   276→    })
+   277→    return lines
+   278→  }, [parsedAmount, autoVat, totalAmount, expenseAccountId, expenseAccountCode, expenseAccountNameAr, payingAccountId, payingAccountCode, payingAccountName])
+   279→
+   280→  const createMutation = useMutation({
+   281→    mutationFn: (data: Record<string, unknown>) =>
+   282→      fetch('/api/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   283→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   284→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); onOpenChange(false) },
+   285→  })
+   286→
+   287→  const handleSubmit = (e: React.FormEvent) => {
+   288→    e.preventDefault()
+   289→    // Auto-determine expenseType from account activityType
+   290→    let expenseType: string
+   291→    if (expenseAccountActivityType === 'CONSTRUCTION' || expenseAccountActivityType === 'EQUIPMENT_RENTAL') {
+   292→      expenseType = 'PROJECT'
+   293→    } else if (expenseAccountActivityType === 'BOTH') {
+   294→      expenseType = 'INTERNAL'
+   295→    } else {
+   296→      // Fallback: determine from account code prefix (7xxx = PROJECT, 8xxx = INTERNAL)
+   297→      expenseType = expenseAccountCode.startsWith('7') ? 'PROJECT' : 'INTERNAL'
+   298→    }
+   299→    const isProject = expenseType === 'PROJECT'
+   300→    createMutation.mutate({
+   301→      projectId: isProject ? projectId : null,
+   302→      expenseType,
+   303→      costCenterId: costCenterId || undefined,
+   304→      category, description, amount,
+   305→      vatRate: parsedVatRate,
+   306→      vatAmount: autoVat || null,
+   307→      totalAmount,
+   308→      date, reference: reference || null,
+   309→      payFrom,
+   310→      attachmentPath: attachmentPath || null,
+   311→      // Account-based fields
+   312→      accountId: expenseAccountId,
+   313→      payingAccountId,
+   314→      payingAccountCode,
+   315→      payingAccountName,
+   316→      expenseAccountCode,
+   317→      expenseAccountNameAr,
+   318→    })
+   319→  }
+   320→
+   321→  return (
+   322→    <Dialog open={open} onOpenChange={onOpenChange}>
+   323→      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+   324→        <DialogHeader>
+   325→          <DialogTitle>{t(lang, 'مصروف جديد', 'New Expense')}</DialogTitle>
+   326→          <DialogDescription>{t(lang, 'إضافة مصروف جديد', 'Add a new expense')}</DialogDescription>
+   327→        </DialogHeader>
+   328→        <form onSubmit={handleSubmit} className="space-y-4">
+   329→          {/* Type toggle */}
+   330→          <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+   331→            <button
+   332→              type="button"
+   333→              onClick={() => { setTab('project'); setCategory(''); setProjectId(''); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr(''); setExpenseAccountRole(null); setExpenseAccountActivityType(null) }}
+   334→              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+   335→                tab === 'project' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
+   336→              }`}
+   337→            >
+   338→              <Building2 className="size-4" />
+   339→              {t(lang, 'مصروف مشروع', 'Project Expense')}
+   340→            </button>
+   341→            <button
+   342→              type="button"
+   343→              onClick={() => { setTab('admin'); setCategory(''); setProjectId(''); setExpenseAccountId(null); setExpenseAccountCode(''); setExpenseAccountNameAr(''); setExpenseAccountRole(null); setExpenseAccountActivityType(null) }}
+   344→              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+   345→                tab === 'admin' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'
+   346→              }`}
+   347→            >
+   348→              <Briefcase className="size-4" />
+   349→              {t(lang, 'مصروف إداري', 'Admin Expense')}
+   350→            </button>
+   351→          </div>
+   352→
+   353→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   354→            {/* Project selector - only for project tab */}
+   355→            {tab === 'project' && (
+   356→              <div className="space-y-2">
+   357→                <Label>{t(lang, 'المشروع *', 'Project *')}</Label>
+   358→                <Select value={projectId} onValueChange={setProjectId}>
+   359→                  <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المشروع', 'Select project')} /></SelectTrigger>
+   360→                  <SelectContent>
+   361→                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   362→                  </SelectContent>
+   363→                </Select>
+   364→              </div>
+   365→            )}
+   366→
+   367→            {/* Admin info */}
+   368→            {tab === 'admin' && (
+   369→              <div className="space-y-2 sm:col-span-2">
+   370→                <div className="flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+   371→                  <Briefcase className="size-4 text-amber-600 shrink-0" />
+   372→                  <span className="text-sm text-amber-700">
+   373→                    {t(lang, 'المصروفات الإدارية لا ترتبط بمشروع معين', 'Administrative expenses are not linked to a specific project')}
+   374→                  </span>
+   375→                </div>
+   376→              </div>
+   377→            )}
+   378→
+   379→            {/* Expense Account selector (replaces hardcoded category + activity type) */}
+   380→            <AccountSelector
+   381→              roles={['PROJECT_COST', 'SUBCONTRACTOR_COST', 'FUEL_EXPENSE', 'MAINTENANCE_EXPENSE', 'DRIVER_EXPENSE', 'TRANSPORT_EXPENSE', 'RENTAL_DEPRECIATION', 'PAYROLL_EXPENSE', 'GOSI_EXPENSE', 'ADMIN_EXPENSE', 'DEPRECIATION_EXPENSE', 'ZAKAT_EXPENSE']}
+   382→              value={expenseAccountId}
+   383→              onValueChange={(id, account) => {
+   384→                setExpenseAccountId(id)
+   385→                setExpenseAccountCode(account.code)
+   386→                setExpenseAccountNameAr(account.nameAr || account.name)
+   387→                setExpenseAccountRole(account.accountRole)
+   388→                setExpenseAccountActivityType(account.activityType ?? null)
+   389→                // Auto-determine category from accountRole
+   390→                const mappedCategory = account.accountRole ? (ACCOUNT_ROLE_TO_CATEGORY[account.accountRole] || 'OTHER') : 'OTHER'
+   391→                setCategory(mappedCategory)
+   392→                // Auto-switch tab based on account code prefix (7xxx = project, 8xxx = admin)
+   393→                const isProjectAccount = account.code.startsWith('7')
+   394→                if (isProjectAccount) {
+   395→                  setTab('project')
+   396→                } else {
+   397→                  setTab('admin')
+   398→                  setProjectId('')
+   399→                }
+   400→              }}
+   401→              label={t(lang, 'الحساب المحاسبي *', 'Accounting Account *')}
+   402→              placeholder={t(lang, 'اختر الحساب المحاسبي...', 'Select accounting account...')}
+   403→              className="sm:col-span-2"
+   404→            />
+   405→            {/* Selected account info badge */}
+   406→            {expenseAccountId && (
+   407→              <div className="sm:col-span-2 flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+   408→                <span className="font-mono text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">{expenseAccountCode}</span>
+   409→                <span className="text-sm text-emerald-700">{expenseAccountNameAr}</span>
+   410→                {category && (
+   411→                  <Badge className="bg-gray-100 text-gray-700 border-0 text-xs mr-auto">
+   412→                    {allCategoryLabels[category]?.[lang] || category}
+   413→                  </Badge>
+   414→                )}
+   415→              </div>
+   416→            )}
+   417→            <div className="space-y-2 sm:col-span-2">
+   418→              <Label>{t(lang, 'الوصف *', 'Description *')}</Label>
+   419→              <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف المصروف', 'Expense description')} required />
+   420→            </div>
+   421→            <div className="space-y-2">
+   422→              <Label>{t(lang, 'المبلغ *', 'Amount *')}</Label>
+   423→              <Input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required />
+   424→            </div>
+   425→            <div className="space-y-2">
+   426→              <Label>{t(lang, 'ضريبة القيمة المضافة (15%)', 'VAT Amount (15%)')}</Label>
+   427→              <Input type="number" min="0" step="0.01" value={vatAmount} onChange={e => setVatAmount(e.target.value)} dir="ltr" placeholder={t(lang, 'تلقائي', 'Auto')} />
+   428→            </div>
+   429→            <div className="space-y-2">
+   430→              <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
+   431→              <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+   432→            </div>
+   433→            {/* Paying Account selector (replaces hardcoded payFrom) */}
+   434→            <AccountSelector
+   435→              roles={['CASH', 'BANK']}
+   436→              value={payingAccountId}
+   437→              onValueChange={(id, account) => {
+   438→                setPayingAccountId(id)
+   439→                setPayingAccountCode(account.code)
+   440→                setPayingAccountName(account.nameAr || account.name)
+   441→                // Map account role back to payFrom for backward compatibility
+   442→                if (account.accountRole === 'BANK') setPayFrom('BANK')
+   443→                else if (account.accountRole === 'CASH') setPayFrom('PETTY_CASH')
+   444→                else setPayFrom('TREASURY')
+   445→              }}
+   446→              label={t(lang, 'السداد من *', 'Pay From *')}
+   447→              placeholder={t(lang, 'اختر حساب السداد...', 'Select paying account...')}
+   448→            />
+   449→            {/* Cost Center selector — links expense to a cost center for project/department accounting */}
+   450→            <div className="space-y-2">
+   451→              <Label className="flex items-center gap-1.5">
+   452→                <Target className="size-3.5 text-muted-foreground" />
+   453→                {t(lang, 'مركز التكلفة', 'Cost Center')}
+   454→                <span className="text-xs text-muted-foreground font-normal">({t(lang, 'اختياري', 'optional')})</span>
+   455→              </Label>
+   456→              <Select value={costCenterId} onValueChange={setCostCenterId}>
+   457→                <SelectTrigger className="w-full">
+   458→                  <SelectValue placeholder={t(lang, 'اختر مركز التكلفة...', 'Select cost center...')} />
+   459→                </SelectTrigger>
+   460→                <SelectContent>
+   461→                  {costCenters.map(cc => (
+   462→                    <SelectItem key={cc.id} value={cc.id}>
+   463→                      <span className="font-mono text-xs ml-1">{cc.code}</span> — {cc.name}
+   464→                    </SelectItem>
+   465→                  ))}
+   466→                </SelectContent>
+   467→              </Select>
+   468→              {costCenterId && (
+   469→                <p className="text-xs text-emerald-600 flex items-center gap-1">
+   470→                  <CheckCircle2 className="size-3" />
+   471→                  {t(lang, 'سيتم ربط القيد المحاسبي بمركز التكلفة المحدد', 'Journal entry will be linked to the selected cost center')}
+   472→                </p>
+   473→              )}
+   474→            </div>
+   475→            <div className="space-y-2 sm:col-span-2">
+   476→              <Label>{t(lang, 'المرجع', 'Reference')}</Label>
+   477→              <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={t(lang, 'رقم المرجع', 'Reference number')} />
+   478→            </div>
+   479→            <div className="space-y-2">
+   480→              <Label>{t(lang, 'نسبة الضريبة', 'VAT Rate')}</Label>
+   481→              <Input
+   482→                type="text"
+   483→                inputMode="decimal"
+   484→                value={vatRate}
+   485→                onChange={e => {
+   486→                  const raw = e.target.value
+   487→                  // Only allow valid decimal number patterns (e.g., 0.15, .15, 15)
+   488→                  if (raw === '' || /^\d*\.?\d{0,4}$/.test(raw)) {
+   489→                    setVatRate(raw)
+   490→                  }
+   491→                }}
+   492→                dir="ltr"
+   493→                placeholder="0.15"
+   494→              />
+   495→            </div>
+   496→            <div className="space-y-2">
+   497→              <Label>{t(lang, 'مسار المرفق', 'Attachment Path')}</Label>
+   498→              <Input value={attachmentPath} onChange={e => setAttachmentPath(e.target.value)} placeholder={t(lang, 'مسار الملف', 'File path')} />
+   499→            </div>
+   500→          </div>
+   501→
+   502→          {/* JE Preview */}
+   503→          <JePreview lines={jeLines} />
+   504→
+   505→          {/* Total Preview */}
+   506→          {parsedAmount > 0 && (
+   507→            <Card className="bg-gray-50 border-dashed">
+   508→              <CardContent className="p-4 space-y-2">
+   509→                <div className="flex justify-between text-sm">
+   510→                  <span>{t(lang, 'المبلغ', 'Amount')}</span>
+   511→                  <span className="font-medium"><MoneyDisplay value={parsedAmount} lang={lang} size="sm" /></span>
+   512→                </div>
+   513→                <div className="flex justify-between text-sm">
+   514→                  <span>{t(lang, `الضريبة (${((parsedVatRate ?? 0) * 100).toFixed(0)}%)`, `VAT (${((parsedVatRate ?? 0) * 100).toFixed(0)}%)`)}</span>
+   515→                  <span className="font-medium"><MoneyDisplay value={autoVat} lang={lang} size="sm" /></span>
+   516→                </div>
+   517→                <Separator />
+   518→                <div className="flex justify-between text-lg font-bold">
+   519→                  <span>{t(lang, 'الإجمالي', 'Total')}</span>
+   520→                  <span className="text-emerald-700"><MoneyDisplay value={totalAmount} lang={lang} bold size="md" /></span>
+   521→                </div>
+   522→              </CardContent>
+   523→            </Card>
+   524→          )}
+   525→
+   526→          <DialogFooter>
+   527→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
+   528→            <Button type="submit" disabled={createMutation.isPending || !expenseAccountId || !payingAccountId || !description || !amount || !date || (tab === 'project' && !projectId)} className="bg-emerald-600 hover:bg-emerald-700">
+   529→              {createMutation.isPending ? t(lang, 'جاري الإنشاء...', 'Creating...') : t(lang, 'إضافة المصروف', 'Add Expense')}
+   530→            </Button>
+   531→          </DialogFooter>
+   532→        </form>
+   533→      </DialogContent>
+   534→    </Dialog>
+   535→  )
+   536→}
+   537→
+   538→// ============ Main Expenses Module ============
+   539→export function ExpensesModule() {
+   540→  const { lang } = useAppStore()
+   541→
+   542→  const [activeTab, setActiveTab] = useState<'project' | 'admin'>('project')
+   543→  const [search, setSearch] = useState('')
+   544→  const [projectFilter, setProjectFilter] = useState<string>('all')
+   545→  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+   546→  const [dialogOpen, setDialogOpen] = useState(false)
+   547→
+   548→  const { data: expenses = [], isLoading, isError, refetch } = useQuery<Expense[]>({
+   549→    queryKey: ['expenses'],
+   550→    queryFn: async () => {
+   551→      const res = await fetch('/api/expenses')
+   552→      if (!res.ok) throw new Error('Failed to fetch')
+   553→      return res.json()
+   554→    },
+   555→  })
+   556→
+   557→  const { data: projects = [] } = useQuery<ProjectOption[]>({
+   558→    queryKey: ['projects-list'],
+   559→    queryFn: async () => {
+   560→      const res = await fetch('/api/projects/list')
+   561→      if (!res.ok) return []
+   562→      return res.json()
+   563→    },
+   564→  })
+   565→
+   566→  // Split expenses by type
+   567→  const projectExpenses = useMemo(() => expenses.filter(isProjectExpense), [expenses])
+   568→  const adminExpenses = useMemo(() => expenses.filter(isAdminExpense), [expenses])
+   569→
+   570→  // Filter based on active tab
+   571→  const tabExpenses = activeTab === 'project' ? projectExpenses : adminExpenses
+   572→
+   573→  const filtered = tabExpenses.filter(exp => {
+   574→    const matchProject = projectFilter === 'all' || exp.projectId === projectFilter
+   575→    const matchCategory = categoryFilter === 'all' || exp.category === categoryFilter
+   576→    const matchSearch = !search ||
+   577→      exp.description.toLowerCase().includes(search.toLowerCase()) ||
+   578→      (exp.project?.name || '').toLowerCase().includes(search.toLowerCase()) ||
+   579→      (allCategoryLabels[exp.category]?.[lang] || '').toLowerCase().includes(search.toLowerCase())
+   580→    return matchProject && matchCategory && matchSearch
+   581→  })
+   582→
+   583→  // Summary — wrap in Number() to avoid Prisma Decimal string-concatenation bug
+   584→  const totalProjectExpenses = projectExpenses.reduce((s, e) => s + Number(e.amount), 0)
+   585→  const totalAdminExpenses = adminExpenses.reduce((s, e) => s + Number(e.amount), 0)
+   586→  const totalExpenses = expenses.reduce((s, e) => s + Number(e.totalAmount), 0)
+   587→
+   588→  const now = new Date()
+   589→  const thisMonthTotal = expenses.filter(e => {
+   590→    const d = new Date(e.date)
+   591→    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+   592→  }).reduce((s, e) => s + Number(e.totalAmount), 0)
+   593→
+   594→  const currentCategoryOptions = activeTab === 'project' ? projectCategoryOptions : adminCategoryOptions
+   595→
+   596→  // Export handler
+   597→  const handleExport = () => {
+   598→    const columns: CSVColumn[] = [
+   599→      { key: 'projectName', label: t(lang, 'المشروع', 'Project') },
+   600→      { key: 'category', label: t(lang, 'الفئة', 'Category'), format: (v) => allCategoryLabels[v as string]?.[lang] || String(v) },
+   601→      { key: 'description', label: t(lang, 'الوصف', 'Description') },
+   602→      { key: 'amount', label: t(lang, 'المبلغ', 'Amount'), format: (v) => (Number(v) || 0).toFixed(2) },
+   603→      { key: 'vatAmount', label: t(lang, 'الضريبة', 'VAT'), format: (v) => v ? (Number(v) || 0).toFixed(2) : '' },
+   604→      { key: 'totalAmount', label: t(lang, 'الإجمالي', 'Total'), format: (v) => (Number(v) || 0).toFixed(2) },
+   605→      { key: 'payFrom', label: t(lang, 'السداد من', 'Pay From'), format: (v) => payFromLabels[v as string]?.[lang] || String(v) },
+   606→      { key: 'date', label: t(lang, 'التاريخ', 'Date') },
+   607→      { key: 'reference', label: t(lang, 'المرجع', 'Reference') },
+   608→    ]
+   609→    const rows = filtered.map(exp => ({
+   610→      projectName: exp.project?.name || '',
+   611→      category: exp.category,
+   612→      description: exp.description,
+   613→      amount: exp.amount,
+   614→      vatAmount: exp.vatAmount,
+   615→      totalAmount: exp.totalAmount,
+   616→      payFrom: exp.payFrom,
+   617→      date: formatDate(exp.date, lang),
+   618→      reference: exp.reference || '',
+   619→    }))
+   620→    exportToCSV(rows, `expenses-${new Date().toISOString().slice(0, 10)}`, columns)
+   621→  }
+   622→
+   623→  const printData = useMemo(() => ({
+   624→    columns: [
+   625→      { key: 'projectName', label: lang === 'ar' ? 'المشروع' : 'Project' },
+   626→      { key: 'category', label: lang === 'ar' ? 'الفئة' : 'Category' },
+   627→      { key: 'description', label: lang === 'ar' ? 'الوصف' : 'Description' },
+   628→      { key: 'amount', label: lang === 'ar' ? 'المبلغ' : 'Amount' },
+   629→      { key: 'totalAmount', label: lang === 'ar' ? 'الإجمالي' : 'Total' },
+   630→      { key: 'date', label: lang === 'ar' ? 'التاريخ' : 'Date' },
+   631→    ],
+   632→    rows: filtered.map(exp => ({
+   633→      projectName: exp.project?.name || (lang === 'ar' ? 'عام' : 'General'),
+   634→      category: allCategoryLabels[exp.category]?.[lang] || exp.category,
+   635→      description: exp.description,
+
+[showing lines 36-635 of 968; use offset=636 with limit to continue reading]

@@ -1,0 +1,720 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  TrendingUp, Plus, Search, RefreshCw, Eye, ArrowRight, Send, CheckCircle2, Trash2,
+     7→     7→  FileText, CreditCard, Link2,
+     8→     8→} from 'lucide-react'
+     9→     9→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    10→    10→import { Button } from '@/components/ui/button'
+    11→    11→import { Input } from '@/components/ui/input'
+    12→    12→import { Badge } from '@/components/ui/badge'
+    13→    13→import {
+    14→    14→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    15→    15→} from '@/components/ui/table'
+    16→    16→import {
+    17→    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→    18→} from '@/components/ui/select'
+    19→    19→import {
+    20→    20→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    21→    21→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    22→    22→} from '@/components/ui/alert-dialog'
+    23→    23→import { Label } from '@/components/ui/label'
+    24→    24→import { Textarea } from '@/components/ui/textarea'
+    25→    25→import { Separator } from '@/components/ui/separator'
+    26→    26→import { MoneyDisplay } from '@/components/ui/money-display'
+    27→    27→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    28→    28→import { PrintButton } from '@/components/shared/print-button'
+    29→    29→import { useAppStore, formatSAR, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
+    30→    30→
+    31→    31→// ============ Types ============
+    32→    32→interface ProjectSummary { id: string; name: string; code: string; nameAr?: string | null }
+    33→    33→interface ContractSummary { id: string; contractNo: string; totalValue: number; value: number }
+    34→    34→interface SalesInvoiceSummary { id: string; invoiceNo: string; status: string; totalAmount: number }
+    35→    35→
+    36→    36→interface ClaimItem {
+    37→    37→  id: string; claimNo: string; date: string; percentage: number
+    38→    38→  amount: number; vatRate: number; vatAmount: number; totalAmount: number
+    39→    39→  status: string; approvedDate: string | null; notes: string | null
+    40→    40→  projectId: string; contractId: string; invoiced: boolean; journalEntryId: string | null
+    41→    41→  project: ProjectSummary
+    42→    42→  contract: ContractSummary
+    43→    43→  salesInvoice?: SalesInvoiceSummary | null
+    44→    44→}
+    45→    45→
+    46→    46→interface ClaimFormData {
+    47→    47→  projectId: string; contractId: string; claimNo: string; date: string
+    48→    48→  percentage: string; amount: string; vatRate: string; status: string; notes: string
+    49→    49→}
+    50→    50→
+    51→    51→// ============ Labels ============
+    52→    52→const labels = {
+    53→    53→  title: { ar: 'المستخلصات', en: 'Progress Claims' },
+    54→    54→  subtitle: { ar: 'متابعة مستخلصات المشاريع والعقود', en: 'Track project and contract claims' },
+    55→    55→  claimNo: { ar: 'رقم المستخلص', en: 'Claim No.' },
+    56→    56→  project: { ar: 'المشروع', en: 'Project' },
+    57→    57→  contract: { ar: 'العقد', en: 'Contract' },
+    58→    58→  date: { ar: 'التاريخ', en: 'Date' },
+    59→    59→  percentage: { ar: 'نسبة الإنجاز', en: 'Completion %' },
+    60→    60→  amount: { ar: 'المبلغ', en: 'Amount' },
+    61→    61→  vat: { ar: 'الضريبة', en: 'VAT' },
+    62→    62→  total: { ar: 'الإجمالي', en: 'Total' },
+    63→    63→  status: { ar: 'الحالة', en: 'Status' },
+    64→    64→  actions: { ar: 'الإجراءات', en: 'Actions' },
+    65→    65→  newClaim: { ar: 'مستخلص جديد', en: 'New Claim' },
+    66→    66→  search: { ar: 'بحث برقم المستخلص أو المشروع...', en: 'Search by claim no. or project...' },
+    67→    67→  allStatus: { ar: 'كل الحالات', en: 'All Status' },
+    68→    68→  allProjects: { ar: 'كل المشاريع', en: 'All Projects' },
+    69→    69→  totalClaimed: { ar: 'إجمالي المستخلصات', en: 'Total Claimed' },
+    70→    70→  collected: { ar: 'المحصل', en: 'Collected' },
+    71→    71→  pending: { ar: 'قيد التحصيل', en: 'Pending Collection' },
+    72→    72→  contractValue: { ar: 'قيمة العقد', en: 'Contract Value' },
+    73→    73→  claimedAmount: { ar: 'المستخلص', en: 'Claimed' },
+    74→    74→  completion: { ar: 'نسبة الإنجاز', en: 'Completion' },
+    75→    75→  contractRunningTotals: { ar: 'إجمالي المستخلصات حسب العقد', en: 'Claims by Contract' },
+    76→    76→  selectProject: { ar: 'اختر المشروع أولاً', en: 'Select project first' },
+    77→    77→  deleteTitle: { ar: 'حذف المستخلص', en: 'Delete Claim' },
+    78→    78→  deleteConfirm: { ar: 'هل أنت متأكد من حذف هذا المستخلص؟', en: 'Are you sure you want to delete this claim?' },
+    79→    79→  noClaims: { ar: 'لا توجد مستخلصات', en: 'No claims found' },
+    80→    80→  submit: { ar: 'تقديم', en: 'Submit' },
+    81→    81→  approve: { ar: 'اعتماد', en: 'Approve' },
+    82→    82→  exceedWarning: { ar: 'تحذير: النسبة التراكمية تتجاوز 100%', en: 'Warning: Cumulative percentage exceeds 100%' },
+    83→    83→  cumulativePercentage: { ar: 'النسبة التراكمية', en: 'Cumulative %' },
+    84→    84→  invoiced: { ar: 'مفوتر', en: 'Invoiced' },
+    85→    85→  notInvoiced: { ar: 'غير مفوتر', en: 'Not Invoiced' },
+    86→    86→  createInvoice: { ar: 'إنشاء فاتورة', en: 'Create Invoice' },
+    87→    87→  linkedInvoice: { ar: 'الفاتورة المرتبطة', en: 'Linked Invoice' },
+    88→    88→  accountingEntry: { ar: 'القيد المحاسبي', en: 'Accounting Entry' },
+    89→    89→}
+    90→    90→
+    91→    91→const defaultForm: ClaimFormData = {
+    92→    92→  projectId: '', contractId: '', claimNo: '', date: '',
+    93→    93→  percentage: '', amount: '', vatRate: '0.15', status: 'DRAFT', notes: '',
+    94→    94→}
+    95→    95→
+    96→    96→// ============ View State ============
+    97→    97→type ViewState = { type: 'list' } | { type: 'create' } | { type: 'detail'; claimId: string }
+    98→    98→
+    99→    99→// ============ Skeleton ============
+   100→   100→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   101→   101→  return (
+   102→   102→    <div className="space-y-2 p-4">
+   103→   103→      {Array.from({ length: rows }).map((_, i) => (
+   104→   104→        <div key={i} className="flex gap-4 p-3">
+   105→   105→          <div className="h-5 w-28 animate-pulse rounded bg-gray-200" />
+   106→   106→          <div className="h-5 w-40 animate-pulse rounded bg-gray-200" />
+   107→   107→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   108→   108→        </div>
+   109→   109→      ))}
+   110→   110→    </div>
+   111→   111→  )
+   112→   112→}
+   113→   113→
+   114→   114→// ============ Create Claim Page ============
+   115→   115→function CreateClaimPage({
+   116→   116→  projects, existingClaims, onBack,
+   117→   117→}: {
+   118→   118→  projects: ProjectSummary[]; existingClaims: ClaimItem[]; onBack: () => void
+   119→   119→}) {
+   120→   120→  const queryClient = useQueryClient()
+   121→   121→  const { lang } = useAppStore()
+   122→   122→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   123→   123→
+   124→   124→  const [form, setForm] = useState<ClaimFormData>(defaultForm)
+   125→   125→
+   126→   126→  const { data: projectContracts = [] } = useQuery<ContractSummary[]>({
+   127→   127→    queryKey: ['contracts-for-project', form.projectId],
+   128→   128→    queryFn: async () => {
+   129→   129→      if (!form.projectId) return []
+   130→   130→      const res = await fetch(`/api/contracts?projectId=${form.projectId}`)
+   131→   131→      if (!res.ok) return []
+   132→   132→      const data = await res.json()
+   133→   133→      return data.map((c: { id: string; contractNo: string; totalValue: number; value: number }) => ({
+   134→   134→        id: c.id, contractNo: c.contractNo, totalValue: c.totalValue, value: c.value,
+   135→   135→      }))
+   136→   136→    },
+   137→   137→    enabled: !!form.projectId,
+   138→   138→  })
+   139→   139→
+   140→   140→  const selectedContract = projectContracts.find(c => c.id === form.contractId)
+   141→   141→  const pct = parseFloat(form.percentage) || 0
+   142→   142→  const contractValueExVat = selectedContract ? selectedContract.value || (selectedContract.totalValue / 1.15) : 0
+   143→   143→  const autoAmount = contractValueExVat > 0 ? Math.round(contractValueExVat * pct / 100 * 100) / 100 : 0
+   144→   144→
+   145→   145→  const existingClaimsForContract = existingClaims.filter(c => c.contractId === form.contractId)
+   146→   146→  const existingPercentage = existingClaimsForContract.reduce((s, c) => s + c.percentage, 0)
+   147→   147→  const cumulativePercentage = existingPercentage + pct
+   148→   148→  const exceeds100 = cumulativePercentage > 100
+   149→   149→
+   150→   150→  React.useEffect(() => {
+   151→   151→    if (autoAmount > 0) {
+   152→   152→      setForm(f => ({ ...f, amount: autoAmount.toString() }))
+   153→   153→    }
+   154→   154→  }, [autoAmount, form.percentage, form.contractId])
+   155→   155→
+   156→   156→  const val = parseFloat(form.amount) || 0
+   157→   157→  const rate = parseFloat(form.vatRate) || 0
+   158→   158→  const vatAmt = Math.round(val * rate * 100) / 100
+   159→   159→  const totalAmt = Math.round((val + vatAmt) * 100) / 100
+   160→   160→
+   161→   161→  const createMutation = useMutation({
+   162→   162→    mutationFn: (data: ClaimFormData) =>
+   163→   163→      fetch('/api/progress-claims', {
+   164→   164→        method: 'POST',
+   165→   165→        headers: { 'Content-Type': 'application/json' },
+   166→   166→        body: JSON.stringify({
+   167→   167→          ...data,
+   168→   168→          percentage: parseFloat(data.percentage) || 0,
+   169→   169→          amount: parseFloat(data.amount) || 0,
+   170→   170→          vatRate: parseFloat(data.vatRate) || 0.15,
+   171→   171→        }),
+   172→   172→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   173→   173→    onSuccess: () => {
+   174→   174→      queryClient.invalidateQueries({ queryKey: ['progress-claims'] })
+   175→   175→      onBack()
+   176→   176→    },
+   177→   177→  })
+   178→   178→
+   179→   179→  const handleSubmit = (e: React.FormEvent) => {
+   180→   180→    e.preventDefault()
+   181→   181→    if (exceeds100) return
+   182→   182→    createMutation.mutate(form)
+   183→   183→  }
+   184→   184→
+   185→   185→  return (
+   186→   186→    <div className="space-y-6">
+   187→   187→      <div className="flex items-center gap-3">
+   188→   188→        <Button variant="outline" size="icon" onClick={onBack}>
+   189→   189→          <ArrowRight className="size-4" />
+   190→   190→        </Button>
+   191→   191→        <div className="flex-1">
+   192→   192→          <h1 className="text-2xl font-bold text-gray-900">{t('مستخلص جديد', 'New Progress Claim')}</h1>
+   193→   193→          <p className="text-sm text-muted-foreground">{t('إضافة مستخلص جديد للعقد', 'Add a new progress claim for a contract')}</p>
+   194→   194→        </div>
+   195→   195→      </div>
+   196→   196→
+   197→   197→      <form onSubmit={handleSubmit} className="space-y-6">
+   198→   198→        <Card>
+   199→   199→          <CardHeader className="pb-4"><CardTitle className="text-lg">{t('بيانات العقد', 'Contract Information')}</CardTitle></CardHeader>
+   200→   200→          <CardContent className="space-y-4">
+   201→   201→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   202→   202→              <div className="space-y-2">
+   203→   203→                <Label>{t(labels.project.ar, labels.project.en)} *</Label>
+   204→   204→                <Select value={form.projectId} onValueChange={v => setForm(f => ({ ...f, projectId: v, contractId: '' }))}>
+   205→   205→                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر المشروع', 'Select project')} /></SelectTrigger>
+   206→   206→                  <SelectContent>
+   207→   207→                    {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   208→   208→                  </SelectContent>
+   209→   209→                </Select>
+   210→   210→              </div>
+   211→   211→              <div className="space-y-2">
+   212→   212→                <Label>{t(labels.contract.ar, labels.contract.en)} *</Label>
+   213→   213→                <Select value={form.contractId} onValueChange={v => setForm(f => ({ ...f, contractId: v }))} disabled={!form.projectId}>
+   214→   214→                  <SelectTrigger className="w-full"><SelectValue placeholder={form.projectId ? t('اختر العقد', 'Select contract') : t(labels.selectProject.ar, labels.selectProject.en)} /></SelectTrigger>
+   215→   215→                  <SelectContent>
+   216→   216→                    {projectContracts.map(c => (
+   217→   217→                      <SelectItem key={c.id} value={c.id}>{c.contractNo} — <MoneyDisplay value={c.totalValue} lang={lang} size="sm" inline /></SelectItem>
+   218→   218→                    ))}
+   219→   219→                  </SelectContent>
+   220→   220→                </Select>
+   221→   221→              </div>
+   222→   222→            </div>
+   223→   223→
+   224→   224→            {selectedContract && (
+   225→   225→              <div className="p-3 rounded-lg border bg-emerald-50 text-sm">
+   226→   226→                <div className="flex items-center gap-4 flex-wrap">
+   227→   227→                  <span><span className="text-muted-foreground">{t(labels.contractValue.ar, labels.contractValue.en)}:</span> <MoneyDisplay value={selectedContract.totalValue} lang={lang} size="sm" inline bold /></span>
+   228→   228→                  {existingPercentage > 0 && (
+   229→   229→                    <span><span className="text-muted-foreground">{t('المستخلص سابقاً', 'Previously claimed')}:</span> {(existingPercentage ?? 0).toFixed(1)}%</span>
+   230→   230→                  )}
+   231→   231→                </div>
+   232→   232→              </div>
+   233→   233→            )}
+   234→   234→          </CardContent>
+   235→   235→        </Card>
+   236→   236→
+   237→   237→        <Card>
+   238→   238→          <CardHeader className="pb-4"><CardTitle className="text-lg">{t('بيانات المستخلص', 'Claim Details')}</CardTitle></CardHeader>
+   239→   239→          <CardContent className="space-y-4">
+   240→   240→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   241→   241→              <div className="space-y-2"><Label>{t(labels.claimNo.ar, labels.claimNo.en)} *</Label><Input value={form.claimNo} onChange={e => setForm(f => ({ ...f, claimNo: e.target.value }))} placeholder="CLM-001-01" required /></div>
+   242→   242→              <div className="space-y-2"><Label>{t(labels.date.ar, labels.date.en)} *</Label><Input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} required /></div>
+   243→   243→              <div className="space-y-2">
+   244→   244→                <Label>{t(labels.percentage.ar, labels.percentage.en)} (%) *</Label>
+   245→   245→                <Input type="number" step="0.1" min="0" max="100" value={form.percentage} onChange={e => setForm(f => ({ ...f, percentage: e.target.value }))} placeholder="0" required />
+   246→   246→                {pct > 0 && (
+   247→   247→                  <p className={`text-xs ${exceeds100 ? 'text-rose-600 font-medium' : 'text-muted-foreground'}`}>
+   248→   248→                    {t(labels.cumulativePercentage.ar, labels.cumulativePercentage.en)}: {(cumulativePercentage ?? 0).toFixed(1)}%
+   249→   249→                    {exceeds100 && ` - ${t(labels.exceedWarning.ar, labels.exceedWarning.en)}`}
+   250→   250→                  </p>
+   251→   251→                )}
+   252→   252→              </div>
+   253→   253→              <div className="space-y-2"><Label>{t(labels.amount.ar, labels.amount.en)} (قبل الضريبة) *</Label><Input type="number" step="0.01" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" required /></div>
+   254→   254→              <div className="space-y-2"><Label>{t('نسبة الضريبة', 'VAT Rate')}</Label><Input type="number" step="0.01" value={form.vatRate} onChange={e => setForm(f => ({ ...f, vatRate: e.target.value }))} /></div>
+   255→   255→              <div className="space-y-2 sm:col-span-2"><Label>{t('ملاحظات', 'Notes')}</Label><Textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder={t('ملاحظات', 'Notes')} rows={2} /></div>
+   256→   256→            </div>
+   257→   257→            {exceeds100 && (
+   258→   258→              <Card className="bg-rose-50 border-rose-200"><CardContent className="p-4"><p className="text-rose-700 font-medium">{t(labels.exceedWarning.ar, labels.exceedWarning.en)}</p></CardContent></Card>
+   259→   259→            )}
+   260→   260→          </CardContent>
+   261→   261→        </Card>
+   262→   262→
+   263→   263→        {val > 0 && (
+   264→   264→          <Card className="bg-emerald-50 border-emerald-200">
+   265→   265→            <CardContent className="p-4">
+   266→   266→              <div className="grid grid-cols-3 gap-4 text-center">
+   267→   267→                <div><p className="text-xs text-muted-foreground">{t('المبلغ', 'Amount')}</p><MoneyDisplay value={val} lang={lang} size="md" bold className="justify-center" /></div>
+   268→   268→                <div><p className="text-xs text-muted-foreground">{t('الضريبة', 'VAT')} ({((rate ?? 0) * 100).toFixed(0)}%)</p><MoneyDisplay value={vatAmt} lang={lang} size="md" bold className="justify-center" /></div>
+   269→   269→                <div><p className="text-xs text-muted-foreground">{t('الإجمالي', 'Total')}</p><MoneyDisplay value={totalAmt} lang={lang} size="lg" bold className="justify-center text-emerald-700" /></div>
+   270→   270→              </div>
+   271→   271→            </CardContent>
+   272→   272→          </Card>
+   273→   273→        )}
+   274→   274→
+   275→   275→        <div className="flex items-center justify-end gap-3">
+   276→   276→          <Button type="button" variant="outline" onClick={onBack}>{commonText.cancel[lang]}</Button>
+   277→   277→          <Button type="submit" disabled={createMutation.isPending || exceeds100 || !form.projectId || !form.contractId || !form.claimNo || !form.date || !form.percentage} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+   278→   278→            {createMutation.isPending ? t('جاري الحفظ...', 'Saving...') : t('إنشاء', 'Create')}
+   279→   279→          </Button>
+   280→   280→        </div>
+   281→   281→      </form>
+   282→   282→    </div>
+   283→   283→  )
+   284→   284→}
+   285→   285→
+   286→   286→// ============ Main Progress Claims Module ============
+   287→   287→export function ProgressClaimsModule() {
+   288→   288→  const { lang, setActiveItem } = useAppStore()
+   289→   289→  const queryClient = useQueryClient()
+   290→   290→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   291→   291→
+   292→   292→  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+   293→   293→  const [search, setSearch] = useState('')
+   294→   294→  const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
+   295→   295→  const [statusFilter, setStatusFilter] = useState<string>('all')
+   296→   296→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   297→   297→
+   298→   298→  // Fetch claims
+   299→   299→  const { data: claims = [], isLoading, isError, refetch } = useQuery<ClaimItem[]>({
+   300→   300→    queryKey: ['progress-claims', selectedProjectId],
+   301→   301→    queryFn: async () => {
+   302→   302→      const url = selectedProjectId === 'all' ? '/api/progress-claims' : `/api/progress-claims?projectId=${selectedProjectId}`
+   303→   303→      const res = await fetch(url)
+   304→   304→      if (!res.ok) throw new Error('Failed to fetch')
+   305→   305→      return res.json()
+   306→   306→    },
+   307→   307→  })
+   308→   308→
+   309→   309→  // Fetch projects for filter
+   310→   310→  const { data: projects = [] } = useQuery<ProjectSummary[]>({
+   311→   311→    queryKey: ['projects-for-claims'],
+   312→   312→    queryFn: async () => {
+   313→   313→      const res = await fetch('/api/projects/list')
+   314→   314→      if (!res.ok) return []
+   315→   315→      return res.json()
+   316→   316→    },
+   317→   317→  })
+   318→   318→
+   319→   319→  // Delete mutation
+   320→   320→  const deleteMutation = useMutation({
+   321→   321→    mutationFn: (id: string) =>
+   322→   322→      fetch(`/api/progress-claims/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   323→   323→    onSuccess: () => {
+   324→   324→      queryClient.invalidateQueries({ queryKey: ['progress-claims'] })
+   325→   325→      setDeleteId(null)
+   326→   326→    },
+   327→   327→  })
+   328→   328→
+   329→   329→  // Status workflow mutation
+   330→   330→  const statusMutation = useMutation({
+   331→   331→    mutationFn: ({ id, status }: { id: string; status: string }) =>
+   332→   332→      fetch(`/api/progress-claims/${id}`, {
+   333→   333→        method: 'PUT',
+   334→   334→        headers: { 'Content-Type': 'application/json' },
+   335→   335→        body: JSON.stringify({ status }),
+   336→   336→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   337→   337→    onSuccess: () => {
+   338→   338→      queryClient.invalidateQueries({ queryKey: ['progress-claims'] })
+   339→   339→    },
+   340→   340→  })
+   341→   341→
+   342→   342→  // Filter
+   343→   343→  const filtered = claims.filter(c => {
+   344→   344→    const matchSearch = !search || c.claimNo.includes(search) || c.project.name.includes(search) || c.contract.contractNo.includes(search)
+   345→   345→    const matchStatus = statusFilter === 'all' || c.status === statusFilter
+   346→   346→    return matchSearch && matchStatus
+   347→   347→  })
+   348→   348→
+   349→   349→  // Compute running totals per contract
+   350→   350→  const contractTotals = useMemo(() => {
+   351→   351→    const acc: Record<string, { contractNo: string; totalValue: number; claimedAmount: number }> = {}
+   352→   352→    for (const c of claims) {
+   353→   353→      if (!acc[c.contractId]) {
+   354→   354→        acc[c.contractId] = { contractNo: c.contract.contractNo, totalValue: c.contract.totalValue, claimedAmount: 0 }
+   355→   355→      }
+   356→   356→      acc[c.contractId] = { contractNo: acc[c.contractId].contractNo, totalValue: acc[c.contractId].totalValue, claimedAmount: acc[c.contractId].claimedAmount + c.amount }
+   357→   357→    }
+   358→   358→    const result: Record<string, { contractNo: string; totalValue: number; claimedAmount: number; claimedPercent: string }> = {}
+   359→   359→    for (const [key, val] of Object.entries(acc)) {
+   360→   360→      const contractValueExVat = val.totalValue > 0 ? val.totalValue / 1.15 : 0
+   361→   361→      const claimedPercent = contractValueExVat > 0 ? (((val.claimedAmount ?? 0) / contractValueExVat) * 100).toFixed(1) : '0'
+   362→   362→      result[key] = { contractNo: val.contractNo, totalValue: val.totalValue, claimedAmount: val.claimedAmount, claimedPercent }
+   363→   363→    }
+   364→   364→    return result
+   365→   365→    // eslint-disable-next-line react-hooks/preserve-manual-memoization
+   366→   366→  }, [claims])
+   367→   367→
+   368→   368→  const totalClaimedAmount = filtered.reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+   369→   369→  const paidAmount = filtered.filter(c => c.status === 'PAID' || c.status === 'PARTIALLY_PAID').reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+   370→   370→  const pendingAmount = filtered.filter(c => ['SUBMITTED', 'APPROVED'].includes(c.status)).reduce((s, c) => s + (c.totalAmount ?? 0), 0)
+   371→   371→
+   372→   372→  // Counters
+   373→   373→  const invoicedCount = filtered.filter(c => c.invoiced).length
+   374→   374→  const uninvoicedApprovedCount = filtered.filter(c => !c.invoiced && c.status === 'APPROVED').length
+   375→   375→
+   376→   376→  // ============ CREATE VIEW ============
+   377→   377→  if (viewState.type === 'create') {
+   378→   378→    return (
+   379→   379→      <CreateClaimPage
+   380→   380→        projects={projects}
+   381→   381→        existingClaims={claims}
+   382→   382→        onBack={() => setViewState({ type: 'list' })}
+   383→   383→      />
+   384→   384→    )
+   385→   385→  }
+   386→   386→
+   387→   387→  // ============ DETAIL VIEW ============
+   388→   388→  if (viewState.type === 'detail') {
+   389→   389→    const claim = claims.find(c => c.id === viewState.claimId)
+   390→   390→    if (!claim) {
+   391→   391→      return (
+   392→   392→        <div className="flex flex-col items-center gap-3 py-10">
+   393→   393→          <p className="text-rose-600">{t('لم يتم العثور على المستخلص', 'Claim not found')}</p>
+   394→   394→          <Button variant="outline" onClick={() => setViewState({ type: 'list' })}>{t('العودة', 'Back')}</Button>
+   395→   395→        </div>
+   396→   396→      )
+   397→   397→    }
+   398→   398→
+   399→   399→    return (
+   400→   400→      <div className="space-y-6">
+   401→   401→        <div className="flex items-center gap-3">
+   402→   402→          <Button variant="outline" size="icon" onClick={() => setViewState({ type: 'list' })}>
+   403→   403→            <ArrowRight className="size-4" />
+   404→   404→          </Button>
+   405→   405→          <div className="flex-1">
+   406→   406→            <div className="flex items-center gap-3">
+   407→   407→              <h2 className="text-xl font-bold">{claim.claimNo}</h2>
+   408→   408→              <StatusBadge status={claim.status} lang={lang} />
+   409→   409→              {claim.invoiced && (
+   410→   410→                <Badge className="bg-sky-100 text-sky-700 border-sky-200">
+   411→   411→                  <FileText className="size-3 ml-1" />
+   412→   412→                  {t(labels.invoiced.ar, labels.invoiced.en)}
+   413→   413→                </Badge>
+   414→   414→              )}
+   415→   415→            </div>
+   416→   416→            <p className="text-sm text-muted-foreground">{claim.project.name} - {claim.contract.contractNo}</p>
+   417→   417→          </div>
+   418→   418→        </div>
+   419→   419→
+   420→   420→        {/* Info Cards */}
+   421→   421→        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   422→   422→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.project.ar, labels.project.en)}</p><p className="text-sm font-medium truncate">{claim.project.name}</p></CardContent></Card>
+   423→   423→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.contract.ar, labels.contract.en)}</p><p className="text-sm font-medium">{claim.contract.contractNo}</p></CardContent></Card>
+   424→   424→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.percentage.ar, labels.percentage.en)}</p><p className="text-sm font-medium">{claim.percentage}%</p></CardContent></Card>
+   425→   425→          <Card><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.date.ar, labels.date.en)}</p><p className="text-sm font-medium">{formatDate(claim.date, lang)}</p></CardContent></Card>
+   426→   426→        </div>
+   427→   427→
+   428→   428→        {/* Financial Details */}
+   429→   429→        <Card>
+   430→   430→          <CardHeader><CardTitle className="text-lg">{t('البيانات المالية', 'Financial Details')}</CardTitle></CardHeader>
+   431→   431→          <CardContent className="space-y-2">
+   432→   432→            <div className="flex justify-between text-sm"><span>{t('المبلغ قبل الضريبة', 'Amount before VAT')}</span><span className="font-medium"><MoneyDisplay value={claim.amount} lang={lang} size="sm" inline /></span></div>
+   433→   433→            <div className="flex justify-between text-sm"><span>{t(labels.vat.ar, labels.vat.en)} ({((claim.vatRate ?? 0) * 100).toFixed(0)}%)</span><span className="font-medium"><MoneyDisplay value={claim.vatAmount} lang={lang} size="sm" inline /></span></div>
+   434→   434→            <Separator />
+   435→   435→            <div className="flex justify-between text-lg font-bold"><span>{t(labels.total.ar, labels.total.en)}</span><span className="text-emerald-700"><MoneyDisplay value={claim.totalAmount} lang={lang} size="lg" inline bold /></span></div>
+   436→   436→          </CardContent>
+   437→   437→        </Card>
+   438→   438→
+   439→   439→        {claim.notes && (
+   440→   440→          <Card><CardContent className="p-4"><p className="text-sm text-muted-foreground mb-1">{t('ملاحظات', 'Notes')}</p><p className="text-sm">{claim.notes}</p></CardContent></Card>
+   441→   441→        )}
+   442→   442→
+   443→   443→        {/* Linked Sales Invoice */}
+   444→   444→        {claim.invoiced && claim.salesInvoice ? (
+   445→   445→          <Card className="border-sky-200 bg-sky-50/50">
+   446→   446→            <CardContent className="p-4">
+   447→   447→              <div className="flex items-center gap-2 mb-2">
+   448→   448→                <Link2 className="size-4 text-sky-600" />
+   449→   449→                <span className="text-sm font-semibold text-sky-700">{t(labels.linkedInvoice.ar, labels.linkedInvoice.en)}</span>
+   450→   450→              </div>
+   451→   451→              <div className="flex items-center gap-3">
+   452→   452→                <FileText className="size-5 text-sky-500" />
+   453→   453→                <div>
+   454→   454→                  <p className="font-medium">{claim.salesInvoice.invoiceNo}</p>
+   455→   455→                  <div className="flex items-center gap-2 mt-0.5">
+   456→   456→                    <MoneyDisplay value={claim.salesInvoice.totalAmount} lang={lang} size="sm" inline />
+   457→   457→                    <StatusBadge status={claim.salesInvoice.status} lang={lang} />
+   458→   458→                  </div>
+   459→   459→                </div>
+   460→   460→              </div>
+   461→   461→            </CardContent>
+   462→   462→          </Card>
+   463→   463→        ) : null}
+   464→   464→
+   465→   465→        {/* Create Invoice Button for APPROVED uninvoiced claims */}
+   466→   466→        {!claim.invoiced && claim.status === 'APPROVED' && (
+   467→   467→          <Card className="border-emerald-200 bg-emerald-50/50">
+   468→   468→            <CardContent className="p-4">
+   469→   469→              <div className="flex items-center justify-between">
+   470→   470→                <div>
+   471→   471→                  <p className="text-sm font-semibold text-emerald-700">{t(labels.notInvoiced.ar, labels.notInvoiced.en)}</p>
+   472→   472→                  <p className="text-xs text-muted-foreground">{t('يمكنك إنشاء فاتورة مبيعات من هذا المستخلص', 'You can create a sales invoice from this claim', lang)}</p>
+   473→   473→                </div>
+   474→   474→                <Button
+   475→   475→                  className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+   476→   476→                  onClick={() => {
+   477→   477→                    // Navigate to sales module with extract pre-fill
+   478→   478→                    setActiveItem('sales')
+   479→   479→                  }}
+   480→   480→                >
+   481→   481→                  <FileText className="size-4" />
+   482→   482→                  {t(labels.createInvoice.ar, labels.createInvoice.en)}
+   483→   483→                </Button>
+   484→   484→              </div>
+   485→   485→            </CardContent>
+   486→   486→          </Card>
+   487→   487→        )}
+   488→   488→
+   489→   489→        {/* Accounting Entry */}
+   490→   490→        {claim.journalEntryId && (
+   491→   491→          <Card className="border-sky-200 bg-sky-50/30">
+   492→   492→            <CardContent className="p-4">
+   493→   493→              <div className="flex items-center gap-2 text-sky-700 mb-1">
+   494→   494→                <CreditCard className="size-4" />
+   495→   495→                <span className="text-sm font-semibold">{t(labels.accountingEntry.ar, labels.accountingEntry.en)}</span>
+   496→   496→              </div>
+   497→   497→              <p className="text-xs text-muted-foreground">{t('تم إنشاء قيد محاسبي تلقائي', 'Auto journal entry created', lang)}</p>
+   498→   498→              <p className="text-xs font-mono mt-0.5">{claim.journalEntryId}</p>
+   499→   499→            </CardContent>
+   500→   500→          </Card>
+   501→   501→        )}
+   502→   502→
+   503→   503→        {/* Status Workflow Actions */}
+   504→   504→        <Card className="border-emerald-200 bg-emerald-50/50">
+   505→   505→          <CardContent className="p-4">
+   506→   506→            <div className="flex flex-wrap items-center gap-3">
+   507→   507→              <span className="text-sm font-semibold">{t('إجراءات:', 'Actions:')}</span>
+   508→   508→              {claim.status === 'DRAFT' && (
+   509→   509→                <Button className="gap-2 bg-blue-600 hover:bg-blue-700" onClick={() => statusMutation.mutate({ id: claim.id, status: 'SUBMITTED' })} disabled={statusMutation.isPending}>
+   510→   510→                  <Send className="size-4" /> {t(labels.submit.ar, labels.submit.en)}
+   511→   511→                </Button>
+   512→   512→              )}
+   513→   513→              {claim.status === 'SUBMITTED' && (
+   514→   514→                <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => statusMutation.mutate({ id: claim.id, status: 'APPROVED' })} disabled={statusMutation.isPending}>
+   515→   515→                  <CheckCircle2 className="size-4" /> {t(labels.approve.ar, labels.approve.en)}
+   516→   516→                </Button>
+   517→   517→              )}
+   518→   518→              {(claim.status === 'APPROVED' || claim.status === 'PARTIALLY_PAID') && (
+   519→   519→                <Button className="gap-2 bg-teal-600 hover:bg-teal-700" onClick={() => statusMutation.mutate({ id: claim.id, status: 'PAID' })} disabled={statusMutation.isPending}>
+   520→   520→                  <CheckCircle2 className="size-4" /> {t('تأكيد الدفع', 'Mark Paid')}
+   521→   521→                </Button>
+   522→   522→              )}
+   523→   523→              {claim.status === 'PAID' && (
+   524→   524→                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-sm px-3 py-1">
+   525→   525→                  <CheckCircle2 className="size-4 ml-1" /> {t('مدفوع', 'Paid')}
+   526→   526→                </Badge>
+   527→   527→              )}
+   528→   528→            </div>
+   529→   529→          </CardContent>
+   530→   530→        </Card>
+   531→   531→      </div>
+   532→   532→    )
+   533→   533→  }
+   534→   534→
+   535→   535→  // ============ LIST VIEW ============
+   536→   536→  return (
+   537→   537→    <ModuleLayout
+   538→   538→      title={labels.title}
+   539→   539→      subtitle={labels.subtitle}
+   540→   540→      actions={
+   541→   541→        <>
+   542→   542→          <PrintButton type="extract" size="icon" />
+   543→   543→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
+   544→   544→            <RefreshCw className="size-4" />
+   545→   545→          </Button>
+   546→   546→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   547→   547→            <Plus className="size-4" /> {t(labels.newClaim.ar, labels.newClaim.en)}
+   548→   548→          </Button>
+   549→   549→        </>
+   550→   550→      }
+   551→   551→    >
+   552→   552→      {/* Summary Cards */}
+   553→   553→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+   554→   554→        <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.totalClaimed.ar, labels.totalClaimed.en)}</p><MoneyDisplay value={totalClaimedAmount} lang={lang} size="xl" bold className="text-emerald-700" /></CardContent></Card>
+   555→   555→        <Card className="bg-teal-50 border-teal-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.collected.ar, labels.collected.en)}</p><MoneyDisplay value={paidAmount} lang={lang} size="xl" bold className="text-teal-700" /></CardContent></Card>
+   556→   556→        <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{t(labels.pending.ar, labels.pending.en)}</p><MoneyDisplay value={pendingAmount} lang={lang} size="xl" bold className="text-amber-700" /></CardContent></Card>
+   557→   557→      </div>
+   558→   558→
+   559→   559→      {/* Invoice Status Summary */}
+   560→   560→      <div className="grid grid-cols-2 gap-3">
+   561→   561→        <Card className="border-sky-200 bg-sky-50/30"><CardContent className="p-3 flex items-center gap-3"><FileText className="size-5 text-sky-500" /><div><p className="text-xs text-muted-foreground">{t(labels.invoiced.ar, labels.invoiced.en)}</p><p className="text-lg font-bold text-sky-700">{invoicedCount}</p></div></CardContent></Card>
+   562→   562→        <Card className="border-amber-200 bg-amber-50/30"><CardContent className="p-3 flex items-center gap-3"><TrendingUp className="size-5 text-amber-500" /><div><p className="text-xs text-muted-foreground">{t('معتمد غير مفوتر', 'Approved Uninvoiced', lang)}</p><p className="text-lg font-bold text-amber-700">{uninvoicedApprovedCount}</p></div></CardContent></Card>
+   563→   563→      </div>
+   564→   564→
+   565→   565→      {/* Contract Running Totals */}
+   566→   566→      {Object.keys(contractTotals).length > 0 && (
+   567→   567→        <Card>
+   568→   568→          <CardHeader className="pb-3"><CardTitle className="text-lg">{t(labels.contractRunningTotals.ar, labels.contractRunningTotals.en)}</CardTitle></CardHeader>
+   569→   569→          <CardContent className="px-0 pb-2">
+   570→   570→            <div className="overflow-x-auto">
+   571→   571→              <Table>
+   572→   572→                <TableHeader><TableRow><TableHead className="text-right">{t('رقم العقد', 'Contract No.')}</TableHead><TableHead className="text-right">{t(labels.contractValue.ar, labels.contractValue.en)}</TableHead><TableHead className="text-right">{t(labels.claimedAmount.ar, labels.claimedAmount.en)}</TableHead><TableHead className="text-right">{t(labels.completion.ar, labels.completion.en)}</TableHead></TableRow></TableHeader>
+   573→   573→                <TableBody>
+   574→   574→                  {Object.values(contractTotals).map(ct => (
+   575→   575→                    <TableRow key={ct.contractNo}>
+   576→   576→                      <TableCell className="font-medium">{ct.contractNo}</TableCell>
+   577→   577→                      <TableCell><MoneyDisplay value={ct.totalValue} lang={lang} size="sm" inline /></TableCell>
+   578→   578→                      <TableCell><MoneyDisplay value={ct.claimedAmount} lang={lang} size="sm" inline /></TableCell>
+   579→   579→                      <TableCell>
+   580→   580→                        <div className="flex items-center gap-2">
+   581→   581→                          <div className="flex-1 bg-gray-200 rounded-full h-2 max-w-[100px]"><div className={`rounded-full h-2 transition-all ${parseFloat(ct.claimedPercent) > 90 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(parseFloat(ct.claimedPercent), 100)}%` }} /></div>
+   582→   582→                          <span className="text-sm font-medium">{ct.claimedPercent}%</span>
+   583→   583→                        </div>
+   584→   584→                      </TableCell>
+   585→   585→                    </TableRow>
+   586→   586→                  ))}
+   587→   587→                </TableBody>
+   588→   588→              </Table>
+   589→   589→            </div>
+   590→   590→          </CardContent>
+   591→   591→        </Card>
+   592→   592→      )}
+   593→   593→
+   594→   594→      {/* Filters */}
+   595→   595→      <Card>
+   596→   596→        <CardContent className="p-4">
+   597→   597→          <div className="flex flex-col sm:flex-row gap-3">
+   598→   598→            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+   599→   599→              <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder={t(labels.allProjects.ar, labels.allProjects.en)} /></SelectTrigger>
+   600→   600→              <SelectContent>
+   601→   601→                <SelectItem value="all">{t(labels.allProjects.ar, labels.allProjects.en)}</SelectItem>
+   602→   602→                {projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+   603→   603→              </SelectContent>
+   604→   604→            </Select>
+   605→   605→            <div className="relative flex-1">
+   606→   606→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   607→   607→              <Input placeholder={t(labels.search.ar, labels.search.en)} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   608→   608→            </div>
+   609→   609→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+   610→   610→              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t(labels.allStatus.ar, labels.allStatus.en)} /></SelectTrigger>
+   611→   611→              <SelectContent>
+   612→   612→                <SelectItem value="all">{t(labels.allStatus.ar, labels.allStatus.en)}</SelectItem>
+   613→   613→                <SelectItem value="DRAFT">{t('مسودة', 'Draft')}</SelectItem>
+   614→   614→                <SelectItem value="SUBMITTED">{t('مقدم', 'Submitted')}</SelectItem>
+   615→   615→                <SelectItem value="APPROVED">{t('معتمد', 'Approved')}</SelectItem>
+   616→   616→                <SelectItem value="PARTIALLY_PAID">{t('مدفوع جزئياً', 'Partially Paid')}</SelectItem>
+   617→   617→                <SelectItem value="PAID">{t('مدفوع', 'Paid')}</SelectItem>
+   618→   618→                <SelectItem value="REJECTED">{t('مرفوض', 'Rejected')}</SelectItem>
+   619→   619→              </SelectContent>
+   620→   620→            </Select>
+   621→   621→          </div>
+   622→   622→        </CardContent>
+   623→   623→      </Card>
+   624→   624→
+   625→   625→      {/* Claims Table */}
+   626→   626→      <Card>
+   627→   627→        <CardContent className="p-0">
+   628→   628→          {isLoading ? (
+   629→   629→            <TableSkeleton />
+   630→   630→          ) : isError ? (
+   631→   631→            <div className="flex flex-col items-center gap-3 py-10">
+   632→   632→              <p className="text-rose-600">{commonText.error[lang]}</p>
+   633→   633→              <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   634→   634→            </div>
+   635→   635→          ) : filtered.length === 0 ? (
+   636→   636→            <div className="flex flex-col items-center gap-3 py-10">
+   637→   637→              <TrendingUp className="size-12 text-gray-300" />
+   638→   638→              <p className="text-muted-foreground">{t(labels.noClaims.ar, labels.noClaims.en)}</p>
+   639→   639→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
+   640→   640→                <Plus className="size-4 mr-1" /> {t(labels.newClaim.ar, labels.newClaim.en)}
+   641→   641→              </Button>
+   642→   642→            </div>
+   643→   643→          ) : (
+   644→   644→            <div className="overflow-x-auto">
+   645→   645→              <Table>
+   646→   646→                <TableHeader>
+   647→   647→                  <TableRow>
+   648→   648→                    <TableHead className="text-right">{t(labels.claimNo.ar, labels.claimNo.en)}</TableHead>
+   649→   649→                    <TableHead className="text-right">{t(labels.project.ar, labels.project.en)}</TableHead>
+   650→   650→                    <TableHead className="text-right">{t(labels.contract.ar, labels.contract.en)}</TableHead>
+   651→   651→                    <TableHead className="text-right">{t(labels.date.ar, labels.date.en)}</TableHead>
+   652→   652→                    <TableHead className="text-right">{t(labels.percentage.ar, labels.percentage.en)}</TableHead>
+   653→   653→                    <TableHead className="text-right">{t(labels.amount.ar, labels.amount.en)}</TableHead>
+   654→   654→                    <TableHead className="text-right">{t(labels.total.ar, labels.total.en)}</TableHead>
+   655→   655→                    <TableHead className="text-right">{t(labels.status.ar, labels.status.en)}</TableHead>
+   656→   656→                    <TableHead className="text-right">{t('مفوتر؟', 'Invoiced?', lang)}</TableHead>
+   657→   657→                    <TableHead className="text-right">{t(labels.actions.ar, labels.actions.en)}</TableHead>
+   658→   658→                  </TableRow>
+   659→   659→                </TableHeader>
+   660→   660→                <TableBody>
+   661→   661→                  {filtered.map(c => (
+   662→   662→                    <TableRow key={c.id} className="cursor-pointer hover:bg-emerald-50/50" onClick={() => setViewState({ type: 'detail', claimId: c.id })}>
+   663→   663→                      <TableCell className="font-medium">{c.claimNo}</TableCell>
+   664→   664→                      <TableCell className="max-w-[150px] truncate">{c.project.name}</TableCell>
+   665→   665→                      <TableCell>{c.contract.contractNo}</TableCell>
+   666→   666→                      <TableCell>{formatDate(c.date, lang)}</TableCell>
+   667→   667→                      <TableCell>{c.percentage}%</TableCell>
+   668→   668→                      <TableCell><MoneyDisplay value={c.amount} lang={lang} size="sm" inline /></TableCell>
+   669→   669→                      <TableCell className="font-semibold"><MoneyDisplay value={c.totalAmount} lang={lang} size="sm" inline bold /></TableCell>
+   670→   670→                      <TableCell><StatusBadge status={c.status} lang={lang} /></TableCell>
+   671→   671→                      <TableCell>
+   672→   672→                        {c.invoiced ? (
+   673→   673→                          <Badge className="bg-sky-100 text-sky-700 border-sky-200 text-[10px]">{t(labels.invoiced.ar, labels.invoiced.en)}</Badge>
+   674→   674→                        ) : c.status === 'APPROVED' ? (
+   675→   675→                          <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[10px]">{t(labels.notInvoiced.ar, labels.notInvoiced.en)}</Badge>
+   676→   676→                        ) : (
+   677→   677→                          <span className="text-xs text-muted-foreground">—</span>
+   678→   678→                        )}
+   679→   679→                      </TableCell>
+   680→   680→                      <TableCell>
+   681→   681→                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+   682→   682→                          <PrintButton type="extract" documentId={c.id} size="icon" />
+   683→   683→                          <Button variant="ghost" size="icon" className="size-8" onClick={() => setViewState({ type: 'detail', claimId: c.id })} title={t('عرض', 'View')}>
+   684→   684→                            <Eye className="size-4" />
+   685→   685→                          </Button>
+   686→   686→                          {c.status === 'DRAFT' && (
+   687→   687→                            <Button variant="ghost" size="icon" className="size-8 text-rose-500" onClick={() => setDeleteId(c.id)} title={t('حذف', 'Delete')}>
+   688→   688→                              <Trash2 className="size-4" />
+   689→   689→                            </Button>
+   690→   690→                          )}
+   691→   691→                        </div>
+   692→   692→                      </TableCell>
+   693→   693→                    </TableRow>
+   694→   694→                  ))}
+   695→   695→                </TableBody>
+   696→   696→              </Table>
+   697→   697→            </div>
+   698→   698→          )}
+   699→   699→        </CardContent>
+   700→   700→      </Card>
+   701→   701→
+   702→   702→      {/* Delete Confirmation */}
+   703→   703→      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+   704→   704→        <AlertDialogContent>
+   705→   705→          <AlertDialogHeader>
+   706→   706→            <AlertDialogTitle>{t(labels.deleteTitle.ar, labels.deleteTitle.en)}</AlertDialogTitle>
+   707→   707→            <AlertDialogDescription>{t(labels.deleteConfirm.ar, labels.deleteConfirm.en)}</AlertDialogDescription>
+   708→   708→          </AlertDialogHeader>
+   709→   709→          <AlertDialogFooter>
+   710→   710→            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+   711→   711→            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+   712→   712→              {commonText.delete[lang]}
+   713→   713→            </AlertDialogAction>
+   714→   714→          </AlertDialogFooter>
+   715→   715→        </AlertDialogContent>
+   716→   716→      </AlertDialog>
+   717→   717→    </ModuleLayout>
+   718→   718→  )
+   719→   719→}
+   720→   720→

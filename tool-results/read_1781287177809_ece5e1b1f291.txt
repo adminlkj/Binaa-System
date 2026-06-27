@@ -1,0 +1,722 @@
+     1→'use client'
+     2→
+     3→import React, { useState, useMemo, useCallback } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  Percent, RefreshCw, FileText, CheckCircle2, CalendarDays,
+     7→  Download, Eye, PlusCircle, Clock,
+     8→  Send, Receipt, ShoppingBag, FileCheck, AlertTriangle, Wallet,
+     9→} from 'lucide-react'
+    10→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    11→import { Button } from '@/components/ui/button'
+    12→import { Badge } from '@/components/ui/badge'
+    13→import { Separator } from '@/components/ui/separator'
+    14→import {
+    15→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    16→} from '@/components/ui/select'
+    17→import { Label } from '@/components/ui/label'
+    18→import {
+    19→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    20→} from '@/components/ui/table'
+    21→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    22→import {
+    23→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+    24→} from '@/components/ui/dialog'
+    25→import { Input } from '@/components/ui/input'
+    26→import { useAppStore, formatDate } from '@/stores/app-store'
+    27→import { MoneyDisplay } from '@/components/ui/money-display'
+    28→import { ModuleLayout } from '@/components/shared/module-layout'
+    29→import { PrintButton } from '@/components/shared/print-button'
+    30→import { toast } from 'sonner'
+    31→
+    32→// ============ Types ============
+    33→interface VATDeclaration {
+    34→  id: string; period: string; year: number; quarter: number
+    35→  totalSales: number; outputVat: number
+    36→  totalPurchases: number; inputVat: number
+    37→  netVat: number; status: string
+    38→  filedDate: string | null; paymentDate: string | null; paymentReference: string | null
+    39→  createdAt: string; updatedAt: string
+    40→}
+    41→
+    42→interface SalesInvoiceBreakdown { id: string; invoiceNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
+    43→interface ProgressClaimBreakdown { id: string; claimNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
+    44→interface PurchaseInvoiceBreakdown { id: string; invoiceNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
+    45→interface SubcontractorInvoiceBreakdown { id: string; invoiceNo: string; date: string; totalAmount: number; vatAmount: number; status: string }
+    46→interface ExpenseBreakdown { id: string; description: string; date: string; amount: number; vatAmount: number | null; category: string }
+    47→
+    48→interface DeclarationBreakdown {
+    49→  salesInvoices: SalesInvoiceBreakdown[]
+    50→  progressClaims: ProgressClaimBreakdown[]
+    51→  purchaseInvoices: PurchaseInvoiceBreakdown[]
+    52→  subcontractorInvoices: SubcontractorInvoiceBreakdown[]
+    53→  expenses: ExpenseBreakdown[]
+    54→}
+    55→
+    56→// ============ Helpers ============
+    57→function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
+    58→
+    59→const statusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string; icon: React.ReactNode }> = {
+    60→  DRAFT: { label: { ar: 'مسودة', en: 'Draft' }, color: 'text-amber-700', bg: 'bg-amber-100', icon: <Clock className="size-3.5" /> },
+    61→  FILED: { label: { ar: 'مُقر', en: 'Filed' }, color: 'text-emerald-700', bg: 'bg-emerald-100', icon: <CheckCircle2 className="size-3.5" /> },
+    62→  PAID: { label: { ar: 'مدفوع', en: 'Paid' }, color: 'text-teal-700', bg: 'bg-teal-100', icon: <CheckCircle2 className="size-3.5" /> },
+    63→}
+    64→
+    65→function StatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+    66→  const cfg = statusConfig[status] || statusConfig.DRAFT
+    67→  return <Badge className={`${cfg.bg} ${cfg.color} border-0 gap-1`}>{cfg.icon}{cfg.label[lang]}</Badge>
+    68→}
+    69→
+    70→const quarterConfig: Record<number, { ar: string; en: string; monthsAr: string; monthsEn: string }> = {
+    71→  1: { ar: 'الربع الأول', en: 'Q1', monthsAr: 'يناير - مارس', monthsEn: 'January - March' },
+    72→  2: { ar: 'الربع الثاني', en: 'Q2', monthsAr: 'أبريل - يونيو', monthsEn: 'April - June' },
+    73→  3: { ar: 'الربع الثالث', en: 'Q3', monthsAr: 'يوليو - سبتمبر', monthsEn: 'July - September' },
+    74→  4: { ar: 'الربع الرابع', en: 'Q4', monthsAr: 'أكتوبر - ديسمبر', monthsEn: 'October - December' },
+    75→}
+    76→
+    77→// ============ VAT Summary Tab ============
+    78→function VATSummaryTab({ vatReturns }: { vatReturns: VATDeclaration[] }) {
+    79→  const { lang } = useAppStore()
+    80→
+    81→  const summary = useMemo(() => {
+    82→    const totalOutputVat = vatReturns.reduce((s, v) => s + v.outputVat, 0)
+    83→    const totalInputVat = vatReturns.reduce((s, v) => s + v.inputVat, 0)
+    84→    const totalSales = vatReturns.reduce((s, v) => s + v.totalSales, 0)
+    85→    const totalPurchases = vatReturns.reduce((s, v) => s + v.totalPurchases, 0)
+    86→    const netVat = totalOutputVat - totalInputVat
+    87→    return { totalOutputVat, totalInputVat, totalSales, totalPurchases, netVat }
+    88→  }, [vatReturns])
+    89→
+    90→  return (
+    91→    <div className="space-y-4">
+    92→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    93→        {/* Output VAT */}
+    94→        <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
+    95→          <CardContent className="p-5">
+    96→            <div className="flex items-center gap-2 mb-3">
+    97→              <div className="size-8 rounded-full bg-emerald-100 flex items-center justify-center">
+    98→                <Receipt className="size-4 text-emerald-600" />
+    99→              </div>
+   100→              <div>
+   101→                <p className="text-sm font-medium text-emerald-700">{t('ضريبة المخرجات', 'Output VAT', lang)}</p>
+   102→                <p className="text-xs text-muted-foreground">{t('من فواتير المبيعات والمستخلصات', 'From sales invoices & claims', lang)}</p>
+   103→              </div>
+   104→            </div>
+   105→            <div className="space-y-1">
+   106→              <div className="flex items-center justify-between text-sm">
+   107→                <span className="text-muted-foreground">{t('إجمالي المبيعات', 'Total Sales', lang)}</span>
+   108→                <MoneyDisplay value={summary.totalSales} lang={lang} size="sm" bold className="text-emerald-700" />
+   109→              </div>
+   110→              <Separator />
+   111→              <div className="flex items-center justify-between">
+   112→                <span className="font-semibold text-sm">{t('ضريبة المخرجات', 'Output VAT', lang)}</span>
+   113→                <MoneyDisplay value={summary.totalOutputVat} lang={lang} size="lg" bold className="text-emerald-700" />
+   114→              </div>
+   115→            </div>
+   116→          </CardContent>
+   117→        </Card>
+   118→
+   119→        {/* Input VAT */}
+   120→        <Card className="border-rose-200 bg-gradient-to-br from-rose-50 to-white">
+   121→          <CardContent className="p-5">
+   122→            <div className="flex items-center gap-2 mb-3">
+   123→              <div className="size-8 rounded-full bg-rose-100 flex items-center justify-center">
+   124→                <ShoppingBag className="size-4 text-rose-600" />
+   125→              </div>
+   126→              <div>
+   127→                <p className="text-sm font-medium text-rose-700">{t('ضريبة المدخلات', 'Input VAT', lang)}</p>
+   128→                <p className="text-xs text-muted-foreground">{t('من المشتريات والمصروفات', 'From purchases & expenses', lang)}</p>
+   129→              </div>
+   130→            </div>
+   131→            <div className="space-y-1">
+   132→              <div className="flex items-center justify-between text-sm">
+   133→                <span className="text-muted-foreground">{t('إجمالي المشتريات', 'Total Purchases', lang)}</span>
+   134→                <MoneyDisplay value={summary.totalPurchases} lang={lang} size="sm" bold className="text-rose-700" />
+   135→              </div>
+   136→              <Separator />
+   137→              <div className="flex items-center justify-between">
+   138→                <span className="font-semibold text-sm">{t('ضريبة المدخلات', 'Input VAT', lang)}</span>
+   139→                <MoneyDisplay value={summary.totalInputVat} lang={lang} size="lg" bold className="text-rose-700" />
+   140→              </div>
+   141→            </div>
+   142→          </CardContent>
+   143→        </Card>
+   144→
+   145→        {/* Net VAT */}
+   146→        <Card className={`border-2 ${summary.netVat >= 0 ? 'border-amber-300 bg-gradient-to-br from-amber-50 to-white' : 'border-teal-300 bg-gradient-to-br from-teal-50 to-white'}`}>
+   147→          <CardContent className="p-5">
+   148→            <div className="flex items-center gap-2 mb-3">
+   149→              <div className={`size-8 rounded-full flex items-center justify-center ${summary.netVat >= 0 ? 'bg-amber-100' : 'bg-teal-100'}`}>
+   150→                <Percent className={`size-4 ${summary.netVat >= 0 ? 'text-amber-600' : 'text-teal-600'}`} />
+   151→              </div>
+   152→              <div>
+   153→                <p className={`text-sm font-medium ${summary.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'}`}>
+   154→                  {t('صافي الضريبة', 'Net VAT', lang)}
+   155→                </p>
+   156→                <p className="text-xs text-muted-foreground">
+   157→                  {summary.netVat >= 0 ? t('مبلغ مستحق للدفع', 'Amount payable', lang) : t('مبلغ مسترد', 'Amount refundable', lang)}
+   158→                </p>
+   159→              </div>
+   160→            </div>
+   161→            <MoneyDisplay
+   162→              value={Math.abs(summary.netVat)}
+   163→              lang={lang} size="xl" bold
+   164→              className={summary.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'}
+   165→            />
+   166→          </CardContent>
+   167→        </Card>
+   168→      </div>
+   169→    </div>
+   170→  )
+   171→}
+   172→
+   173→// ============ Tax Declaration Tab ============
+   174→function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, onView, isCreating }: {
+   175→  vatReturns: VATDeclaration[]; isLoading: boolean
+   176→  selectedYear: number; onSelectYear: (y: number) => void
+   177→  onView: (declaration: VATDeclaration) => void
+   178→  isCreating: boolean
+   179→}) {
+   180→  const { lang } = useAppStore()
+   181→  const queryClient = useQueryClient()
+   182→  const [creatingQuarter, setCreatingQuarter] = useState<number | null>(null)
+   183→  const currentYear = new Date().getFullYear()
+   184→  const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
+   185→
+   186→  const declarationsByQuarter = useMemo(() => {
+   187→    const map: Record<number, VATDeclaration> = {}
+   188→    vatReturns.forEach(v => { if (v.quarter >= 1 && v.quarter <= 4) map[v.quarter] = v })
+   189→    return map
+   190→  }, [vatReturns])
+   191→
+   192→  const createMutation = useMutation({
+   193→    mutationFn: (data: { year: number; quarter: number }) =>
+   194→      fetch('/api/vat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   195→        .then(async r => { if (!r.ok) { const err = await r.json(); throw new Error(err.error || 'Failed') } return r.json() }),
+   196→    onSuccess: () => {
+   197→      queryClient.invalidateQueries({ queryKey: ['vat-returns', selectedYear] })
+   198→      toast.success(t('تم إنشاء الإقرار الضريبي', 'VAT return created', lang))
+   199→    },
+   200→    onError: (err: Error) => toast.error(err.message),
+   201→  })
+   202→
+   203→  const handleCreate = (year: number, quarter: number) => {
+   204→    setCreatingQuarter(quarter)
+   205→    createMutation.mutate({ year, quarter })
+   206→  }
+   207→
+   208→  return (
+   209→    <div className="space-y-4">
+   210→      {/* Year Selector */}
+   211→      <Card className="bg-gray-50/50">
+   212→        <CardContent className="p-4">
+   213→          <div className="flex items-center gap-3">
+   214→            <Label className="text-sm font-medium">{t('السنة', 'Year', lang)}</Label>
+   215→            <Select value={String(selectedYear)} onValueChange={v => onSelectYear(Number(v))}>
+   216→              <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+   217→              <SelectContent>
+   218→                {yearOptions.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+   219→              </SelectContent>
+   220→            </Select>
+   221→          </div>
+   222→        </CardContent>
+   223→      </Card>
+   224→
+   225→      {/* Quarter Cards */}
+   226→      {isLoading ? (
+   227→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   228→          {Array.from({ length: 4 }).map((_, i) => (
+   229→            <Card key={i}><CardContent className="p-5"><div className="h-40 animate-pulse rounded bg-gray-100" /></CardContent></Card>
+   230→          ))}
+   231→        </div>
+   232→      ) : (
+   233→        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   234→          {[1, 2, 3, 4].map(quarter => {
+   235→            const declaration = declarationsByQuarter[quarter]
+   236→            const cfg = quarterConfig[quarter]
+   237→            const hasDeclaration = !!declaration
+   238→
+   239→            return (
+   240→              <Card key={quarter} className={`transition-all hover:shadow-md ${hasDeclaration ? (declaration.status === 'PAID' ? 'border-emerald-300 bg-emerald-50/30' : declaration.status === 'FILED' ? 'border-teal-300 bg-teal-50/30' : 'border-amber-300 bg-amber-50/30') : 'border-gray-200'}`}>
+   241→                <CardContent className="p-5">
+   242→                  <div className="flex items-center justify-between mb-3">
+   243→                    <div>
+   244→                      <h3 className="font-bold text-gray-900 text-base">{cfg[lang]} - {selectedYear}</h3>
+   245→                      <p className="text-sm text-muted-foreground">{lang === 'ar' ? cfg.monthsAr : cfg.monthsEn}</p>
+   246→                    </div>
+   247→                    {hasDeclaration ? <StatusBadge status={declaration.status} lang={lang} /> : <Badge className="bg-gray-100 text-gray-500 border-0">{t('لا يوجد', 'None', lang)}</Badge>}
+   248→                  </div>
+   249→
+   250→                  {hasDeclaration ? (
+   251→                    <>
+   252→                      <div className="space-y-2 mb-4">
+   253→                        <div className="flex items-center justify-between text-sm">
+   254→                          <span className="text-muted-foreground">{t('ضريبة المخرجات', 'Output VAT', lang)}</span>
+   255→                          <MoneyDisplay value={declaration.outputVat} lang={lang} size="sm" className="text-emerald-600" />
+   256→                        </div>
+   257→                        <div className="flex items-center justify-between text-sm">
+   258→                          <span className="text-muted-foreground">{t('ضريبة المدخلات', 'Input VAT', lang)}</span>
+   259→                          <MoneyDisplay value={declaration.inputVat} lang={lang} size="sm" className="text-rose-600" />
+   260→                        </div>
+   261→                        <Separator />
+   262→                        <div className="flex items-center justify-between">
+   263→                          <span className="font-semibold text-sm">{t('صافي الضريبة', 'Net VAT', lang)}</span>
+   264→                          <MoneyDisplay value={declaration.netVat} lang={lang} size="md" bold className={declaration.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} />
+   265→                        </div>
+   266→                      </div>
+   267→                      <div className="flex gap-2">
+   268→                        <Button variant="outline" size="sm" className="flex-1 gap-1.5 border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={() => onView(declaration)}>
+   269→                          <Eye className="size-4" />{t('عرض التفاصيل', 'View Details', lang)}
+   270→                        </Button>
+   271→                      </div>
+   272→                    </>
+   273→                  ) : (
+   274→                    <>
+   275→                      <div className="flex flex-col items-center justify-center py-4 mb-3">
+   276→                        <div className="size-12 rounded-full bg-gray-100 flex items-center justify-center mb-2">
+   277→                          <FileText className="size-6 text-gray-400" />
+   278→                        </div>
+   279→                        <p className="text-sm text-muted-foreground text-center">{t('لم يتم إنشاء إقرار', 'No Declaration Created', lang)}</p>
+   280→                      </div>
+   281→                      <Button className="w-full bg-emerald-600 hover:bg-emerald-700 gap-1.5" size="sm" onClick={() => handleCreate(selectedYear, quarter)} disabled={createMutation.isPending && creatingQuarter === quarter}>
+   282→                        {createMutation.isPending && creatingQuarter === quarter ? (<><RefreshCw className="size-4 animate-spin" />{t('جاري الإنشاء...', 'Creating...', lang)}</>) : (<><PlusCircle className="size-4" />{t('إنشاء إقرار', 'Create Declaration', lang)}</>)}
+   283→                      </Button>
+   284→                    </>
+   285→                  )}
+   286→                </CardContent>
+   287→              </Card>
+   288→            )
+   289→          })}
+   290→        </div>
+   291→      )}
+   292→    </div>
+   293→  )
+   294→}
+   295→
+   296→// ============ Declaration Detail View ============
+   297→function DeclarationDetailView({ declaration, breakdown, lang, onBack, onSubmit, onPay, isSubmitting }: {
+   298→  declaration: VATDeclaration; breakdown: DeclarationBreakdown | null; lang: 'ar' | 'en'
+   299→  onBack: () => void; onSubmit: (id: string) => void; onPay: (id: string, reference: string) => void; isSubmitting: boolean
+   300→}) {
+   301→  const [payDialogOpen, setPayDialogOpen] = useState(false)
+   302→  const [payReference, setPayReference] = useState('')
+   303→  const cfg = quarterConfig[declaration.quarter]
+   304→  const isDraft = declaration.status === 'DRAFT'
+   305→  const isFiled = declaration.status === 'FILED' || declaration.status === 'PAID'
+   306→
+   307→  const handleExportCSV = useCallback(() => {
+   308→    const rows = [
+   309→      [t('الحقل', 'Field', lang), t('القيمة', 'Value', lang)],
+   310→      [t('الفترة', 'Period', lang), declaration.period],
+   311→      [t('إجمالي المبيعات', 'Total Sales', lang), (declaration.totalSales ?? 0).toFixed(4)],
+   312→      [t('ضريبة المخرجات', 'Output VAT', lang), (declaration.outputVat ?? 0).toFixed(4)],
+   313→      [t('إجمالي المشتريات', 'Total Purchases', lang), (declaration.totalPurchases ?? 0).toFixed(4)],
+   314→      [t('ضريبة المدخلات', 'Input VAT', lang), (declaration.inputVat ?? 0).toFixed(4)],
+   315→      [t('صافي الضريبة', 'Net VAT', lang), (declaration.netVat ?? 0).toFixed(4)],
+   316→    ]
+   317→    const csvContent = rows.map(row => row.join(',')).join('\n')
+   318→    const BOM = '\uFEFF'
+   319→    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+   320→    const url = URL.createObjectURL(blob)
+   321→    const link = document.createElement('a')
+   322→    link.href = url; link.download = `VAT-${declaration.period}.csv`; link.click()
+   323→    URL.revokeObjectURL(url)
+   324→  }, [declaration, lang])
+   325→
+   326→  return (
+   327→    <div className="space-y-6">
+   328→      {/* Header */}
+   329→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   330→        <div className="flex items-center gap-3">
+   331→          <Button variant="ghost" size="icon" onClick={onBack} className="text-emerald-600">←</Button>
+   332→          <div>
+   333→            <h2 className="text-xl font-bold text-gray-900">{t('تفاصيل الإقرار الضريبي', 'Tax Declaration Details', lang)}</h2>
+   334→            <p className="text-sm text-muted-foreground">{cfg[lang]} - {declaration.year} • {lang === 'ar' ? cfg.monthsAr : cfg.monthsEn}</p>
+   335→          </div>
+   336→        </div>
+   337→        <div className="flex items-center gap-2 flex-wrap">
+   338→          <StatusBadge status={declaration.status} lang={lang} />
+   339→          <PrintButton type="tax-declaration" documentId={declaration.id} size="sm" className="gap-1.5" />
+   340→          <Button variant="outline" size="sm" className="gap-1.5" onClick={handleExportCSV}><Download className="size-4" />{t('تصدير CSV', 'Export CSV', lang)}</Button>
+   341→          {isDraft && (
+   342→            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 gap-1.5" onClick={() => onSubmit(declaration.id)} disabled={isSubmitting}>
+   343→              {isSubmitting ? <RefreshCw className="size-4 animate-spin" /> : <Send className="size-4" />}
+   344→              {t('تقديم الإقرار', 'Submit Declaration', lang)}
+   345→            </Button>
+   346→          )}
+   347→          {declaration.status === 'FILED' && (
+   348→            <Button size="sm" className="bg-teal-600 hover:bg-teal-700 gap-1.5" onClick={() => setPayDialogOpen(true)}>
+   349→              <Wallet className="size-4" />{t('تسجيل الدفع', 'Record Payment', lang)}
+   350→            </Button>
+   351→          )}
+   352→        </div>
+   353→      </div>
+   354→
+   355→      {/* Auto-calculated notice */}
+   356→      <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 rounded-lg p-3 border border-amber-200">
+   357→        <Percent className="size-4 shrink-0" />
+   358→        <span>{t('جميع الأرقام محسوبة تلقائياً من بيانات الفواتير الفعلية ومجمّدة عند التقديم', 'All figures are auto-calculated from actual invoice data and frozen upon filing', lang)}</span>
+   359→      </div>
+   360→
+   361→      {/* Period Info */}
+   362→      <Card className="border-emerald-200 bg-emerald-50/50">
+   363→        <CardContent className="p-4">
+   364→          <div className="flex items-center gap-2">
+   365→            <CalendarDays className="size-5 text-emerald-600" />
+   366→            <span className="font-medium text-emerald-800">{t('الفترة الضريبية', 'Tax Period', lang)}:</span>
+   367→            <span className="font-bold text-emerald-900 text-lg" dir="ltr">{declaration.period}</span>
+   368→            <span className="text-emerald-600 text-sm">{lang === 'ar' ? cfg.monthsAr : cfg.monthsEn}</span>
+   369→          </div>
+   370→        </CardContent>
+   371→      </Card>
+   372→
+   373→      {/* VAT Summary Cards */}
+   374→      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   375→        <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">
+   376→          <CardContent className="p-5">
+   377→            <p className="text-sm font-medium text-emerald-700 mb-2">{t('ضريبة المخرجات', 'Output VAT', lang)}</p>
+   378→            <div className="flex items-center justify-between text-sm mb-1">
+   379→              <span className="text-muted-foreground">{t('إجمالي المبيعات', 'Total Sales', lang)}</span>
+   380→              <MoneyDisplay value={declaration.totalSales} lang={lang} size="sm" bold className="text-emerald-700" />
+   381→            </div>
+   382→            <Separator className="my-2" />
+   383→            <MoneyDisplay value={declaration.outputVat} lang={lang} size="lg" bold className="text-emerald-700" />
+   384→          </CardContent>
+   385→        </Card>
+   386→        <Card className="border-rose-200 bg-gradient-to-br from-rose-50 to-white">
+   387→          <CardContent className="p-5">
+   388→            <p className="text-sm font-medium text-rose-700 mb-2">{t('ضريبة المدخلات', 'Input VAT', lang)}</p>
+   389→            <div className="flex items-center justify-between text-sm mb-1">
+   390→              <span className="text-muted-foreground">{t('إجمالي المشتريات', 'Total Purchases', lang)}</span>
+   391→              <MoneyDisplay value={declaration.totalPurchases} lang={lang} size="sm" bold className="text-rose-700" />
+   392→            </div>
+   393→            <Separator className="my-2" />
+   394→            <MoneyDisplay value={declaration.inputVat} lang={lang} size="lg" bold className="text-rose-700" />
+   395→          </CardContent>
+   396→        </Card>
+   397→        <Card className={`border-2 ${declaration.netVat >= 0 ? 'border-amber-300' : 'border-teal-300'}`}>
+   398→          <CardContent className="p-5">
+   399→            <p className={`text-sm font-medium ${declaration.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} mb-2`}>{t('صافي الضريبة', 'Net VAT', lang)}</p>
+   400→            <p className="text-xs text-muted-foreground mb-2">
+   401→              {declaration.netVat >= 0 ? t('مستحق للدفع', 'Payable', lang) : t('مسترد', 'Refundable', lang)}
+   402→            </p>
+   403→            <MoneyDisplay value={declaration.netVat} lang={lang} size="xl" bold className={declaration.netVat >= 0 ? 'text-amber-700' : 'text-teal-700'} />
+   404→          </CardContent>
+   405→        </Card>
+   406→      </div>
+   407→
+   408→      {/* Filing Info */}
+   409→      {isFiled && declaration.filedDate && (
+   410→        <Card className="border-emerald-200 bg-emerald-50">
+   411→          <CardContent className="p-4">
+   412→            <div className="flex items-center gap-2">
+   413→              <FileCheck className="size-5 text-emerald-600" />
+   414→              <span className="text-emerald-800 font-medium">{t('تم تقديم الإقرار في', 'Declaration submitted on', lang)}: {formatDate(declaration.filedDate, lang)}</span>
+   415→            </div>
+   416→          </CardContent>
+   417→        </Card>
+   418→      )}
+   419→
+   420→      {declaration.status === 'PAID' && declaration.paymentDate && (
+   421→        <Card className="border-teal-200 bg-teal-50">
+   422→          <CardContent className="p-4">
+   423→            <div className="flex items-center gap-2">
+   424→              <CheckCircle2 className="size-5 text-teal-600" />
+   425→              <span className="text-teal-800 font-medium">{t('تم الدفع في', 'Payment made on', lang)}: {formatDate(declaration.paymentDate, lang)} {declaration.paymentReference ? `(${t('مرجع', 'Ref', lang)}: ${declaration.paymentReference})` : ''}</span>
+   426→            </div>
+   427→          </CardContent>
+   428→        </Card>
+   429→      )}
+   430→
+   431→      {/* Breakdown */}
+   432→      {breakdown && (
+   433→        <div className="space-y-4">
+   434→          <h3 className="text-lg font-semibold flex items-center gap-2"><FileText className="size-5 text-emerald-600" />{t('تفصيل الفواتير', 'Invoice Breakdown', lang)}</h3>
+   435→
+   436→          {breakdown.salesInvoices.length > 0 && (
+   437→            <Card>
+   438→              <CardHeader className="pb-2 pt-4 px-4">
+   439→                <h4 className="font-semibold text-emerald-800 flex items-center gap-2"><Receipt className="size-4" />{t('فواتير المبيعات', 'Sales Invoices', lang)}<Badge className="bg-emerald-100 text-emerald-700 border-0">{breakdown.salesInvoices.length}</Badge></h4>
+   440→              </CardHeader>
+   441→              <CardContent className="p-4 pt-0">
+   442→                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+   443→                  <Table>
+   444→                    <TableHeader><TableRow>
+   445→                      <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No', lang)}</TableHead>
+   446→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   447→                      <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   448→                      <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+   449→                    </TableRow></TableHeader>
+   450→                    <TableBody>
+   451→                      {breakdown.salesInvoices.map(inv => (
+   452→                        <TableRow key={inv.id}>
+   453→                          <TableCell className="font-mono text-sm">{inv.invoiceNo}</TableCell>
+   454→                          <TableCell className="text-sm text-muted-foreground">{formatDate(inv.date, lang)}</TableCell>
+   455→                          <TableCell><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" /></TableCell>
+   456→                          <TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+   457→                        </TableRow>
+   458→                      ))}
+   459→                    </TableBody>
+   460→                  </Table>
+   461→                </div>
+   462→              </CardContent>
+   463→            </Card>
+   464→          )}
+   465→
+   466→          {breakdown.progressClaims && breakdown.progressClaims.length > 0 && (
+   467→            <Card>
+   468→              <CardHeader className="pb-2 pt-4 px-4">
+   469→                <h4 className="font-semibold text-emerald-800 flex items-center gap-2"><FileText className="size-4" />{t('المستخلصات', 'Progress Claims', lang)}<Badge className="bg-emerald-100 text-emerald-700 border-0">{breakdown.progressClaims.length}</Badge></h4>
+   470→              </CardHeader>
+   471→              <CardContent className="p-4 pt-0">
+   472→                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+   473→                  <Table>
+   474→                    <TableHeader><TableRow>
+   475→                      <TableHead className="text-right">{t('رقم المستخلص', 'Claim No', lang)}</TableHead>
+   476→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   477→                      <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   478→                      <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+   479→                    </TableRow></TableHeader>
+   480→                    <TableBody>
+   481→                      {breakdown.progressClaims.map(c => (
+   482→                        <TableRow key={c.id}>
+   483→                          <TableCell className="font-mono text-sm">{c.claimNo}</TableCell>
+   484→                          <TableCell className="text-sm text-muted-foreground">{formatDate(c.date, lang)}</TableCell>
+   485→                          <TableCell><MoneyDisplay value={c.totalAmount} lang={lang} size="sm" /></TableCell>
+   486→                          <TableCell><MoneyDisplay value={c.vatAmount} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
+   487→                        </TableRow>
+   488→                      ))}
+   489→                    </TableBody>
+   490→                  </Table>
+   491→                </div>
+   492→              </CardContent>
+   493→            </Card>
+   494→          )}
+   495→
+   496→          {breakdown.purchaseInvoices.length > 0 && (
+   497→            <Card>
+   498→              <CardHeader className="pb-2 pt-4 px-4">
+   499→                <h4 className="font-semibold text-rose-800 flex items-center gap-2"><ShoppingBag className="size-4" />{t('فواتير المشتريات', 'Purchase Invoices', lang)}<Badge className="bg-rose-100 text-rose-700 border-0">{breakdown.purchaseInvoices.length}</Badge></h4>
+   500→              </CardHeader>
+   501→              <CardContent className="p-4 pt-0">
+   502→                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+   503→                  <Table>
+   504→                    <TableHeader><TableRow>
+   505→                      <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No', lang)}</TableHead>
+   506→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   507→                      <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   508→                      <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+   509→                    </TableRow></TableHeader>
+   510→                    <TableBody>
+   511→                      {breakdown.purchaseInvoices.map(inv => (
+   512→                        <TableRow key={inv.id}>
+   513→                          <TableCell className="font-mono text-sm">{inv.invoiceNo}</TableCell>
+   514→                          <TableCell className="text-sm text-muted-foreground">{formatDate(inv.date, lang)}</TableCell>
+   515→                          <TableCell><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" /></TableCell>
+   516→                          <TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="sm" className="text-rose-700" /></TableCell>
+   517→                        </TableRow>
+   518→                      ))}
+   519→                    </TableBody>
+   520→                  </Table>
+   521→                </div>
+   522→              </CardContent>
+   523→            </Card>
+   524→          )}
+   525→
+   526→          {breakdown.subcontractorInvoices && breakdown.subcontractorInvoices.length > 0 && (
+   527→            <Card>
+   528→              <CardHeader className="pb-2 pt-4 px-4">
+   529→                <h4 className="font-semibold text-orange-800 flex items-center gap-2"><ShoppingBag className="size-4" />{t('فواتير مقاولي الباطن', 'Subcontractor Invoices', lang)}<Badge className="bg-orange-100 text-orange-700 border-0">{breakdown.subcontractorInvoices.length}</Badge></h4>
+   530→              </CardHeader>
+   531→              <CardContent className="p-4 pt-0">
+   532→                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+   533→                  <Table>
+   534→                    <TableHeader><TableRow>
+   535→                      <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No', lang)}</TableHead>
+   536→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   537→                      <TableHead className="text-right">{t('الإجمالي', 'Total', lang)}</TableHead>
+   538→                      <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+   539→                    </TableRow></TableHeader>
+   540→                    <TableBody>
+   541→                      {breakdown.subcontractorInvoices.map(inv => (
+   542→                        <TableRow key={inv.id}>
+   543→                          <TableCell className="font-mono text-sm">{inv.invoiceNo}</TableCell>
+   544→                          <TableCell className="text-sm text-muted-foreground">{formatDate(inv.date, lang)}</TableCell>
+   545→                          <TableCell><MoneyDisplay value={inv.totalAmount} lang={lang} size="sm" /></TableCell>
+   546→                          <TableCell><MoneyDisplay value={inv.vatAmount} lang={lang} size="sm" className="text-orange-700" /></TableCell>
+   547→                        </TableRow>
+   548→                      ))}
+   549→                    </TableBody>
+   550→                  </Table>
+   551→                </div>
+   552→              </CardContent>
+   553→            </Card>
+   554→          )}
+   555→
+   556→          {breakdown.expenses.length > 0 && (
+   557→            <Card>
+   558→              <CardHeader className="pb-2 pt-4 px-4">
+   559→                <h4 className="font-semibold text-purple-800 flex items-center gap-2"><Receipt className="size-4" />{t('المصروفات الخاضعة للضريبة', 'Taxed Expenses', lang)}<Badge className="bg-purple-100 text-purple-700 border-0">{breakdown.expenses.length}</Badge></h4>
+   560→              </CardHeader>
+   561→              <CardContent className="p-4 pt-0">
+   562→                <div className="overflow-x-auto max-h-64 overflow-y-auto">
+   563→                  <Table>
+   564→                    <TableHeader><TableRow>
+   565→                      <TableHead className="text-right">{t('الوصف', 'Description', lang)}</TableHead>
+   566→                      <TableHead className="text-right">{t('التاريخ', 'Date', lang)}</TableHead>
+   567→                      <TableHead className="text-right">{t('المبلغ', 'Amount', lang)}</TableHead>
+   568→                      <TableHead className="text-right">{t('الضريبة', 'VAT', lang)}</TableHead>
+   569→                    </TableRow></TableHeader>
+   570→                    <TableBody>
+   571→                      {breakdown.expenses.map(exp => (
+   572→                        <TableRow key={exp.id}>
+   573→                          <TableCell className="text-sm">{exp.description}</TableCell>
+   574→                          <TableCell className="text-sm text-muted-foreground">{formatDate(exp.date, lang)}</TableCell>
+   575→                          <TableCell><MoneyDisplay value={exp.amount} lang={lang} size="sm" /></TableCell>
+   576→                          <TableCell><MoneyDisplay value={exp.vatAmount || 0} lang={lang} size="sm" className="text-purple-700" /></TableCell>
+   577→                        </TableRow>
+   578→                      ))}
+   579→                    </TableBody>
+   580→                  </Table>
+   581→                </div>
+   582→              </CardContent>
+   583→            </Card>
+   584→          )}
+   585→
+   586→          {breakdown.salesInvoices.length === 0 && breakdown.purchaseInvoices.length === 0 && breakdown.expenses.length === 0 && (!breakdown.progressClaims || breakdown.progressClaims.length === 0) && (!breakdown.subcontractorInvoices || breakdown.subcontractorInvoices.length === 0) && (
+   587→            <Card className="border-dashed">
+   588→              <CardContent className="p-8 flex flex-col items-center gap-3">
+   589→                <FileText className="size-12 text-gray-300" />
+   590→                <p className="text-muted-foreground text-center">{t('لا توجد فواتير في هذه الفترة', 'No invoices in this period', lang)}</p>
+   591→              </CardContent>
+   592→            </Card>
+   593→          )}
+   594→        </div>
+   595→      )}
+   596→
+   597→      {/* Payment Dialog */}
+   598→      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+   599→        <DialogContent>
+   600→          <DialogHeader>
+   601→            <DialogTitle>{t('تسجيل دفع الضريبة', 'Record VAT Payment', lang)}</DialogTitle>
+   602→          </DialogHeader>
+   603→          <div className="space-y-4 py-4">
+   604→            <div className="space-y-2">
+   605→              <Label>{t('رقم مرجع الدفع', 'Payment Reference', lang)}</Label>
+   606→              <Input value={payReference} onChange={e => setPayReference(e.target.value)} placeholder={t('أدخل رقم المرجع', 'Enter reference number', lang)} dir="ltr" />
+   607→            </div>
+   608→          </div>
+   609→          <DialogFooter>
+   610→            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
+   611→            <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { onPay(declaration.id, payReference); setPayDialogOpen(false) }} disabled={!payReference}>
+   612→              {t('تأكيد الدفع', 'Confirm Payment', lang)}
+   613→            </Button>
+   614→          </DialogFooter>
+   615→        </DialogContent>
+   616→      </Dialog>
+   617→    </div>
+   618→  )
+   619→}
+   620→
+   621→// ============ Main VAT Module ============
+   622→export function VATModule() {
+   623→  const { lang } = useAppStore()
+   624→  const queryClient = useQueryClient()
+   625→  const currentYear = new Date().getFullYear()
+   626→  const [activeTab, setActiveTab] = useState('summary')
+   627→  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
+   628→  const [viewState, setViewState] = useState<'list' | 'detail'>('list')
+   629→  const [selectedDeclaration, setSelectedDeclaration] = useState<VATDeclaration | null>(null)
+   630→
+   631→  const { data: vatReturns = [], isLoading, refetch } = useQuery<VATDeclaration[]>({
+   632→    queryKey: ['vat-returns', selectedYear],
+   633→    queryFn: async () => {
+   634→      const res = await fetch(`/api/vat?year=${selectedYear}`)
+   635→      if (!res.ok) throw new Error()
+   636→      return res.json()
+   637→    },
+   638→  })
+   639→
+   640→  const { data: breakdownData } = useQuery<{ declaration: VATDeclaration | null; autoCalc: { outputVat: number; inputVat: number; netVat: number }; breakdown: DeclarationBreakdown }>({
+   641→    queryKey: ['vat-breakdown', selectedDeclaration?.id],
+   642→    queryFn: async () => {
+   643→      if (!selectedDeclaration) return { declaration: null, autoCalc: { outputVat: 0, inputVat: 0, netVat: 0 }, breakdown: { salesInvoices: [], progressClaims: [], purchaseInvoices: [], subcontractorInvoices: [], expenses: [] } }
+   644→      const res = await fetch(`/api/vat?year=${selectedDeclaration.year}&quarter=${selectedDeclaration.quarter}`)
+   645→      if (!res.ok) throw new Error()
+   646→      return res.json()
+   647→    },
+   648→    enabled: viewState === 'detail' && !!selectedDeclaration,
+   649→  })
+   650→
+   651→  const submitMutation = useMutation({
+   652→    mutationFn: (id: string) =>
+   653→      fetch('/api/vat', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, action: 'FILE' }) })
+   654→        .then(async r => { if (!r.ok) { const err = await r.json(); throw new Error(err.error || 'Failed') } return r.json() }),
+   655→    onSuccess: (data: VATDeclaration) => {
+   656→      queryClient.invalidateQueries({ queryKey: ['vat-returns', selectedYear] })
+   657→      setSelectedDeclaration(data)
+   658→      toast.success(t('تم تقديم الإقرار الضريبي بنجاح', 'VAT return filed successfully', lang))
+   659→    },
+   660→    onError: (err: Error) => toast.error(err.message),
+   661→  })
+   662→
+   663→  const payMutation = useMutation({
+   664→    mutationFn: (data: { id: string; reference: string }) =>
+   665→      fetch('/api/vat', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: data.id, action: 'PAY', paymentReference: data.reference }) })
+   666→        .then(async r => { if (!r.ok) { const err = await r.json(); throw new Error(err.error || 'Failed') } return r.json() }),
+   667→    onSuccess: (data: VATDeclaration) => {
+   668→      queryClient.invalidateQueries({ queryKey: ['vat-returns', selectedYear] })
+   669→      setSelectedDeclaration(data)
+   670→      toast.success(t('تم تسجيل الدفع بنجاح', 'Payment recorded successfully', lang))
+   671→    },
+   672→    onError: (err: Error) => toast.error(err.message),
+   673→  })
+   674→
+   675→  // Detail view
+   676→  if (viewState === 'detail' && selectedDeclaration) {
+   677→    return (
+   678→      <ModuleLayout title={{ ar: 'ضريبة القيمة المضافة', en: 'VAT' }} subtitle={{ ar: 'تفاصيل الإقرار الضريبي', en: 'Tax Declaration Details' }}>
+   679→        <DeclarationDetailView
+   680→          declaration={selectedDeclaration}
+   681→          breakdown={breakdownData?.breakdown || null}
+   682→          lang={lang}
+   683→          onBack={() => { setViewState('list'); setSelectedDeclaration(null) }}
+   684→          onSubmit={(id) => submitMutation.mutate(id)}
+   685→          onPay={(id, reference) => payMutation.mutate({ id, reference })}
+   686→          isSubmitting={submitMutation.isPending}
+   687→        />
+   688→      </ModuleLayout>
+   689→    )
+   690→  }
+   691→
+   692→  return (
+   693→    <ModuleLayout
+   694→      title={{ ar: 'ضريبة القيمة المضافة', en: 'VAT' }}
+   695→      subtitle={{ ar: 'إدارة إقرارات الضريبة وملخص الضريبة', en: 'Manage tax declarations & VAT summary' }}
+   696→      actions={<Button variant="outline" size="icon" onClick={() => refetch()}><RefreshCw className="size-4" /></Button>}
+   697→    >
+   698→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   699→        <TabsList className="grid grid-cols-2 w-full max-w-md">
+   700→          <TabsTrigger value="summary" className="gap-1">{t('ملخص الضريبة', 'VAT Summary', lang)}</TabsTrigger>
+   701→          <TabsTrigger value="declarations" className="gap-1">{t('الإقرار الضريبي', 'Tax Declaration', lang)}</TabsTrigger>
+   702→        </TabsList>
+   703→
+   704→        <TabsContent value="summary">
+   705→          <VATSummaryTab vatReturns={vatReturns} />
+   706→        </TabsContent>
+   707→
+   708→        <TabsContent value="declarations">
+   709→          <TaxDeclarationTab
+   710→            vatReturns={vatReturns}
+   711→            isLoading={isLoading}
+   712→            selectedYear={selectedYear}
+   713→            onSelectYear={setSelectedYear}
+   714→            onView={(dec) => { setSelectedDeclaration(dec); setViewState('detail') }}
+   715→            isCreating={false}
+   716→          />
+   717→        </TabsContent>
+   718→      </Tabs>
+   719→    </ModuleLayout>
+   720→  )
+   721→}
+   722→

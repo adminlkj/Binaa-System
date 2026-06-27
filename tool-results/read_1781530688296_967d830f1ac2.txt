@@ -1,0 +1,1692 @@
+     1→     1→'use client'
+     2→     2→
+     3→     3→import React, { useState, useMemo } from 'react'
+     4→     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→     5→import {
+     6→     6→  Truck, Plus, Search, RefreshCw, Wrench, Fuel, Clock,
+     7→     7→  ArrowRight, DollarSign, Calendar, Shield, FileText, Receipt,
+     8→     8→  Download, ChevronLeft, ChevronRight, Eye,
+     9→     9→  TrendingUp, TrendingDown, BarChart3, Link2, Users,
+    10→    10→  ArrowLeftRight, CheckCircle2, Circle, AlertCircle,
+    11→    11→} from 'lucide-react'
+    12→    12→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    13→    13→import { Button } from '@/components/ui/button'
+    14→    14→import { Input } from '@/components/ui/input'
+    15→    15→import { Badge } from '@/components/ui/badge'
+    16→    16→import {
+    17→    17→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    18→    18→} from '@/components/ui/table'
+    19→    19→import {
+    20→    20→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    21→    21→} from '@/components/ui/dialog'
+    22→    22→import {
+    23→    23→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    24→    24→} from '@/components/ui/select'
+    25→    25→import { Label } from '@/components/ui/label'
+    26→    26→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    27→    27→import { Separator } from '@/components/ui/separator'
+    28→    28→import { MoneyDisplay } from '@/components/ui/money-display'
+    29→    29→import { ModuleLayout } from '@/components/shared/module-layout'
+    30→    30→import { useAppStore, formatSAR, formatNumber, formatDate, RENTAL_WORKFLOW } from '@/stores/app-store'
+    31→    31→import type { NavItem } from '@/stores/app-store'
+    32→    32→import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
+    33→    33→import { PrintButton } from '@/components/shared/print-button'
+    34→    34→
+    35→    35→// ============ Types ============
+    36→    36→interface Supplier {
+    37→    37→  id: string; code: string; name: string; nameAr: string | null
+    38→    38→}
+    39→    39→
+    40→    40→interface Equipment {
+    41→    41→  id: string; code: string; name: string; nameAr: string | null
+    42→    42→  type: string | null; model: string | null; serialNumber: string | null
+    43→    43→  status: string; ownershipType: string; supplierId: string | null; ownerId: string | null; clientId: string | null
+    44→    44→  purchasePrice: number; sellingPrice: number
+    45→    45→  hourlyRate: number; dailyRate: number; monthlyRate: number
+    46→    46→  purchaseDate: string | null; warrantyExpiry: string | null
+    47→    47→  isActive: boolean
+    48→    48→  supplier: Supplier | null
+    49→    49→  usages?: EquipmentUsage[]
+    50→    50→  maintenance?: EquipmentMaintenance[]
+    51→    51→  fuelLogs?: EquipmentFuelLog[]
+    52→    52→  rentals?: EquipmentRental[]
+    53→    53→  expenses?: EquipmentExpense[]
+    54→    54→  deliveryOrders?: EquipmentDeliveryOrder[]
+    55→    55→  timesheets?: EquipmentTimesheet[]
+    56→    56→  operatorLogs?: EquipmentOperation[]
+    57→    57→}
+    58→    58→
+    59→    59→interface EquipmentUsage {
+    60→    60→  id: string; equipmentId: string; projectId: string
+    61→    61→  date: string; hours: number; description: string | null; cost: number
+    62→    62→  project: { id: string; code: string; name: string }
+    63→    63→}
+    64→    64→
+    65→    65→interface EquipmentMaintenance {
+    66→    66→  id: string; equipmentId: string; date: string; description: string
+    67→    67→  cost: number; nextDate: string | null
+    68→    68→}
+    69→    69→
+    70→    70→interface EquipmentFuelLog {
+    71→    71→  id: string; equipmentId: string; date: string; liters: number
+    72→    72→  costPerLiter: number; totalCost: number; projectId: string | null
+    73→    73→  project?: { id: string; code: string; name: string } | null
+    74→    74→}
+    75→    75→
+    76→    76→interface EquipmentRental {
+    77→    77→  id: string; equipmentId: string; clientId: string; projectId: string | null
+    78→    78→  startDate: string; endDate: string | null; rateType: string
+    79→    79→  rate: number; totalAmount: number; status: string; notes: string | null
+    80→    80→  deliveryFees: number; salesOrderNo: string | null; paymentTerms: string | null
+    81→    81→  createdAt: string
+    82→    82→  client: { id: string; code: string; name: string; nameAr: string | null }
+    83→    83→  contract: { id: string; contractNo: string; hourlyRate: number; deliveryFees: number; salesOrderNo: string | null; paymentTerms: string | null }
+    84→    84→  deliveryOrders: EquipmentDeliveryOrder[]
+    85→    85→  timesheets: EquipmentTimesheet[]
+    86→    86→}
+    87→    87→
+    88→    88→interface EquipmentExpense {
+    89→    89→  id: string; equipmentId: string; category: string; description: string
+    90→    90→  amount: number; date: string; reference: string | null
+    91→    91→}
+    92→    92→
+    93→    93→interface EquipmentDeliveryOrder {
+    94→    94→  id: string; orderNo: string; rentalId: string | null; equipmentId: string
+    95→    95→  clientId: string | null; deliveryDate: string; returnDate: string | null
+    96→    96→  status: string; site: string | null
+    97→    97→  client?: { id: string; name: string } | null
+    98→    98→  rental?: { id: string; contract: { contractNo: string } } | null
+    99→    99→}
+   100→   100→
+   101→   101→interface EquipmentTimesheet {
+   102→   102→  id: string; rentalId: string; contractId: string; projectId: string
+   103→   103→  equipmentId: string; month: number; year: number; operatingHours: number
+   104→   104→  status: string; notes: string | null
+   105→   105→  project: { id: string; code: string; name: string }
+   106→   106→  contract: { id: string; contractNo: string; hourlyRate: number }
+   107→   107→  rental: { id: string; hourlyRate: number; client: { id: string; name: string } }
+   108→   108→  invoice: { id: string; invoiceNo: string; totalAmount: number; status: string } | null
+   109→   109→}
+   110→   110→
+   111→   111→interface EquipmentOperation {
+   112→   112→  id: string; equipmentId: string; operatorId: string | null; projectId: string | null
+   113→   113→  date: string; hours: number; notes: string | null
+   114→   114→  operator: { id: string; name: string; nameAr: string | null } | null
+   115→   115→  project: { id: string; code: string; name: string } | null
+   116→   116→}
+   117→   117→
+   118→   118→interface ClientOption { id: string; code: string; name: string; nameAr: string | null }
+   119→   119→interface ProjectOption { id: string; code: string; name: string }
+   120→   120→
+   121→   121→// ============ Constants ============
+   122→   122→const statusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   123→   123→  AVAILABLE: { label: { ar: 'متاحة', en: 'Available' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   124→   124→  IN_USE: { label: { ar: 'قيد الاستخدام', en: 'In Use' }, color: 'text-blue-700', bg: 'bg-blue-100' },
+   125→   125→  MAINTENANCE: { label: { ar: 'صيانة', en: 'Maintenance' }, color: 'text-orange-700', bg: 'bg-orange-100' },
+   126→   126→  OUT_OF_SERVICE: { label: { ar: 'خارج الخدمة', en: 'Out of Service' }, color: 'text-red-700', bg: 'bg-red-100' },
+   127→   127→  RENTED: { label: { ar: 'مؤجرة', en: 'Rented' }, color: 'text-purple-700', bg: 'bg-purple-100' },
+   128→   128→}
+   129→   129→
+   130→   130→const ownershipTypeConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   131→   131→  COMPANY_OWNED: { label: { ar: 'مملوكة للشركة', en: 'Company Owned' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   132→   132→  RENTED_THIRD_PARTY: { label: { ar: 'مستأجرة من طرف ثالث', en: 'Rented Third Party' }, color: 'text-cyan-700', bg: 'bg-cyan-100' },
+   133→   133→  PURCHASED: { label: { ar: 'مشتراة من مورد', en: 'Purchased from Supplier' }, color: 'text-teal-700', bg: 'bg-teal-100' },
+   134→   134→  LEASED_ASSET: { label: { ar: 'مستأجرة', en: 'Leased Asset' }, color: 'text-amber-700', bg: 'bg-amber-100' },
+   135→   135→  CUSTOMER_OWNED: { label: { ar: 'مملوكة للعميل', en: 'Customer Owned' }, color: 'text-purple-700', bg: 'bg-purple-100' },
+   136→   136→}
+   137→   137→
+   138→   138→const rentalStatusConfig: Record<string, { label: { ar: string; en: string }; color: string; bg: string }> = {
+   139→   139→  ACTIVE: { label: { ar: 'نشط', en: 'Active' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
+   140→   140→  RETURNED: { label: { ar: 'مرتجع', en: 'Returned' }, color: 'text-gray-700', bg: 'bg-gray-100' },
+   141→   141→  OVERDUE: { label: { ar: 'متأخر', en: 'Overdue' }, color: 'text-red-700', bg: 'bg-red-100' },
+   142→   142→}
+   143→   143→
+   144→   144→const expenseCategoryLabels: Record<string, { ar: string; en: string }> = {
+   145→   145→  RENT: { ar: 'إيجارات', en: 'Rent' },
+   146→   146→  MAINTENANCE: { ar: 'صيانة', en: 'Maintenance' },
+   147→   147→  TRANSPORT: { ar: 'نقل', en: 'Transport' },
+   148→   148→  DELIVERY: { ar: 'توصيل', en: 'Delivery' },
+   149→   149→  CONSUMABLES: { ar: 'مواد استهلاكية', en: 'Consumables' },
+   150→   150→  SERVICES: { ar: 'خدمات', en: 'Services' },
+   151→   151→  INSURANCE: { ar: 'تأمين', en: 'Insurance' },
+   152→   152→  FUEL: { ar: 'وقود', en: 'Fuel' },
+   153→   153→  PERMITS: { ar: 'تصاريح', en: 'Permits' },
+   154→   154→  OFFICE: { ar: 'قرطاسية', en: 'Office' },
+   155→   155→  HOSPITALITY: { ar: 'ضيافة', en: 'Hospitality' },
+   156→   156→  OTHER: { ar: 'أخرى', en: 'Other' },
+   157→   157→}
+   158→   158→
+   159→   159→const expenseCategoryOptions = Object.entries(expenseCategoryLabels).map(([key, val]) => ({
+   160→   160→  value: key, ...val,
+   161→   161→}))
+   162→   162→
+   163→   163→const rateTypeLabels: Record<string, { ar: string; en: string }> = {
+   164→   164→  HOURLY: { ar: 'بالساعة', en: 'Hourly' },
+   165→   165→  DAILY: { ar: 'يومي', en: 'Daily' },
+   166→   166→  MONTHLY: { ar: 'شهري', en: 'Monthly' },
+   167→   167→}
+   168→   168→
+   169→   169→const doStatusLabels: Record<string, { ar: string; en: string }> = {
+   170→   170→  PENDING: { ar: 'معلق', en: 'Pending' },
+   171→   171→  DELIVERED: { ar: 'تم التوصيل', en: 'Delivered' },
+   172→   172→  RETURNED: { ar: 'مرتجع', en: 'Returned' },
+   173→   173→  CANCELLED: { ar: 'ملغي', en: 'Cancelled' },
+   174→   174→}
+   175→   175→
+   176→   176→const timesheetStatusLabels: Record<string, { ar: string; en: string }> = {
+   177→   177→  DRAFT: { ar: 'مسودة', en: 'Draft' },
+   178→   178→  SUBMITTED: { ar: 'مقدم', en: 'Submitted' },
+   179→   179→  APPROVED: { ar: 'معتمد', en: 'Approved' },
+   180→   180→  INVOICED: { ar: 'مفوتر', en: 'Invoiced' },
+   181→   181→}
+   182→   182→
+   183→   183→// ============ Helper Components ============
+   184→   184→function StatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   185→   185→  const cfg = statusConfig[status] || statusConfig.AVAILABLE
+   186→   186→  return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
+   187→   187→}
+   188→   188→
+   189→   189→function OwnershipBadge({ ownershipType, lang }: { ownershipType: string; lang: 'ar' | 'en' }) {
+   190→   190→  const cfg = ownershipTypeConfig[ownershipType] || ownershipTypeConfig.COMPANY_OWNED
+   191→   191→  return <Badge className={`${cfg.bg} ${cfg.color} border-0 text-[10px]`}>{cfg.label[lang]}</Badge>
+   192→   192→}
+   193→   193→
+   194→   194→function ActivityBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
+   195→   195→  if (status === 'RENTED') {
+   196→   196→    return <Badge className="bg-cyan-100 text-cyan-700 border-cyan-200 text-[10px] px-1.5 py-0 border">{lang === 'ar' ? 'تأجير' : 'Rental'}</Badge>
+   197→   197→  }
+   198→   198→  if (status === 'IN_USE') {
+   199→   199→    return <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-[10px] px-1.5 py-0 border">{lang === 'ar' ? 'تنفيذي' : 'Const.'}</Badge>
+   200→   200→  }
+   201→   201→  return null
+   202→   202→}
+   203→   203→
+   204→   204→function TableSkeleton({ rows = 5 }: { rows?: number }) {
+   205→   205→  return (
+   206→   206→    <div className="space-y-2 p-4">
+   207→   207→      {Array.from({ length: rows }).map((_, i) => (
+   208→   208→        <div key={i} className="flex gap-4 p-3">
+   209→   209→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   210→   210→          <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+   211→   211→          <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
+   212→   212→          <div className="h-5 w-20 animate-pulse rounded bg-gray-200" />
+   213→   213→        </div>
+   214→   214→      ))}
+   215→   215→    </div>
+   216→   216→  )
+   217→   217→}
+   218→   218→
+   219→   219→function CardSkeleton() {
+   220→   220→  return (
+   221→   221→    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   222→   222→      {Array.from({ length: 4 }).map((_, i) => (
+   223→   223→        <div key={i} className="h-20 animate-pulse rounded-lg bg-gray-100" />
+   224→   224→      ))}
+   225→   225→    </div>
+   226→   226→  )
+   227→   227→}
+   228→   228→
+   229→   229→const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+   230→   230→const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+   231→   231→function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string {
+   232→   232→  if (lang === 'ar') return `${arabicMonths[month - 1]} ${year}`
+   233→   233→  return `${englishMonths[month - 1]} ${year}`
+   234→   234→}
+   235→   235→
+   236→   236→// ============ New Equipment Dialog ============
+   237→   237→function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
+   238→   238→  open: boolean; onOpenChange: (v: boolean) => void; suppliers: Supplier[]; clients: ClientOption[]
+   239→   239→}) {
+   240→   240→  const { lang } = useAppStore()
+   241→   241→  const queryClient = useQueryClient()
+   242→   242→  const [name, setName] = useState('')
+   243→   243→  const [nameAr, setNameAr] = useState('')
+   244→   244→  const [type, setType] = useState('')
+   245→   245→  const [model, setModel] = useState('')
+   246→   246→  const [serialNumber, setSerialNumber] = useState('')
+   247→   247→  const [status, setStatus] = useState('AVAILABLE')
+   248→   248→  const [ownershipType, setOwnershipType] = useState('COMPANY_OWNED')
+   249→   249→  const [supplierId, setSupplierId] = useState('')
+   250→   250→  const [ownerId, setOwnerId] = useState('')
+   251→   251→  const [purchasePrice, setPurchasePrice] = useState('')
+   252→   252→  const [productiveLife, setProductiveLife] = useState('')
+   253→   253→  const [depreciationMethod, setDepreciationMethod] = useState('STRAIGHT_LINE')
+   254→   254→  const [operationalStatus, setOperationalStatus] = useState('OPERATIONAL')
+   255→   255→  const [hourlyRate, setHourlyRate] = useState('')
+   256→   256→  const [dailyRate, setDailyRate] = useState('')
+   257→   257→  const [monthlyRate, setMonthlyRate] = useState('')
+   258→   258→  const [purchaseDate, setPurchaseDate] = useState('')
+   259→   259→  const [warrantyExpiry, setWarrantyExpiry] = useState('')
+   260→   260→
+   261→   261→  React.useEffect(() => {
+   262→   262→    if (open) {
+   263→   263→      setName(''); setNameAr(''); setType(''); setModel('')
+   264→   264→      setSerialNumber(''); setStatus('AVAILABLE'); setOwnershipType('COMPANY_OWNED'); setSupplierId(''); setOwnerId('')
+   265→   265→      setPurchasePrice(''); setHourlyRate('')
+   266→   266→      setDailyRate(''); setMonthlyRate(''); setPurchaseDate(''); setWarrantyExpiry('')
+   267→   267→      setProductiveLife(''); setDepreciationMethod('STRAIGHT_LINE'); setOperationalStatus('OPERATIONAL')
+   268→   268→    }
+   269→   269→  }, [open])
+   270→   270→
+   271→   271→  const createMutation = useMutation({
+   272→   272→    mutationFn: (data: Record<string, unknown>) =>
+   273→   273→      fetch('/api/equipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   274→   274→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   275→   275→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment'] }); onOpenChange(false) },
+   276→   276→  })
+   277→   277→
+   278→   278→  const handleSubmit = (e: React.FormEvent) => {
+   279→   279→    e.preventDefault()
+   280→   280→    createMutation.mutate({
+   281→   281→      name, nameAr, type, model, serialNumber, status,
+   282→   282→      ownershipType,
+   283→   283→      supplierId: supplierId || null,
+   284→   284→      ownerId: ownershipType === 'CUSTOMER_OWNED' ? (ownerId || null) : null,
+   285→   285→      purchasePrice, hourlyRate, dailyRate, monthlyRate,
+   286→   286→      productiveLife: productiveLife ? parseInt(productiveLife) : null,
+   287→   287→      depreciationMethod: depreciationMethod || null,
+   288→   288→      operationalStatus: operationalStatus || null,
+   289→   289→      purchaseDate: purchaseDate || null,
+   290→   290→      warrantyExpiry: warrantyExpiry || null,
+   291→   291→    })
+   292→   292→  }
+   293→   293→
+   294→   294→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   295→   295→
+   296→   296→  return (
+   297→   297→    <Dialog open={open} onOpenChange={onOpenChange}>
+   298→   298→      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   299→   299→        <DialogHeader>
+   300→   300→          <DialogTitle>{t('معدة جديدة', 'New Equipment')}</DialogTitle>
+   301→   301→          <DialogDescription>{t('إضافة معدة جديدة مع بيانات الشراء والتأجير', 'Add new equipment with purchase and rental details')}</DialogDescription>
+   302→   302→        </DialogHeader>
+   303→   303→        <form onSubmit={handleSubmit} className="space-y-4">
+   304→   304→          <div className="space-y-2">
+   305→   305→            <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">{t('المعلومات الأساسية', 'Basic Information')}</h4>
+   306→   306→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   307→   307→              <div className="space-y-2"><Label>{t('الاسم *', 'Name *')}</Label><Input value={name} onChange={e => setName(e.target.value)} placeholder={t('اسم المعدة', 'Equipment name')} required /></div>
+   308→   308→              <div className="space-y-2"><Label>{t('الاسم بالعربي', 'Arabic Name')}</Label><Input value={nameAr} onChange={e => setNameAr(e.target.value)} placeholder={t('الاسم بالعربية', 'Arabic name')} /></div>
+   309→   309→              <div className="space-y-2">
+   310→   310→                <Label>{t('النوع', 'Type')}</Label>
+   311→   311→                <Select value={type} onValueChange={setType}>
+   312→   312→                  <SelectTrigger><SelectValue placeholder={t('اختر النوع', 'Select type')} /></SelectTrigger>
+   313→   313→                  <SelectContent>
+   314→   314→                    <SelectItem value="حفارة">{t('حفارة', 'Excavator')}</SelectItem>
+   315→   315→                    <SelectItem value="شيول">{t('شيول', 'Shovel')}</SelectItem>
+   316→   316→                    <SelectItem value="كرين">{t('كرين', 'Crane')}</SelectItem>
+   317→   317→                    <SelectItem value="قلاب">{t('قلاب', 'Dump Truck')}</SelectItem>
+   318→   318→                    <SelectItem value="بولدوزر">{t('بولدوزر', 'Bulldozer')}</SelectItem>
+   319→   319→                    <SelectItem value="رافعة">{t('رافعة', 'Lift')}</SelectItem>
+   320→   320→                    <SelectItem value="ضاغط">{t('ضاغط', 'Compressor')}</SelectItem>
+   321→   321→                    <SelectItem value="أخرى">{t('أخرى', 'Other')}</SelectItem>
+   322→   322→                  </SelectContent>
+   323→   323→                </Select>
+   324→   324→              </div>
+   325→   325→              <div className="space-y-2"><Label>{t('الموديل', 'Model')}</Label><Input value={model} onChange={e => setModel(e.target.value)} placeholder={t('الموديل', 'Model')} /></div>
+   326→   326→              <div className="space-y-2"><Label>{t('الرقم التسلسلي', 'Serial No.')}</Label><Input value={serialNumber} onChange={e => setSerialNumber(e.target.value)} placeholder={t('الرقم التسلسلي', 'Serial number')} /></div>
+   327→   327→              <div className="space-y-2">
+   328→   328→                <Label>{t('الحالة', 'Status')}</Label>
+   329→   329→                <Select value={status} onValueChange={setStatus}>
+   330→   330→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   331→   331→                  <SelectContent>
+   332→   332→                    {Object.entries(statusConfig).map(([k, v]) => (
+   333→   333→                      <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+   334→   334→                    ))}
+   335→   335→                  </SelectContent>
+   336→   336→                </Select>
+   337→   337→              </div>
+   338→   338→              <div className="space-y-2">
+   339→   339→                <Label>{t('نوع الملكية', 'Ownership Type')}</Label>
+   340→   340→                <Select value={ownershipType} onValueChange={v => { setOwnershipType(v); if (v !== 'LEASED_ASSET' && v !== 'RENTED_THIRD_PARTY' && v !== 'PURCHASED') setSupplierId(''); if (v !== 'CUSTOMER_OWNED') setOwnerId('') }}>
+   341→   341→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   342→   342→                  <SelectContent>
+   343→   343→                    {Object.entries(ownershipTypeConfig).map(([k, v]) => (
+   344→   344→                      <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+   345→   345→                    ))}
+   346→   346→                  </SelectContent>
+   347→   347→                </Select>
+   348→   348→              </div>
+   349→   349→            </div>
+   350→   350→          </div>
+   351→   351→          {/* Ownership Info */}
+   352→   352→          {(ownershipType === 'LEASED_ASSET' || ownershipType === 'RENTED_THIRD_PARTY') && (
+   353→   353→            <div className="p-3 rounded-lg border bg-amber-50 border-amber-200">
+   354→   354→              <div className="flex items-center gap-2 mb-2">
+   355→   355→                <Shield className="size-4 text-amber-600" />
+   356→   356→                <span className="text-sm font-medium text-amber-700">{t('معلومات التأجير - المورد إلزامي', 'Lease Info - Supplier is required')}</span>
+   357→   357→              </div>
+   358→   358→            </div>
+   359→   359→          )}
+   360→   360→          {ownershipType === 'PURCHASED' && (
+   361→   361→            <div className="p-3 rounded-lg border bg-teal-50 border-teal-200">
+   362→   362→              <div className="flex items-center gap-2 mb-2">
+   363→   363→                <Shield className="size-4 text-teal-600" />
+   364→   364→                <span className="text-sm font-medium text-teal-700">{t('معدة مشتراة من مورد', 'Equipment purchased from supplier')}</span>
+   365→   365→              </div>
+   366→   366→            </div>
+   367→   367→          )}
+   368→   368→          {ownershipType === 'CUSTOMER_OWNED' && (
+   369→   369→            <div className="p-3 rounded-lg border bg-purple-50 border-purple-200">
+   370→   370→              <div className="flex items-center gap-2 mb-2">
+   371→   371→                <Users className="size-4 text-purple-600" />
+   372→   372→                <span className="text-sm font-medium text-purple-700">{t('معدات مملوكة للعميل - حدد المالك', 'Customer-owned equipment - select owner')}</span>
+   373→   373→              </div>
+   374→   374→            </div>
+   375→   375→          )}
+   376→   376→          <div className="space-y-2">
+   377→   377→            <h4 className="font-semibold text-sm text-teal-700 border-b border-teal-200 pb-1">{t('معلومات الشراء', 'Purchase Information')}</h4>
+   378→   378→            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   379→   379→              {(ownershipType === 'LEASED_ASSET' || ownershipType === 'RENTED_THIRD_PARTY' || ownershipType === 'PURCHASED') && (
+   380→   380→              <div className="space-y-2">
+   381→   381→                <Label>{t('المورد', 'Supplier')} {(ownershipType === 'LEASED_ASSET' || ownershipType === 'RENTED_THIRD_PARTY') ? '*' : ''}</Label>
+   382→   382→                <Select value={supplierId} onValueChange={setSupplierId}>
+   383→   383→                  <SelectTrigger><SelectValue placeholder={t('اختر المورد', 'Select supplier')} /></SelectTrigger>
+   384→   384→                  <SelectContent>{suppliers.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+   385→   385→                </Select>
+   386→   386→                {(ownershipType === 'LEASED_ASSET' || ownershipType === 'RENTED_THIRD_PARTY') && !supplierId && <p className="text-xs text-amber-600">{t('المورد إلزامي للمعدات المستأجرة', 'Supplier is required for leased equipment')}</p>}
+   387→   387→              </div>
+   388→   388→              )}
+   389→   389→              {ownershipType === 'CUSTOMER_OWNED' && (
+   390→   390→                <div className="space-y-2">
+   391→   391→                  <Label>{t('مالك المعدة *', 'Equipment Owner *')}</Label>
+   392→   392→                  <Select value={ownerId} onValueChange={setOwnerId}>
+   393→   393→                    <SelectTrigger><SelectValue placeholder={t('اختر العميل المالك', 'Select owner client')} /></SelectTrigger>
+   394→   394→                    <SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+   395→   395→                  </Select>
+   396→   396→                </div>
+   397→   397→              )}
+   398→   398→              <div className="space-y-2"><Label>{t('سعر الشراء', 'Purchase Price')}</Label><Input type="number" min="0" step="0.01" value={purchasePrice} onChange={e => setPurchasePrice(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   399→   399→              <div className="space-y-2"><Label>{t('العمرة الإنتاجية (شهر)', 'Productive Life (months)')}</Label><Input type="number" min="0" step="1" value={productiveLife} onChange={e => setProductiveLife(e.target.value)} dir="ltr" placeholder={t('مثال: 120', 'e.g. 120')} /></div>
+   400→   400→              <div className="space-y-2">
+   401→   401→                <Label>{t('طريقة الإهلاك', 'Depreciation Method')}</Label>
+   402→   402→                <Select value={depreciationMethod} onValueChange={setDepreciationMethod}>
+   403→   403→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   404→   404→                  <SelectContent>
+   405→   405→                    <SelectItem value="STRAIGHT_LINE">{t('خط مستقيم', 'Straight Line')}</SelectItem>
+   406→   406→                    <SelectItem value="DECLINING_BALANCE">{t('تناقصي', 'Declining Balance')}</SelectItem>
+   407→   407→                    <SelectItem value="NO_DEPRECIATION">{t('بدون إهلاك', 'No Depreciation')}</SelectItem>
+   408→   408→                  </SelectContent>
+   409→   409→                </Select>
+   410→   410→              </div>
+   411→   411→              <div className="space-y-2">
+   412→   412→                <Label>{t('الحالة التشغيلية', 'Operational Status')}</Label>
+   413→   413→                <Select value={operationalStatus} onValueChange={setOperationalStatus}>
+   414→   414→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   415→   415→                  <SelectContent>
+   416→   416→                    <SelectItem value="OPERATIONAL">{t('تشغيلي', 'Operational')}</SelectItem>
+   417→   417→                    <SelectItem value="NEEDS_MAINTENANCE">{t('يحتاج صيانة', 'Needs Maintenance')}</SelectItem>
+   418→   418→                    <SelectItem value="GROUNDED">{t('موقوف', 'Grounded')}</SelectItem>
+   419→   419→                  </SelectContent>
+   420→   420→                </Select>
+   421→   421→              </div>
+   422→   422→              <div className="space-y-2"><Label>{t('تاريخ الشراء', 'Purchase Date')}</Label><Input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} /></div>
+   423→   423→              <div className="space-y-2"><Label>{t('انتهاء الضمان', 'Warranty Expiry')}</Label><Input type="date" value={warrantyExpiry} onChange={e => setWarrantyExpiry(e.target.value)} /></div>
+   424→   424→            </div>
+   425→   425→          </div>
+   426→   426→          <div className="space-y-2">
+   427→   427→            <h4 className="font-semibold text-sm text-purple-700 border-b border-purple-200 pb-1">{t('أسعار التأجير', 'Rental Rates')}</h4>
+   428→   428→            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+   429→   429→              <div className="space-y-2"><Label>{t('الأجر بالساعة', 'Hourly Rate')}</Label><Input type="number" min="0" step="0.01" value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   430→   430→              <div className="space-y-2"><Label>{t('الأجر اليومي', 'Daily Rate')}</Label><Input type="number" min="0" step="0.01" value={dailyRate} onChange={e => setDailyRate(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   431→   431→              <div className="space-y-2"><Label>{t('الأجر الشهري', 'Monthly Rate')}</Label><Input type="number" min="0" step="0.01" value={monthlyRate} onChange={e => setMonthlyRate(e.target.value)} dir="ltr" placeholder="0.00" /></div>
+   432→   432→            </div>
+   433→   433→          </div>
+   434→   434→          <DialogFooter>
+   435→   435→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
+   436→   436→            <Button type="submit" disabled={createMutation.isPending || !name || ((ownershipType === 'LEASED_ASSET' || ownershipType === 'RENTED_THIRD_PARTY') && !supplierId) || (ownershipType === 'CUSTOMER_OWNED' && !ownerId)} className="bg-emerald-600 hover:bg-emerald-700">
+   437→   437→              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إضافة', 'Add')}
+   438→   438→            </Button>
+   439→   439→          </DialogFooter>
+   440→   440→        </form>
+   441→   441→      </DialogContent>
+   442→   442→    </Dialog>
+   443→   443→  )
+   444→   444→}
+   445→   445→
+   446→   446→// ============ Add Rental Dialog ============
+   447→   447→function AddRentalDialog({ open, onOpenChange, equipmentId, clients, projects }: {
+   448→   448→  open: boolean; onOpenChange: (v: boolean) => void; equipmentId: string
+   449→   449→  clients: ClientOption[]; projects: ProjectOption[]
+   450→   450→}) {
+   451→   451→  const { lang } = useAppStore()
+   452→   452→  const queryClient = useQueryClient()
+   453→   453→  const [clientId, setClientId] = useState('')
+   454→   454→  const [projectId, setProjectId] = useState('')
+   455→   455→  const [startDate, setStartDate] = useState('')
+   456→   456→  const [endDate, setEndDate] = useState('')
+   457→   457→  const [rateType, setRateType] = useState('DAILY')
+   458→   458→  const [rate, setRate] = useState('')
+   459→   459→  const [totalAmount, setTotalAmount] = useState('')
+   460→   460→  const [notes, setNotes] = useState('')
+   461→   461→
+   462→   462→  React.useEffect(() => {
+   463→   463→    if (open) { setClientId(''); setProjectId(''); setStartDate(''); setEndDate(''); setRateType('DAILY'); setRate(''); setTotalAmount(''); setNotes('') }
+   464→   464→  }, [open])
+   465→   465→
+   466→   466→  const createMutation = useMutation({
+   467→   467→    mutationFn: (data: Record<string, unknown>) =>
+   468→   468→      fetch('/api/equipment/rentals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   469→   469→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   470→   470→    onSuccess: () => {
+   471→   471→      queryClient.invalidateQueries({ queryKey: ['equipment-rentals'] })
+   472→   472→      queryClient.invalidateQueries({ queryKey: ['equipment-detail'] })
+   473→   473→      queryClient.invalidateQueries({ queryKey: ['equipment'] })
+   474→   474→      onOpenChange(false)
+   475→   475→    },
+   476→   476→  })
+   477→   477→
+   478→   478→  const handleSubmit = (e: React.FormEvent) => {
+   479→   479→    e.preventDefault()
+   480→   480→    createMutation.mutate({ equipmentId, clientId, projectId: projectId || null, startDate, endDate: endDate || null, rateType, rate, totalAmount, notes: notes || null })
+   481→   481→  }
+   482→   482→
+   483→   483→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   484→   484→
+   485→   485→  return (
+   486→   486→    <Dialog open={open} onOpenChange={onOpenChange}>
+   487→   487→      <DialogContent className="max-w-lg">
+   488→   488→        <DialogHeader>
+   489→   489→          <DialogTitle>{t('عقد تأجير جديد', 'New Rental Contract')}</DialogTitle>
+   490→   490→          <DialogDescription>{t('إنشاء عقد تأجير جديد للمعدة', 'Create a new rental contract for equipment')}</DialogDescription>
+   491→   491→        </DialogHeader>
+   492→   492→        <form onSubmit={handleSubmit} className="space-y-4">
+   493→   493→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   494→   494→            <div className="space-y-2"><Label>{t('العميل *', 'Client *')}</Label><Select value={clientId} onValueChange={setClientId}><SelectTrigger><SelectValue placeholder={t('اختر العميل', 'Select client')} /></SelectTrigger><SelectContent>{clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select></div>
+   495→   495→            <div className="space-y-2"><Label>{t('المشروع', 'Project')}</Label><Select value={projectId} onValueChange={setProjectId}><SelectTrigger><SelectValue placeholder={t('اختر المشروع', 'Select project')} /></SelectTrigger><SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+   496→   496→            <div className="space-y-2"><Label>{t('تاريخ البداية *', 'Start Date *')}</Label><Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} required /></div>
+   497→   497→            <div className="space-y-2"><Label>{t('تاريخ النهاية', 'End Date')}</Label><Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} /></div>
+   498→   498→            <div className="space-y-2"><Label>{t('نوع الأجر *', 'Rate Type *')}</Label><Select value={rateType} onValueChange={setRateType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(rateTypeLabels).map(([k, v]) => <SelectItem key={k} value={k}>{v[lang]}</SelectItem>)}</SelectContent></Select></div>
+   499→   499→            <div className="space-y-2"><Label>{t('الأجر *', 'Rate *')}</Label><Input type="number" min="0" step="0.01" value={rate} onChange={e => setRate(e.target.value)} dir="ltr" required /></div>
+   500→   500→            <div className="space-y-2"><Label>{t('الإجمالي *', 'Total Amount *')}</Label><Input type="number" min="0" step="0.01" value={totalAmount} onChange={e => setTotalAmount(e.target.value)} dir="ltr" required /></div>
+   501→   501→            <div className="space-y-2"><Label>{t('ملاحظات', 'Notes')}</Label><Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={t('ملاحظات', 'Notes')} /></div>
+   502→   502→          </div>
+   503→   503→          <DialogFooter>
+   504→   504→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
+   505→   505→            <Button type="submit" disabled={createMutation.isPending || !clientId || !startDate || !rate || !totalAmount} className="bg-emerald-600 hover:bg-emerald-700">
+   506→   506→              {createMutation.isPending ? t('جاري الحفظ...', 'Saving...') : t('إنشاء العقد', 'Create Contract')}
+   507→   507→            </Button>
+   508→   508→          </DialogFooter>
+   509→   509→        </form>
+   510→   510→      </DialogContent>
+   511→   511→    </Dialog>
+   512→   512→  )
+   513→   513→}
+   514→   514→
+   515→   515→// ============ Add Equipment Expense Dialog ============
+   516→   516→function AddEquipmentExpenseDialog({ open, onOpenChange, equipmentId }: { open: boolean; onOpenChange: (v: boolean) => void; equipmentId: string }) {
+   517→   517→  const { lang } = useAppStore()
+   518→   518→  const queryClient = useQueryClient()
+   519→   519→  const [category, setCategory] = useState('')
+   520→   520→  const [description, setDescription] = useState('')
+   521→   521→  const [amount, setAmount] = useState('')
+   522→   522→  const [date, setDate] = useState('')
+   523→   523→  const [reference, setReference] = useState('')
+   524→   524→
+   525→   525→  React.useEffect(() => { if (open) { setCategory(''); setDescription(''); setAmount(''); setDate(''); setReference('') } }, [open])
+   526→   526→
+   527→   527→  const createMutation = useMutation({
+   528→   528→    mutationFn: (data: Record<string, unknown>) =>
+   529→   529→      fetch('/api/equipment/expenses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   530→   530→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   531→   531→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-expenses'] }); queryClient.invalidateQueries({ queryKey: ['equipment-detail'] }); onOpenChange(false) },
+   532→   532→  })
+   533→   533→
+   534→   534→  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); createMutation.mutate({ equipmentId, category, description, amount, date, reference: reference || null }) }
+   535→   535→
+   536→   536→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   537→   537→
+   538→   538→  return (
+   539→   539→    <Dialog open={open} onOpenChange={onOpenChange}>
+   540→   540→      <DialogContent className="max-w-md">
+   541→   541→        <DialogHeader><DialogTitle>{t('مصروف معدة', 'Equipment Expense')}</DialogTitle><DialogDescription>{t('إضافة مصروف جديد للمعدة', 'Add new expense for equipment')}</DialogDescription></DialogHeader>
+   542→   542→        <form onSubmit={handleSubmit} className="space-y-4">
+   543→   543→          <div className="space-y-2"><Label>{t('الفئة *', 'Category *')}</Label><Select value={category} onValueChange={setCategory}><SelectTrigger><SelectValue placeholder={t('اختر الفئة', 'Select category')} /></SelectTrigger><SelectContent>{expenseCategoryOptions.map(c => <SelectItem key={c.value} value={c.value}>{c[lang]}</SelectItem>)}</SelectContent></Select></div>
+   544→   544→          <div className="space-y-2"><Label>{t('الوصف *', 'Description *')}</Label><Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t('وصف المصروف', 'Expense description')} required /></div>
+   545→   545→          <div className="grid grid-cols-2 gap-4">
+   546→   546→            <div className="space-y-2"><Label>{t('المبلغ *', 'Amount *')}</Label><Input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required /></div>
+   547→   547→            <div className="space-y-2"><Label>{t('التاريخ *', 'Date *')}</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+   548→   548→          </div>
+   549→   549→          <div className="space-y-2"><Label>{t('المرجع', 'Reference')}</Label><Input value={reference} onChange={e => setReference(e.target.value)} placeholder={t('رقم المرجع', 'Reference number')} /></div>
+   550→   550→          <DialogFooter>
+   551→   551→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
+   552→   552→            <Button type="submit" disabled={createMutation.isPending || !category || !description || !amount || !date} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...') : t('إضافة', 'Add')}</Button>
+   553→   553→          </DialogFooter>
+   554→   554→        </form>
+   555→   555→      </DialogContent>
+   556→   556→    </Dialog>
+   557→   557→  )
+   558→   558→}
+   559→   559→
+   560→   560→// ============ Add Usage Dialog ============
+   561→   561→function AddUsageDialog({ open, onOpenChange, equipmentId, projects }: { open: boolean; onOpenChange: (v: boolean) => void; equipmentId: string; projects: ProjectOption[] }) {
+   562→   562→  const { lang } = useAppStore()
+   563→   563→  const queryClient = useQueryClient()
+   564→   564→  const [projectId, setProjectId] = useState('')
+   565→   565→  const [date, setDate] = useState('')
+   566→   566→  const [hours, setHours] = useState('')
+   567→   567→  const [cost, setCost] = useState('')
+   568→   568→  const [description, setDescription] = useState('')
+   569→   569→
+   570→   570→  React.useEffect(() => { if (open) { setProjectId(''); setDate(''); setHours(''); setCost(''); setDescription('') } }, [open])
+   571→   571→
+   572→   572→  const createMutation = useMutation({
+   573→   573→    mutationFn: (data: Record<string, unknown>) =>
+   574→   574→      fetch('/api/equipment/usages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   575→   575→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   576→   576→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-usages'] }); queryClient.invalidateQueries({ queryKey: ['equipment-detail'] }); onOpenChange(false) },
+   577→   577→  })
+   578→   578→
+   579→   579→  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); createMutation.mutate({ equipmentId, projectId, date, hours, cost, description }) }
+   580→   580→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   581→   581→
+   582→   582→  return (
+   583→   583→    <Dialog open={open} onOpenChange={onOpenChange}>
+   584→   584→      <DialogContent className="max-w-md">
+   585→   585→        <DialogHeader><DialogTitle>{t('سجل استخدام', 'Add Usage')}</DialogTitle><DialogDescription>{t('إضافة سجل استخدام جديد', 'Add new usage record')}</DialogDescription></DialogHeader>
+   586→   586→        <form onSubmit={handleSubmit} className="space-y-4">
+   587→   587→          <div className="space-y-2"><Label>{t('المشروع *', 'Project *')}</Label><Select value={projectId} onValueChange={setProjectId}><SelectTrigger><SelectValue placeholder={t('اختر المشروع', 'Select project')} /></SelectTrigger><SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+   588→   588→          <div className="grid grid-cols-2 gap-4">
+   589→   589→            <div className="space-y-2"><Label>{t('التاريخ *', 'Date *')}</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+   590→   590→            <div className="space-y-2"><Label>{t('الساعات *', 'Hours *')}</Label><Input type="number" min="0" step="0.5" value={hours} onChange={e => setHours(e.target.value)} dir="ltr" required /></div>
+   591→   591→          </div>
+   592→   592→          <div className="space-y-2"><Label>{t('التكلفة *', 'Cost *')}</Label><Input type="number" min="0" step="0.01" value={cost} onChange={e => setCost(e.target.value)} dir="ltr" required /></div>
+   593→   593→          <div className="space-y-2"><Label>{t('الوصف', 'Description')}</Label><Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t('وصف العمل', 'Work description')} /></div>
+   594→   594→          <DialogFooter>
+   595→   595→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
+   596→   596→            <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...') : t('إضافة', 'Add')}</Button>
+   597→   597→          </DialogFooter>
+   598→   598→        </form>
+   599→   599→      </DialogContent>
+   600→   600→    </Dialog>
+   601→   601→  )
+   602→   602→}
+   603→   603→
+   604→   604→// ============ Add Maintenance Dialog ============
+   605→   605→function AddMaintenanceDialog({ open, onOpenChange, equipmentId }: { open: boolean; onOpenChange: (v: boolean) => void; equipmentId: string }) {
+   606→   606→  const { lang } = useAppStore()
+   607→   607→  const queryClient = useQueryClient()
+   608→   608→  const [date, setDate] = useState('')
+   609→   609→  const [description, setDescription] = useState('')
+   610→   610→  const [cost, setCost] = useState('')
+   611→   611→  const [nextDate, setNextDate] = useState('')
+   612→   612→
+   613→   613→  React.useEffect(() => { if (open) { setDate(''); setDescription(''); setCost(''); setNextDate('') } }, [open])
+   614→   614→
+   615→   615→  const createMutation = useMutation({
+   616→   616→    mutationFn: (data: Record<string, unknown>) =>
+   617→   617→      fetch('/api/equipment/maintenance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   618→   618→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   619→   619→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-maintenance'] }); queryClient.invalidateQueries({ queryKey: ['equipment-detail'] }); onOpenChange(false) },
+   620→   620→  })
+   621→   621→
+   622→   622→  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); createMutation.mutate({ equipmentId, date, description, cost, nextDate: nextDate || null }) }
+   623→   623→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   624→   624→
+   625→   625→  return (
+   626→   626→    <Dialog open={open} onOpenChange={onOpenChange}>
+   627→   627→      <DialogContent className="max-w-md">
+   628→   628→        <DialogHeader><DialogTitle>{t('سجل صيانة', 'Add Maintenance')}</DialogTitle><DialogDescription>{t('إضافة سجل صيانة جديد', 'Add new maintenance record')}</DialogDescription></DialogHeader>
+   629→   629→        <form onSubmit={handleSubmit} className="space-y-4">
+   630→   630→          <div className="grid grid-cols-2 gap-4">
+   631→   631→            <div className="space-y-2"><Label>{t('التاريخ *', 'Date *')}</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+   632→   632→            <div className="space-y-2"><Label>{t('التكلفة *', 'Cost *')}</Label><Input type="number" min="0" step="0.01" value={cost} onChange={e => setCost(e.target.value)} dir="ltr" required /></div>
+   633→   633→          </div>
+   634→   634→          <div className="space-y-2"><Label>{t('الوصف *', 'Description *')}</Label><Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t('وصف الصيانة', 'Maintenance description')} required /></div>
+   635→   635→          <div className="space-y-2"><Label>{t('تاريخ الصيانة القادمة', 'Next Maintenance Date')}</Label><Input type="date" value={nextDate} onChange={e => setNextDate(e.target.value)} /></div>
+   636→   636→          <DialogFooter>
+   637→   637→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
+   638→   638→            <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...') : t('إضافة', 'Add')}</Button>
+   639→   639→          </DialogFooter>
+   640→   640→        </form>
+   641→   641→      </DialogContent>
+   642→   642→    </Dialog>
+   643→   643→  )
+   644→   644→}
+   645→   645→
+   646→   646→// ============ Add Fuel Dialog ============
+   647→   647→function AddFuelDialog({ open, onOpenChange, equipmentId, projects }: { open: boolean; onOpenChange: (v: boolean) => void; equipmentId: string; projects: ProjectOption[] }) {
+   648→   648→  const { lang } = useAppStore()
+   649→   649→  const queryClient = useQueryClient()
+   650→   650→  const [date, setDate] = useState('')
+   651→   651→  const [liters, setLiters] = useState('')
+   652→   652→  const [costPerLiter, setCostPerLiter] = useState('')
+   653→   653→  const [projectId, setProjectId] = useState('')
+   654→   654→
+   655→   655→  const totalCost = (parseFloat(liters) || 0) * (parseFloat(costPerLiter) || 0)
+   656→   656→
+   657→   657→  React.useEffect(() => { if (open) { setDate(''); setLiters(''); setCostPerLiter(''); setProjectId('') } }, [open])
+   658→   658→
+   659→   659→  const createMutation = useMutation({
+   660→   660→    mutationFn: (data: Record<string, unknown>) =>
+   661→   661→      fetch('/api/equipment/fuel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+   662→   662→        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   663→   663→    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-fuel'] }); queryClient.invalidateQueries({ queryKey: ['equipment-detail'] }); onOpenChange(false) },
+   664→   664→  })
+   665→   665→
+   666→   666→  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); createMutation.mutate({ equipmentId, date, liters, costPerLiter, projectId: projectId || null }) }
+   667→   667→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   668→   668→
+   669→   669→  return (
+   670→   670→    <Dialog open={open} onOpenChange={onOpenChange}>
+   671→   671→      <DialogContent className="max-w-md">
+   672→   672→        <DialogHeader><DialogTitle>{t('سجل وقود', 'Add Fuel Log')}</DialogTitle><DialogDescription>{t('إضافة سجل وقود جديد', 'Add new fuel log')}</DialogDescription></DialogHeader>
+   673→   673→        <form onSubmit={handleSubmit} className="space-y-4">
+   674→   674→          <div className="grid grid-cols-2 gap-4">
+   675→   675→            <div className="space-y-2"><Label>{t('التاريخ *', 'Date *')}</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} required /></div>
+   676→   676→            <div className="space-y-2"><Label>{t('اللترات *', 'Liters *')}</Label><Input type="number" min="0" step="0.1" value={liters} onChange={e => setLiters(e.target.value)} dir="ltr" required /></div>
+   677→   677→          </div>
+   678→   678→          <div className="grid grid-cols-2 gap-4">
+   679→   679→            <div className="space-y-2"><Label>{t('سعر اللتر *', 'Cost/Liter *')}</Label><Input type="number" min="0" step="0.01" value={costPerLiter} onChange={e => setCostPerLiter(e.target.value)} dir="ltr" required /></div>
+   680→   680→            <div className="space-y-2"><Label>{t('المشروع', 'Project')}</Label><Select value={projectId} onValueChange={setProjectId}><SelectTrigger><SelectValue placeholder={t('اختر', 'Select')} /></SelectTrigger><SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+   681→   681→          </div>
+   682→   682→          {totalCost > 0 && (
+   683→   683→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3"><p className="text-sm text-emerald-600">{t('الإجمالي', 'Total')}: <span className="font-bold text-emerald-700"><MoneyDisplay value={totalCost} lang={lang} size="sm" inline /></span></p></CardContent></Card>
+   684→   684→          )}
+   685→   685→          <DialogFooter>
+   686→   686→            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel')}</Button>
+   687→   687→            <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...') : t('إضافة', 'Add')}</Button>
+   688→   688→          </DialogFooter>
+   689→   689→        </form>
+   690→   690→      </DialogContent>
+   691→   691→    </Dialog>
+   692→   692→  )
+   693→   693→}
+   694→   694→
+   695→   695→// ============ Rental Workflow Chain Component ============
+   696→   696→function RentalWorkflowChain({ activeRentals, lang, onNavigate }: { activeRentals: EquipmentRental[]; lang: 'ar' | 'en'; onNavigate: (navItem: NavItem) => void }) {
+   697→   697→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   698→   698→  const hasActive = activeRentals.length > 0
+   699→   699→
+   700→   700→  const workflowSteps = RENTAL_WORKFLOW.map((step, idx) => {
+   701→   701→    const isActive = hasActive
+   702→   702→    const isLast = idx === RENTAL_WORKFLOW.length - 1
+   703→   703→    let stepCount = 0
+   704→   704→
+   705→   705→    if (step.step === 'rental-contract') stepCount = activeRentals.length
+   706→   706→    if (step.step === 'delivery' && hasActive) stepCount = activeRentals.reduce((s, r) => s + (r.deliveryOrders?.length || 0), 0)
+   707→   707→    if (step.step === 'timesheet' && hasActive) stepCount = activeRentals.reduce((s, r) => s + (r.timesheets?.length || 0), 0)
+   708→   708→    if (step.step === 'invoice' && hasActive) stepCount = activeRentals.reduce((s, r) => s + (r.timesheets?.filter(ts => ts.invoice)?.length || 0), 0)
+   709→   709→
+   710→   710→    return { ...step, isActive, stepCount, isLast }
+   711→   711→  })
+   712→   712→
+   713→   713→  return (
+   714→   714→    <div className="space-y-4">
+   715→   715→      <div className="flex items-center gap-2 mb-4">
+   716→   716→        <Link2 className="size-5 text-cyan-600" />
+   717→   717→        <h3 className="font-semibold text-cyan-700">{t('سلسلة التأجير', 'Rental Workflow Chain')}</h3>
+   718→   718→        {hasActive && <Badge className="bg-emerald-100 text-emerald-700 border-0">{t('نشط', 'Active')} ({activeRentals.length})</Badge>}
+   719→   719→      </div>
+   720→   720→
+   721→   721→      {/* Visual Chain */}
+   722→   722→      <div className="overflow-x-auto pb-2">
+   723→   723→        <div className="flex items-center gap-1 min-w-max">
+   724→   724→          {workflowSteps.map((step, idx) => (
+   725→   725→            <React.Fragment key={step.step}>
+   726→   726→              <button
+   727→   727→                onClick={() => onNavigate(step.navItem)}
+   728→   728→                className={`flex flex-col items-center gap-1 px-3 py-2 rounded-lg border-2 transition-all min-w-[80px] hover:shadow-md cursor-pointer ${
+   729→   729→                  step.isActive
+   730→   730→                    ? 'border-cyan-400 bg-cyan-50 shadow-sm'
+   731→   731→                    : 'border-gray-200 bg-gray-50 opacity-60'
+   732→   732→                }`}
+   733→   733→              >
+   734→   734→                {step.isActive ? (
+   735→   735→                  <CheckCircle2 className="size-5 text-cyan-600" />
+   736→   736→                ) : (
+   737→   737→                  <Circle className="size-5 text-gray-400" />
+   738→   738→                )}
+   739→   739→                <span className={`text-xs font-medium text-center leading-tight ${step.isActive ? 'text-cyan-700' : 'text-gray-500'}`}>
+   740→   740→                  {step.label[lang]}
+   741→   741→                </span>
+   742→   742→                {step.stepCount > 0 && (
+   743→   743→                  <Badge className="bg-cyan-600 text-white text-[10px] px-1.5 py-0 border-0">{step.stepCount}</Badge>
+   744→   744→                )}
+   745→   745→              </button>
+   746→   746→              {!step.isLast && (
+   747→   747→                <ChevronLeft className="size-4 text-gray-400 shrink-0 rotate-180" />
+   748→   748→              )}
+   749→   749→            </React.Fragment>
+   750→   750→          ))}
+   751→   751→        </div>
+   752→   752→      </div>
+   753→   753→
+   754→   754→      {/* Active Rentals Detail */}
+   755→   755→      {activeRentals.length > 0 && (
+   756→   756→        <Card className="border-cyan-200 bg-cyan-50/30">
+   757→   757→          <CardHeader className="pb-2">
+   758→   758→            <CardTitle className="text-sm text-cyan-700">{t('عقود التأجير النشطة', 'Active Rental Contracts')}</CardTitle>
+   759→   759→          </CardHeader>
+   760→   760→          <CardContent>
+   761→   761→            <div className="space-y-3">
+   762→   762→              {activeRentals.map(rental => (
+   763→   763→                <div key={rental.id} className="p-3 rounded-lg bg-white border border-cyan-200 space-y-2">
+   764→   764→                  <div className="flex items-center justify-between">
+   765→   765→                    <div className="flex items-center gap-2">
+   766→   766→                      <Badge className="bg-cyan-100 text-cyan-700 border-0">{rental.contract?.contractNo || '—'}</Badge>
+   767→   767→                      <span className="text-sm font-medium">{rental.client?.name || '—'}</span>
+   768→   768→                    </div>
+   769→   769→                    <MoneyDisplay value={rental.totalAmount} lang={lang} size="sm" bold className="text-cyan-700" />
+   770→   770→                  </div>
+   771→   771→                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-muted-foreground">
+   772→   772→                    <div>{t('البداية', 'Start')}: {formatDate(rental.startDate, lang)}</div>
+   773→   773→                    <div>{t('النهاية', 'End')}: {rental.endDate ? formatDate(rental.endDate, lang) : '—'}</div>
+   774→   774→                    <div>{t('أوامر التوصيل', 'Delivery Orders')}: {rental.deliveryOrders?.length || 0}</div>
+   775→   775→                    <div>{t('سجلات الساعات', 'Timesheets')}: {rental.timesheets?.length || 0}</div>
+   776→   776→                  </div>
+   777→   777→                  {/* Mini workflow for this rental */}
+   778→   778→                  <div className="flex items-center gap-1 pt-1 border-t border-cyan-100">
+   779→   779→                    {[
+   780→   780→                      { label: t('عقد', 'Contract'), done: true },
+   781→   781→                      { label: t('توصيل', 'Delivery'), done: (rental.deliveryOrders?.length || 0) > 0 },
+   782→   782→                      { label: t('ساعات', 'Hours'), done: (rental.timesheets?.length || 0) > 0 },
+   783→   783→                      { label: t('فاتورة', 'Invoice'), done: (rental.timesheets?.filter(ts => ts.invoice)?.length || 0) > 0 },
+   784→   784→                      { label: t('تحصيل', 'Collect'), done: false },
+   785→   785→                    ].map((mini, mi, arr) => (
+   786→   786→                      <React.Fragment key={mi}>
+   787→   787→                        <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] ${mini.done ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
+   788→   788→                          {mini.done ? <CheckCircle2 className="size-3" /> : <Circle className="size-3" />}
+   789→   789→                          {mini.label}
+   790→   790→                        </div>
+   791→   791→                        {mi < arr.length - 1 && <ArrowLeftRight className="size-3 text-gray-300" />}
+   792→   792→                      </React.Fragment>
+   793→   793→                    ))}
+   794→   794→                  </div>
+   795→   795→                </div>
+   796→   796→              ))}
+   797→   797→            </div>
+   798→   798→          </CardContent>
+   799→   799→        </Card>
+   800→   800→      )}
+   801→   801→
+   802→   802→      {activeRentals.length === 0 && (
+   803→   803→        <Card className="bg-gray-50 border-dashed">
+   804→   804→          <CardContent className="p-6 text-center">
+   805→   805→            <AlertCircle className="size-8 text-gray-400 mx-auto mb-2" />
+   806→   806→            <p className="text-sm text-gray-500">{t('لا توجد عقود تأجير نشطة', 'No active rental contracts')}</p>
+   807→   807→            <p className="text-xs text-gray-400 mt-1">{t('أضف عقد تأجير لتفعيل سلسلة العمل', 'Add a rental contract to activate the workflow')}</p>
+   808→   808→          </CardContent>
+   809→   809→        </Card>
+   810→   810→      )}
+   811→   811→    </div>
+   812→   812→  )
+   813→   813→}
+   814→   814→
+   815→   815→// ============ Equipment Detail View (كرت المعدة) ============
+   816→   816→function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onBack: () => void }) {
+   817→   817→  const { lang, setActiveItem } = useAppStore()
+   818→   818→  const [activeTab, setActiveTab] = useState('card')
+   819→   819→  const [usageDialogOpen, setUsageDialogOpen] = useState(false)
+   820→   820→  const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false)
+   821→   821→  const [fuelDialogOpen, setFuelDialogOpen] = useState(false)
+   822→   822→  const [rentalDialogOpen, setRentalDialogOpen] = useState(false)
+   823→   823→  const [expenseDialogOpen, setExpenseDialogOpen] = useState(false)
+   824→   824→
+   825→   825→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+   826→   826→
+   827→   827→  const { data: equipment, isLoading, refetch } = useQuery<Equipment>({
+   828→   828→    queryKey: ['equipment-detail', equipmentId],
+   829→   829→    queryFn: async () => {
+   830→   830→      const r = await fetch(`/api/equipment/${equipmentId}`)
+   831→   831→      if (!r.ok) throw new Error()
+   832→   832→      return r.json()
+   833→   833→    },
+   834→   834→  })
+   835→   835→
+   836→   836→  const { data: projects = [] } = useQuery<ProjectOption[]>({
+   837→   837→    queryKey: ['projects-list'],
+   838→   838→    queryFn: async () => { const r = await fetch('/api/projects/list'); if (!r.ok) return []; return r.json() },
+   839→   839→  })
+   840→   840→
+   841→   841→  const { data: clients = [] } = useQuery<ClientOption[]>({
+   842→   842→    queryKey: ['clients-list'],
+   843→   843→    queryFn: async () => { const r = await fetch('/api/clients'); if (!r.ok) return []; return r.json() },
+   844→   844→  })
+   845→   845→
+   846→   846→  const handleNavigate = (navItem: NavItem) => {
+   847→   847→    setActiveItem(navItem)
+   848→   848→  }
+   849→   849→
+   850→   850→  // Computed values
+   851→   851→  const computed = useMemo(() => {
+   852→   852→    if (!equipment) return null
+   853→   853→
+   854→   854→    const usages = equipment.usages || []
+   855→   855→    const maintenance = equipment.maintenance || []
+   856→   856→    const fuelLogs = equipment.fuelLogs || []
+   857→   857→    const rentals = equipment.rentals || []
+   858→   858→    const expenses = equipment.expenses || []
+   859→   859→    const deliveryOrders = equipment.deliveryOrders || []
+   860→   860→    const timesheets = equipment.timesheets || []
+   861→   861→    const operatorLogs = equipment.operatorLogs || []
+   862→   862→
+   863→   863→    // Revenue
+   864→   864→    const totalRentalRevenue = rentals.reduce((s, r) => s + r.totalAmount, 0)
+   865→   865→    const totalOperatingHours = timesheets.reduce((s, ts) => s + ts.operatingHours, 0)
+   866→   866→    const totalUsageHours = usages.reduce((s, u) => s + u.hours, 0)
+   867→   867→    const totalOperationHours = operatorLogs.reduce((s, o) => s + o.hours, 0)
+   868→   868→    const allHours = totalOperatingHours + totalUsageHours + totalOperationHours
+   869→   869→
+   870→   870→    // Costs
+   871→   871→    const totalUsageCost = usages.reduce((s, u) => s + u.cost, 0)
+   872→   872→    const totalMaintenanceCost = maintenance.reduce((s, m) => s + m.cost, 0)
+   873→   873→    const totalFuelCost = fuelLogs.reduce((s, f) => s + f.totalCost, 0)
+   874→   874→    const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0)
+   875→   875→    const totalOperatingCost = operatorLogs.reduce((s, o) => s + (o.hours * (equipment.hourlyRate || 0)), 0)
+   876→   876→    const totalTransportCost = expenses.filter(e => e.category === 'TRANSPORT' || e.category === 'DELIVERY').reduce((s, e) => s + e.amount, 0)
+   877→   877→    const driverCosts = expenses.filter(e => e.category === 'DRIVERS').reduce((s, e) => s + e.amount, 0)
+   878→   878→
+   879→   879→    // Depreciation (simplified: purchase price / 10 years, or monthly rate)
+   880→   880→    const depreciationPerYear = equipment.purchasePrice / 10
+   881→   881→    const depreciationPerMonth = depreciationPerYear / 12
+   882→   882→
+   883→   883→    const totalCosts = totalUsageCost + totalMaintenanceCost + totalFuelCost + totalExpenses + totalOperatingCost + depreciationPerMonth
+   884→   884→    const profit = totalRentalRevenue - totalCosts
+   885→   885→    const profitMargin = totalRentalRevenue > 0 ? (profit / totalRentalRevenue) * 100 : 0
+   886→   886→
+   887→   887→    // Cost breakdown by category
+   888→   888→    const costByCategory: Record<string, number> = {}
+   889→   889→    expenses.forEach(e => {
+   890→   890→      costByCategory[e.category] = (costByCategory[e.category] || 0) + e.amount
+   891→   891→    })
+   892→   892→
+   893→   893→    const activeRentals = rentals.filter(r => r.status === 'ACTIVE')
+   894→   894→
+   895→   895→    return {
+   896→   896→      usages, maintenance, fuelLogs, rentals, expenses, deliveryOrders, timesheets, operatorLogs,
+   897→   897→      totalRentalRevenue, totalOperatingHours, totalUsageHours, totalOperationHours, allHours,
+   898→   898→      totalUsageCost, totalMaintenanceCost, totalFuelCost, totalExpenses, totalOperatingCost,
+   899→   899→      totalTransportCost, driverCosts, depreciationPerMonth, depreciationPerYear,
+   900→   900→      totalCosts, profit, profitMargin, costByCategory, activeRentals,
+   901→   901→    }
+   902→   902→  }, [equipment])
+   903→   903→
+   904→   904→  if (isLoading) {
+   905→   905→    return (
+   906→   906→      <div className="space-y-4 p-4">
+   907→   907→        <CardSkeleton />
+   908→   908→        <TableSkeleton rows={3} />
+   909→   909→        <TableSkeleton rows={5} />
+   910→   910→      </div>
+   911→   911→    )
+   912→   912→  }
+   913→   913→
+   914→   914→  if (!equipment || !computed) return null
+   915→   915→
+   916→   916→  const isWarrantyExpired = equipment.warrantyExpiry ? new Date(equipment.warrantyExpiry) < new Date() : false
+   917→   917→
+   918→   918→  return (
+   919→   919→    <div className="space-y-4">
+   920→   920→      {/* Header */}
+   921→   921→      <div className="flex items-center gap-3">
+   922→   922→        <Button variant="outline" size="icon" onClick={onBack}><ArrowRight className="size-4" /></Button>
+   923→   923→        <div className="flex-1">
+   924→   924→          <div className="flex items-center gap-2">
+   925→   925→            <h2 className="text-xl font-bold">{equipment.name}</h2>
+   926→   926→            <StatusBadge status={equipment.status} lang={lang} />
+   927→   927→            <ActivityBadge status={equipment.status} lang={lang} />
+   928→   928→            <OwnershipBadge ownershipType={equipment.ownershipType || 'COMPANY_OWNED'} lang={lang} />
+   929→   929→          </div>
+   930→   930→          <p className="text-sm text-muted-foreground">{equipment.code} {equipment.model ? `| ${equipment.model}` : ''} {equipment.type ? `| ${equipment.type}` : ''}</p>
+   931→   931→        </div>
+   932→   932→        <div className="flex items-center gap-2">
+   933→   933→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}><RefreshCw className="size-4" /></Button>
+   934→   934→        </div>
+   935→   935→      </div>
+   936→   936→
+   937→   937→      {/* Rate Cards */}
+   938→   938→      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+   939→   939→        <Card className="bg-purple-50 border-purple-200">
+   940→   940→          <CardContent className="p-3 text-center">
+   941→   941→            <p className="text-xs text-purple-600">{t('الأجر بالساعة', 'Hourly Rate')}</p>
+   942→   942→            <MoneyDisplay value={equipment.hourlyRate} lang={lang} size="lg" bold className="text-purple-700" />
+   943→   943→          </CardContent>
+   944→   944→        </Card>
+   945→   945→        <Card className="bg-purple-50 border-purple-200">
+   946→   946→          <CardContent className="p-3 text-center">
+   947→   947→            <p className="text-xs text-purple-600">{t('الأجر اليومي', 'Daily Rate')}</p>
+   948→   948→            <MoneyDisplay value={equipment.dailyRate} lang={lang} size="lg" bold className="text-purple-700" />
+   949→   949→          </CardContent>
+   950→   950→        </Card>
+   951→   951→        <Card className="bg-purple-50 border-purple-200">
+   952→   952→          <CardContent className="p-3 text-center">
+   953→   953→            <p className="text-xs text-purple-600">{t('الأجر الشهري', 'Monthly Rate')}</p>
+   954→   954→            <MoneyDisplay value={equipment.monthlyRate} lang={lang} size="lg" bold className="text-purple-700" />
+   955→   955→          </CardContent>
+   956→   956→        </Card>
+   957→   957→        <Card className="bg-teal-50 border-teal-200">
+   958→   958→          <CardContent className="p-3 text-center">
+   959→   959→            <p className="text-xs text-teal-600">{t('سعر الشراء', 'Purchase Price')}</p>
+   960→   960→            <MoneyDisplay value={equipment.purchasePrice} lang={lang} size="lg" bold className="text-teal-700" />
+   961→   961→          </CardContent>
+   962→   962→        </Card>
+   963→   963→      </div>
+   964→   964→
+   965→   965→      {/* Tabs - 5 tabs as specified */}
+   966→   966→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   967→   967→        <TabsList className="grid grid-cols-5 w-full">
+   968→   968→          <TabsTrigger value="card" className="gap-1 text-xs"><FileText className="size-3" /> <span className="hidden sm:inline">{t('كرت المعدة', 'Card')}</span></TabsTrigger>
+   969→   969→          <TabsTrigger value="workflow" className="gap-1 text-xs"><Link2 className="size-3" /> <span className="hidden sm:inline">{t('السلسلة', 'Workflow')}</span></TabsTrigger>
+   970→   970→          <TabsTrigger value="costs" className="gap-1 text-xs"><TrendingDown className="size-3" /> <span className="hidden sm:inline">{t('التكاليف', 'Costs')}</span></TabsTrigger>
+   971→   971→          <TabsTrigger value="revenue" className="gap-1 text-xs"><TrendingUp className="size-3" /> <span className="hidden sm:inline">{t('الإيرادات', 'Revenue')}</span></TabsTrigger>
+   972→   972→          <TabsTrigger value="operations" className="gap-1 text-xs"><Users className="size-3" /> <span className="hidden sm:inline">{t('التشغيل', 'Ops')}</span></TabsTrigger>
+   973→   973→        </TabsList>
+   974→   974→
+   975→   975→        {/* ====== TAB 1: كرت المعدة (Equipment Card) - Financial Overview ====== */}
+   976→   976→        <TabsContent value="card" className="space-y-4">
+   977→   977→          {/* Revenue Section */}
+   978→   978→          <Card className="border-emerald-200">
+   979→   979→            <CardHeader className="pb-2 bg-emerald-50 rounded-t-lg">
+   980→   980→              <CardTitle className="text-sm text-emerald-700 flex items-center gap-2"><TrendingUp className="size-4" /> {t('الإيرادات', 'Revenue')}</CardTitle>
+   981→   981→            </CardHeader>
+   982→   982→            <CardContent className="p-4 space-y-3">
+   983→   983→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+   984→   984→                <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-lg">
+   985→   985→                  <span className="text-sm text-emerald-700">{t('إجمالي إيرادات التأجير', 'Total Rental Revenue')}</span>
+   986→   986→                  <MoneyDisplay value={computed.totalRentalRevenue} lang={lang} size="lg" bold className="text-emerald-700" />
+   987→   987→                </div>
+   988→   988→                <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-lg">
+   989→   989→                  <span className="text-sm text-emerald-700">{t('إجمالي ساعات التشغيل', 'Total Operating Hours')}</span>
+   990→   990→                  <span className="text-lg font-bold text-emerald-700">{formatNumber(computed.allHours)} {t('ساعة', 'hrs')}</span>
+   991→   991→                </div>
+   992→   992→              </div>
+   993→   993→            </CardContent>
+   994→   994→          </Card>
+   995→   995→
+   996→   996→          {/* Costs Section */}
+   997→   997→          <Card className="border-rose-200">
+   998→   998→            <CardHeader className="pb-2 bg-rose-50 rounded-t-lg">
+   999→   999→              <CardTitle className="text-sm text-rose-700 flex items-center gap-2"><TrendingDown className="size-4" /> {t('التكاليف', 'Costs')}</CardTitle>
+  1000→  1000→            </CardHeader>
+  1001→  1001→            <CardContent className="p-4 space-y-2">
+  1002→  1002→              <div className="space-y-2">
+  1003→  1003→                {[
+  1004→  1004→                  { label: t('تكلفة الوقود', 'Fuel Costs'), value: computed.totalFuelCost, icon: Fuel },
+  1005→  1005→                  { label: t('تكلفة الصيانة', 'Maintenance Costs'), value: computed.totalMaintenanceCost, icon: Wrench },
+  1006→  1006→                  { label: t('تكلفة السائق', 'Driver Costs'), value: computed.driverCosts, icon: Users },
+  1007→  1007→                  { label: t('تكلفة النقل', 'Transport Costs'), value: computed.totalTransportCost, icon: Truck },
+  1008→  1008→                  { label: t('الإهلاك الشهري', 'Monthly Depreciation'), value: computed.depreciationPerMonth, icon: BarChart3 },
+  1009→  1009→                  { label: t('تكلفة التشغيل', 'Operating Costs'), value: computed.totalUsageCost, icon: Clock },
+  1010→  1010→                  { label: t('مصروفات أخرى', 'Other Expenses'), value: computed.totalExpenses, icon: Receipt },
+  1011→  1011→                ].map((item, idx) => (
+  1012→  1012→                  <div key={idx} className="flex justify-between items-center p-2 hover:bg-rose-50 rounded">
+  1013→  1013→                    <span className="text-sm text-rose-700 flex items-center gap-2"><item.icon className="size-3.5" /> {item.label}</span>
+  1014→  1014→                    <MoneyDisplay value={item.value} lang={lang} size="sm" bold className="text-rose-700" />
+  1015→  1015→                  </div>
+  1016→  1016→                ))}
+  1017→  1017→              </div>
+  1018→  1018→              <Separator />
+  1019→  1019→              <div className="flex justify-between items-center p-3 bg-rose-100 rounded-lg">
+  1020→  1020→                <span className="font-semibold text-rose-800">{t('إجمالي التكاليف', 'Total Costs')}</span>
+  1021→  1021→                <MoneyDisplay value={computed.totalCosts} lang={lang} size="lg" bold className="text-rose-800" />
+  1022→  1022→              </div>
+  1023→  1023→            </CardContent>
+  1024→  1024→          </Card>
+  1025→  1025→
+  1026→  1026→          {/* Profit Section */}
+  1027→  1027→          <Card className={`border-2 ${computed.profit >= 0 ? 'border-emerald-300 bg-emerald-50' : 'border-red-300 bg-red-50'}`}>
+  1028→  1028→            <CardContent className="p-4">
+  1029→  1029→              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+  1030→  1030→                <div className="text-center">
+  1031→  1031→                  <p className="text-xs text-muted-foreground">{t('الإيرادات', 'Revenue')}</p>
+  1032→  1032→                  <MoneyDisplay value={computed.totalRentalRevenue} lang={lang} size="xl" bold className="text-emerald-700" />
+  1033→  1033→                </div>
+  1034→  1034→                <div className="text-center">
+  1035→  1035→                  <p className="text-xs text-muted-foreground">{t('التكاليف', 'Costs')}</p>
+  1036→  1036→                  <MoneyDisplay value={computed.totalCosts} lang={lang} size="xl" bold className="text-rose-700" />
+  1037→  1037→                </div>
+  1038→  1038→                <div className="text-center">
+  1039→  1039→                  <p className="text-xs text-muted-foreground">{t('الربح', 'Profit')}</p>
+  1040→  1040→                  <MoneyDisplay value={computed.profit} lang={lang} size="xl" bold className={computed.profit >= 0 ? 'text-emerald-700' : 'text-red-700'} />
+  1041→  1041→                  <p className={`text-sm font-semibold mt-1 ${computed.profitMargin >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+  1042→  1042→                    {(computed.profitMargin ?? 0).toFixed(1)}% {t('هامش الربح', 'margin')}
+  1043→  1043→                  </p>
+  1044→  1044→                </div>
+  1045→  1045→              </div>
+  1046→  1046→            </CardContent>
+  1047→  1047→          </Card>
+  1048→  1048→
+  1049→  1049→          {/* Purchase & Warranty Info */}
+  1050→  1050→          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1051→  1051→            <Card>
+  1052→  1052→              <CardContent className="p-4 space-y-3">
+  1053→  1053→                <h4 className="font-semibold text-sm text-teal-700 flex items-center gap-2"><DollarSign className="size-4" /> {t('معلومات الشراء', 'Purchase Info')}</h4>
+  1054→  1054→                <div className="space-y-2 text-sm">
+  1055→  1055→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('سعر الشراء', 'Purchase Price')}</span><MoneyDisplay value={equipment.purchasePrice} lang={lang} size="sm" bold inline /></div>
+  1056→  1056→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('المورد', 'Supplier')}</span><span className="font-medium">{equipment.supplier?.name || '—'}</span></div>
+  1057→  1057→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('تاريخ الشراء', 'Purchase Date')}</span><span>{equipment.purchaseDate ? formatDate(equipment.purchaseDate, lang) : '—'}</span></div>
+  1058→  1058→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('الرقم التسلسلي', 'Serial No.')}</span><span className="font-mono">{equipment.serialNumber || '—'}</span></div>
+  1059→  1059→                </div>
+  1060→  1060→              </CardContent>
+  1061→  1061→            </Card>
+  1062→  1062→            <Card>
+  1063→  1063→              <CardContent className="p-4 space-y-3">
+  1064→  1064→                <h4 className="font-semibold text-sm flex items-center gap-2"><Shield className="size-4" /> {t('الضمان والمعلومات', 'Warranty & Info')}</h4>
+  1065→  1065→                <div className="space-y-2 text-sm">
+  1066→  1066→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('انتهاء الضمان', 'Warranty Expiry')}</span><span className={isWarrantyExpired ? 'text-red-600 font-semibold' : ''}>{equipment.warrantyExpiry ? formatDate(equipment.warrantyExpiry, lang) : '—'}{isWarrantyExpired && ` (${t('منتهي', 'Expired')})`}</span></div>
+  1067→  1067→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('الموديل', 'Model')}</span><span>{equipment.model || '—'}</span></div>
+  1068→  1068→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('النوع', 'Type')}</span><span>{equipment.type || '—'}</span></div>
+  1069→  1069→                  <div className="flex justify-between"><span className="text-muted-foreground">{t('الإهلاك السنوي', 'Annual Depreciation')}</span><MoneyDisplay value={computed.depreciationPerYear} lang={lang} size="sm" inline /></div>
+  1070→  1070→                </div>
+  1071→  1071→              </CardContent>
+  1072→  1072→            </Card>
+  1073→  1073→          </div>
+  1074→  1074→        </TabsContent>
+  1075→  1075→
+  1076→  1076→        {/* ====== TAB 2: سلسلة التأجير (Rental Workflow) ====== */}
+  1077→  1077→        <TabsContent value="workflow" className="space-y-4">
+  1078→  1078→          <RentalWorkflowChain activeRentals={computed.activeRentals} lang={lang} onNavigate={handleNavigate} />
+  1079→  1079→
+  1080→  1080→          {/* Quick Actions */}
+  1081→  1081→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1082→  1082→            <Button variant="outline" className="gap-2 h-auto py-3 flex-col" onClick={() => setRentalDialogOpen(true)}>
+  1083→  1083→              <FileText className="size-5 text-cyan-600" />
+  1084→  1084→              <span className="text-xs">{t('عقد تأجير', 'Rental Contract')}</span>
+  1085→  1085→            </Button>
+  1086→  1086→            <Button variant="outline" className="gap-2 h-auto py-3 flex-col" onClick={() => handleNavigate('delivery-orders')}>
+  1087→  1087→              <Truck className="size-5 text-cyan-600" />
+  1088→  1088→              <span className="text-xs">{t('أمر توصيل', 'Delivery Order')}</span>
+  1089→  1089→            </Button>
+  1090→  1090→            <Button variant="outline" className="gap-2 h-auto py-3 flex-col" onClick={() => handleNavigate('timesheets')}>
+  1091→  1091→              <Clock className="size-5 text-cyan-600" />
+  1092→  1092→              <span className="text-xs">{t('سجل ساعات', 'Timesheet')}</span>
+  1093→  1093→            </Button>
+  1094→  1094→            <Button variant="outline" className="gap-2 h-auto py-3 flex-col" onClick={() => handleNavigate('rental-invoices')}>
+  1095→  1095→              <Receipt className="size-5 text-cyan-600" />
+  1096→  1096→              <span className="text-xs">{t('فاتورة تأجير', 'Rental Invoice')}</span>
+  1097→  1097→            </Button>
+  1098→  1098→          </div>
+  1099→  1099→
+  1100→  1100→          {/* All Rentals Table */}
+  1101→  1101→          <Card>
+  1102→  1102→            <CardHeader className="pb-2">
+  1103→  1103→              <div className="flex items-center justify-between">
+  1104→  1104→                <CardTitle className="text-sm">{t('جميع عقود التأجير', 'All Rental Contracts')}</CardTitle>
+  1105→  1105→                <Button size="sm" className="gap-1 bg-cyan-600 hover:bg-cyan-700" onClick={() => setRentalDialogOpen(true)}><Plus className="size-3.5" /> {t('عقد جديد', 'New Contract')}</Button>
+  1106→  1106→              </div>
+  1107→  1107→            </CardHeader>
+  1108→  1108→            <CardContent className="p-0">
+  1109→  1109→              {computed.rentals.length === 0 ? (
+  1110→  1110→                <p className="text-center text-muted-foreground py-8">{t('لا توجد عقود تأجير', 'No rental contracts')}</p>
+  1111→  1111→              ) : (
+  1112→  1112→                <div className="overflow-x-auto max-h-96">
+  1113→  1113→                  <Table>
+  1114→  1114→                    <TableHeader>
+  1115→  1115→                      <TableRow>
+  1116→  1116→                        <TableHead className="text-right">{t('العميل', 'Client')}</TableHead>
+  1117→  1117→                        <TableHead className="text-right">{t('رقم العقد', 'Contract')}</TableHead>
+  1118→  1118→                        <TableHead className="text-right">{t('البداية', 'Start')}</TableHead>
+  1119→  1119→                        <TableHead className="text-right">{t('النهاية', 'End')}</TableHead>
+  1120→  1120→                        <TableHead className="text-right">{t('نوع الأجر', 'Rate Type')}</TableHead>
+  1121→  1121→                        <TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead>
+  1122→  1122→                        <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+  1123→  1123→                      </TableRow>
+  1124→  1124→                    </TableHeader>
+  1125→  1125→                    <TableBody>
+  1126→  1126→                      {computed.rentals.map(r => {
+  1127→  1127→                        const rCfg = rentalStatusConfig[r.status] || rentalStatusConfig.ACTIVE
+  1128→  1128→                        return (
+  1129→  1129→                          <TableRow key={r.id}>
+  1130→  1130→                            <TableCell className="font-medium">{r.client?.name || '—'}</TableCell>
+  1131→  1131→                            <TableCell><Badge variant="outline" className="font-mono text-xs">{r.contract?.contractNo || '—'}</Badge></TableCell>
+  1132→  1132→                            <TableCell>{formatDate(r.startDate, lang)}</TableCell>
+  1133→  1133→                            <TableCell>{r.endDate ? formatDate(r.endDate, lang) : '—'}</TableCell>
+  1134→  1134→                            <TableCell>{rateTypeLabels[r.rateType]?.[lang] || r.rateType}</TableCell>
+  1135→  1135→                            <TableCell><MoneyDisplay value={r.totalAmount} lang={lang} size="sm" bold inline className="text-cyan-700" /></TableCell>
+  1136→  1136→                            <TableCell><Badge className={`${rCfg.bg} ${rCfg.color} border-0`}>{rCfg.label[lang]}</Badge></TableCell>
+  1137→  1137→                          </TableRow>
+  1138→  1138→                        )
+  1139→  1139→                      })}
+  1140→  1140→                    </TableBody>
+  1141→  1141→                  </Table>
+  1142→  1142→                </div>
+  1143→  1143→              )}
+  1144→  1144→            </CardContent>
+  1145→  1145→          </Card>
+  1146→  1146→        </TabsContent>
+  1147→  1147→
+  1148→  1148→        {/* ====== TAB 3: التكاليف (Costs) ====== */}
+  1149→  1149→        <TabsContent value="costs" className="space-y-4">
+  1150→  1150→          {/* Cost Summary */}
+  1151→  1151→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1152→  1152→            <Card className="bg-amber-50 border-amber-200"><CardContent className="p-3 text-center"><p className="text-xs text-amber-600">{t('تكلفة الوقود', 'Fuel Cost')}</p><MoneyDisplay value={computed.totalFuelCost} lang={lang} size="lg" bold className="text-amber-700" /></CardContent></Card>
+  1153→  1153→            <Card className="bg-orange-50 border-orange-200"><CardContent className="p-3 text-center"><p className="text-xs text-orange-600">{t('تكلفة الصيانة', 'Maintenance Cost')}</p><MoneyDisplay value={computed.totalMaintenanceCost} lang={lang} size="lg" bold className="text-orange-700" /></CardContent></Card>
+  1154→  1154→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('تكلفة التشغيل', 'Operating Cost')}</p><MoneyDisplay value={computed.totalUsageCost} lang={lang} size="lg" bold className="text-emerald-700" /></CardContent></Card>
+  1155→  1155→            <Card className="bg-rose-50 border-rose-200"><CardContent className="p-3 text-center"><p className="text-xs text-rose-600">{t('المصروفات', 'Expenses')}</p><MoneyDisplay value={computed.totalExpenses} lang={lang} size="lg" bold className="text-rose-700" /></CardContent></Card>
+  1156→  1156→          </div>
+  1157→  1157→
+  1158→  1158→          {/* Fuel Logs */}
+  1159→  1159→          <Card>
+  1160→  1160→            <CardHeader className="pb-2">
+  1161→  1161→              <div className="flex items-center justify-between">
+  1162→  1162→                <CardTitle className="text-sm flex items-center gap-2"><Fuel className="size-4 text-amber-600" /> {t('سجلات الوقود', 'Fuel Logs')}</CardTitle>
+  1163→  1163→                <Button size="sm" className="gap-1 bg-amber-600 hover:bg-amber-700" onClick={() => setFuelDialogOpen(true)}><Plus className="size-3.5" /> {t('إضافة', 'Add')}</Button>
+  1164→  1164→              </div>
+  1165→  1165→            </CardHeader>
+  1166→  1166→            <CardContent className="p-0">
+  1167→  1167→              {computed.fuelLogs.length === 0 ? (
+  1168→  1168→                <p className="text-center text-muted-foreground py-6">{t('لا توجد سجلات وقود', 'No fuel records')}</p>
+  1169→  1169→              ) : (
+  1170→  1170→                <div className="overflow-x-auto max-h-64">
+  1171→  1171→                  <Table>
+  1172→  1172→                    <TableHeader><TableRow><TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead><TableHead className="text-right">{t('اللترات', 'Liters')}</TableHead><TableHead className="text-right">{t('سعر اللتر', 'Cost/Liter')}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead><TableHead className="text-right">{t('المشروع', 'Project')}</TableHead></TableRow></TableHeader>
+  1173→  1173→                    <TableBody>
+  1174→  1174→                      {computed.fuelLogs.map(f => (
+  1175→  1175→                        <TableRow key={f.id}>
+  1176→  1176→                          <TableCell>{formatDate(f.date, lang)}</TableCell>
+  1177→  1177→                          <TableCell>{formatNumber(f.liters)}</TableCell>
+  1178→  1178→                          <TableCell><MoneyDisplay value={f.costPerLiter} lang={lang} size="sm" inline /></TableCell>
+  1179→  1179→                          <TableCell><MoneyDisplay value={f.totalCost} lang={lang} size="sm" bold inline className="text-amber-700" /></TableCell>
+  1180→  1180→                          <TableCell className="text-muted-foreground text-xs">{f.project?.name || '—'}</TableCell>
+  1181→  1181→                        </TableRow>
+  1182→  1182→                      ))}
+  1183→  1183→                    </TableBody>
+  1184→  1184→                  </Table>
+  1185→  1185→                </div>
+  1186→  1186→              )}
+  1187→  1187→            </CardContent>
+  1188→  1188→          </Card>
+  1189→  1189→
+  1190→  1190→          {/* Maintenance Records */}
+  1191→  1191→          <Card>
+  1192→  1192→            <CardHeader className="pb-2">
+  1193→  1193→              <div className="flex items-center justify-between">
+  1194→  1194→                <CardTitle className="text-sm flex items-center gap-2"><Wrench className="size-4 text-orange-600" /> {t('سجلات الصيانة', 'Maintenance Records')}</CardTitle>
+  1195→  1195→                <Button size="sm" className="gap-1 bg-orange-600 hover:bg-orange-700" onClick={() => setMaintenanceDialogOpen(true)}><Plus className="size-3.5" /> {t('إضافة', 'Add')}</Button>
+  1196→  1196→              </div>
+  1197→  1197→            </CardHeader>
+  1198→  1198→            <CardContent className="p-0">
+  1199→  1199→              {computed.maintenance.length === 0 ? (
+  1200→  1200→                <p className="text-center text-muted-foreground py-6">{t('لا توجد سجلات صيانة', 'No maintenance records')}</p>
+  1201→  1201→              ) : (
+  1202→  1202→                <div className="overflow-x-auto max-h-64">
+  1203→  1203→                  <Table>
+  1204→  1204→                    <TableHeader><TableRow><TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead><TableHead className="text-right">{t('الوصف', 'Description')}</TableHead><TableHead className="text-right">{t('التكلفة', 'Cost')}</TableHead><TableHead className="text-right">{t('القادمة', 'Next')}</TableHead></TableRow></TableHeader>
+  1205→  1205→                    <TableBody>
+  1206→  1206→                      {computed.maintenance.map(m => (
+  1207→  1207→                        <TableRow key={m.id}>
+  1208→  1208→                          <TableCell>{formatDate(m.date, lang)}</TableCell>
+  1209→  1209→                          <TableCell>{m.description}</TableCell>
+  1210→  1210→                          <TableCell><MoneyDisplay value={m.cost} lang={lang} size="sm" bold inline className="text-orange-700" /></TableCell>
+  1211→  1211→                          <TableCell>{m.nextDate ? formatDate(m.nextDate, lang) : '—'}</TableCell>
+  1212→  1212→                        </TableRow>
+  1213→  1213→                      ))}
+  1214→  1214→                    </TableBody>
+  1215→  1215→                  </Table>
+  1216→  1216→                </div>
+  1217→  1217→              )}
+  1218→  1218→            </CardContent>
+  1219→  1219→          </Card>
+  1220→  1220→
+  1221→  1221→          {/* Expenses by Category */}
+  1222→  1222→          <Card>
+  1223→  1223→            <CardHeader className="pb-2">
+  1224→  1224→              <div className="flex items-center justify-between">
+  1225→  1225→                <CardTitle className="text-sm flex items-center gap-2"><Receipt className="size-4 text-rose-600" /> {t('المصروفات حسب الفئة', 'Expenses by Category')}</CardTitle>
+  1226→  1226→                <Button size="sm" className="gap-1 bg-rose-600 hover:bg-rose-700" onClick={() => setExpenseDialogOpen(true)}><Plus className="size-3.5" /> {t('إضافة', 'Add')}</Button>
+  1227→  1227→              </div>
+  1228→  1228→            </CardHeader>
+  1229→  1229→            <CardContent className="p-0">
+  1230→  1230→              {Object.keys(computed.costByCategory).length === 0 ? (
+  1231→  1231→                <p className="text-center text-muted-foreground py-6">{t('لا توجد مصروفات', 'No expenses')}</p>
+  1232→  1232→              ) : (
+  1233→  1233→                <div className="overflow-x-auto max-h-64">
+  1234→  1234→                  <Table>
+  1235→  1235→                    <TableHeader><TableRow><TableHead className="text-right">{t('الفئة', 'Category')}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead></TableRow></TableHeader>
+  1236→  1236→                    <TableBody>
+  1237→  1237→                      {Object.entries(computed.costByCategory).map(([cat, amount]) => (
+  1238→  1238→                        <TableRow key={cat}>
+  1239→  1239→                          <TableCell><Badge variant="outline" className="bg-gray-50">{expenseCategoryLabels[cat]?.[lang] || cat}</Badge></TableCell>
+  1240→  1240→                          <TableCell><MoneyDisplay value={amount} lang={lang} size="sm" bold inline className="text-rose-700" /></TableCell>
+  1241→  1241→                        </TableRow>
+  1242→  1242→                      ))}
+  1243→  1243→                      <TableRow className="bg-rose-50">
+  1244→  1244→                        <TableCell className="font-bold">{t('الإجمالي', 'Total')}</TableCell>
+  1245→  1245→                        <TableCell><MoneyDisplay value={computed.totalExpenses} lang={lang} size="sm" bold inline className="text-rose-800" /></TableCell>
+  1246→  1246→                      </TableRow>
+  1247→  1247→                    </TableBody>
+  1248→  1248→                  </Table>
+  1249→  1249→                </div>
+  1250→  1250→              )}
+  1251→  1251→            </CardContent>
+  1252→  1252→          </Card>
+  1253→  1253→
+  1254→  1254→          {/* All Expenses Detail */}
+  1255→  1255→          {computed.expenses.length > 0 && (
+  1256→  1256→            <Card>
+  1257→  1257→              <CardHeader className="pb-2"><CardTitle className="text-sm">{t('تفاصيل المصروفات', 'Expense Details')}</CardTitle></CardHeader>
+  1258→  1258→              <CardContent className="p-0">
+  1259→  1259→                <div className="overflow-x-auto max-h-64">
+  1260→  1260→                  <Table>
+  1261→  1261→                    <TableHeader><TableRow><TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead><TableHead className="text-right">{t('الفئة', 'Category')}</TableHead><TableHead className="text-right">{t('الوصف', 'Description')}</TableHead><TableHead className="text-right">{t('المبلغ', 'Amount')}</TableHead></TableRow></TableHeader>
+  1262→  1262→                    <TableBody>
+  1263→  1263→                      {computed.expenses.map(e => (
+  1264→  1264→                        <TableRow key={e.id}>
+  1265→  1265→                          <TableCell>{formatDate(e.date, lang)}</TableCell>
+  1266→  1266→                          <TableCell><Badge variant="outline" className="bg-gray-50 text-xs">{expenseCategoryLabels[e.category]?.[lang] || e.category}</Badge></TableCell>
+  1267→  1267→                          <TableCell>{e.description}</TableCell>
+  1268→  1268→                          <TableCell><MoneyDisplay value={e.amount} lang={lang} size="sm" bold inline className="text-rose-600" /></TableCell>
+  1269→  1269→                        </TableRow>
+  1270→  1270→                      ))}
+  1271→  1271→                    </TableBody>
+  1272→  1272→                  </Table>
+  1273→  1273→                </div>
+  1274→  1274→              </CardContent>
+  1275→  1275→            </Card>
+  1276→  1276→          )}
+  1277→  1277→        </TabsContent>
+  1278→  1278→
+  1279→  1279→        {/* ====== TAB 4: الإيرادات (Revenue) ====== */}
+  1280→  1280→        <TabsContent value="revenue" className="space-y-4">
+  1281→  1281→          {/* Revenue Summary */}
+  1282→  1282→          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+  1283→  1283→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('إجمالي الإيرادات', 'Total Revenue')}</p><MoneyDisplay value={computed.totalRentalRevenue} lang={lang} size="xl" bold className="text-emerald-700" /></CardContent></Card>
+  1284→  1284→            <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-3 text-center"><p className="text-xs text-cyan-600">{t('عقود نشطة', 'Active Contracts')}</p><p className="text-2xl font-bold text-cyan-700">{computed.activeRentals.length}</p></CardContent></Card>
+  1285→  1285→            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('إجمالي ساعات التشغيل', 'Total Operating Hours')}</p><p className="text-2xl font-bold text-purple-700">{formatNumber(computed.allHours)}</p></CardContent></Card>
+  1286→  1286→          </div>
+  1287→  1287→
+  1288→  1288→          {/* Rental Contracts */}
+  1289→  1289→          <Card>
+  1290→  1290→            <CardHeader className="pb-2">
+  1291→  1291→              <div className="flex items-center justify-between">
+  1292→  1292→                <CardTitle className="text-sm">{t('عقود التأجير', 'Rental Contracts')}</CardTitle>
+  1293→  1293→                <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setRentalDialogOpen(true)}><Plus className="size-3.5" /> {t('عقد جديد', 'New Contract')}</Button>
+  1294→  1294→              </div>
+  1295→  1295→            </CardHeader>
+  1296→  1296→            <CardContent className="p-0">
+  1297→  1297→              {computed.rentals.length === 0 ? (
+  1298→  1298→                <p className="text-center text-muted-foreground py-6">{t('لا توجد عقود تأجير', 'No rental contracts')}</p>
+  1299→  1299→              ) : (
+  1300→  1300→                <div className="overflow-x-auto max-h-72">
+  1301→  1301→                  <Table>
+  1302→  1302→                    <TableHeader><TableRow><TableHead className="text-right">{t('العميل', 'Client')}</TableHead><TableHead className="text-right">{t('العقد', 'Contract')}</TableHead><TableHead className="text-right">{t('الفترة', 'Period')}</TableHead><TableHead className="text-right">{t('الإجمالي', 'Total')}</TableHead><TableHead className="text-right">{t('الحالة', 'Status')}</TableHead></TableRow></TableHeader>
+  1303→  1303→                    <TableBody>
+  1304→  1304→                      {computed.rentals.map(r => {
+  1305→  1305→                        const rCfg = rentalStatusConfig[r.status] || rentalStatusConfig.ACTIVE
+  1306→  1306→                        return (
+  1307→  1307→                          <TableRow key={r.id}>
+  1308→  1308→                            <TableCell className="font-medium">{r.client?.name || '—'}</TableCell>
+  1309→  1309→                            <TableCell><Badge variant="outline" className="font-mono text-xs">{r.contract?.contractNo || '—'}</Badge></TableCell>
+  1310→  1310→                            <TableCell className="text-xs">{formatDate(r.startDate, lang)} - {r.endDate ? formatDate(r.endDate, lang) : '—'}</TableCell>
+  1311→  1311→                            <TableCell><MoneyDisplay value={r.totalAmount} lang={lang} size="sm" bold inline className="text-emerald-700" /></TableCell>
+  1312→  1312→                            <TableCell><Badge className={`${rCfg.bg} ${rCfg.color} border-0`}>{rCfg.label[lang]}</Badge></TableCell>
+  1313→  1313→                          </TableRow>
+  1314→  1314→                        )
+  1315→  1315→                      })}
+  1316→  1316→                    </TableBody>
+  1317→  1317→                  </Table>
+  1318→  1318→                </div>
+  1319→  1319→              )}
+  1320→  1320→            </CardContent>
+  1321→  1321→          </Card>
+  1322→  1322→
+  1323→  1323→          {/* Timesheets */}
+  1324→  1324→          <Card>
+  1325→  1325→            <CardHeader className="pb-2"><CardTitle className="text-sm">{t('سجلات ساعات التشغيل', 'Operating Timesheets')}</CardTitle></CardHeader>
+  1326→  1326→            <CardContent className="p-0">
+  1327→  1327→              {computed.timesheets.length === 0 ? (
+  1328→  1328→                <p className="text-center text-muted-foreground py-6">{t('لا توجد سجلات ساعات', 'No timesheets')}</p>
+  1329→  1329→              ) : (
+  1330→  1330→                <div className="overflow-x-auto max-h-72">
+  1331→  1331→                  <Table>
+  1332→  1332→                    <TableHeader><TableRow><TableHead className="text-right">{t('الشهر', 'Month')}</TableHead><TableHead className="text-right">{t('المشروع', 'Project')}</TableHead><TableHead className="text-right">{t('الساعات', 'Hours')}</TableHead><TableHead className="text-right">{t('سعر الساعة', 'Rate')}</TableHead><TableHead className="text-right">{t('الحالة', 'Status')}</TableHead><TableHead className="text-right">{t('الفاتورة', 'Invoice')}</TableHead></TableRow></TableHeader>
+  1333→  1333→                    <TableBody>
+  1334→  1334→                      {computed.timesheets.map(ts => (
+  1335→  1335→                        <TableRow key={ts.id}>
+  1336→  1336→                          <TableCell className="font-medium">{formatMonthYear(ts.month, ts.year, lang)}</TableCell>
+  1337→  1337→                          <TableCell>{ts.project?.name || '—'}</TableCell>
+  1338→  1338→                          <TableCell>{formatNumber(ts.operatingHours)}</TableCell>
+  1339→  1339→                          <TableCell><MoneyDisplay value={ts.contract?.hourlyRate || ts.rental?.hourlyRate || 0} lang={lang} size="sm" inline /></TableCell>
+  1340→  1340→                          <TableCell><Badge className={`${timesheetStatusLabels[ts.status] ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'} border-0`}>{timesheetStatusLabels[ts.status]?.[lang] || ts.status}</Badge></TableCell>
+  1341→  1341→                          <TableCell>{ts.invoice ? <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">{ts.invoice.invoiceNo}</Badge> : <span className="text-muted-foreground text-xs">—</span>}</TableCell>
+  1342→  1342→                        </TableRow>
+  1343→  1343→                      ))}
+  1344→  1344→                    </TableBody>
+  1345→  1345→                  </Table>
+  1346→  1346→                </div>
+  1347→  1347→              )}
+  1348→  1348→            </CardContent>
+  1349→  1349→          </Card>
+  1350→  1350→
+  1351→  1351→          {/* Delivery Orders */}
+  1352→  1352→          <Card>
+  1353→  1353→            <CardHeader className="pb-2"><CardTitle className="text-sm">{t('أوامر التوصيل', 'Delivery Orders')}</CardTitle></CardHeader>
+  1354→  1354→            <CardContent className="p-0">
+  1355→  1355→              {computed.deliveryOrders.length === 0 ? (
+  1356→  1356→                <p className="text-center text-muted-foreground py-6">{t('لا توجد أوامر توصيل', 'No delivery orders')}</p>
+  1357→  1357→              ) : (
+  1358→  1358→                <div className="overflow-x-auto max-h-72">
+  1359→  1359→                  <Table>
+  1360→  1360→                    <TableHeader><TableRow><TableHead className="text-right">{t('رقم الأمر', 'Order No.')}</TableHead><TableHead className="text-right">{t('العميل', 'Client')}</TableHead><TableHead className="text-right">{t('تاريخ التوصيل', 'Delivery Date')}</TableHead><TableHead className="text-right">{t('تاريخ الإرجاع', 'Return Date')}</TableHead><TableHead className="text-right">{t('الحالة', 'Status')}</TableHead></TableRow></TableHeader>
+  1361→  1361→                    <TableBody>
+  1362→  1362→                      {computed.deliveryOrders.map(d => (
+  1363→  1363→                        <TableRow key={d.id}>
+  1364→  1364→                          <TableCell className="font-mono text-xs">{d.orderNo}</TableCell>
+  1365→  1365→                          <TableCell>{d.client?.name || '—'}</TableCell>
+  1366→  1366→                          <TableCell>{formatDate(d.deliveryDate, lang)}</TableCell>
+  1367→  1367→                          <TableCell>{d.returnDate ? formatDate(d.returnDate, lang) : '—'}</TableCell>
+  1368→  1368→                          <TableCell><Badge variant="outline" className="text-xs">{doStatusLabels[d.status]?.[lang] || d.status}</Badge></TableCell>
+  1369→  1369→                        </TableRow>
+  1370→  1370→                      ))}
+  1371→  1371→                    </TableBody>
+  1372→  1372→                  </Table>
+  1373→  1373→                </div>
+  1374→  1374→              )}
+  1375→  1375→            </CardContent>
+  1376→  1376→          </Card>
+  1377→  1377→        </TabsContent>
+  1378→  1378→
+  1379→  1379→        {/* ====== TAB 5: التشغيل (Operations) ====== */}
+  1380→  1380→        <TabsContent value="operations" className="space-y-4">
+  1381→  1381→          {/* Operating Summary */}
+  1382→  1382→          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+  1383→  1383→            <Card className="bg-blue-50 border-blue-200"><CardContent className="p-3 text-center"><p className="text-xs text-blue-600">{t('ساعات سجلات العمل', 'Timesheet Hours')}</p><p className="text-2xl font-bold text-blue-700">{formatNumber(computed.totalOperatingHours)}</p></CardContent></Card>
+  1384→  1384→            <Card className="bg-emerald-50 border-emerald-200"><CardContent className="p-3 text-center"><p className="text-xs text-emerald-600">{t('ساعات الاستخدام', 'Usage Hours')}</p><p className="text-2xl font-bold text-emerald-700">{formatNumber(computed.totalUsageHours)}</p></CardContent></Card>
+  1385→  1385→            <Card className="bg-purple-50 border-purple-200"><CardContent className="p-3 text-center"><p className="text-xs text-purple-600">{t('ساعات التشغيل', 'Operation Hours')}</p><p className="text-2xl font-bold text-purple-700">{formatNumber(computed.totalOperationHours)}</p></CardContent></Card>
+  1386→  1386→            <Card className="bg-cyan-50 border-cyan-200"><CardContent className="p-3 text-center"><p className="text-xs text-cyan-600">{t('إجمالي الساعات', 'Total Hours')}</p><p className="text-2xl font-bold text-cyan-700">{formatNumber(computed.allHours)}</p></CardContent></Card>
+  1387→  1387→          </div>
+  1388→  1388→
+  1389→  1389→          {/* Operator Logs */}
+  1390→  1390→          <Card>
+  1391→  1391→            <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Users className="size-4" /> {t('سجلات المشغلين', 'Operator Logs')}</CardTitle></CardHeader>
+  1392→  1392→            <CardContent className="p-0">
+  1393→  1393→              {computed.operatorLogs.length === 0 ? (
+  1394→  1394→                <p className="text-center text-muted-foreground py-6">{t('لا توجد سجلات مشغلين', 'No operator logs')}</p>
+  1395→  1395→              ) : (
+  1396→  1396→                <div className="overflow-x-auto max-h-72">
+  1397→  1397→                  <Table>
+  1398→  1398→                    <TableHeader><TableRow><TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead><TableHead className="text-right">{t('المشغل', 'Operator')}</TableHead><TableHead className="text-right">{t('المشروع', 'Project')}</TableHead><TableHead className="text-right">{t('الساعات', 'Hours')}</TableHead><TableHead className="text-right">{t('ملاحظات', 'Notes')}</TableHead></TableRow></TableHeader>
+  1399→  1399→                    <TableBody>
+  1400→  1400→                      {computed.operatorLogs.map(o => (
+  1401→  1401→                        <TableRow key={o.id}>
+  1402→  1402→                          <TableCell>{formatDate(o.date, lang)}</TableCell>
+  1403→  1403→                          <TableCell className="font-medium">{o.operator?.name || o.operator?.nameAr || '—'}</TableCell>
+  1404→  1404→                          <TableCell>{o.project?.name || '—'}</TableCell>
+  1405→  1405→                          <TableCell>{formatNumber(o.hours)}</TableCell>
+  1406→  1406→                          <TableCell className="text-muted-foreground text-xs">{o.notes || '—'}</TableCell>
+  1407→  1407→                        </TableRow>
+  1408→  1408→                      ))}
+  1409→  1409→                    </TableBody>
+  1410→  1410→                  </Table>
+  1411→  1411→                </div>
+  1412→  1412→              )}
+  1413→  1413→            </CardContent>
+  1414→  1414→          </Card>
+  1415→  1415→
+  1416→  1416→          {/* Usage Records */}
+  1417→  1417→          <Card>
+  1418→  1418→            <CardHeader className="pb-2">
+  1419→  1419→              <div className="flex items-center justify-between">
+  1420→  1420→                <CardTitle className="text-sm flex items-center gap-2"><Clock className="size-4" /> {t('سجلات الاستخدام', 'Usage Records')}</CardTitle>
+  1421→  1421→                <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700" onClick={() => setUsageDialogOpen(true)}><Plus className="size-3.5" /> {t('إضافة', 'Add')}</Button>
+  1422→  1422→              </div>
+  1423→  1423→            </CardHeader>
+  1424→  1424→            <CardContent className="p-0">
+  1425→  1425→              {computed.usages.length === 0 ? (
+  1426→  1426→                <p className="text-center text-muted-foreground py-6">{t('لا توجد سجلات استخدام', 'No usage records')}</p>
+  1427→  1427→              ) : (
+  1428→  1428→                <div className="overflow-x-auto max-h-72">
+  1429→  1429→                  <Table>
+  1430→  1430→                    <TableHeader><TableRow><TableHead className="text-right">{t('التاريخ', 'Date')}</TableHead><TableHead className="text-right">{t('المشروع', 'Project')}</TableHead><TableHead className="text-right">{t('الساعات', 'Hours')}</TableHead><TableHead className="text-right">{t('التكلفة', 'Cost')}</TableHead><TableHead className="text-right">{t('الوصف', 'Description')}</TableHead></TableRow></TableHeader>
+  1431→  1431→                    <TableBody>
+  1432→  1432→                      {computed.usages.map(u => (
+  1433→  1433→                        <TableRow key={u.id}>
+  1434→  1434→                          <TableCell>{formatDate(u.date, lang)}</TableCell>
+  1435→  1435→                          <TableCell className="font-medium">{u.project.name}</TableCell>
+  1436→  1436→                          <TableCell>{formatNumber(u.hours)}</TableCell>
+  1437→  1437→                          <TableCell><MoneyDisplay value={u.cost} lang={lang} size="sm" bold inline className="text-emerald-700" /></TableCell>
+  1438→  1438→                          <TableCell className="text-muted-foreground text-xs">{u.description || '—'}</TableCell>
+  1439→  1439→                        </TableRow>
+  1440→  1440→                      ))}
+  1441→  1441→                    </TableBody>
+  1442→  1442→                  </Table>
+  1443→  1443→                </div>
+  1444→  1444→              )}
+  1445→  1445→            </CardContent>
+  1446→  1446→          </Card>
+  1447→  1447→        </TabsContent>
+  1448→  1448→      </Tabs>
+  1449→  1449→
+  1450→  1450→      {/* Dialogs */}
+  1451→  1451→      <AddRentalDialog open={rentalDialogOpen} onOpenChange={setRentalDialogOpen} equipmentId={equipmentId} clients={clients} projects={projects} />
+  1452→  1452→      <AddUsageDialog open={usageDialogOpen} onOpenChange={setUsageDialogOpen} equipmentId={equipmentId} projects={projects} />
+  1453→  1453→      <AddMaintenanceDialog open={maintenanceDialogOpen} onOpenChange={setMaintenanceDialogOpen} equipmentId={equipmentId} />
+  1454→  1454→      <AddFuelDialog open={fuelDialogOpen} onOpenChange={setFuelDialogOpen} equipmentId={equipmentId} projects={projects} />
+  1455→  1455→      <AddEquipmentExpenseDialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen} equipmentId={equipmentId} />
+  1456→  1456→    </div>
+  1457→  1457→  )
+  1458→  1458→}
+  1459→  1459→
+  1460→  1460→// ============ Main Equipment Module ============
+  1461→  1461→export function EquipmentModule() {
+  1462→  1462→  const { lang } = useAppStore()
+  1463→  1463→  const [search, setSearch] = useState('')
+  1464→  1464→  const [statusFilter, setStatusFilter] = useState('all')
+  1465→  1465→  const [dialogOpen, setDialogOpen] = useState(false)
+  1466→  1466→  const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(null)
+  1467→  1467→
+  1468→  1468→  const t = (ar: string, en: string) => lang === 'ar' ? ar : en
+  1469→  1469→
+  1470→  1470→  const { data: equipment = [], isLoading, isError, refetch } = useQuery<Equipment[]>({
+  1471→  1471→    queryKey: ['equipment'],
+  1472→  1472→    queryFn: async () => {
+  1473→  1473→      const res = await fetch('/api/equipment')
+  1474→  1474→      if (!res.ok) throw new Error()
+  1475→  1475→      return res.json()
+  1476→  1476→    },
+  1477→  1477→  })
+  1478→  1478→
+  1479→  1479→  const { data: suppliers = [] } = useQuery<Supplier[]>({
+  1480→  1480→    queryKey: ['suppliers-list'],
+  1481→  1481→    queryFn: async () => { const r = await fetch('/api/suppliers'); if (!r.ok) return []; return r.json() },
+  1482→  1482→  })
+  1483→  1483→
+  1484→  1484→  const { data: clients = [] } = useQuery<ClientOption[]>({
+  1485→  1485→    queryKey: ['clients-list'],
+  1486→  1486→    queryFn: async () => { const r = await fetch('/api/clients'); if (!r.ok) return []; return r.json() },
+  1487→  1487→  })
+  1488→  1488→
+  1489→  1489→  const filtered = equipment.filter(eq => {
+  1490→  1490→    if (!search) return true
+  1491→  1491→    return eq.name.toLowerCase().includes(search.toLowerCase()) ||
+  1492→  1492→      eq.code.toLowerCase().includes(search.toLowerCase()) ||
+  1493→  1493→      (eq.type || '').toLowerCase().includes(search.toLowerCase()) ||
+  1494→  1494→      (eq.supplier?.name || '').toLowerCase().includes(search.toLowerCase())
+  1495→  1495→  }).filter(eq => {
+  1496→  1496→    if (statusFilter === 'all') return true
+  1497→  1497→    return eq.status === statusFilter
+  1498→  1498→  })
+  1499→  1499→
+  1500→  1500→  const total = equipment.length
+  1501→  1501→  const available = equipment.filter(e => e.status === 'AVAILABLE').length
+  1502→  1502→  const rented = equipment.filter(e => e.status === 'RENTED').length
+  1503→  1503→  const inUse = equipment.filter(e => e.status === 'IN_USE').length
+  1504→  1504→  const maintenanceCount = equipment.filter(e => e.status === 'MAINTENANCE').length
+  1505→  1505→
+  1506→  1506→  const printData = {
+  1507→  1507→    columns: [
+  1508→  1508→      { key: 'code', label: lang === 'ar' ? 'الكود' : 'Code' },
+  1509→  1509→      { key: 'name', label: lang === 'ar' ? 'الاسم' : 'Name' },
+  1510→  1510→      { key: 'type', label: lang === 'ar' ? 'النوع' : 'Type' },
+  1511→  1511→      { key: 'model', label: lang === 'ar' ? 'الموديل' : 'Model' },
+  1512→  1512→      { key: 'status', label: lang === 'ar' ? 'الحالة' : 'Status' },
+  1513→  1513→      { key: 'hourlyRate', label: lang === 'ar' ? 'الأجر/ساعة' : 'Hourly Rate' },
+  1514→  1514→    ],
+  1515→  1515→    rows: filtered.map(eq => ({
+  1516→  1516→      code: eq.code,
+  1517→  1517→      name: eq.name,
+  1518→  1518→      type: eq.type || '',
+  1519→  1519→      model: eq.model || '',
+  1520→  1520→      status: statusConfig[eq.status]?.label[lang] || eq.status,
+  1521→  1521→      hourlyRate: eq.hourlyRate,
+  1522→  1522→    })),
+  1523→  1523→    infoItems: [
+  1524→  1524→      { label: lang === 'ar' ? 'الإجمالي' : 'Total', value: String(total) },
+  1525→  1525→      { label: lang === 'ar' ? 'متاحة' : 'Available', value: String(available) },
+  1526→  1526→      { label: lang === 'ar' ? 'مؤجرة' : 'Rented', value: String(rented) },
+  1527→  1527→      { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
+  1528→  1528→    ],
+  1529→  1529→  }
+  1530→  1530→
+  1531→  1531→  const handleExport = () => {
+  1532→  1532→    const columns: CSVColumn[] = [
+  1533→  1533→      { key: 'code', label: t('الكود', 'Code') },
+  1534→  1534→      { key: 'name', label: t('الاسم', 'Name') },
+  1535→  1535→      { key: 'type', label: t('النوع', 'Type') },
+  1536→  1536→      { key: 'model', label: t('الموديل', 'Model') },
+  1537→  1537→      { key: 'status', label: t('الحالة', 'Status'), format: (v) => statusConfig[v as string]?.label[lang] || String(v) },
+  1538→  1538→      { key: 'hourlyRate', label: t('الأجر بالساعة', 'Hourly Rate'), format: (v) => (Number(v) || 0).toFixed(2) },
+  1539→  1539→      { key: 'dailyRate', label: t('الأجر اليومي', 'Daily Rate'), format: (v) => (Number(v) || 0).toFixed(2) },
+  1540→  1540→      { key: 'monthlyRate', label: t('الأجر الشهري', 'Monthly Rate'), format: (v) => (Number(v) || 0).toFixed(2) },
+  1541→  1541→    ]
+  1542→  1542→    const rows = filtered.map(eq => ({
+  1543→  1543→      code: eq.code, name: eq.name, type: eq.type || '', model: eq.model || '',
+  1544→  1544→      status: eq.status, hourlyRate: eq.hourlyRate, dailyRate: eq.dailyRate, monthlyRate: eq.monthlyRate,
+  1545→  1545→    }))
+  1546→  1546→    exportToCSV(rows, `equipment-${new Date().toISOString().slice(0, 10)}`, columns)
+  1547→  1547→  }
+  1548→  1548→
+  1549→  1549→  if (selectedEquipmentId) {
+  1550→  1550→    return <EquipmentDetailView equipmentId={selectedEquipmentId} onBack={() => setSelectedEquipmentId(null)} />
+  1551→  1551→  }
+  1552→  1552→
+  1553→  1553→  return (
+  1554→  1554→    <ModuleLayout
+  1555→  1555→      title={{ ar: 'المعدات', en: 'Equipment Hub' }}
+  1556→  1556→      subtitle={{ ar: 'كرت المعدة - مركز نشاط التأجير', en: 'Equipment Card - Center of Rental Activity' }}
+  1557→  1557→      actions={
+  1558→  1558→        <div className="flex items-center gap-2">
+  1559→  1559→          <PrintButton type="equipment-report" data={printData} size="icon" />
+  1560→  1560→          <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير CSV', 'Export CSV')}><Download className="size-4" /></Button>
+  1561→  1561→          <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}><RefreshCw className="size-4" /></Button>
+  1562→  1562→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+  1563→  1563→            <Plus className="size-4" /> {t('معدة جديدة', 'New Equipment')}
+  1564→  1564→          </Button>
+  1565→  1565→        </div>
+  1566→  1566→      }
+  1567→  1567→    >
+  1568→  1568→
+  1569→  1569→      {/* Summary Cards */}
+  1570→  1570→      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+  1571→  1571→        <Card className="bg-emerald-50 border-emerald-200">
+  1572→  1572→          <CardContent className="p-4 flex items-center gap-3">
+  1573→  1573→            <div className="size-10 rounded-full bg-emerald-100 flex items-center justify-center"><Truck className="size-5 text-emerald-600" /></div>
+  1574→  1574→            <div><p className="text-sm text-emerald-600">{t('الإجمالي', 'Total')}</p><p className="text-xl font-bold text-emerald-700">{formatNumber(total)}</p></div>
+  1575→  1575→          </CardContent>
+  1576→  1576→        </Card>
+  1577→  1577→        <Card className="bg-green-50 border-green-200">
+  1578→  1578→          <CardContent className="p-4 flex items-center gap-3">
+  1579→  1579→            <div className="size-10 rounded-full bg-green-100 flex items-center justify-center"><CheckCircle2 className="size-5 text-green-600" /></div>
+  1580→  1580→            <div><p className="text-sm text-green-600">{t('متاحة', 'Available')}</p><p className="text-xl font-bold text-green-700">{formatNumber(available)}</p></div>
+  1581→  1581→          </CardContent>
+  1582→  1582→        </Card>
+  1583→  1583→        <Card className="bg-purple-50 border-purple-200">
+  1584→  1584→          <CardContent className="p-4 flex items-center gap-3">
+  1585→  1585→            <div className="size-10 rounded-full bg-purple-100 flex items-center justify-center"><Receipt className="size-5 text-purple-600" /></div>
+  1586→  1586→            <div><p className="text-sm text-purple-600">{t('مؤجرة', 'Rented')}</p><p className="text-xl font-bold text-purple-700">{formatNumber(rented)}</p></div>
+  1587→  1587→          </CardContent>
+  1588→  1588→        </Card>
+  1589→  1589→        <Card className="bg-blue-50 border-blue-200">
+  1590→  1590→          <CardContent className="p-4 flex items-center gap-3">
+  1591→  1591→            <div className="size-10 rounded-full bg-blue-100 flex items-center justify-center"><Clock className="size-5 text-blue-600" /></div>
+  1592→  1592→            <div><p className="text-sm text-blue-600">{t('قيد الاستخدام', 'In Use')}</p><p className="text-xl font-bold text-blue-700">{formatNumber(inUse)}</p></div>
+  1593→  1593→          </CardContent>
+  1594→  1594→        </Card>
+  1595→  1595→        <Card className="bg-orange-50 border-orange-200">
+  1596→  1596→          <CardContent className="p-4 flex items-center gap-3">
+  1597→  1597→            <div className="size-10 rounded-full bg-orange-100 flex items-center justify-center"><Wrench className="size-5 text-orange-600" /></div>
+  1598→  1598→            <div><p className="text-sm text-orange-600">{t('صيانة', 'Maintenance')}</p><p className="text-xl font-bold text-orange-700">{formatNumber(maintenanceCount)}</p></div>
+  1599→  1599→          </CardContent>
+  1600→  1600→        </Card>
+  1601→  1601→      </div>
+  1602→  1602→
+  1603→  1603→      {/* Search & Filter */}
+  1604→  1604→      <Card>
+  1605→  1605→        <CardContent className="p-4">
+  1606→  1606→          <div className="flex flex-col sm:flex-row gap-3">
+  1607→  1607→            <div className="relative flex-1">
+  1608→  1608→              <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+  1609→  1609→              <Input placeholder={t('بحث بالاسم أو الكود أو النوع أو المورد...', 'Search by name, code, type, or supplier...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+  1610→  1610→            </div>
+  1611→  1611→            <Select value={statusFilter} onValueChange={setStatusFilter}>
+  1612→  1612→              <SelectTrigger className="w-full sm:w-40"><SelectValue placeholder={t('كل الحالات', 'All Status')} /></SelectTrigger>
+  1613→  1613→              <SelectContent>
+  1614→  1614→                <SelectItem value="all">{t('كل الحالات', 'All Status')}</SelectItem>
+  1615→  1615→                {Object.entries(statusConfig).map(([k, v]) => (
+  1616→  1616→                  <SelectItem key={k} value={k}>{v.label[lang]}</SelectItem>
+  1617→  1617→                ))}
+  1618→  1618→              </SelectContent>
+  1619→  1619→            </Select>
+  1620→  1620→          </div>
+  1621→  1621→        </CardContent>
+  1622→  1622→      </Card>
+  1623→  1623→
+  1624→  1624→      {/* Table */}
+  1625→  1625→      <Card>
+  1626→  1626→        <CardContent className="p-0">
+  1627→  1627→          {isLoading ? (
+  1628→  1628→            <TableSkeleton />
+  1629→  1629→          ) : isError ? (
+  1630→  1630→            <div className="flex flex-col items-center gap-3 py-10">
+  1631→  1631→              <p className="text-rose-600">{t('حدث خطأ أثناء تحميل البيانات', 'Error loading data')}</p>
+  1632→  1632→              <Button variant="outline" onClick={() => refetch()}>{t('إعادة المحاولة', 'Retry')}</Button>
+  1633→  1633→            </div>
+  1634→  1634→          ) : filtered.length === 0 ? (
+  1635→  1635→            <div className="flex flex-col items-center gap-3 py-10">
+  1636→  1636→              <Truck className="size-12 text-gray-300" />
+  1637→  1637→              <p className="text-muted-foreground">{t('لا توجد معدات', 'No equipment found')}</p>
+  1638→  1638→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => setDialogOpen(true)}>
+  1639→  1639→                <Plus className="size-4 mr-1" /> {t('إضافة معدة', 'Add Equipment')}
+  1640→  1640→              </Button>
+  1641→  1641→            </div>
+  1642→  1642→          ) : (
+  1643→  1643→            <div className="overflow-x-auto">
+  1644→  1644→              <Table>
+  1645→  1645→                <TableHeader>
+  1646→  1646→                  <TableRow>
+  1647→  1647→                    <TableHead className="text-right">{t('الكود', 'Code')}</TableHead>
+  1648→  1648→                    <TableHead className="text-right">{t('الاسم', 'Name')}</TableHead>
+  1649→  1649→                    <TableHead className="text-right">{t('النوع', 'Type')}</TableHead>
+  1650→  1650→                    <TableHead className="text-right">{t('الموديل', 'Model')}</TableHead>
+  1651→  1651→                    <TableHead className="text-right">{t('الحالة', 'Status')}</TableHead>
+  1652→  1652→                    <TableHead className="text-right">{t('النشاط', 'Activity')}</TableHead>
+  1653→  1653→                    <TableHead className="text-right">{t('الملكية', 'Ownership')}</TableHead>
+  1654→  1654→                    <TableHead className="text-right">{t('الأجر/ساعة', 'Hourly Rate')}</TableHead>
+  1655→  1655→                    <TableHead className="text-right">{t('النشاط الحالي', 'Current Activity')}</TableHead>
+  1656→  1656→                    <TableHead className="text-right">{t('عرض', 'View')}</TableHead>
+  1657→  1657→                  </TableRow>
+  1658→  1658→                </TableHeader>
+  1659→  1659→                <TableBody>
+  1660→  1660→                  {filtered.map(eq => (
+  1661→  1661→                    <TableRow key={eq.id} className="cursor-pointer hover:bg-cyan-50/50" onClick={() => setSelectedEquipmentId(eq.id)}>
+  1662→  1662→                      <TableCell className="font-mono text-xs">{eq.code}</TableCell>
+  1663→  1663→                      <TableCell className="font-medium">{eq.name}</TableCell>
+  1664→  1664→                      <TableCell className="text-muted-foreground">{eq.type || '—'}</TableCell>
+  1665→  1665→                      <TableCell className="text-muted-foreground">{eq.model || '—'}</TableCell>
+  1666→  1666→                      <TableCell><StatusBadge status={eq.status} lang={lang} /></TableCell>
+  1667→  1667→                      <TableCell><ActivityBadge status={eq.status} lang={lang} /></TableCell>
+  1668→  1668→                      <TableCell><OwnershipBadge ownershipType={eq.ownershipType || 'COMPANY_OWNED'} lang={lang} /></TableCell>
+  1669→  1669→                      <TableCell><MoneyDisplay value={eq.hourlyRate} lang={lang} size="sm" inline /></TableCell>
+  1670→  1670→                      <TableCell className="text-xs text-muted-foreground">
+  1671→  1671→                        {eq.status === 'RENTED' ? t('تأجير', 'Rental') : eq.status === 'IN_USE' ? t('تنفيذي', 'Construction') : '—'}
+  1672→  1672→                      </TableCell>
+  1673→  1673→                      <TableCell>
+  1674→  1674→                        <Button size="sm" variant="ghost" className="gap-1 text-cyan-600 hover:text-cyan-700" onClick={(e) => { e.stopPropagation(); setSelectedEquipmentId(eq.id) }}>
+  1675→  1675→                          <Eye className="size-3.5" /> {t('كرت المعدة', 'Card')}
+  1676→  1676→                        </Button>
+  1677→  1677→                      </TableCell>
+  1678→  1678→                    </TableRow>
+  1679→  1679→                  ))}
+  1680→  1680→                </TableBody>
+  1681→  1681→              </Table>
+  1682→  1682→            </div>
+  1683→  1683→          )}
+  1684→  1684→        </CardContent>
+  1685→  1685→      </Card>
+  1686→  1686→
+  1687→  1687→      {/* New Equipment Dialog */}
+  1688→  1688→      <NewEquipmentDialog open={dialogOpen} onOpenChange={setDialogOpen} suppliers={suppliers} clients={clients} />
+  1689→  1689→    </ModuleLayout>
+  1690→  1690→  )
+  1691→  1691→}
+  1692→  1692→

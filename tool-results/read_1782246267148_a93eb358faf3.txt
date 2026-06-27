@@ -1,0 +1,702 @@
+    40→/**
+    41→ * Get GL-based revenue and costs for projects, returns Map<projectId, {revenue, costs}>
+    42→ */
+    43→async function getProjectGLBalances(projectIds: string[]) {
+    44→  const result = new Map<string, { revenue: number; costs: number }>()
+    45→  if (projectIds.length === 0) return result
+    46→
+    47→  const ccMap = await buildProjectCostCenterMap(projectIds)
+    48→  const costCenterIds = [...ccMap.values()]
+    49→
+    50→  if (costCenterIds.length === 0) {
+    51→    // Initialize with zeros for all projects
+    52→    for (const pid of projectIds) result.set(pid, { revenue: 0, costs: 0 })
+    53→    return result
+    54→  }
+    55→
+    56→  // Single GL query for all project cost centers
+    57→  const lines = await db.journalLine.findMany({
+    58→    where: {
+    59→      costCenterId: { in: costCenterIds },
+    60→      journalEntry: { status: 'POSTED' },
+    61→      account: { type: { in: ['REVENUE', 'EXPENSE'] } },
+    62→    },
+    63→    include: { account: { select: { type: true } }, costCenter: { select: { code: true } } },
+    64→  })
+    65→
+    66→  // Build project code → GL data map
+    67→  const glMap = new Map<string, { revenue: number; costs: number }>()
+    68→  for (const line of lines) {
+    69→    const ccCode = line.costCenter?.code
+    70→    if (!ccCode) continue
+    71→    if (!glMap.has(ccCode)) glMap.set(ccCode, { revenue: 0, costs: 0 })
+    72→    const entry = glMap.get(ccCode)!
+    73→    if (line.account.type === 'REVENUE') {
+    74→      entry.revenue += toNumber(line.credit) - toNumber(line.debit)
+    75→    } else if (line.account.type === 'EXPENSE') {
+    76→      entry.costs += toNumber(line.debit) - toNumber(line.credit)
+    77→    }
+    78→  }
+    79→
+    80→  // Map back to project IDs
+    81→  const projects = await db.project.findMany({
+    82→    where: { id: { in: projectIds } },
+    83→    select: { id: true, code: true },
+    84→  })
+    85→  for (const p of projects) {
+    86→    const glData = glMap.get(p.code) || { revenue: 0, costs: 0 }
+    87→    result.set(p.id, glData)
+    88→  }
+    89→  // Fill zeros for projects without cost centers
+    90→  for (const pid of projectIds) {
+    91→    if (!result.has(pid)) result.set(pid, { revenue: 0, costs: 0 })
+    92→  }
+    93→  return result
+    94→}
+    95→
+    96→/**
+    97→ * Get GL aggregation by account type with optional activity type filter.
+    98→ */
+    99→async function getGLBalanceByType(
+   100→  accountType: string,
+   101→  options?: {
+   102→    activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL'
+   103→    dateFrom?: Date
+   104→    dateTo?: Date
+   105→  }
+   106→): Promise<number> {
+   107→  const accountWhere: Record<string, unknown> = { type: accountType, allowPosting: true }
+   108→  if (options?.activityType) {
+   109→    accountWhere.activityType = { in: [options.activityType, 'BOTH'] }
+   110→  }
+   111→
+   112→  const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+   113→  if (options?.dateFrom || options?.dateTo) {
+   114→    jeWhere.date = {}
+   115→    if (options.dateFrom) jeWhere.date.gte = options.dateFrom
+   116→    if (options.dateTo) jeWhere.date.lte = options.dateTo
+   117→  }
+   118→
+   119→  const result = await db.journalLine.aggregate({
+   120→    _sum: { debit: true, credit: true },
+   121→    where: { account: accountWhere, journalEntry: jeWhere },
+   122→  })
+   123→
+   124→  const totalDebit = toNumber(result._sum.debit)
+   125→  const totalCredit = toNumber(result._sum.credit)
+   126→  const isCreditNormal = accountType === 'REVENUE' || accountType === 'LIABILITY' || accountType === 'EQUITY'
+   127→  return isCreditNormal ? totalCredit - totalDebit : totalDebit - totalCredit
+   128→}
+   129→
+   130→/**
+   131→ * Get GL balance for specific account codes.
+   132→ */
+   133→async function getGLBalanceForCodes(
+   134→  codes: string[],
+   135→  dateFrom?: Date,
+   136→  dateTo?: Date
+   137→): Promise<number> {
+   138→  if (codes.length === 0) return 0
+   139→
+   140→  const accounts = await db.account.findMany({
+   141→    where: { code: { in: codes }, isActive: true },
+   142→    select: { id: true, type: true },
+   143→  })
+   144→  if (accounts.length === 0) return 0
+   145→
+   146→  const jeWhere: Record<string, unknown> = { status: 'POSTED' }
+   147→  if (dateFrom || dateTo) {
+   148→    jeWhere.date = {}
+   149→    if (dateFrom) jeWhere.date.gte = dateFrom
+   150→    if (dateTo) jeWhere.date.lte = dateTo
+   151→  }
+   152→
+   153→  const agg = await db.journalLine.aggregate({
+   154→    _sum: { debit: true, credit: true },
+   155→    where: {
+   156→      accountId: { in: accounts.map(a => a.id) },
+   157→      journalEntry: jeWhere,
+   158→    },
+   159→  })
+   160→
+   161→  // Use the first account's type to determine normal balance (all should be same type)
+   162→  const totalDebit = toNumber(agg._sum.debit)
+   163→  const totalCredit = toNumber(agg._sum.credit)
+   164→  const accountType = accounts[0]?.type || 'ASSET'
+   165→  const isCreditNormal = accountType === 'REVENUE' || accountType === 'LIABILITY' || accountType === 'EQUITY'
+   166→  return isCreditNormal ? totalCredit - totalDebit : totalDebit - totalCredit
+   167→}
+   168→
+   169→export async function GET(request: Request) {
+   170→  try {
+   171→    const { searchParams } = new URL(request.url)
+   172→    const type = searchParams.get('type')
+   173→
+   174→    switch (type) {
+   175→      case 'projects': {
+   176→        const projects = await db.project.findMany({
+   177→          include: {
+   178→            client: { select: { name: true } },
+   179→            contracts: { select: { totalValue: true } },
+   180→          },
+   181→          orderBy: { code: 'asc' },
+   182→        })
+   183→
+   184→        // GL-based project revenue and costs
+   185→        const projectIds = projects.map(p => p.id)
+   186→        const glBalances = await getProjectGLBalances(projectIds)
+   187→
+   188→        const data = projects.map(p => {
+   189→          const contractValue = p.contracts.reduce((s, c) => s + toNumber(c.totalValue), 0)
+   190→          const gl = glBalances.get(p.id) || { revenue: 0, costs: 0 }
+   191→          return {
+   192→            id: p.id, code: p.code, name: p.name, status: p.status,
+   193→            client: p.client.name, contractValue,
+   194→            totalCosts: gl.costs,
+   195→            totalRevenue: gl.revenue,
+   196→            profit: gl.revenue - gl.costs,
+   197→            margin: gl.revenue > 0 ? ((gl.revenue - gl.costs) / gl.revenue) * 100 : 0,
+   198→          }
+   199→        })
+   200→        return NextResponse.json(data)
+   201→      }
+   202→
+   203→      case 'claims': {
+   204→        const claims = await db.progressClaim.findMany({
+   205→          include: {
+   206→            project: { select: { code: true, name: true } },
+   207→            contract: { select: { contractNo: true, totalValue: true } },
+   208→          },
+   209→          orderBy: { date: 'desc' },
+   210→        })
+   211→        return NextResponse.json(claims)
+   212→      }
+   213→
+   214→      case 'expenses': {
+   215→        // Keep operational listing for descriptive details
+   216→        const expenses = await db.expense.findMany({
+   217→          include: {
+   218→            project: { select: { code: true, name: true } },
+   219→          },
+   220→          orderBy: { date: 'desc' },
+   221→        })
+   222→
+   223→        // GL-based total for verification
+   224→        const glExpenseTotal = await getGLBalanceByType('EXPENSE')
+   225→
+   226→        const byCategory: Record<string, number> = {}
+   227→        expenses.forEach(e => { byCategory[e.category] = (byCategory[e.category] || 0) + toNumber(e.amount) })
+   228→        const totalExpenses = expenses.reduce((s, e) => s + toNumber(e.amount), 0)
+   229→        return NextResponse.json({ expenses, byCategory, totalExpenses, glExpenseTotal })
+   230→      }
+   231→
+   232→      case 'sales': {
+   233→        // Keep operational listing for descriptive details
+   234→        const invoices = await db.salesInvoice.findMany({
+   235→          include: {
+   236→            client: { select: { name: true } },
+   237→            project: { select: { name: true } },
+   238→            items: true,
+   239→          },
+   240→          orderBy: { date: 'desc' },
+   241→        })
+   242→
+   243→        // GL-based revenue total for verification
+   244→        const glRevenueTotal = await getGLBalanceByType('REVENUE')
+   245→
+   246→        const totalSales = invoices.reduce((s, i) => s + toNumber(i.totalAmount), 0)
+   247→        const totalPaid = invoices.reduce((s, i) => s + toNumber(i.paidAmount), 0)
+   248→        return NextResponse.json({ invoices, totalSales, totalPaid, totalOutstanding: totalSales - totalPaid, glRevenueTotal })
+   249→      }
+   250→
+   251→      case 'purchases': {
+   252→        // Keep operational listing for descriptive details
+   253→        const pos = await db.purchaseOrder.findMany({
+   254→          include: {
+   255→            supplier: { select: { name: true } },
+   256→            project: { select: { name: true } },
+   257→          },
+   258→          orderBy: { date: 'desc' },
+   259→        })
+   260→        const pis = await db.purchaseInvoice.findMany({
+   261→          include: {
+   262→            supplier: { select: { name: true } },
+   263→          },
+   264→          orderBy: { date: 'desc' },
+   265→        })
+   266→
+   267→        // GL-based AP total for verification
+   268→        const apCodes = (await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])).map(a => a.code)
+   269→        const glPayableTotal = await getGLBalanceForCodes(apCodes.length > 0 ? apCodes : ['3210', '3220'])
+   270→
+   271→        const totalPOs = pos.reduce((s, p) => s + toNumber(p.totalAmount), 0)
+   272→        const totalPIs = pis.reduce((s, p) => s + toNumber(p.totalAmount), 0)
+   273→        const totalPaid = pis.reduce((s, p) => s + toNumber(p.paidAmount), 0)
+   274→        return NextResponse.json({ purchaseOrders: pos, purchaseInvoices: pis, totalPOs, totalPIs, totalPaid, totalOutstanding: totalPIs - totalPaid, glPayableTotal })
+   275→      }
+   276→
+   277→      case 'inventory': {
+   278→        const items = await db.inventoryItem.findMany({
+   279→          where: { isActive: true },
+   280→          include: {
+   281→            warehouse: { select: { code: true, name: true } },
+   282→          },
+   283→          orderBy: { code: 'asc' },
+   284→        })
+   285→        const totalValue = items.reduce((s, i) => s + (toNumber(i.quantity) * toNumber(i.purchasePrice)), 0)
+   286→        const lowStock = items.filter(i => i.quantity <= i.minQuantity)
+   287→        return NextResponse.json({ items, totalValue, lowStockCount: lowStock.length, totalItems: items.length })
+   288→      }
+   289→
+   290→      case 'balance-sheet': {
+   291→        const dateFrom = searchParams.get('dateFrom')
+   292→        const dateTo = searchParams.get('dateTo')
+   293→        const range: DateRange | undefined = (dateFrom || dateTo) ? {
+   294→          from: dateFrom ? new Date(dateFrom) : undefined,
+   295→          to: dateTo ? new Date(dateTo) : undefined,
+   296→        } : undefined
+   297→        const bs = await getEngineBalanceSheet(range?.to)
+   298→        // Flatten for backward-compatible response shape
+   299→        const accounts = [
+   300→          ...bs.assets.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
+   301→          ...bs.liabilities.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
+   302→          ...bs.equity.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
+   303→        ]
+   304→        return NextResponse.json({
+   305→          accounts,
+   306→          totalAssets: bs.assets.total,
+   307→          totalLiabilities: bs.liabilities.total,
+   308→          totalEquity: bs.equity.total,
+   309→          isBalanced: bs.isBalanced,
+   310→          source: 'posted-journal-entries',
+   311→        })
+   312→      }
+   313→
+   314→      case 'income-statement': {
+   315→        const dateFrom = searchParams.get('dateFrom')
+   316→        const dateTo = searchParams.get('dateTo')
+   317→        const range: DateRange | undefined = (dateFrom || dateTo) ? {
+   318→          from: dateFrom ? new Date(dateFrom) : undefined,
+   319→          to: dateTo ? new Date(dateTo) : undefined,
+   320→        } : undefined
+   321→        const is = await getEngineIncomeStatement(range)
+   322→        const accounts = [
+   323→          ...is.revenue.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
+   324→          ...is.expenses.accounts.map(a => ({ id: a.accountId, code: a.code, name: a.name, nameAr: a.nameAr, type: a.type, balance: a.balance })),
+   325→        ]
+   326→        return NextResponse.json({
+   327→          accounts,
+   328→          totalRevenue: is.revenue.total,
+   329→          totalExpenses: is.expenses.total,
+   330→          netIncome: is.netIncome,
+   331→          grossProfit: is.grossProfit,
+   332→          netProfitMargin: is.netProfitMargin,
+   333→          source: 'posted-journal-entries',
+   334→        })
+   335→      }
+   336→
+   337→      case 'project-card': {
+   338→        const projects = await db.project.findMany({
+   339→          include: {
+   340→            client: { select: { name: true } },
+   341→            contracts: { select: { totalValue: true } },
+   342→          },
+   343→          orderBy: { code: 'asc' },
+   344→        })
+   345→
+   346→        // GL-based project revenue and costs
+   347→        const projectIds = projects.map(p => p.id)
+   348→        const glBalances = await getProjectGLBalances(projectIds)
+   349→
+   350→        const projectCards = projects.map(p => {
+   351→          const contractValue = p.contracts.reduce((s, c) => s + toNumber(c.totalValue), 0)
+   352→          const gl = glBalances.get(p.id) || { revenue: 0, costs: 0 }
+   353→          const issuedExtracts = gl.revenue  // GL-based
+   354→          const totalCost = gl.costs  // GL-based
+   355→          const profit = contractValue - totalCost
+   356→          const profitMargin = contractValue > 0 ? (profit / contractValue) * 100 : 0
+   357→          return {
+   358→            id: p.id,
+   359→            code: p.code,
+   360→            name: p.name,
+   361→            nameAr: p.nameAr,
+   362→            client: p.client.name,
+   363→            status: p.status,
+   364→            projectType: p.projectType,
+   365→            contractValue,
+   366→            issuedExtracts,
+   367→            purchases: 0,  // Individual breakdown not available from GL alone
+   368→            projectExpenses: totalCost,
+   369→            totalCost,
+   370→            profit,
+   371→            profitMargin,
+   372→          }
+   373→        })
+   374→        const totals = {
+   375→          contractValue: projectCards.reduce((s, p) => s + p.contractValue, 0),
+   376→          issuedExtracts: projectCards.reduce((s, p) => s + p.issuedExtracts, 0),
+   377→          purchases: projectCards.reduce((s, p) => s + p.purchases, 0),
+   378→          projectExpenses: projectCards.reduce((s, p) => s + p.projectExpenses, 0),
+   379→          totalCost: projectCards.reduce((s, p) => s + p.totalCost, 0),
+   380→          profit: projectCards.reduce((s, p) => s + p.profit, 0),
+   381→          profitMargin: 0,
+   382→        }
+   383→        totals.profitMargin = totals.contractValue > 0
+   384→          ? (totals.profit / totals.contractValue) * 100
+   385→          : 0
+   386→        return NextResponse.json({ projects: projectCards, totals })
+   387→      }
+   388→
+   389→      case 'activity-summary': {
+   390→        // ===== CONSTRUCTION =====
+   391→        const constructionProjects = await db.project.findMany({
+   392→          where: { projectType: 'CONSTRUCTION' },
+   393→          select: { id: true, status: true, contractValue: true, contracts: { select: { totalValue: true } } },
+   394→        })
+   395→
+   396→        const constructionProjectCount = constructionProjects.length
+   397→        const constructionActiveProjectCount = constructionProjects.filter(p => p.status === 'ACTIVE').length
+   398→        const constructionTotalContractValue = constructionProjects.reduce((s, p) => {
+   399→          const cv = p.contracts.reduce((s2, c) => s2 + toNumber(c.totalValue), 0)
+   400→          return s + (cv > 0 ? cv : toNumber(p.contractValue))
+   401→        }, 0)
+   402→
+   403→        // GL-based construction revenue and costs
+   404→        const constructionRevenue = await getGLBalanceByType('REVENUE', { activityType: 'CONSTRUCTION' })
+   405→        const constructionCosts = await getGLBalanceByType('EXPENSE', { activityType: 'CONSTRUCTION' })
+   406→        const constructionProfit = constructionRevenue - constructionCosts
+   407→        const constructionProfitMargin = constructionRevenue > 0
+   408→          ? (constructionProfit / constructionRevenue) * 100 : 0
+   409→
+   410→        // Detailed cost breakdown from GL by account role
+   411→        const [projectCostAccounts, subcontractorCostAccounts, fuelAccounts, maintenanceAccounts, driverAccounts, transportAccounts, rentalDepAccounts, payrollAccounts, gosiAccounts, adminAccounts, depAccounts] = await Promise.all([
+   412→          getAccountsByRoles([AccountRole.PROJECT_COST]),
+   413→          getAccountsByRoles([AccountRole.SUBCONTRACTOR_COST]),
+   414→          getAccountsByRoles([AccountRole.FUEL_EXPENSE]),
+   415→          getAccountsByRoles([AccountRole.MAINTENANCE_EXPENSE]),
+   416→          getAccountsByRoles([AccountRole.DRIVER_EXPENSE]),
+   417→          getAccountsByRoles([AccountRole.TRANSPORT_EXPENSE]),
+   418→          getAccountsByRoles([AccountRole.RENTAL_DEPRECIATION]),
+   419→          getAccountsByRoles([AccountRole.PAYROLL_EXPENSE]),
+   420→          getAccountsByRoles([AccountRole.GOSI_EXPENSE]),
+   421→          getAccountsByRoles([AccountRole.ADMIN_EXPENSE]),
+   422→          getAccountsByRoles([AccountRole.DEPRECIATION_EXPENSE]),
+   423→        ])
+   424→
+   425→        // Get all expense account balances in a single query
+   426→        const allExpenseAccounts = await db.account.findMany({
+   427→          where: { type: 'EXPENSE', isActive: true, allowPosting: true },
+   428→          select: { id: true, code: true, type: true, accountRole: true, activityType: true },
+   429→        })
+   430→
+   431→        const expenseAccountIds = allExpenseAccounts.map(a => a.id)
+   432→        const expenseAgg = expenseAccountIds.length > 0
+   433→          ? await db.journalLine.groupBy({
+   434→              by: ['accountId'],
+   435→              _sum: { debit: true, credit: true },
+   436→              where: {
+   437→                accountId: { in: expenseAccountIds },
+   438→                journalEntry: { status: 'POSTED' },
+   439→              },
+   440→            })
+   441→          : []
+   442→
+   443→        const expenseBalanceMap = new Map<string, number>()
+   444→        for (const agg of expenseAgg) {
+   445→          const d = toNumber(agg._sum.debit)
+   446→          const c = toNumber(agg._sum.credit)
+   447→          expenseBalanceMap.set(agg.accountId, d - c)  // Expense: debit normal
+   448→        }
+   449→
+   450→        const getRoleBasedTotal = (accounts: { id: string }[]) => {
+   451→          return accounts.reduce((s, a) => s + (expenseBalanceMap.get(a.id) || 0), 0)
+   452→        }
+   453→
+   454→        // Construction cost breakdown (approximate mapping)
+   455→        const constructionMaterialCosts = getRoleBasedTotal(projectCostAccounts)
+   456→        const constructionSubcontractorCosts = getRoleBasedTotal(subcontractorCostAccounts)
+   457→        const constructionLaborCosts = getRoleBasedTotal(payrollAccounts)  // Labor = payroll
+   458→        const constructionEquipmentCosts = getRoleBasedTotal(fuelAccounts) + getRoleBasedTotal(maintenanceAccounts) +
+   459→          getRoleBasedTotal(driverAccounts) + getRoleBasedTotal(transportAccounts) + getRoleBasedTotal(rentalDepAccounts)
+   460→        const constructionProjectExpenses = getRoleBasedTotal(adminAccounts) + getRoleBasedTotal(gosiAccounts) + getRoleBasedTotal(depAccounts)
+   461→
+   462→        // ===== RENTAL =====
+   463→        const rentalProjects = await db.project.findMany({
+   464→          where: { projectType: 'EQUIPMENT_RENTAL' },
+   465→          select: { id: true, status: true },
+   466→        })
+   467→
+   468→        const rentalProjectCount = rentalProjects.length
+   469→        const rentalActiveProjectCount = rentalProjects.filter(p => p.status === 'ACTIVE').length
+   470→
+   471→        // GL-based rental revenue and costs
+   472→        const rentalRevenue = await getGLBalanceByType('REVENUE', { activityType: 'EQUIPMENT_RENTAL' })
+   473→        const rentalCosts = await getGLBalanceByType('EXPENSE', { activityType: 'EQUIPMENT_RENTAL' })
+   474→        const rentalProfit = rentalRevenue - rentalCosts
+   475→        const rentalProfitMargin = rentalRevenue > 0
+   476→          ? (rentalProfit / rentalRevenue) * 100 : 0
+   477→
+   478→        // Rental cost breakdown from GL by role
+   479→        const rentalFuelCosts = getRoleBasedTotal(fuelAccounts)  // All fuel (approximation)
+   480→        const rentalMaintenanceCosts = getRoleBasedTotal(maintenanceAccounts)
+   481→        const rentalOperationCosts = getRoleBasedTotal(rentalDepAccounts)
+   482→        const rentalExpenses = getRoleBasedTotal(adminAccounts) + getRoleBasedTotal(driverAccounts) + getRoleBasedTotal(transportAccounts)
+   483→
+   484→        // Count rented equipment
+   485→        const rentalProjectIds = rentalProjects.map(p => p.id)
+   486→        const rentalEquipments = rentalProjectIds.length > 0
+   487→          ? await db.equipmentRental.findMany({
+   488→              where: { projectId: { in: rentalProjectIds } },
+   489→              select: { equipmentId: true },
+   490→            })
+   491→          : []
+   492→        const rentalEquipmentIds = [...new Set(rentalEquipments.map(r => r.equipmentId))]
+   493→        const rentedEquipmentCount = rentalEquipmentIds.length
+   494→
+   495→        return NextResponse.json({
+   496→          construction: {
+   497→            projectCount: constructionProjectCount,
+   498→            activeProjectCount: constructionActiveProjectCount,
+   499→            totalContractValue: constructionTotalContractValue,
+   500→            totalRevenue: constructionRevenue,
+   501→            totalCosts: constructionCosts,
+   502→            profit: constructionProfit,
+   503→            profitMargin: constructionProfitMargin,
+   504→            materialCosts: constructionMaterialCosts,
+   505→            laborCosts: constructionLaborCosts,
+   506→            subcontractorCosts: constructionSubcontractorCosts,
+   507→            equipmentCosts: constructionEquipmentCosts,
+   508→            projectExpenses: constructionProjectExpenses,
+   509→          },
+   510→          rental: {
+   511→            projectCount: rentalProjectCount,
+   512→            activeProjectCount: rentalActiveProjectCount,
+   513→            totalRentalRevenue: rentalRevenue,
+   514→            totalRentalCosts: rentalCosts,
+   515→            profit: rentalProfit,
+   516→            profitMargin: rentalProfitMargin,
+   517→            maintenanceCosts: rentalMaintenanceCosts,
+   518→            fuelCosts: rentalFuelCosts,
+   519→            operationCosts: rentalOperationCosts,
+   520→            rentalExpenses: rentalExpenses,
+   521→            rentedEquipmentCount: rentedEquipmentCount,
+   522→          },
+   523→        })
+   524→      }
+   525→
+   526→      case 'project-profitability': {
+   527→        const projects = await db.project.findMany({
+   528→          include: {
+   529→            client: { select: { name: true } },
+   530→            contracts: { select: { totalValue: true } },
+   531→          },
+   532→          orderBy: { code: 'asc' },
+   533→        })
+   534→
+   535→        // GL-based project revenue and costs
+   536→        const projectIds = projects.map(p => p.id)
+   537→        const glBalances = await getProjectGLBalances(projectIds)
+   538→
+   539→        // For detailed breakdown: get per-project GL lines grouped by account role
+   540→        const ccMap = await buildProjectCostCenterMap(projectIds)
+   541→        const costCenterIds = [...ccMap.values()]
+   542→
+   543→        // Get expense journal lines grouped by cost center and account role for breakdown
+   544→        let projectExpenseBreakdown = new Map<string, Map<string, number>>()  // projectId → (role → amount)
+   545→        if (costCenterIds.length > 0) {
+   546→          const expenseLines = await db.journalLine.findMany({
+   547→            where: {
+   548→              costCenterId: { in: costCenterIds },
+   549→              journalEntry: { status: 'POSTED' },
+   550→              account: { type: 'EXPENSE' },
+   551→            },
+   552→            include: {
+   553→              account: { select: { code: true, accountRole: true } },
+   554→              costCenter: { select: { code: true } },
+   555→            },
+   556→          })
+   557→
+   558→          const projectCodeToId = new Map(projects.map(p => [p.code, p.id]))
+   559→          for (const line of expenseLines) {
+   560→            const ccCode = line.costCenter?.code
+   561→            if (!ccCode) continue
+   562→            const pid = projectCodeToId.get(ccCode)
+   563→            if (!pid) continue
+   564→            if (!projectExpenseBreakdown.has(pid)) projectExpenseBreakdown.set(pid, new Map())
+   565→            const roleMap = projectExpenseBreakdown.get(pid)!
+   566→            const role = line.account.accountRole || 'OTHER'
+   567→            const amount = toNumber(line.debit) - toNumber(line.credit)
+   568→            roleMap.set(role, (roleMap.get(role) || 0) + amount)
+   569→          }
+   570→        }
+   571→
+   572→        const projectProfitability = projects.map(p => {
+   573→          const contractValue = p.contracts.reduce((s, c) => s + toNumber(c.totalValue), 0) || toNumber(p.contractValue)
+   574→          const gl = glBalances.get(p.id) || { revenue: 0, costs: 0 }
+   575→          const breakdown = projectExpenseBreakdown.get(p.id) || new Map<string, number>()
+   576→
+   577→          // Categorize by role
+   578→          const materialCosts = breakdown.get('PROJECT_COST') || 0
+   579→          const subcontractorCosts = breakdown.get('SUBCONTRACTOR_COST') || 0
+   580→          const laborCosts = breakdown.get('PAYROLL_EXPENSE') || 0
+   581→          const equipmentCosts = (breakdown.get('FUEL_EXPENSE') || 0) +
+   582→            (breakdown.get('MAINTENANCE_EXPENSE') || 0) +
+   583→            (breakdown.get('DRIVER_EXPENSE') || 0) +
+   584→            (breakdown.get('TRANSPORT_EXPENSE') || 0) +
+   585→            (breakdown.get('RENTAL_DEPRECIATION') || 0)
+   586→          const projectExpenses = (breakdown.get('ADMIN_EXPENSE') || 0) +
+   587→            (breakdown.get('GOSI_EXPENSE') || 0) +
+   588→            (breakdown.get('DEPRECIATION_EXPENSE') || 0)
+   589→
+   590→          const totalCosts = gl.costs
+   591→          const grossProfit = contractValue - totalCosts
+   592→          const profitMargin = contractValue > 0 ? (grossProfit / contractValue) * 100 : 0
+   593→          return {
+   594→            id: p.id, code: p.code, name: p.name, nameAr: p.nameAr,
+   595→            status: p.status, projectType: p.projectType,
+   596→            client: p.client.name, contractValue,
+   597→            invoiced: gl.revenue,  // GL-based revenue = invoiced
+   598→            collected: 0,  // Collection data is operational; not available from GL
+   599→            materialCosts, subcontractorCosts, laborCosts, equipmentCosts, projectExpenses,
+   600→            totalCosts, grossProfit, profitMargin,
+   601→          }
+   602→        })
+   603→        const totals = {
+   604→          contractValue: projectProfitability.reduce((s, p) => s + p.contractValue, 0),
+   605→          invoiced: projectProfitability.reduce((s, p) => s + p.invoiced, 0),
+   606→          collected: projectProfitability.reduce((s, p) => s + p.collected, 0),
+   607→          totalCosts: projectProfitability.reduce((s, p) => s + p.totalCosts, 0),
+   608→          grossProfit: projectProfitability.reduce((s, p) => s + p.grossProfit, 0),
+   609→          profitMargin: 0,
+   610→        }
+   611→        totals.profitMargin = totals.contractValue > 0 ? (totals.grossProfit / totals.contractValue) * 100 : 0
+   612→        return NextResponse.json({ projects: projectProfitability, totals })
+   613→      }
+   614→
+   615→      case 'equipment-utilization': {
+   616→        // Equipment-specific: use operational data for descriptive details (hours, status)
+   617→        // but use GL for financial amounts where possible
+   618→        const equipment = await db.equipment.findMany({
+   619→          where: { isActive: true },
+   620→          include: {
+   621→            operatorLogs: { select: { hours: true, date: true } },
+   622→            maintenance: { select: { cost: true } },
+   623→            fuelLogs: { select: { totalCost: true } },
+   624→            usages: { select: { cost: true } },
+   625→            rentals: { select: { hourlyRate: true, pricingType: true, deliveryFees: true } },
+   626→          },
+   627→          orderBy: { code: 'asc' },
+   628→        })
+   629→
+   630→        // GL-based: get expense account totals filtered by equipment-related cost centers
+   631→        // Since equipment doesn't directly have cost centers, we use the operational data
+   632→        // supplemented with GL-based cost verification
+   633→        const [fuelAccts, maintAccts, driverAccts, transportAccts, rentalDepAccts] = await Promise.all([
+   634→          getAccountsByRoles([AccountRole.FUEL_EXPENSE]),
+   635→          getAccountsByRoles([AccountRole.MAINTENANCE_EXPENSE]),
+   636→          getAccountsByRoles([AccountRole.DRIVER_EXPENSE]),
+   637→          getAccountsByRoles([AccountRole.TRANSPORT_EXPENSE]),
+   638→          getAccountsByRoles([AccountRole.RENTAL_DEPRECIATION]),
+   639→        ])
+   640→
+   641→        const equipmentUtilization = equipment.map(eq => {
+   642→          const totalHoursRented = eq.operatorLogs.reduce((s, o) => s + toNumber(o.hours), 0)
+   643→          const revenueGenerated = eq.rentals.reduce((s, r) => {
+   644→            const rate = toNumber(r.hourlyRate) || toNumber(eq.hourlyRate)
+   645→            return s + (rate * totalHoursRented) + toNumber(r.deliveryFees)
+   646→          }, 0)
+   647→          const maintenanceCosts = eq.maintenance.reduce((s, m) => s + toNumber(m.cost), 0)
+   648→          const fuelCosts = eq.fuelLogs.reduce((s, f) => s + toNumber(f.totalCost), 0)
+   649→          const operationCosts = eq.usages.reduce((s, u) => s + toNumber(u.cost), 0)
+   650→          const totalCosts = maintenanceCosts + fuelCosts + operationCosts
+   651→          const netProfit = revenueGenerated - totalCosts
+   652→          return {
+   653→            id: eq.id, code: eq.code, name: eq.name, nameAr: eq.nameAr,
+   654→            status: eq.status, type: eq.type,
+   655→            totalHoursRented, revenueGenerated,
+   656→            maintenanceCosts, fuelCosts, operationCosts, totalCosts, netProfit,
+   657→          }
+   658→        })
+   659→        const totals = {
+   660→          totalHoursRented: equipmentUtilization.reduce((s, e) => s + e.totalHoursRented, 0),
+   661→          revenueGenerated: equipmentUtilization.reduce((s, e) => s + e.revenueGenerated, 0),
+   662→          maintenanceCosts: equipmentUtilization.reduce((s, e) => s + e.maintenanceCosts, 0),
+   663→          fuelCosts: equipmentUtilization.reduce((s, e) => s + e.fuelCosts, 0),
+   664→          totalCosts: equipmentUtilization.reduce((s, e) => s + e.totalCosts, 0),
+   665→          netProfit: equipmentUtilization.reduce((s, e) => s + e.netProfit, 0),
+   666→        }
+   667→        return NextResponse.json({ equipment: equipmentUtilization, totals })
+   668→      }
+   669→
+   670→      case 'rental-revenue-by-client': {
+   671→        // GL-based: get revenue from REVENUE accounts with EQUIPMENT_RENTAL activity type
+   672→        // and join with operational data for client details
+   673→        const rentalInvoices = await db.salesInvoice.findMany({
+   674→          where: { sourceType: 'TIMESHEET', status: { not: 'CANCELLED' } },
+   675→          include: {
+   676→            client: { select: { id: true, code: true, name: true, nameAr: true } },
+   677→          },
+   678→          orderBy: { date: 'desc' },
+   679→        })
+   680→
+   681→        // Build client-level aggregation from operational data (descriptive)
+   682→        const byClient: Record<string, { id: string; code: string; name: string; nameAr: string | null; revenue: number; invoiceCount: number }> = {}
+   683→        for (const inv of rentalInvoices) {
+   684→          const cid = inv.client.id
+   685→          if (!byClient[cid]) {
+   686→            byClient[cid] = { id: cid, code: inv.client.code, name: inv.client.name, nameAr: inv.client.nameAr, revenue: 0, invoiceCount: 0 }
+   687→          }
+   688→          byClient[cid].revenue += toNumber(inv.totalAmount)
+   689→          byClient[cid].invoiceCount += 1
+   690→        }
+   691→        const clients = Object.values(byClient)
+   692→
+   693→        // GL-based total for verification
+   694→        const glRentalRevenue = await getGLBalanceByType('REVENUE', { activityType: 'EQUIPMENT_RENTAL' })
+   695→
+   696→        const totalRevenue = clients.reduce((s, c) => s + c.revenue, 0)
+   697→        return NextResponse.json({ clients, totalRevenue, glRentalRevenue })
+   698→      }
+   699→
+   700→      case 'equipment-status': {
+   701→        const equipment = await db.equipment.findMany({
+   702→          where: { isActive: true },
+   703→          select: { status: true, type: true },
+   704→        })
+   705→        const byStatus: Record<string, number> = {}
+   706→        const byType: Record<string, { count: number; byStatus: Record<string, number> }> = {}
+   707→        for (const eq of equipment) {
+   708→          byStatus[eq.status] = (byStatus[eq.status] || 0) + 1
+   709→          const eqType = eq.type || 'OTHER'
+   710→          if (!byType[eqType]) byType[eqType] = { count: 0, byStatus: {} }
+   711→          byType[eqType].count += 1
+   712→          byType[eqType].byStatus[eq.status] = (byType[eqType].byStatus[eq.status] || 0) + 1
+   713→        }
+   714→        return NextResponse.json({ byStatus, byCategory: byType, total: equipment.length })
+   715→      }
+   716→
+   717→      case 'purchase-summary': {
+   718→        // Keep operational listing for descriptive details
+   719→        const supplierInvoices = await db.purchaseInvoice.findMany({
+   720→          where: { status: { not: 'CANCELLED' } },
+   721→          include: {
+   722→            supplier: { select: { id: true, code: true, name: true } },
+   723→            project: { select: { id: true, code: true, name: true, projectType: true } },
+   724→          },
+   725→          orderBy: { date: 'desc' },
+   726→        })
+   727→
+   728→        const bySupplier: Record<string, { id: string; code: string; name: string; total: number; invoiceCount: number }> = {}
+   729→        const byProject: Record<string, { id: string; code: string; name: string; projectType: string; total: number; invoiceCount: number }> = {}
+   730→        for (const inv of supplierInvoices) {
+   731→          // By supplier
+   732→          const sid = inv.supplier?.id || 'unknown'
+   733→          if (!bySupplier[sid]) bySupplier[sid] = { id: sid, code: inv.supplier?.code || '', name: inv.supplier?.name || 'Unknown', total: 0, invoiceCount: 0 }
+   734→          bySupplier[sid].total += toNumber(inv.totalAmount)
+   735→          bySupplier[sid].invoiceCount += 1
+   736→          // By project
+   737→          if (inv.project) {
+   738→            const pid = inv.project.id
+   739→            if (!byProject[pid]) byProject[pid] = { id: pid, code: inv.project.code, name: inv.project.name, projectType: inv.project.projectType, total: 0, invoiceCount: 0 }
+
+[showing lines 40-739 of 966; use offset=740 with limit to continue reading]

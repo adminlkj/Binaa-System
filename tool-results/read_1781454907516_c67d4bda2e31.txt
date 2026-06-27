@@ -1,0 +1,725 @@
+     1→'use client'
+     2→
+     3→import React, { useState } from 'react'
+     4→import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+     5→import {
+     6→  FileSignature, Truck, Clock, Receipt, CreditCard,
+     7→  Search, RefreshCw, Plus, Eye, ChevronDown, ChevronUp,
+     8→  ArrowRight, Trash2,
+     9→} from 'lucide-react'
+    10→import {
+    11→  useAppStore,
+    12→  type SubModuleKey,
+    13→  type Lang,
+    14→  formatDate,
+    15→  formatNumber,
+    16→  commonText,
+    17→} from '@/stores/app-store'
+    18→import { SectionLayout } from '@/components/sections/section-layout'
+    19→import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+    20→import { Button } from '@/components/ui/button'
+    21→import { Input } from '@/components/ui/input'
+    22→import { Badge } from '@/components/ui/badge'
+    23→import {
+    24→  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+    25→} from '@/components/ui/table'
+    26→import {
+    27→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    28→} from '@/components/ui/select'
+    29→import {
+    30→  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+    31→} from '@/components/ui/dialog'
+    32→import {
+    33→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    34→  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    35→} from '@/components/ui/alert-dialog'
+    36→import { Label } from '@/components/ui/label'
+    37→import { Textarea } from '@/components/ui/textarea'
+    38→import { Separator } from '@/components/ui/separator'
+    39→import { MoneyDisplay } from '@/components/ui/money-display'
+    40→import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+    41→import { ContractsModule } from '@/components/modules/contracts'
+    42→import { DeliveryOrdersModule } from '@/components/modules/delivery-orders'
+    43→import { TimesheetsModule } from '@/components/modules/timesheets'
+    44→import { RentalInvoicesModule } from '@/components/modules/rental-invoices'
+    45→
+    46→// ============ Helpers ============
+    47→
+    48→function t(ar: string, en: string, lang: Lang) {
+    49→  return lang === 'ar' ? ar : en
+    50→}
+    51→
+    52→// ============ Accounting Entry Display ============
+    53→
+    54→interface JournalLineItem {
+    55→  id: string
+    56→  accountId: string
+    57→  account: { id: string; code: string; name: string; nameAr?: string | null }
+    58→  debit: number
+    59→  credit: number
+    60→  description?: string | null
+    61→}
+    62→
+    63→interface JournalEntryDetail {
+    64→  id: string
+    65→  entryNo: string
+    66→  date: string
+    67→  description?: string | null
+    68→  status: string
+    69→  sourceType?: string | null
+    70→  lines: JournalLineItem[]
+    71→}
+    72→
+    73→function AccountingEntryDisplay({
+    74→  journalEntryId,
+    75→  lang,
+    76→}: {
+    77→  journalEntryId: string | null | undefined
+    78→  lang: Lang
+    79→}) {
+    80→  const [expanded, setExpanded] = useState(false)
+    81→
+    82→  const { data: entry, isLoading } = useQuery<JournalEntryDetail | null>({
+    83→    queryKey: ['journal-entry', journalEntryId],
+    84→    queryFn: async () => {
+    85→      if (!journalEntryId) return null
+    86→      const res = await fetch(`/api/journal-entries/${journalEntryId}`)
+    87→      if (!res.ok) return null
+    88→      return res.json()
+    89→    },
+    90→    enabled: !!journalEntryId && expanded,
+    91→  })
+    92→
+    93→  if (!journalEntryId) {
+    94→    return (
+    95→      <span className="text-xs text-muted-foreground">
+    96→        {t('لا يوجد قيد محاسبي', 'No accounting entry', lang)}
+    97→      </span>
+    98→    )
+    99→  }
+   100→
+   101→  return (
+   102→    <div className="border rounded-lg overflow-hidden">
+   103→      <button
+   104→        onClick={() => setExpanded(!expanded)}
+   105→        className="w-full flex items-center justify-between px-3 py-2 bg-amber-50 hover:bg-amber-100 transition-colors text-sm"
+   106→      >
+   107→        <span className="flex items-center gap-2 font-medium text-amber-700">
+   108→          <Receipt className="size-3.5" />
+   109→          {t('القيد المحاسبي', 'Accounting Entry', lang)}
+   110→        </span>
+   111→        {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+   112→      </button>
+   113→      {expanded && (
+   114→        <div className="p-3 bg-amber-50/30">
+   115→          {isLoading ? (
+   116→            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+   117→              <RefreshCw className="size-3 animate-spin" />
+   118→              {t('جاري التحميل...', 'Loading...', lang)}
+   119→            </div>
+   120→          ) : entry ? (
+   121→            <div className="space-y-2">
+   122→              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+   123→                <span className="font-mono">{entry.entryNo}</span>
+   124→                <span>{formatDate(entry.date, lang)}</span>
+   125→                {entry.description && <span>— {entry.description}</span>}
+   126→              </div>
+   127→              <Table>
+   128→                <TableHeader>
+   129→                  <TableRow>
+   130→                    <TableHead className="text-right h-8 text-xs">{t('الحساب', 'Account', lang)}</TableHead>
+   131→                    <TableHead className="text-right h-8 text-xs">{t('مدين', 'Debit', lang)}</TableHead>
+   132→                    <TableHead className="text-right h-8 text-xs">{t('دائن', 'Credit', lang)}</TableHead>
+   133→                  </TableRow>
+   134→                </TableHeader>
+   135→                <TableBody>
+   136→                  {entry.lines.map((line) => (
+   137→                    <TableRow key={line.id}>
+   138→                      <TableCell className="py-1 text-xs">
+   139→                        <span className="font-mono text-muted-foreground">{line.account.code}</span>
+   140→                        {' '}
+   141→                        <span>{lang === 'ar' ? (line.account.nameAr || line.account.name) : line.account.name}</span>
+   142→                      </TableCell>
+   143→                      <TableCell className="py-1 text-xs">
+   144→                        {line.debit > 0 ? <MoneyDisplay value={line.debit} lang={lang} size="xs" inline showSymbol={false} /> : '—'}
+   145→                      </TableCell>
+   146→                      <TableCell className="py-1 text-xs">
+   147→                        {line.credit > 0 ? <MoneyDisplay value={line.credit} lang={lang} size="xs" inline showSymbol={false} /> : '—'}
+   148→                      </TableCell>
+   149→                    </TableRow>
+   150→                  ))}
+   151→                </TableBody>
+   152→              </Table>
+   153→            </div>
+   154→          ) : (
+   155→            <p className="text-xs text-muted-foreground">{t('لم يتم العثور على القيد', 'Entry not found', lang)}</p>
+   156→          )}
+   157→        </div>
+   158→      )}
+   159→    </div>
+   160→  )
+   161→}
+   162→
+   163→// ============ Tab Definitions ============
+   164→
+   165→const rentalTabs: { key: SubModuleKey; icon: React.ElementType }[] = [
+   166→  { key: 'rental-contracts', icon: FileSignature },
+   167→  { key: 'rental-delivery-orders', icon: Truck },
+   168→  { key: 'rental-timesheets', icon: Clock },
+   169→  { key: 'rental-invoices', icon: Receipt },
+   170→  { key: 'rental-collections', icon: CreditCard },
+   171→]
+   172→
+   173→// ============ Collections Module ============
+   174→
+   175→interface ClientPaymentItem {
+   176→  id: string
+   177→  clientId: string
+   178→  invoiceId: string | null
+   179→  amount: number
+   180→  date: string
+   181→  receivedIn: string
+   182→  reference: string | null
+   183→  notes: string | null
+   184→  journalEntryId: string | null
+   185→  createdAt: string
+   186→  client: { id: string; name: string; code: string }
+   187→  invoice: { id: string; invoiceNo: string; totalAmount: number; status: string; sourceType?: string; invoiceType?: string } | null
+   188→}
+   189→
+   190→interface RentalInvoiceOption {
+   191→  id: string
+   192→  invoiceNo: string
+   193→  totalAmount: number
+   194→  paidAmount: number
+   195→  status: string
+   196→  client: { id: string; name: string; code: string }
+   197→}
+   198→
+   199→function CollectionsModule() {
+   200→  const { lang } = useAppStore()
+   201→  const queryClient = useQueryClient()
+   202→  const tl = (ar: string, en: string) => lang === 'ar' ? ar : en
+   203→
+   204→  const [search, setSearch] = useState('')
+   205→  const [createOpen, setCreateOpen] = useState(false)
+   206→  const [deleteId, setDeleteId] = useState<string | null>(null)
+   207→  const [viewEntryId, setViewEntryId] = useState<string | null>(null)
+   208→
+   209→  // Form state
+   210→  const [formClientId, setFormClientId] = useState('')
+   211→  const [formInvoiceId, setFormInvoiceId] = useState('')
+   212→  const [formAmount, setFormAmount] = useState('')
+   213→  const [formDate, setFormDate] = useState('')
+   214→  const [formReceivedIn, setFormReceivedIn] = useState('TREASURY')
+   215→  const [formReference, setFormReference] = useState('')
+   216→  const [formNotes, setFormNotes] = useState('')
+   217→
+   218→  // Fetch rental payments (client payments for rental invoices)
+   219→  const { data: payments = [], isLoading, isError, refetch } = useQuery<ClientPaymentItem[]>({
+   220→    queryKey: ['rental-collections'],
+   221→    queryFn: async () => {
+   222→      // First get rental invoice IDs
+   223→      const invRes = await fetch('/api/sales-invoices?invoiceType=RENTAL')
+   224→      if (!invRes.ok) return []
+   225→      const invoices: { id: string }[] = await invRes.json()
+   226→      const rentalInvoiceIds = new Set(invoices.map((i: { id: string }) => i.id))
+   227→
+   228→      // Then get all client payments
+   229→      const payRes = await fetch('/api/client-payments')
+   230→      if (!payRes.ok) return []
+   231→      const allPayments: ClientPaymentItem[] = await payRes.json()
+   232→
+   233→      // Filter to payments linked to rental invoices or unallocated payments from rental clients
+   234→      return allPayments.filter((p: ClientPaymentItem) =>
+   235→        (p.invoiceId && rentalInvoiceIds.has(p.invoiceId)) || !p.invoiceId
+   236→      )
+   237→    },
+   238→  })
+   239→
+   240→  // Fetch clients for form
+   241→  const { data: clients = [] } = useQuery<{ id: string; name: string; code: string }[]>({
+   242→    queryKey: ['clients-for-collections'],
+   243→    queryFn: async () => {
+   244→      const res = await fetch('/api/clients?simple=true&active=true')
+   245→      if (!res.ok) return []
+   246→      return res.json()
+   247→    },
+   248→  })
+   249→
+   250→  // Fetch rental invoices for selected client
+   251→  const { data: rentalInvoices = [] } = useQuery<RentalInvoiceOption[]>({
+   252→    queryKey: ['rental-invoices-for-collection', formClientId],
+   253→    queryFn: async () => {
+   254→      if (!formClientId) return []
+   255→      const res = await fetch(`/api/sales-invoices?invoiceType=RENTAL&clientId=${formClientId}`)
+   256→      if (!res.ok) return []
+   257→      const all: RentalInvoiceOption[] = await res.json()
+   258→      return all.filter(i => i.status !== 'PAID' && i.status !== 'CANCELLED')
+   259→    },
+   260→    enabled: !!formClientId,
+   261→  })
+   262→
+   263→  // Create mutation
+   264→  const createMutation = useMutation({
+   265→    mutationFn: (data: Record<string, unknown>) =>
+   266→      fetch('/api/client-payments', {
+   267→        method: 'POST',
+   268→        headers: { 'Content-Type': 'application/json' },
+   269→        body: JSON.stringify(data),
+   270→      }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   271→    onSuccess: () => {
+   272→      queryClient.invalidateQueries({ queryKey: ['rental-collections'] })
+   273→      queryClient.invalidateQueries({ queryKey: ['rental-invoices-for-collection'] })
+   274→      setCreateOpen(false)
+   275→      resetForm()
+   276→    },
+   277→  })
+   278→
+   279→  // Delete mutation
+   280→  const deleteMutation = useMutation({
+   281→    mutationFn: (id: string) =>
+   282→      fetch(`/api/client-payments/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+   283→    onSuccess: () => {
+   284→      queryClient.invalidateQueries({ queryKey: ['rental-collections'] })
+   285→      setDeleteId(null)
+   286→    },
+   287→  })
+   288→
+   289→  const resetForm = () => {
+   290→    setFormClientId('')
+   291→    setFormInvoiceId('')
+   292→    setFormAmount('')
+   293→    setFormDate('')
+   294→    setFormReceivedIn('TREASURY')
+   295→    setFormReference('')
+   296→    setFormNotes('')
+   297→  }
+   298→
+   299→  const handleCreate = (e: React.FormEvent) => {
+   300→    e.preventDefault()
+   301→    createMutation.mutate({
+   302→      clientId: formClientId,
+   303→      invoiceId: formInvoiceId || null,
+   304→      amount: parseFloat(formAmount) || 0,
+   305→      date: formDate,
+   306→      receivedIn: formReceivedIn,
+   307→      reference: formReference || null,
+   308→      notes: formNotes || null,
+   309→    })
+   310→  }
+   311→
+   312→  // Filters
+   313→  const filtered = payments.filter(p => {
+   314→    const matchSearch = !search ||
+   315→      p.client?.name?.toLowerCase().includes(search.toLowerCase()) ||
+   316→      (p.reference?.toLowerCase().includes(search.toLowerCase())) ||
+   317→      (p.invoice?.invoiceNo?.toLowerCase().includes(search.toLowerCase()))
+   318→    return matchSearch
+   319→  })
+   320→
+   321→  const totalCollected = filtered.reduce((s, p) => s + (p.amount ?? 0), 0)
+   322→
+   323→  return (
+   324→    <ModuleLayout
+   325→      title={{ ar: 'التحصيلات', en: 'Collections' }}
+   326→      subtitle={{ ar: 'تحصيلات فواتير الإيجار', en: 'Rental invoice collections' }}
+   327→      actions={
+   328→        <>
+   329→          <Button variant="outline" size="icon" onClick={() => refetch()} title={tl('تحديث', 'Refresh')}>
+   330→            <RefreshCw className="size-4" />
+   331→          </Button>
+   332→          <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { resetForm(); setCreateOpen(true) }}>
+   333→            <Plus className="size-4" /> {tl('تحصيل جديد', 'New Collection')}
+   334→          </Button>
+   335→        </>
+   336→      }
+   337→    >
+   338→      {/* Summary */}
+   339→      <Card className="bg-emerald-50 border-emerald-200">
+   340→        <CardContent className="p-4 flex items-center justify-between">
+   341→          <div>
+   342→            <p className="text-sm text-muted-foreground">{tl('إجمالي التحصيلات', 'Total Collected')}</p>
+   343→            <MoneyDisplay value={totalCollected} lang={lang} size="xl" bold className="text-emerald-700" />
+   344→          </div>
+   345→          <div className="text-left">
+   346→            <p className="text-sm text-muted-foreground">{tl('عدد التحصيلات', 'Payment Count')}</p>
+   347→            <p className="text-2xl font-bold">{filtered.length}</p>
+   348→          </div>
+   349→        </CardContent>
+   350→      </Card>
+   351→
+   352→      {/* Search */}
+   353→      <Card>
+   354→        <CardContent className="p-4">
+   355→          <div className="relative">
+   356→            <Search className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+   357→            <Input placeholder={tl('بحث بالعميل، المرجع، رقم الفاتورة...', 'Search by client, reference, invoice no...')} value={search} onChange={e => setSearch(e.target.value)} className="pr-9" />
+   358→          </div>
+   359→        </CardContent>
+   360→      </Card>
+   361→
+   362→      {/* Table */}
+   363→      <Card>
+   364→        <CardContent className="p-0">
+   365→          {isLoading ? (
+   366→            <div className="p-6 text-center text-muted-foreground">{commonText.loading[lang]}</div>
+   367→          ) : isError ? (
+   368→            <div className="flex flex-col items-center gap-3 py-10">
+   369→              <p className="text-rose-600">{commonText.error[lang]}</p>
+   370→              <Button variant="outline" onClick={() => refetch()}>{commonText.retry[lang]}</Button>
+   371→            </div>
+   372→          ) : filtered.length === 0 ? (
+   373→            <div className="flex flex-col items-center gap-3 py-10">
+   374→              <CreditCard className="size-12 text-gray-300" />
+   375→              <p className="text-muted-foreground">{tl('لا توجد تحصيلات', 'No collections found')}</p>
+   376→              <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => { resetForm(); setCreateOpen(true) }}>
+   377→                <Plus className="size-4 mr-1" /> {tl('تحصيل جديد', 'New Collection')}
+   378→              </Button>
+   379→            </div>
+   380→          ) : (
+   381→            <div className="overflow-x-auto">
+   382→              <Table>
+   383→                <TableHeader>
+   384→                  <TableRow>
+   385→                    <TableHead className="text-right">{tl('العميل', 'Client')}</TableHead>
+   386→                    <TableHead className="text-right">{tl('الفاتورة', 'Invoice')}</TableHead>
+   387→                    <TableHead className="text-right">{tl('المبلغ', 'Amount')}</TableHead>
+   388→                    <TableHead className="text-right">{tl('التاريخ', 'Date')}</TableHead>
+   389→                    <TableHead className="text-right">{tl('طريقة الاستلام', 'Received In')}</TableHead>
+   390→                    <TableHead className="text-right">{tl('المرجع', 'Reference')}</TableHead>
+   391→                    <TableHead className="text-right">{tl('الإجراءات', 'Actions')}</TableHead>
+   392→                  </TableRow>
+   393→                </TableHeader>
+   394→                <TableBody>
+   395→                  {filtered.map(p => (
+   396→                    <TableRow key={p.id}>
+   397→                      <TableCell className="font-medium">{p.client?.name || '—'}</TableCell>
+   398→                      <TableCell>
+   399→                        {p.invoice ? (
+   400→                          <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-xs">
+   401→                            {p.invoice.invoiceNo}
+   402→                          </Badge>
+   403→                        ) : (
+   404→                          <span className="text-xs text-muted-foreground">{tl('بدون فاتورة', 'No invoice')}</span>
+   405→                        )}
+   406→                      </TableCell>
+   407→                      <TableCell><MoneyDisplay value={p.amount} lang={lang} size="sm" inline bold /></TableCell>
+   408→                      <TableCell>{formatDate(p.date, lang)}</TableCell>
+   409→                      <TableCell>
+   410→                        <Badge variant="outline" className="text-xs">
+   411→                          {p.receivedIn === 'BANK' ? tl('بنك', 'Bank') : tl('خزينة', 'Treasury')}
+   412→                        </Badge>
+   413→                      </TableCell>
+   414→                      <TableCell className="text-xs font-mono">{p.reference || '—'}</TableCell>
+   415→                      <TableCell>
+   416→                        <div className="flex items-center gap-1">
+   417→                          {p.journalEntryId && (
+   418→                            <Button variant="ghost" size="icon" className="size-7" onClick={() => setViewEntryId(p.journalEntryId)} title={tl('عرض القيد', 'View Entry')}>
+   419→                              <Receipt className="size-3.5 text-amber-600" />
+   420→                            </Button>
+   421→                          )}
+   422→                          <Button variant="ghost" size="icon" className="size-7 text-rose-500" onClick={() => setDeleteId(p.id)} title={tl('حذف', 'Delete')}>
+   423→                            <Trash2 className="size-3.5" />
+   424→                          </Button>
+   425→                        </div>
+   426→                      </TableCell>
+   427→                    </TableRow>
+   428→                  ))}
+   429→                </TableBody>
+   430→              </Table>
+   431→            </div>
+   432→          )}
+   433→        </CardContent>
+   434→      </Card>
+   435→
+   436→      {/* Accounting Entry Dialog */}
+   437→      <Dialog open={!!viewEntryId} onOpenChange={() => setViewEntryId(null)}>
+   438→        <DialogContent className="max-w-lg">
+   439→          <DialogHeader>
+   440→            <DialogTitle>{t('القيد المحاسبي', 'Accounting Entry', lang)}</DialogTitle>
+   441→            <DialogDescription>{t('تفاصيل القيد المحاسبي للتحصيل', 'Accounting entry details for the collection', lang)}</DialogDescription>
+   442→          </DialogHeader>
+   443→          <AccountingEntryDisplay journalEntryId={viewEntryId} lang={lang} />
+   444→          <DialogFooter>
+   445→            <Button variant="outline" onClick={() => setViewEntryId(null)}>{commonText.close[lang]}</Button>
+   446→          </DialogFooter>
+   447→        </DialogContent>
+   448→      </Dialog>
+   449→
+   450→      {/* Create Collection Dialog */}
+   451→      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+   452→        <DialogContent className="max-w-lg">
+   453→          <DialogHeader>
+   454→            <DialogTitle>{tl('تحصيل جديد', 'New Collection')}</DialogTitle>
+   455→            <DialogDescription>{tl('إنشاء تحصيل لفاتورة إيجار', 'Create a collection for a rental invoice')}</DialogDescription>
+   456→          </DialogHeader>
+   457→          <form onSubmit={handleCreate} className="space-y-4">
+   458→            <div className="space-y-2">
+   459→              <Label>{tl('العميل', 'Client')} *</Label>
+   460→              <Select value={formClientId} onValueChange={v => { setFormClientId(v); setFormInvoiceId('') }}>
+   461→                <SelectTrigger><SelectValue placeholder={tl('اختر العميل', 'Select client')} /></SelectTrigger>
+   462→                <SelectContent>
+   463→                  {clients.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+   464→                </SelectContent>
+   465→              </Select>
+   466→            </div>
+   467→
+   468→            {formClientId && rentalInvoices.length > 0 && (
+   469→              <div className="space-y-2">
+   470→                <Label>{tl('الفاتورة', 'Invoice')}</Label>
+   471→                <Select value={formInvoiceId} onValueChange={v => {
+   472→                  setFormInvoiceId(v)
+   473→                  const inv = rentalInvoices.find(i => i.id === v)
+   474→                  if (inv) setFormAmount(((inv.totalAmount ?? 0) - (inv.paidAmount ?? 0)).toString())
+   475→                }}>
+   476→                  <SelectTrigger><SelectValue placeholder={tl('اختر الفاتورة', 'Select invoice')} /></SelectTrigger>
+   477→                  <SelectContent>
+   478→                    {rentalInvoices.map(i => (
+   479→                      <SelectItem key={i.id} value={i.id}>
+   480→                        {i.invoiceNo} — <MoneyDisplay value={(i.totalAmount ?? 0) - (i.paidAmount ?? 0)} lang={lang} size="xs" inline showSymbol={false} /> {tl('متبقي', 'remaining')}
+   481→                      </SelectItem>
+   482→                    ))}
+   483→                  </SelectContent>
+   484→                </Select>
+   485→              </div>
+   486→            )}
+   487→
+   488→            <div className="grid grid-cols-2 gap-4">
+   489→              <div className="space-y-2">
+   490→                <Label>{tl('المبلغ', 'Amount')} *</Label>
+   491→                <Input type="number" step="0.01" min="0" value={formAmount} onChange={e => setFormAmount(e.target.value)} dir="ltr" required />
+   492→              </div>
+   493→              <div className="space-y-2">
+   494→                <Label>{tl('التاريخ', 'Date')} *</Label>
+   495→                <Input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} required />
+   496→              </div>
+   497→            </div>
+   498→
+   499→            <div className="grid grid-cols-2 gap-4">
+   500→              <div className="space-y-2">
+   501→                <Label>{tl('طريقة الاستلام', 'Received In')}</Label>
+   502→                <Select value={formReceivedIn} onValueChange={setFormReceivedIn}>
+   503→                  <SelectTrigger><SelectValue /></SelectTrigger>
+   504→                  <SelectContent>
+   505→                    <SelectItem value="TREASURY">{tl('خزينة', 'Treasury')}</SelectItem>
+   506→                    <SelectItem value="BANK">{tl('بنك', 'Bank')}</SelectItem>
+   507→                  </SelectContent>
+   508→                </Select>
+   509→              </div>
+   510→              <div className="space-y-2">
+   511→                <Label>{tl('المرجع', 'Reference')}</Label>
+   512→                <Input value={formReference} onChange={e => setFormReference(e.target.value)} dir="ltr" />
+   513→              </div>
+   514→            </div>
+   515→
+   516→            <div className="space-y-2">
+   517→              <Label>{tl('ملاحظات', 'Notes')}</Label>
+   518→              <Textarea value={formNotes} onChange={e => setFormNotes(e.target.value)} rows={2} />
+   519→            </div>
+   520→
+   521→            {/* Accounting Entry Preview */}
+   522→            {parseFloat(formAmount) > 0 && formDate && (
+   523→              <Card className="bg-amber-50 border-amber-200">
+   524→                <CardContent className="p-3">
+   525→                  <p className="text-xs font-medium text-amber-700 mb-2">{tl('القيد المحاسبي التلقائي', 'Auto Accounting Entry')}</p>
+   526→                  <div className="space-y-1 text-xs">
+   527→                    <div className="flex justify-between">
+   528→                      <span>{formReceivedIn === 'BANK' ? tl('البنوك (1120)', 'Bank (1120)') : tl('الخزينة (1110)', 'Treasury (1110)')}</span>
+   529→                      <span className="font-mono">{tl('مدين', 'Debit')}: <MoneyDisplay value={parseFloat(formAmount) || 0} lang={lang} size="xs" inline showSymbol={false} /></span>
+   530→                    </div>
+   531→                    <div className="flex justify-between">
+   532→                      <span>{tl('عملاء (1210)', 'Clients Receivable (1210)')}</span>
+   533→                      <span className="font-mono">{tl('دائن', 'Credit')}: <MoneyDisplay value={parseFloat(formAmount) || 0} lang={lang} size="xs" inline showSymbol={false} /></span>
+   534→                    </div>
+   535→                  </div>
+   536→                </CardContent>
+   537→              </Card>
+   538→            )}
+   539→
+   540→            <DialogFooter>
+   541→              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>{commonText.cancel[lang]}</Button>
+   542→              <Button type="submit" disabled={createMutation.isPending || !formClientId || !formAmount || !formDate} className="bg-emerald-600 hover:bg-emerald-700">
+   543→                {createMutation.isPending ? tl('جاري الحفظ...', 'Saving...') : tl('إنشاء التحصيل', 'Create Collection')}
+   544→              </Button>
+   545→            </DialogFooter>
+   546→          </form>
+   547→        </DialogContent>
+   548→      </Dialog>
+   549→
+   550→      {/* Delete Confirmation */}
+   551→      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+   552→        <AlertDialogContent>
+   553→          <AlertDialogHeader>
+   554→            <AlertDialogTitle>{tl('حذف التحصيل', 'Delete Collection')}</AlertDialogTitle>
+   555→            <AlertDialogDescription>{tl('هل أنت متأكد من حذف هذا التحصيل؟', 'Are you sure you want to delete this collection?')}</AlertDialogDescription>
+   556→          </AlertDialogHeader>
+   557→          <AlertDialogFooter>
+   558→            <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>
+   559→            <AlertDialogAction className="bg-rose-600 hover:bg-rose-700" onClick={() => deleteId && deleteMutation.mutate(deleteId)}>
+   560→              {commonText.delete[lang]}
+   561→            </AlertDialogAction>
+   562→          </AlertDialogFooter>
+   563→        </AlertDialogContent>
+   564→      </AlertDialog>
+   565→    </ModuleLayout>
+   566→  )
+   567→}
+   568→
+   569→// ============ Accounting Info Wrapper ============
+   570→// Wraps a module tab to show an accounting info banner at the top
+   571→
+   572→function AccountingInfoBanner({
+   573→  titleAr, titleEn, descAr, descEn, lang,
+   574→  debitAccount, creditAccount, debitLabel, creditLabel,
+   575→}: {
+   576→  titleAr: string; titleEn: string; descAr: string; descEn: string; lang: Lang
+   577→  debitAccount: string; creditAccount: string; debitLabel: string; creditLabel: string
+   578→}) {
+   579→  const [expanded, setExpanded] = useState(false)
+   580→
+   581→  return (
+   582→    <Card className="mb-4 border-amber-200 bg-amber-50/50">
+   583→      <CardContent className="p-3">
+   584→        <button
+   585→          onClick={() => setExpanded(!expanded)}
+   586→          className="w-full flex items-center justify-between text-sm font-medium text-amber-700"
+   587→        >
+   588→          <span className="flex items-center gap-2">
+   589→            <Receipt className="size-4" />
+   590→            {t(titleAr, titleEn, lang)}
+   591→          </span>
+   592→          {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+   593→        </button>
+   594→        {expanded && (
+   595→          <div className="mt-2 space-y-1 text-xs">
+   596→            <p className="text-muted-foreground">{t(descAr, descEn, lang)}</p>
+   597→            <div className="flex gap-4 mt-2">
+   598→              <div className="flex-1 bg-emerald-100/50 rounded p-2">
+   599→                <p className="font-medium text-emerald-700">{t('مدين (Debit)', 'Debit', lang)}</p>
+   600→                <p className="text-emerald-600">{debitAccount} — {debitLabel}</p>
+   601→              </div>
+   602→              <div className="flex-1 bg-blue-100/50 rounded p-2">
+   603→                <p className="font-medium text-blue-700">{t('دائن (Credit)', 'Credit', lang)}</p>
+   604→                <p className="text-blue-600">{creditAccount} — {creditLabel}</p>
+   605→              </div>
+   606→            </div>
+   607→          </div>
+   608→        )}
+   609→      </CardContent>
+   610→    </Card>
+   611→  )
+   612→}
+   613→
+   614→// ============ Main Rental Section ============
+   615→
+   616→export function RentalSection() {
+   617→  const { activeSubModule, lang } = useAppStore()
+   618→
+   619→  const renderTabContent = () => {
+   620→    switch (activeSubModule) {
+   621→      case 'rental-contracts':
+   622→        return (
+   623→          <div>
+   624→            <AccountingInfoBanner
+   625→              titleAr="التأثير المحاسبي لعقود التأجير"
+   626→              titleEn="Accounting Impact of Rental Contracts"
+   627→              descAr="عند تفعيل عقد التأجير، يتم إنشاء قيد محاسبي تلقائي"
+   628→              descEn="When a rental contract is activated, an automatic journal entry is created"
+   629→              lang={lang}
+   630→              debitAccount="1210"
+   631→              creditAccount="6210"
+   632→              debitLabel={t("ذمم العملاء", "Clients Receivable", lang)}
+   633→              creditLabel={t("إيرادات تأجير المعدات", "Equipment Rental Revenue", lang)}
+   634→            />
+   635→            <ContractsModule />
+   636→          </div>
+   637→        )
+   638→      case 'rental-delivery-orders':
+   639→        return (
+   640→          <div>
+   641→            <AccountingInfoBanner
+   642→              titleAr="التأثير المحاسبي لأوامر التسليم"
+   643→              titleEn="Accounting Impact of Delivery Orders"
+   644→              descAr="أوامر التسليم لا تنشئ قيد محاسبي مباشر - يتم التسجيل عند الفوترة"
+   645→              descEn="Delivery orders don't create direct accounting entries - recorded upon invoicing"
+   646→              lang={lang}
+   647→              debitAccount="—"
+   648→              creditAccount="—"
+   649→              debitLabel={t("لا يوجد قيد مباشر", "No direct entry", lang)}
+   650→              creditLabel={t("يتم التسجيل عند الفوترة", "Recorded upon invoicing", lang)}
+   651→            />
+   652→            <DeliveryOrdersModule />
+   653→          </div>
+   654→        )
+   655→      case 'rental-timesheets':
+   656→        return (
+   657→          <div>
+   658→            <AccountingInfoBanner
+   659→              titleAr="التأثير المحاسبي لساعات العمل"
+   660→              titleEn="Accounting Impact of Timesheets"
+   661→              descAr="ساعات العمل لا تنشئ قيد محاسبي مباشر - يتم التسجيل عند إنشاء الفاتورة"
+   662→              descEn="Timesheets don't create direct accounting entries - recorded upon invoice creation"
+   663→              lang={lang}
+   664→              debitAccount="—"
+   665→              creditAccount="—"
+   666→              debitLabel={t("لا يوجد قيد مباشر", "No direct entry", lang)}
+   667→              creditLabel={t("يتم التسجيل عند الفوترة", "Recorded upon invoicing", lang)}
+   668→            />
+   669→            <TimesheetsModule />
+   670→          </div>
+   671→        )
+   672→      case 'rental-invoices':
+   673→        return (
+   674→          <div>
+   675→            <AccountingInfoBanner
+   676→              titleAr="التأثير المحاسبي لفواتير الإيجار"
+   677→              titleEn="Accounting Impact of Rental Invoices"
+   678→              descAr="عند إنشاء فاتورة إيجار، يتم إنشاء قيد محاسبي تلقائي"
+   679→              descEn="When a rental invoice is created, an automatic journal entry is created"
+   680→              lang={lang}
+   681→              debitAccount="1210"
+   682→              creditAccount="6210 / 3200"
+   683→              debitLabel={t("ذمم العملاء", "Clients Receivable", lang)}
+   684→              creditLabel={t("إيرادات التأجير + ضريبة القيمة المضافة", "Rental Revenue + VAT Payable", lang)}
+   685→            />
+   686→            <RentalInvoicesModule />
+   687→          </div>
+   688→        )
+   689→      case 'rental-collections':
+   690→        return <CollectionsModule />
+   691→      default:
+   692→        return (
+   693→          <div>
+   694→            <AccountingInfoBanner
+   695→              titleAr="التأثير المحاسبي لعقود التأجير"
+   696→              titleEn="Accounting Impact of Rental Contracts"
+   697→              descAr="عند تفعيل عقد التأجير، يتم إنشاء قيد محاسبي تلقائي"
+   698→              descEn="When a rental contract is activated, an automatic journal entry is created"
+   699→              lang={lang}
+   700→              debitAccount="1210"
+   701→              creditAccount="6210"
+   702→              debitLabel={t("ذمم العملاء", "Clients Receivable", lang)}
+   703→              creditLabel={t("إيرادات تأجير المعدات", "Equipment Rental Revenue", lang)}
+   704→            />
+   705→            <ContractsModule />
+   706→          </div>
+   707→        )
+   708→    }
+   709→  }
+   710→
+   711→  return (
+   712→    <SectionLayout
+   713→      title={{ ar: 'التأجير', en: 'Rental' }}
+   714→      subtitle={{
+   715→        ar: 'إدارة عقود التأجير وأوامر التوصيل والفواتير والتحصيلات',
+   716→        en: 'Manage rental contracts, delivery orders, invoices, and collections',
+   717→      }}
+   718→      tabs={rentalTabs}
+   719→      showPrintExport={false}
+   720→    >
+   721→      {renderTabContent()}
+   722→    </SectionLayout>
+   723→  )
+   724→}
+   725→

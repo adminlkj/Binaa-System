@@ -1,0 +1,903 @@
+     1→// ============================================================================
+     2→// محرك الطباعة الموحد - Unified Print Engine
+     3→// نظام بِنَاء ERP - Binaa Construction ERP
+     4→//
+     5→// Single entry point for all document printing.
+     6→// Wraps the modular printing system and adds missing document types.
+     7→// All templates use centralized company settings and include ZATCA QR for invoices.
+     8→// ============================================================================
+     9→
+    10→import {
+    11→  generatePrintHTML,
+    12→  getTemplate,
+    13→} from '@/printing'
+    14→import type { PrintDocumentType, PrintOptions, PrintSettings, DocumentTemplate } from '@/printing'
+    15→import { generateZatcaTLV } from './zatca-qr'
+    16→
+    17→// ============ Extended Document Types ============
+    18→// These types extend the base PrintDocumentType with additional document types
+    19→// not yet in the modular printing system.
+    20→
+    21→export type UnifiedDocumentType =
+    22→  | PrintDocumentType
+    23→  // Operational (mapped aliases)
+    24→  | 'sales-invoice'
+    25→  // Project
+    26→  | 'boq'
+    27→  | 'change-order'
+    28→  // HR
+    29→  | 'employee-contract'
+    30→
+    31→// ============ Type Aliases ============
+    32→// Map alternate names to the canonical template names
+    33→
+    34→const typeAliases: Record<string, PrintDocumentType> = {
+    35→  'sales-invoice': 'service-invoice',
+    36→  'extract': 'progress-claim',
+    37→  'timesheet-report': 'timesheet',
+    38→  'tax-declaration': 'vat-return',
+    39→}
+    40→
+    41→// ============ Document Type Categories ============
+    42→
+    43→export type DocumentCategory =
+    44→  | 'operational'   // فواتير وأوامر التشغيل
+    45→  | 'project'       // مستندات المشاريع
+    46→  | 'accounting'    // تقارير المحاسبة
+    47→  | 'hr'            // الموارد البشرية
+    48→
+    49→/** Invoice types that require ZATCA QR code */
+    50→const INVOICE_TYPES_REQUIRING_QR: UnifiedDocumentType[] = [
+    51→  'sales-invoice',
+    52→  'service-invoice',
+    53→  'rental-invoice',
+    54→  'supplier-invoice',
+    55→]
+    56→
+    57→/** Document category classification */
+    58→const documentCategories: Record<string, DocumentCategory> = {
+    59→  // Operational
+    60→  'sales-invoice': 'operational',
+    61→  'service-invoice': 'operational',
+    62→  'rental-invoice': 'operational',
+    63→  'supplier-invoice': 'operational',
+    64→  'purchase-order': 'operational',
+    65→  'delivery-order': 'operational',
+    66→  // Project
+    67→  'boq': 'project',
+    68→  'progress-claim': 'project',
+    69→  'change-order': 'project',
+    70→  // Accounting
+    71→  'trial-balance': 'accounting',
+    72→  'general-ledger': 'accounting',
+    73→  'income-statement': 'accounting',
+    74→  'balance-sheet': 'accounting',
+    75→  // HR
+    76→  'salary-slip': 'hr',
+    77→  'employee-contract': 'hr',
+    78→}
+    79→
+    80→// ============ Template Functions for Missing Types ============
+    81→
+    82→/**
+    83→ * Generate BOQ (Bill of Quantities) template body.
+    84→ * Shows a table of items with description, quantity, unit, unit price, and total.
+    85→ */
+    86→function generateBOQBody(data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en'): string {
+    87→  const items = (data.items as Array<Record<string, unknown>>) || []
+    88→  const currency = lang === 'ar'
+    89→    ? (settings.currencySymbolAr || settings.currencySymbol || 'ر.س')
+    90→    : (settings.currencySymbolEn || settings.currencySymbol || 'SAR')
+    91→  const totalAmount = Number(data.totalAmount) || 0
+    92→  const subtotal = Number(data.subtotal) || 0
+    93→  const vatAmount = Number(data.vatAmount) || 0
+    94→  const vatRate = settings.defaultVatRate ?? 0.15
+    95→
+    96→  const lbl = lang === 'ar' ? {
+    97→    projectInfo: 'بيانات المشروع',
+    98→    projectName: 'اسم المشروع',
+    99→    boqNo: 'رقم كشف الكميات',
+   100→    date: 'التاريخ',
+   101→    contractNo: 'رقم العقد',
+   102→    items: 'بنود كشف الكميات',
+   103→    desc: 'الوصف',
+   104→    qty: 'الكمية',
+   105→    unit: 'الوحدة',
+   106→    unitPrice: 'سعر الوحدة',
+   107→    total: 'الإجمالي',
+   108→    subtotal: 'المجموع الفرعي',
+   109→    vat: `ضريبة القيمة المضافة ${vatRate * 100}%`,
+   110→    grandTotal: 'الإجمالي شامل الضريبة',
+   111→    notes: 'ملاحظات',
+   112→  } : {
+   113→    projectInfo: 'Project Information',
+   114→    projectName: 'Project Name',
+   115→    boqNo: 'BOQ No.',
+   116→    date: 'Date',
+   117→    contractNo: 'Contract No.',
+   118→    items: 'Bill of Quantities Items',
+   119→    desc: 'Description',
+   120→    qty: 'Qty',
+   121→    unit: 'Unit',
+   122→    unitPrice: 'Unit Price',
+   123→    total: 'Total',
+   124→    subtotal: 'Subtotal',
+   125→    vat: `VAT ${vatRate * 100}%`,
+   126→    grandTotal: 'Grand Total incl. VAT',
+   127→    notes: 'Notes',
+   128→  }
+   129→
+   130→  const fmtMoney = (v: number) => `${v.toFixed(2)} ${currency}`
+   131→
+   132→  return `
+   133→    <!-- Project Info -->
+   134→    <div class="section-title">${lbl.projectInfo}</div>
+   135→    <div class="info-grid">
+   136→      <div class="info-item">
+   137→        <div class="info-label">${lbl.boqNo}</div>
+   138→        <div class="info-value">${data.boqNo || data.id || ''}</div>
+   139→      </div>
+   140→      <div class="info-item">
+   141→        <div class="info-label">${lbl.date}</div>
+   142→        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</div>
+   143→      </div>
+   144→      <div class="info-item">
+   145→        <div class="info-label">${lbl.projectName}</div>
+   146→        <div class="info-value">${data.projectName || ''}</div>
+   147→      </div>
+   148→      <div class="info-item">
+   149→        <div class="info-label">${lbl.contractNo}</div>
+   150→        <div class="info-value">${data.contractNo || '-'}</div>
+   151→      </div>
+   152→    </div>
+   153→
+   154→    <!-- Items Table -->
+   155→    <div class="section-title">${lbl.items}</div>
+   156→    <table class="doc-table">
+   157→      <thead>
+   158→        <tr>
+   159→          <th>#</th>
+   160→          <th>${lbl.desc}</th>
+   161→          <th>${lbl.qty}</th>
+   162→          <th>${lbl.unit}</th>
+   163→          <th class="amount-header">${lbl.unitPrice} (${currency})</th>
+   164→          <th class="amount-header">${lbl.total} (${currency})</th>
+   165→        </tr>
+   166→      </thead>
+   167→      <tbody>
+   168→        ${items.map((item, i) => `
+   169→          <tr>
+   170→            <td class="row-num">${i + 1}</td>
+   171→            <td>${item.description || ''}</td>
+   172→            <td style="text-align:center;">${item.quantity || 0}</td>
+   173→            <td style="text-align:center;">${(item.unit as string) || '-'}</td>
+   174→            <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0)}</td>
+   175→            <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0)}</td>
+   176→          </tr>
+   177→        `).join('')}
+   178→      </tbody>
+   179→    </table>
+   180→
+   181→    <!-- Totals -->
+   182→    <div class="totals-section">
+   183→      <div class="totals-box">
+   184→        <div class="total-row">
+   185→          <span class="label">${lbl.subtotal}</span>
+   186→          <span class="value">${fmtMoney(subtotal)}</span>
+   187→        </div>
+   188→        <div class="total-row">
+   189→          <span class="label">${lbl.vat}</span>
+   190→          <span class="value">${fmtMoney(vatAmount)}</span>
+   191→        </div>
+   192→        <div class="total-row grand">
+   193→          <span class="label">${lbl.grandTotal}</span>
+   194→          <span class="value">${fmtMoney(totalAmount)}</span>
+   195→        </div>
+   196→      </div>
+   197→    </div>
+   198→
+   199→    ${data.notes ? `
+   200→      <div class="terms-section">
+   201→        <div class="terms-title">${lbl.notes}</div>
+   202→        ${data.notes}
+   203→      </div>
+   204→    ` : ''}
+   205→
+   206→    <!-- Signatures -->
+   207→    <div class="signatures-section">
+   208→      <div class="signature-box">
+   209→        <div class="signature-line">${lang === 'ar' ? 'توقيع المقاول' : 'Contractor Signature'}</div>
+   210→      </div>
+   211→      <div class="signature-box">
+   212→        <div class="signature-line">${lang === 'ar' ? 'توقيع المالك' : 'Owner Signature'}</div>
+   213→      </div>
+   214→      <div class="signature-box">
+   215→        <div class="signature-line">${lang === 'ar' ? 'توقيع الاستشاري' : 'Consultant Signature'}</div>
+   216→      </div>
+   217→    </div>
+   218→  `
+   219→}
+   220→
+   221→/**
+   222→ * Generate Change Order template body.
+   223→ * Shows details of contract modifications with before/after values.
+   224→ */
+   225→function generateChangeOrderBody(data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en'): string {
+   226→  const currency = lang === 'ar'
+   227→    ? (settings.currencySymbolAr || settings.currencySymbol || 'ر.س')
+   228→    : (settings.currencySymbolEn || settings.currencySymbol || 'SAR')
+   229→  const totalAmount = Number(data.totalAmount) || 0
+   230→  const vatAmount = Number(data.vatAmount) || 0
+   231→  const vatRate = settings.defaultVatRate ?? 0.15
+   232→  const items = (data.items as Array<Record<string, unknown>>) || []
+   233→
+   234→  const lbl = lang === 'ar' ? {
+   235→    changeOrderInfo: 'بيانات أمر التغيير',
+   236→    changeOrderNo: 'رقم أمر التغيير',
+   237→    date: 'التاريخ',
+   238→    projectInfo: 'بيانات المشروع',
+   239→    projectName: 'اسم المشروع',
+   240→    contractNo: 'رقم العقد',
+   241→    originalContractValue: 'قيمة العقد الأصلية',
+   242→    changeDescription: 'وصف التغيير',
+   243→    reason: 'السبب',
+   244→    items: 'البنود المتغيرة',
+   245→    desc: 'الوصف',
+   246→    qty: 'الكمية',
+   247→    unitPrice: 'سعر الوحدة',
+   248→    total: 'الإجمالي',
+   249→    changeAmount: 'مبلغ التغيير',
+   250→    newContractValue: 'قيمة العقد الجديدة',
+   251→    subtotal: 'المجموع الفرعي',
+   252→    vat: `ضريبة القيمة المضافة ${vatRate * 100}%`,
+   253→    grandTotal: 'الإجمالي شامل الضريبة',
+   254→  } : {
+   255→    changeOrderInfo: 'Change Order Information',
+   256→    changeOrderNo: 'Change Order No.',
+   257→    date: 'Date',
+   258→    projectInfo: 'Project Information',
+   259→    projectName: 'Project Name',
+   260→    contractNo: 'Contract No.',
+   261→    originalContractValue: 'Original Contract Value',
+   262→    changeDescription: 'Change Description',
+   263→    reason: 'Reason',
+   264→    items: 'Changed Items',
+   265→    desc: 'Description',
+   266→    qty: 'Qty',
+   267→    unitPrice: 'Unit Price',
+   268→    total: 'Total',
+   269→    changeAmount: 'Change Amount',
+   270→    newContractValue: 'New Contract Value',
+   271→    subtotal: 'Subtotal',
+   272→    vat: `VAT ${vatRate * 100}%`,
+   273→    grandTotal: 'Grand Total incl. VAT',
+   274→  }
+   275→
+   276→  const fmtMoney = (v: number) => `${v.toFixed(2)} ${currency}`
+   277→
+   278→  return `
+   279→    <!-- Change Order Info -->
+   280→    <div class="section-title">${lbl.changeOrderInfo}</div>
+   281→    <div class="info-grid">
+   282→      <div class="info-item">
+   283→        <div class="info-label">${lbl.changeOrderNo}</div>
+   284→        <div class="info-value">${data.changeOrderNo || data.id || ''}</div>
+   285→      </div>
+   286→      <div class="info-item">
+   287→        <div class="info-label">${lbl.date}</div>
+   288→        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : ''}</div>
+   289→      </div>
+   290→    </div>
+   291→
+   292→    <!-- Project Info -->
+   293→    <div class="section-title">${lbl.projectInfo}</div>
+   294→    <div class="info-grid">
+   295→      <div class="info-item">
+   296→        <div class="info-label">${lbl.projectName}</div>
+   297→        <div class="info-value">${data.projectName || ''}</div>
+   298→      </div>
+   299→      <div class="info-item">
+   300→        <div class="info-label">${lbl.contractNo}</div>
+   301→        <div class="info-value">${data.contractNo || ''}</div>
+   302→      </div>
+   303→      <div class="info-item">
+   304→        <div class="info-label">${lbl.originalContractValue}</div>
+   305→        <div class="info-value">${fmtMoney(Number(data.originalContractValue) || 0)}</div>
+   306→      </div>
+   307→    </div>
+   308→
+   309→    <!-- Change Description -->
+   310→    ${data.description ? `
+   311→      <div class="section-title">${lbl.changeDescription}</div>
+   312→      <div style="padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;margin-bottom:12px;font-size:10.5px;">
+   313→        ${data.description}
+   314→      </div>
+   315→    ` : ''}
+   316→
+   317→    ${data.reason ? `
+   318→      <div class="section-title">${lbl.reason}</div>
+   319→      <div style="padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;margin-bottom:12px;font-size:10.5px;">
+   320→        ${data.reason}
+   321→      </div>
+   322→    ` : ''}
+   323→
+   324→    <!-- Changed Items Table -->
+   325→    ${items.length > 0 ? `
+   326→      <div class="section-title">${lbl.items}</div>
+   327→      <table class="doc-table">
+   328→        <thead>
+   329→          <tr>
+   330→            <th>#</th>
+   331→            <th>${lbl.desc}</th>
+   332→            <th>${lbl.qty}</th>
+   333→            <th class="amount-header">${lbl.unitPrice} (${currency})</th>
+   334→            <th class="amount-header">${lbl.total} (${currency})</th>
+   335→          </tr>
+   336→        </thead>
+   337→        <tbody>
+   338→          ${items.map((item, i) => `
+   339→            <tr>
+   340→              <td class="row-num">${i + 1}</td>
+   341→              <td>${item.description || ''}</td>
+   342→              <td style="text-align:center;">${item.quantity || 0}</td>
+   343→              <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0)}</td>
+   344→              <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0)}</td>
+   345→            </tr>
+   346→          `).join('')}
+   347→        </tbody>
+   348→      </table>
+   349→    ` : ''}
+   350→
+   351→    <!-- Totals -->
+   352→    <div class="totals-section">
+   353→      <div class="totals-box">
+   354→        <div class="total-row">
+   355→          <span class="label">${lbl.changeAmount}</span>
+   356→          <span class="value">${fmtMoney(Number(data.changeAmount) || totalAmount)}</span>
+   357→        </div>
+   358→        <div class="total-row">
+   359→          <span class="label">${lbl.vat}</span>
+   360→          <span class="value">${fmtMoney(vatAmount)}</span>
+   361→        </div>
+   362→        <div class="total-row grand">
+   363→          <span class="label">${lbl.grandTotal}</span>
+   364→          <span class="value">${fmtMoney(totalAmount)}</span>
+   365→        </div>
+   366→        <div class="total-row" style="border-top:2px solid #047857;margin-top:6px;padding-top:6px;">
+   367→          <span class="label" style="font-weight:700;color:#047857;">${lbl.newContractValue}</span>
+   368→          <span class="value" style="font-weight:700;color:#047857;">${fmtMoney(Number(data.newContractValue) || 0)}</span>
+   369→        </div>
+   370→      </div>
+   371→    </div>
+   372→
+   373→    <!-- Approvals -->
+   374→    <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+   375→      <div style="border:1px dashed #cbd5e1;border-radius:4px;padding:10px;text-align:center;min-height:70px;display:flex;flex-direction:column;justify-content:flex-end;">
+   376→        <div style="border-top:1px solid #e2e8f0;margin-top:25px;padding-top:4px;font-size:7.5px;font-weight:600;color:#64748b;">
+   377→          ${lang === 'ar' ? 'اعتماد المقاول / Contractor' : 'Contractor Approval'}
+   378→        </div>
+   379→      </div>
+   380→      <div style="border:1px dashed #cbd5e1;border-radius:4px;padding:10px;text-align:center;min-height:70px;display:flex;flex-direction:column;justify-content:flex-end;">
+   381→        <div style="border-top:1px solid #e2e8f0;margin-top:25px;padding-top:4px;font-size:7.5px;font-weight:600;color:#64748b;">
+   382→          ${lang === 'ar' ? 'اعتماد المالك / Owner' : 'Owner Approval'}
+   383→        </div>
+   384→      </div>
+   385→      <div style="border:1px dashed #cbd5e1;border-radius:4px;padding:10px;text-align:center;min-height:70px;display:flex;flex-direction:column;justify-content:flex-end;">
+   386→        <div style="border-top:1px solid #e2e8f0;margin-top:25px;padding-top:4px;font-size:7.5px;font-weight:600;color:#64748b;">
+   387→          ${lang === 'ar' ? 'اعتماد الاستشاري / Consultant' : 'Consultant Approval'}
+   388→        </div>
+   389→      </div>
+   390→    </div>
+   391→  `
+   392→}
+   393→
+   394→/**
+   395→ * Generate Employee Contract template body.
+   396→ */
+   397→function generateEmployeeContractBody(data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en'): string {
+   398→  const currency = lang === 'ar'
+   399→    ? (settings.currencySymbolAr || settings.currencySymbol || 'ر.س')
+   400→    : (settings.currencySymbolEn || settings.currencySymbol || 'SAR')
+   401→
+   402→  const lbl = lang === 'ar' ? {
+   403→    contractInfo: 'بيانات العقد',
+   404→    contractNo: 'رقم العقد',
+   405→    date: 'تاريخ العقد',
+   406→    employeeInfo: 'بيانات الموظف',
+   407→    employeeName: 'اسم الموظف',
+   408→    nationalId: 'رقم الهوية',
+   409→    position: 'المسمى الوظيفي',
+   410→    department: 'القسم',
+   411→    contractDetails: 'تفاصيل العقد',
+   412→    contractType: 'نوع العقد',
+   413→    startDate: 'تاريخ البدء',
+   414→    endDate: 'تاريخ الانتهاء',
+   415→    salary: 'الراتب الأساسي',
+   416→    allowances: 'البدلات',
+   417→    totalSalary: 'إجمالي الراتب',
+   418→    terms: 'الشروط والأحكام',
+   419→  } : {
+   420→    contractInfo: 'Contract Information',
+   421→    contractNo: 'Contract No.',
+   422→    date: 'Contract Date',
+   423→    employeeInfo: 'Employee Information',
+   424→    employeeName: 'Employee Name',
+   425→    nationalId: 'National ID',
+   426→    position: 'Position',
+   427→    department: 'Department',
+   428→    contractDetails: 'Contract Details',
+   429→    contractType: 'Contract Type',
+   430→    startDate: 'Start Date',
+   431→    endDate: 'End Date',
+   432→    salary: 'Basic Salary',
+   433→    allowances: 'Allowances',
+   434→    totalSalary: 'Total Salary',
+   435→    terms: 'Terms & Conditions',
+   436→  }
+   437→
+   438→  const fmtDate = (d: unknown) => {
+   439→    if (!d) return ''
+   440→    try {
+   441→      return new Date(d as string).toLocaleDateString(
+   442→        lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US',
+   443→        { year: 'numeric', month: 'long', day: 'numeric' }
+   444→      )
+   445→    } catch { return String(d) }
+   446→  }
+   447→
+   448→  const fmtMoney = (v: number) => `${v.toFixed(2)} ${currency}`
+   449→
+   450→  return `
+   451→    <!-- Contract Info -->
+   452→    <div class="section-title">${lbl.contractInfo}</div>
+   453→    <div class="info-grid">
+   454→      <div class="info-item">
+   455→        <div class="info-label">${lbl.contractNo}</div>
+   456→        <div class="info-value">${data.contractNo || data.id || ''}</div>
+   457→      </div>
+   458→      <div class="info-item">
+   459→        <div class="info-label">${lbl.date}</div>
+   460→        <div class="info-value">${fmtDate(data.date)}</div>
+   461→      </div>
+   462→    </div>
+   463→
+   464→    <!-- Employee Info -->
+   465→    <div class="section-title">${lbl.employeeInfo}</div>
+   466→    <div class="info-grid">
+   467→      <div class="info-item">
+   468→        <div class="info-label">${lbl.employeeName}</div>
+   469→        <div class="info-value">${data.employeeName || ''}</div>
+   470→      </div>
+   471→      <div class="info-item">
+   472→        <div class="info-label">${lbl.nationalId}</div>
+   473→        <div class="info-value">${data.nationalId || '-'}</div>
+   474→      </div>
+   475→      <div class="info-item">
+   476→        <div class="info-label">${lbl.position}</div>
+   477→        <div class="info-value">${data.position || '-'}</div>
+   478→      </div>
+   479→      <div class="info-item">
+   480→        <div class="info-label">${lbl.department}</div>
+   481→        <div class="info-value">${data.department || '-'}</div>
+   482→      </div>
+   483→    </div>
+   484→
+   485→    <!-- Contract Details -->
+   486→    <div class="section-title">${lbl.contractDetails}</div>
+   487→    <div class="info-grid">
+   488→      <div class="info-item">
+   489→        <div class="info-label">${lbl.contractType}</div>
+   490→        <div class="info-value">${data.contractType || '-'}</div>
+   491→      </div>
+   492→      <div class="info-item">
+   493→        <div class="info-label">${lbl.startDate}</div>
+   494→        <div class="info-value">${fmtDate(data.startDate)}</div>
+   495→      </div>
+   496→      <div class="info-item">
+   497→        <div class="info-label">${lbl.endDate}</div>
+   498→        <div class="info-value">${fmtDate(data.endDate)}</div>
+   499→      </div>
+   500→    </div>
+   501→
+   502→    <!-- Salary Breakdown -->
+   503→    <table class="doc-table" style="margin-top:12px;">
+   504→      <thead>
+   505→        <tr>
+   506→          <th>#</th>
+   507→          <th>${lang === 'ar' ? 'البيان / Description' : 'Description'}</th>
+   508→          <th class="amount-header">${lang === 'ar' ? `المبلغ / Amount (${currency})` : `Amount (${currency})`}</th>
+   509→        </tr>
+   510→      </thead>
+   511→      <tbody>
+   512→        <tr>
+   513→          <td class="row-num">1</td>
+   514→          <td>${lbl.salary}</td>
+   515→          <td class="amount-cell">${fmtMoney(Number(data.basicSalary || data.salary) || 0)}</td>
+   516→        </tr>
+   517→        <tr>
+   518→          <td class="row-num">2</td>
+   519→          <td>${lbl.allowances}</td>
+   520→          <td class="amount-cell">${fmtMoney(Number(data.allowances) || 0)}</td>
+   521→        </tr>
+   522→      </tbody>
+   523→      <tfoot>
+   524→        <tr>
+   525→          <td></td>
+   526→          <td><strong>${lbl.totalSalary}</strong></td>
+   527→          <td class="amount-cell"><strong>${fmtMoney(Number(data.totalSalary) || 0)}</strong></td>
+   528→        </tr>
+   529→      </tfoot>
+   530→    </table>
+   531→
+   532→    ${data.terms ? `
+   533→      <div class="terms-section">
+   534→        <div class="terms-title">${lbl.terms}</div>
+   535→        ${data.terms}
+   536→      </div>
+   537→    ` : ''}
+   538→
+   539→    <!-- Signatures -->
+   540→    <div class="signatures-section">
+   541→      <div class="signature-box">
+   542→        <div class="signature-line">${lang === 'ar' ? 'توقيع الموظف' : 'Employee Signature'}</div>
+   543→      </div>
+   544→      <div class="signature-box">
+   545→        <div class="signature-line">${lang === 'ar' ? 'توقيع المدير' : 'Manager Signature'}</div>
+   546→      </div>
+   547→      ${settings.stamp ? `
+   548→        <div class="stamp-area">
+   549→          <img src="${settings.stamp}" alt="${lang === 'ar' ? 'ختم' : 'Stamp'}" />
+   550→        </div>
+   551→      ` : ''}
+   552→    </div>
+   553→  `
+   554→}
+   555→
+   556→// ============ Custom Template Registry ============
+   557→// Templates for document types not in the modular printing system
+   558→
+   559→interface CustomTemplate {
+   560→  category: DocumentCategory
+   561→  getBody: (data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en') => string
+   562→  requiresQR: boolean
+   563→  requiresSignature: boolean
+   564→  titleAr: string
+   565→  titleEn: string
+   566→}
+   567→
+   568→const customTemplates: Record<string, CustomTemplate> = {
+   569→  'boq': {
+   570→    category: 'project',
+   571→    getBody: generateBOQBody,
+   572→    requiresQR: false,
+   573→    requiresSignature: true,
+   574→    titleAr: 'كشف كميات',
+   575→    titleEn: 'Bill of Quantities',
+   576→  },
+   577→  'change-order': {
+   578→    category: 'project',
+   579→    getBody: generateChangeOrderBody,
+   580→    requiresQR: false,
+   581→    requiresSignature: true,
+   582→    titleAr: 'أمر تغيير',
+   583→    titleEn: 'Change Order',
+   584→  },
+   585→  'employee-contract': {
+   586→    category: 'hr',
+   587→    getBody: generateEmployeeContractBody,
+   588→    requiresQR: false,
+   589→    requiresSignature: true,
+   590→    titleAr: 'عقد عمل',
+   591→    titleEn: 'Employment Contract',
+   592→  },
+   593→}
+   594→
+   595→// ============ Main Function: generateDocument ============
+   596→
+   597→/**
+   598→ * Generate a complete print-ready HTML document.
+   599→ *
+   600→ * This is the single entry point for all document printing in the system.
+   601→ * It routes to the appropriate template based on document type, applies
+   602→ * company settings, and includes ZATCA QR codes for invoices.
+   603→ *
+   604→ * @param documentType - The type of document to generate
+   605→ * @param data - The document data (from API/database)
+   606→ * @param companySettings - Company settings from CompanySetting model
+   607→ * @param lang - Language for the document ('ar' or 'en')
+   608→ * @returns Complete HTML document string ready for printing
+   609→ */
+   610→export function generateDocument(
+   611→  documentType: UnifiedDocumentType,
+   612→  data: Record<string, unknown>,
+   613→  companySettings: PrintSettings,
+   614→  lang: 'ar' | 'en' = 'ar',
+   615→): string {
+   616→  // Resolve type aliases
+   617→  const resolvedType = (typeAliases[documentType] || documentType) as PrintDocumentType
+   618→
+   619→  // Check if this is a custom template (not in modular system)
+   620→  const customTemplate = customTemplates[documentType]
+   621→
+   622→  if (customTemplate) {
+   623→    // Generate using custom template
+   624→    return generateCustomDocument(documentType, customTemplate, data, companySettings, lang)
+   625→  }
+   626→
+   627→  // For invoice types, automatically add ZATCA QR data if not already present
+   628→  if (INVOICE_TYPES_REQUIRING_QR.includes(documentType) && companySettings.taxNumber && !data.qrDataUrl) {
+   629→    const sellerName = lang === 'ar' ? companySettings.nameAr : companySettings.nameEn
+   630→    const vatNumber = companySettings.taxNumber
+   631→    const invoiceDate = data.date
+   632→      ? new Date(data.date as string).toISOString().split('T')[0]
+   633→      : ''
+   634→    const totalAmount = Number(data.totalAmount) || 0
+   635→    const vatAmount = Number(data.vatAmount) || 0
+   636→
+   637→    try {
+   638→      const tlvBase64 = generateZatcaTLV({
+   639→        sellerName,
+   640→        vatNumber,
+   641→        invoiceDate,
+   642→        totalAmount: totalAmount.toFixed(2),
+   643→        vatAmount: vatAmount.toFixed(2),
+   644→      })
+   645→      // Store the TLV base64 so the template can generate QR from it
+   646→      data._zatcaTlvBase64 = tlvBase64
+   647→    } catch {
+   648→      // ZATCA QR generation failed, continue without it
+   649→    }
+   650→  }
+   651→
+   652→  // Use the modular printing system
+   653→  return generatePrintHTML({
+   654→    type: resolvedType,
+   655→    data,
+   656→    settings: companySettings,
+   657→    lang,
+   658→  })
+   659→}
+   660→
+   661→/**
+   662→ * Generate a document using a custom template (for types not in the modular system).
+   663→ */
+   664→function generateCustomDocument(
+   665→  documentType: string,
+   666→  customTemplate: CustomTemplate,
+   667→  data: Record<string, unknown>,
+   668→  settings: PrintSettings,
+   669→  lang: 'ar' | 'en',
+   670→): string {
+   671→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+   672→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+   673→  const textAlign = lang === 'ar' ? 'right' : 'left'
+   674→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+   675→  const title = lang === 'ar' ? customTemplate.titleAr : customTemplate.titleEn
+   676→  const companyName = lang === 'ar' ? settings.nameAr : settings.nameEn
+   677→
+   678→  const css = `
+   679→    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+   680→    body {
+   681→      font-family: ${fontFamily};
+   682→      font-size: 10.5px;
+   683→      color: #1e293b;
+   684→      direction: ${dir};
+   685→      background: #e2e8f0;
+   686→      line-height: 1.55;
+   687→      -webkit-print-color-adjust: exact;
+   688→      print-color-adjust: exact;
+   689→    }
+   690→    @page { size: A4 portrait; margin: 12mm 10mm; }
+   691→    @media print {
+   692→      body { background: white; }
+   693→      .page { margin: 0; box-shadow: none; width: 100%; min-height: auto; }
+   694→      .no-print { display: none !important; }
+   695→    }
+   696→    .page {
+   697→      width: 210mm; min-height: 297mm;
+   698→      margin: 0 auto; background: white;
+   699→      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+   700→      padding: 14mm 12mm; position: relative;
+   701→    }
+   702→    .doc-header {
+   703→      display: flex; align-items: center; gap: 10px;
+   704→      border-bottom: 2px solid #047857; padding-bottom: 8px; margin-bottom: 14px;
+   705→    }
+   706→    .header-logo {
+   707→      width: 48px; height: 48px; object-fit: contain; border-radius: 4px;
+   708→    }
+   709→    .header-company { flex: 1; }
+   710→    .header-company-name { font-size: 14px; font-weight: 700; color: #047857; }
+   711→    .header-company-details {
+   712→      font-size: 7.5px; color: #64748b;
+   713→      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;
+   714→    }
+   715→    .header-doc-title-section { text-align: ${textAlign}; }
+   716→    .header-doc-title {
+   717→      font-size: 13px; font-weight: 700; color: #047857;
+   718→      background: #ecfdf5; padding: 4px 12px; border-radius: 4px;
+   719→    }
+   720→    .section-title {
+   721→      font-size: 9.5px; font-weight: 700; color: #047857;
+   722→      border-bottom: 1px solid #a7f3d0; padding-bottom: 3px; margin: 10px 0 6px;
+   723→    }
+   724→    .info-grid {
+   725→      display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-bottom: 8px;
+   726→    }
+   727→    .info-item {}
+   728→    .info-label { font-size: 7.5px; color: #6b7280; font-weight: 600; }
+   729→    .info-value { font-size: 10px; font-weight: 600; color: #1e293b; }
+   730→    .doc-table {
+   731→      width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9.5px;
+   732→    }
+   733→    .doc-table th {
+   734→      background: #f0fdf4; color: #047857; font-weight: 600;
+   735→      padding: 5px 6px; text-align: ${textAlign};
+   736→      border: 1px solid #a7f3d0; font-size: 8px;
+   737→    }
+   738→    .doc-table td {
+   739→      padding: 4px 6px; border: 1px solid #e5e7eb;
+   740→      vertical-align: top;
+   741→    }
+   742→    .doc-table tfoot td {
+   743→      background: #f0fdf4; font-weight: 700;
+   744→      border-top: 2px solid #047857;
+   745→    }
+   746→    .row-num { text-align: center; font-size: 8px; color: #9ca3af; width: 24px; }
+   747→    .amount-cell { text-align: ${amountAlign}; font-variant-numeric: tabular-nums; }
+   748→    .amount-header { text-align: ${amountAlign}; }
+   749→    .totals-section { margin-top: 10px; display: flex; justify-content: flex-end; }
+   750→    .totals-box {
+   751→      width: 260px; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden;
+   752→    }
+   753→    .total-row {
+   754→      display: flex; justify-content: space-between;
+   755→      padding: 4px 10px; font-size: 9.5px;
+   756→      border-bottom: 1px solid #e5e7eb;
+   757→    }
+   758→    .total-row.grand {
+   759→      background: #f0fdf4; font-weight: 700; color: #047857;
+   760→      border-bottom: none; font-size: 10.5px;
+   761→    }
+   762→    .total-row .label { color: #374151; }
+   763→    .total-row .value { font-variant-numeric: tabular-nums; }
+   764→    .signatures-section {
+   765→      display: flex; justify-content: space-between; margin-top: 24px; gap: 16px;
+   766→    }
+   767→    .signature-box {
+   768→      flex: 1; text-align: center; padding-top: 40px;
+   769→      border-top: 1px solid #cbd5e1;
+   770→    }
+   771→    .signature-line { font-size: 8px; color: #64748b; font-weight: 600; }
+   772→    .stamp-area { width: 80px; }
+   773→    .stamp-area img { width: 100%; opacity: 0.7; }
+   774→    .terms-section {
+   775→      margin-top: 12px; padding: 8px 10px;
+   776→      border: 1px solid #e5e7eb; border-radius: 4px;
+   777→      font-size: 9px; color: #374151;
+   778→    }
+   779→    .terms-title {
+   780→      font-size: 9.5px; font-weight: 700; color: #047857;
+   781→      margin-bottom: 4px;
+   782→    }
+   783→    .doc-footer {
+   784→      position: absolute; bottom: 0; left: 0; right: 0;
+   785→      padding: 6px 12mm; border-top: 1px solid #e5e7eb;
+   786→      display: flex; justify-content: space-between;
+   787→      font-size: 7px; color: #94a3b8;
+   788→    }
+   789→    .print-actions {
+   790→      position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+   791→      display: flex; gap: 8px; z-index: 9999;
+   792→    }
+   793→    .print-actions button {
+   794→      padding: 6px 16px; border-radius: 6px; border: none;
+   795→      font-size: 12px; cursor: pointer; font-family: ${fontFamily};
+   796→    }
+   797→    .print-actions button:first-child { background: #047857; color: white; }
+   798→    .print-actions .close-btn { background: #f1f5f9; color: #374151; }
+   799→  `
+   800→
+   801→  const body = customTemplate.getBody(data, settings, lang)
+   802→
+   803→  // Build header
+   804→  const header = `
+   805→    <div class="doc-header">
+   806→      ${settings.logoUrl
+   807→        ? `<img class="header-logo" src="${settings.logoUrl}" alt="Logo" />`
+   808→        : '<div class="header-logo" style="display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#047857;background:#f0fdf4;">ب</div>'
+   809→      }
+   810→      <div class="header-company">
+   811→        <div class="header-company-name">${companyName}</div>
+   812→        <div class="header-company-details">
+   813→          ${settings.taxNumber ? `<span>${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
+   814→          ${settings.commercialReg ? `<span>${lang === 'ar' ? 'س.ت' : 'CR'}: ${settings.commercialReg}</span>` : ''}
+   815→          ${settings.address ? `<span>${settings.address}</span>` : ''}
+   816→          ${settings.phone ? `<span>${settings.phone}</span>` : ''}
+   817→        </div>
+   818→      </div>
+   819→      <div class="header-doc-title-section">
+   820→        <div class="header-doc-title">${title}</div>
+   821→      </div>
+   822→    </div>
+   823→  `
+   824→
+   825→  const footer = `
+   826→    <div class="doc-footer">
+   827→      <div>
+   828→        ${companyName}
+   829→        ${settings.address ? ` | ${settings.address}` : ''}
+   830→        ${settings.phone ? ` | ${settings.phone}` : ''}
+   831→      </div>
+   832→      <span>${lang === 'ar' ? 'بِنَاء ERP' : 'Binaa ERP'}</span>
+   833→    </div>
+   834→  `
+   835→
+   836→  return `<!DOCTYPE html>
+   837→<html lang="${lang === 'ar' ? 'ar' : 'en'}" dir="${dir}">
+   838→<head>
+   839→  <meta charset="UTF-8" />
+   840→  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+   841→  <title>${title} - ${companyName}</title>
+   842→  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+   843→  <style>${css}</style>
+   844→</head>
+   845→<body>
+   846→  <div class="print-actions no-print">
+   847→    <button onclick="window.print()">${lang === 'ar' ? 'طباعة' : 'Print'}</button>
+   848→    <button class="close-btn" onclick="window.close()">${lang === 'ar' ? 'إغلاق' : 'Close'}</button>
+   849→  </div>
+   850→  <div class="page">
+   851→    ${header}
+   852→    <div class="doc-body">
+   853→      ${body}
+   854→    </div>
+   855→    ${footer}
+   856→  </div>
+   857→</body>
+   858→</html>`
+   859→}
+   860→
+   861→// ============ Utility Functions ============
+   862→
+   863→/**
+   864→ * Get the category of a document type.
+   865→ */
+   866→export function getDocumentCategory(type: UnifiedDocumentType): DocumentCategory {
+   867→  return documentCategories[type] || 'operational'
+   868→}
+   869→
+   870→/**
+   871→ * Check if a document type requires ZATCA QR code.
+   872→ */
+   873→export function requiresZatcaQR(type: UnifiedDocumentType): boolean {
+   874→  return INVOICE_TYPES_REQUIRING_QR.includes(type)
+   875→}
+   876→
+   877→/**
+   878→ * Get all supported document types.
+   879→ */
+   880→export function getSupportedDocumentTypes(): UnifiedDocumentType[] {
+   881→  const baseTypes: PrintDocumentType[] = [
+   882→    'service-invoice', 'rental-invoice', 'supplier-invoice',
+   883→    'progress-claim', 'purchase-order', 'delivery-order',
+   884→    'timesheet', 'trial-balance', 'general-ledger',
+   885→    'income-statement', 'balance-sheet', 'vat-return',
+   886→    'client-payment', 'supplier-payment', 'rental-payment',
+   887→    'expense-report', 'advance-voucher', 'petty-cash-voucher',
+   888→    'salary-slip', 'rental-contract',
+   889→    'equipment-report', 'fuel-report', 'maintenance-report',
+   890→    'work-team-report', 'resource-distribution', 'attendance-report',
+   891→    'purchase-request', 'goods-receipt', 'journal-entry',
+   892→    'account-statement', 'generic-table',
+   893→  ]
+   894→  const additionalTypes: UnifiedDocumentType[] = [
+   895→    'sales-invoice', 'boq', 'change-order', 'employee-contract',
+   896→  ]
+   897→  return [...baseTypes, ...additionalTypes] as UnifiedDocumentType[]
+   898→}
+   899→
+   900→// Re-export types for convenience
+   901→export type { PrintSettings, PrintOptions, DocumentTemplate }
+   902→export { generatePrintHTML, getTemplate }
+   903→

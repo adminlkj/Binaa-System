@@ -1,0 +1,764 @@
+     1→'use client'
+     2→
+     3→import React, { useEffect, useState } from 'react'
+     4→import { Printer, Building2, FileText, Stamp, FileDown } from 'lucide-react'
+     5→import { Button } from '@/components/ui/button'
+     6→import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+     7→import { numberToArabicWords, numberToEnglishWords } from '@/lib/amount-to-words'
+     8→import { generateZATCAQR } from '@/lib/zatca-qr'
+     9→import { CurrencySymbol } from '@/components/ui/currency-symbol'
+    10→
+    11→// ============ Types ============
+    12→interface CompanySettings {
+    13→  id?: string
+    14→  nameAr: string
+    15→  nameEn: string
+    16→  logo?: string | null
+    17→  logoUrl?: string | null
+    18→  commercialReg?: string | null
+    19→  taxNumber?: string | null
+    20→  address?: string | null
+    21→  phone?: string | null
+    22→  email?: string | null
+    23→  website?: string | null
+    24→  bankName?: string | null
+    25→  bankIban?: string | null
+    26→  bankAccountName?: string | null
+    27→  stamp?: string | null
+    28→  defaultVatRate: number
+    29→  currency: string
+    30→  currencySymbol?: string
+    31→  currencySymbolEn?: string
+    32→  currencySymbolAr?: string
+    33→  invoiceTerms?: string | null
+    34→}
+    35→
+    36→interface InvoiceItem {
+    37→  id: string
+    38→  description: string
+    39→  descriptionEn?: string | null
+    40→  quantity: number
+    41→  unit?: string | null
+    42→  unitPrice: number
+    43→  totalPrice: number
+    44→  itemType?: string
+    45→}
+    46→
+    47→interface ClientInfo {
+    48→  id: string
+    49→  name: string
+    50→  nameAr?: string | null
+    51→  code: string
+    52→  taxNumber?: string | null
+    53→  phone?: string | null
+    54→  email?: string | null
+    55→  address?: string | null
+    56→}
+    57→
+    58→interface ProjectInfo {
+    59→  id: string
+    60→  name: string
+    61→  nameAr?: string | null
+    62→  code: string
+    63→}
+    64→
+    65→interface ContractInfo {
+    66→  id: string
+    67→  contractNo: string
+    68→}
+    69→
+    70→interface InvoiceData {
+    71→  id: string
+    72→  invoiceNo: string
+    73→  projectId?: string | null
+    74→  contractId?: string | null
+    75→  clientId: string
+    76→  date: string
+    77→  dueDate: string
+    78→  subtotal: number
+    79→  discountRate: number
+    80→  discountAmount: number
+    81→  netAmount: number
+    82→  vatRate: number
+    83→  vatAmount: number
+    84→  totalAmount: number
+    85→  paidAmount: number
+    86→  status: string
+    87→  invoiceType: string
+    88→  notes?: string | null
+    89→  paymentTerms?: string | null
+    90→  amountInWordsAr?: string | null
+    91→  amountInWordsEn?: string | null
+    92→  referenceNo?: string | null
+    93→  contractNo?: string | null
+    94→  contractType?: string | null
+    95→  contractPeriodStart?: string | null
+    96→  contractPeriodEnd?: string | null
+    97→  deliveryMonth?: string | null
+    98→  includeDelivery?: boolean
+    99→  deliveryAmount?: number
+   100→  includeVat?: boolean
+   101→  salesOrderNo?: string | null
+   102→  equipmentName?: string | null
+   103→  operatingHours?: number | null
+   104→  hourlyRate?: number | null
+   105→  client: ClientInfo
+   106→  project?: ProjectInfo | null
+   107→  contract?: ContractInfo | null
+   108→  items: InvoiceItem[]
+   109→}
+   110→
+   111→interface InvoicePreviewProps {
+   112→  invoice: InvoiceData
+   113→  company: CompanySettings
+   114→  onClose?: () => void
+   115→}
+   116→
+   117→// ============ Status Config ============
+   118→const statusConfig: Record<string, { label: string; labelEn: string; color: string; bg: string }> = {
+   119→  DRAFT: { label: 'مسودة', labelEn: 'Draft', color: 'text-gray-700', bg: 'bg-gray-400' },
+   120→  SENT: { label: 'مرسلة', labelEn: 'Sent', color: 'text-blue-700', bg: 'bg-blue-500' },
+   121→  PARTIALLY_PAID: { label: 'مدفوعة جزئياً', labelEn: 'Partially Paid', color: 'text-amber-700', bg: 'bg-amber-500' },
+   122→  PAID: { label: 'مدفوعة', labelEn: 'Paid', color: 'text-emerald-700', bg: 'bg-emerald-500' },
+   123→  OVERDUE: { label: 'متأخرة', labelEn: 'Overdue', color: 'text-red-700', bg: 'bg-red-500' },
+   124→  CANCELLED: { label: 'ملغية', labelEn: 'Cancelled', color: 'text-gray-500', bg: 'bg-gray-400' },
+   125→}
+   126→
+   127→const invoiceTypeLabels: Record<string, { ar: string; en: string }> = {
+   128→  TAX_INVOICE: { ar: 'فاتورة ضريبية', en: 'Tax Invoice' },
+   129→  PROGRESS_CLAIM: { ar: 'مستخلص', en: 'Progress Claim' },
+   130→  RENTAL: { ar: 'فاتورة إيجار', en: 'Rental Invoice' },
+   131→  SERVICE: { ar: 'فاتورة خدمة', en: 'Service Invoice' },
+   132→}
+   133→
+   134→// ============ Helpers ============
+   135→
+   136→/** ZATCA format: NO thousand separators, always 2 decimal places */
+   137→function fmt(num: number): string {
+   138→  return num.toFixed(2)
+   139→}
+   140→
+   141→function fmtDate(dateStr: string): string {
+   142→  const d = new Date(dateStr)
+   143→  const day = String(d.getDate()).padStart(2, '0')
+   144→  const month = String(d.getMonth() + 1).padStart(2, '0')
+   145→  const year = d.getFullYear()
+   146→  return `${day}/${month}/${year}`
+   147→}
+   148→
+   149→function fmtDateISO(dateStr: string): string {
+   150→  const d = new Date(dateStr)
+   151→  return d.toISOString().replace('Z', '')
+   152→}
+   153→
+   154→/** Format delivery month (e.g., "2026-05" → "مايو-2026") */
+   155→function fmtDeliveryMonth(monthStr: string | null | undefined): string | null {
+   156→  if (!monthStr) return null
+   157→  const arabicMonths = [
+   158→    'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+   159→    'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+   160→  ]
+   161→  try {
+   162→    const [year, month] = monthStr.split('-')
+   163→    const monthIndex = parseInt(month, 10) - 1
+   164→    if (monthIndex >= 0 && monthIndex < 12) {
+   165→      return `${arabicMonths[monthIndex]}-${year}`
+   166→    }
+   167→  } catch {
+   168→    // fallback
+   169→  }
+   170→  return monthStr
+   171→}
+   172→
+   173→/** Get the currency symbol for Arabic display */
+   174→function getCurrencySymbolAr(company: CompanySettings): string {
+   175→  return company.currencySymbolAr || company.currencySymbol || '\uFDFC'
+   176→}
+   177→
+   178→/** Get the currency symbol for English display */
+   179→function getCurrencySymbolEn(company: CompanySettings): string {
+   180→  return company.currencySymbolEn || 'SAR'
+   181→}
+   182→
+   183→/** Format amount with currency symbol for inline display (Arabic side) */
+   184→function fmtAr(num: number, company: CompanySettings): string {
+   185→  return `${fmt(num)} ${getCurrencySymbolAr(company)}`
+   186→}
+   187→
+   188→/** Format amount with currency symbol for inline display (English side) */
+   189→function fmtEn(num: number, company: CompanySettings): string {
+   190→  return `${getCurrencySymbolEn(company)} ${fmt(num)}`
+   191→}
+   192→
+   193→// ============ Component ============
+   194→export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProps) {
+   195→  const [qrDataUrl, setQrDataUrl] = useState<string>('')
+   196→  const [isPrinting, setIsPrinting] = useState(false)
+   197→
+   198→  const status = statusConfig[invoice.status] || statusConfig.DRAFT
+   199→  const invType = invoiceTypeLabels[invoice.invoiceType] || invoiceTypeLabels.TAX_INVOICE
+   200→
+   201→  // Derived values
+   202→  const symbolAr = getCurrencySymbolAr(company)
+   203→  const netAmount = invoice.netAmount || (invoice.subtotal - invoice.discountAmount)
+   204→  const deliveryAmt = invoice.includeDelivery ? (invoice.deliveryAmount || 0) : 0
+   205→  const effectiveVatAmount = invoice.includeVat !== false ? invoice.vatAmount : 0
+   206→
+   207→  // Generate ZATCA QR
+   208→  useEffect(() => {
+   209→    async function generateQR() {
+   210→      try {
+   211→        const qr = await generateZATCAQR({
+   212→          sellerName: company.nameAr,
+   213→          vatNumber: company.taxNumber || '',
+   214→          date: fmtDateISO(invoice.date),
+   215→          total: fmt(invoice.totalAmount),
+   216→          vatTotal: fmt(effectiveVatAmount),
+   217→        })
+   218→        setQrDataUrl(qr)
+   219→      } catch (err) {
+   220→        console.error('QR generation error:', err)
+   221→      }
+   222→    }
+   223→    generateQR()
+   224→  }, [company.nameAr, company.taxNumber, invoice.date, invoice.totalAmount, effectiveVatAmount])
+   225→
+   226→  // Amount in words
+   227→  const amountAr = invoice.amountInWordsAr || numberToArabicWords(invoice.totalAmount)
+   228→  const amountEn = invoice.amountInWordsEn || numberToEnglishWords(invoice.totalAmount)
+   229→
+   230→  // Print handler
+   231→  const handlePrint = () => {
+   232→    setIsPrinting(true)
+   233→    setTimeout(() => {
+   234→      window.print()
+   235→      setIsPrinting(false)
+   236→    }, 300)
+   237→  }
+   238→
+   239→  // Determine if contract section should show
+   240→  const hasContractData = invoice.contractNo || invoice.contractType || invoice.contractPeriodStart || invoice.contractPeriodEnd
+   241→
+   242→  return (
+   243→    <div className="invoice-preview-wrapper" style={{ fontFamily: "'Cairo', 'Amiri', 'Noto Sans Arabic', sans-serif" }}>
+   244→      {/* Print/Close Buttons */}
+   245→      <div className="flex items-center justify-between mb-4 no-print">
+   246→        <div className="flex items-center gap-2">
+   247→          <Button
+   248→            onClick={handlePrint}
+   249→            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+   250→            disabled={isPrinting}
+   251→          >
+   252→            <Printer className="size-4" />
+   253→            طباعة الفاتورة
+   254→          </Button>
+   255→          <TooltipProvider>
+   256→            <Tooltip>
+   257→              <TooltipTrigger asChild>
+   258→                <Button
+   259→                  variant="outline"
+   260→                  className="gap-2"
+   261→                  onClick={handlePrint}
+   262→                  disabled={isPrinting}
+   263→                >
+   264→                  <FileDown className="size-4" />
+   265→                  تصدير PDF
+   266→                </Button>
+   267→              </TooltipTrigger>
+   268→              <TooltipContent side="bottom">
+   269→                <p>اختر حفظ كـ PDF في نافذة الطباعة</p>
+   270→              </TooltipContent>
+   271→            </Tooltip>
+   272→          </TooltipProvider>
+   273→        </div>
+   274→        {onClose && (
+   275→          <Button variant="outline" onClick={onClose}>
+   276→            إغلاق
+   277→          </Button>
+   278→        )}
+   279→      </div>
+   280→
+   281→      {/* ===================== INVOICE DOCUMENT ===================== */}
+   282→      <div className="invoice-document bg-white shadow-lg rounded-lg overflow-hidden" dir="rtl">
+   283→
+   284→        {/* ===== STATUS BAR (very top) ===== */}
+   285→        <div className={`${status.bg} py-2 px-6 text-white text-center font-bold text-lg`}>
+   286→          {status.label} — {status.labelEn}
+   287→        </div>
+   288→
+   289→        {/* ===== STEP 1: HEADER (Full-width emerald gradient) ===== */}
+   290→        <div className="bg-gradient-to-l from-emerald-700 via-emerald-600 to-emerald-800 px-8 py-6">
+   291→          <div className="flex items-center justify-between">
+   292→            {/* Logo + Company Name */}
+   293→            <div className="flex items-center gap-4">
+   294→              {company.logoUrl ? (
+   295→                <img
+   296→                  src={company.logoUrl}
+   297→                  alt={company.nameAr}
+   298→                  className="w-16 h-16 rounded-xl object-contain bg-white/90 p-1"
+   299→                />
+   300→              ) : (
+   301→                <div className="w-16 h-16 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
+   302→                  <Building2 className="size-8 text-white" />
+   303→                </div>
+   304→              )}
+   305→              <div>
+   306→                <h1 className="text-2xl font-bold text-white">{company.nameAr}</h1>
+   307→                <p className="text-base text-emerald-100" dir="ltr">{company.nameEn}</p>
+   308→              </div>
+   309→            </div>
+   310→            {/* Invoice Type Badge */}
+   311→            <div className="bg-white/15 backdrop-blur-sm border border-white/30 rounded-lg px-5 py-3 text-center">
+   312→              <FileText className="size-5 text-white mx-auto mb-1" />
+   313→              <p className="text-lg font-bold text-white">{invType.ar}</p>
+   314→              <p className="text-xs text-emerald-100" dir="ltr">{invType.en}</p>
+   315→            </div>
+   316→          </div>
+   317→        </div>
+   318→
+   319→        {/* ===== STEP 2: Company Data Bar ===== */}
+   320→        <div className="bg-emerald-50 border-b border-emerald-200 px-8 py-3">
+   321→          <div className="text-center text-sm space-y-1.5">
+   322→            <p className="font-semibold text-emerald-800">
+   323→              {company.nameAr} | <span dir="ltr">{company.nameEn}</span>
+   324→            </p>
+   325→            <p className="text-emerald-700">
+   326→              السجل التجاري: <span className="font-semibold" dir="ltr">{company.commercialReg}</span>
+   327→              <span className="mx-3 text-emerald-300">|</span>
+   328→              الرقم الضريبي: <span className="font-semibold" dir="ltr">{company.taxNumber}</span>
+   329→            </p>
+   330→            <p className="text-emerald-700">
+   331→              الهاتف: <span className="font-semibold" dir="ltr">{company.phone}</span>
+   332→              <span className="mx-3 text-emerald-300">|</span>
+   333→              البريد الإلكتروني: <span className="font-semibold" dir="ltr">{company.email}</span>
+   334→            </p>
+   335→            <p className="text-emerald-700">{company.address}</p>
+   336→          </div>
+   337→        </div>
+   338→
+   339→        {/* ===== STEP 3: Invoice Title + Number ===== */}
+   340→        <div className="bg-white border-b border-gray-200 px-8 py-5 text-center">
+   341→          <h2 className="text-2xl font-bold text-emerald-800">{invType.ar}</h2>
+   342→          <p className="text-lg text-gray-500" dir="ltr">{invType.en}</p>
+   343→          <p className="text-3xl font-bold text-gray-900 mt-2 font-mono tracking-wide" dir="ltr">
+   344→            {invoice.invoiceNo}
+   345→          </p>
+   346→          {invoice.referenceNo && (
+   347→            <p className="text-sm text-gray-500 mt-1">
+   348→              رقم المرجع: <span className="font-mono font-semibold" dir="ltr">{invoice.referenceNo}</span>
+   349→            </p>
+   350→          )}
+   351→        </div>
+   352→
+   353→        {/* ===== STEP 4: Invoice Info + Client Info (2 columns) ===== */}
+   354→        <div className="grid grid-cols-2 gap-0 border-b border-gray-200">
+   355→          {/* Left Column: Invoice Information */}
+   356→          <div className="px-8 py-5 border-l border-gray-200">
+   357→            <h3 className="text-sm font-bold text-emerald-700 mb-3 pb-1 border-b border-emerald-200">
+   358→              معلومات الفاتورة / Invoice Information
+   359→            </h3>
+   360→            <div className="space-y-2 text-sm">
+   361→              <div className="flex justify-between">
+   362→                <span className="text-gray-500">رقم الفاتورة</span>
+   363→                <span className="font-bold text-gray-900 font-mono" dir="ltr">{invoice.invoiceNo}</span>
+   364→              </div>
+   365→              {invoice.referenceNo && (
+   366→                <div className="flex justify-between">
+   367→                  <span className="text-gray-500">رقم المرجع</span>
+   368→                  <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.referenceNo}</span>
+   369→                </div>
+   370→              )}
+   371→              <div className="flex justify-between">
+   372→                <span className="text-gray-500">تاريخ الإصدار</span>
+   373→                <span className="font-semibold text-gray-800" dir="ltr">{fmtDate(invoice.date)}</span>
+   374→              </div>
+   375→              <div className="flex justify-between">
+   376→                <span className="text-gray-500">تاريخ الاستحقاق</span>
+   377→                <span className="font-semibold text-gray-800" dir="ltr">{fmtDate(invoice.dueDate)}</span>
+   378→              </div>
+   379→              {invoice.paymentTerms && (
+   380→                <div className="flex justify-between">
+   381→                  <span className="text-gray-500">شروط السداد</span>
+   382→                  <span className="font-semibold text-gray-800" dir="ltr">{invoice.paymentTerms}</span>
+   383→                </div>
+   384→              )}
+   385→              {invoice.deliveryMonth && (
+   386→                <div className="flex justify-between">
+   387→                  <span className="text-gray-500">شهر التسليم</span>
+   388→                  <span className="font-semibold text-gray-800">{fmtDeliveryMonth(invoice.deliveryMonth)}</span>
+   389→                </div>
+   390→              )}
+   391→              <div className="flex justify-between">
+   392→                <span className="text-gray-500">الحالة</span>
+   393→                <span className={`font-bold ${status.color}`}>{status.label}</span>
+   394→              </div>
+   395→            </div>
+   396→          </div>
+   397→
+   398→          {/* Right Column: Client Information */}
+   399→          <div className="px-8 py-5">
+   400→            <h3 className="text-sm font-bold text-emerald-700 mb-3 pb-1 border-b border-emerald-200">
+   401→              بيانات العميل / Client Information
+   402→            </h3>
+   403→            <div className="space-y-2 text-sm">
+   404→              <div className="flex justify-between">
+   405→                <span className="text-gray-500">اسم العميل</span>
+   406→                <span className="font-bold text-gray-900">{invoice.client.nameAr || invoice.client.name}</span>
+   407→              </div>
+   408→              {invoice.client.taxNumber && (
+   409→                <div className="flex justify-between">
+   410→                  <span className="text-gray-500">الرقم الضريبي</span>
+   411→                  <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.client.taxNumber}</span>
+   412→                </div>
+   413→              )}
+   414→              {invoice.client.phone && (
+   415→                <div className="flex justify-between">
+   416→                  <span className="text-gray-500">الهاتف</span>
+   417→                  <span className="font-semibold text-gray-800" dir="ltr">{invoice.client.phone}</span>
+   418→                </div>
+   419→              )}
+   420→              {invoice.client.email && (
+   421→                <div className="flex justify-between">
+   422→                  <span className="text-gray-500">البريد الإلكتروني</span>
+   423→                  <span className="font-semibold text-gray-800" dir="ltr">{invoice.client.email}</span>
+   424→                </div>
+   425→              )}
+   426→              {invoice.client.address && (
+   427→                <div className="flex justify-between">
+   428→                  <span className="text-gray-500">العنوان</span>
+   429→                  <span className="font-semibold text-gray-800">{invoice.client.address}</span>
+   430→                </div>
+   431→              )}
+   432→            </div>
+   433→          </div>
+   434→        </div>
+   435→
+   436→        {/* ===== STEP 5: Project & Contract Data ===== */}
+   437→        {(invoice.project || hasContractData) && (
+   438→          <div className="px-8 py-4 border-b border-gray-200">
+   439→            <div className="border border-gray-200 rounded-lg overflow-hidden">
+   440→              <div className="bg-gray-50 px-5 py-2 border-b border-gray-200">
+   441→                <h4 className="font-bold text-gray-700 text-sm">بيانات المشروع والعقد / Project & Contract Data</h4>
+   442→              </div>
+   443→              <div className="px-5 py-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+   444→                {invoice.project && (
+   445→                  <div className="flex gap-2">
+   446→                    <span className="text-gray-500">المشروع:</span>
+   447→                    <span className="font-semibold text-gray-800">{invoice.project.nameAr || invoice.project.name}</span>
+   448→                  </div>
+   449→                )}
+   450→                {invoice.contractNo && (
+   451→                  <div className="flex gap-2">
+   452→                    <span className="text-gray-500">رقم العقد:</span>
+   453→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.contractNo}</span>
+   454→                  </div>
+   455→                )}
+   456→                {invoice.salesOrderNo && (
+   457→                  <div className="flex gap-2">
+   458→                    <span className="text-gray-500">رقم طلب البيع:</span>
+   459→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.salesOrderNo}</span>
+   460→                  </div>
+   461→                )}
+   462→                {invoice.contractType && (
+   463→                  <div className="flex gap-2">
+   464→                    <span className="text-gray-500">نوع العقد:</span>
+   465→                    <span className="font-semibold text-gray-800">{invoice.contractType}</span>
+   466→                  </div>
+   467→                )}
+   468→                {invoice.contractPeriodStart && invoice.contractPeriodEnd && (
+   469→                  <div className="flex gap-2">
+   470→                    <span className="text-gray-500">فترة العمل:</span>
+   471→                    <span className="font-semibold text-gray-800" dir="ltr">
+   472→                      {fmtDate(invoice.contractPeriodStart)} إلى {fmtDate(invoice.contractPeriodEnd)}
+   473→                    </span>
+   474→                  </div>
+   475→                )}
+   476→                {invoice.deliveryMonth && (
+   477→                  <div className="flex gap-2">
+   478→                    <span className="text-gray-500">شهر التسليم:</span>
+   479→                    <span className="font-semibold text-gray-800">{fmtDeliveryMonth(invoice.deliveryMonth)}</span>
+   480→                  </div>
+   481→                )}
+   482→              </div>
+   483→            </div>
+   484→          </div>
+   485→        )}
+   486→
+   487→        {/* ===== STEP 5B: Rental Equipment Data (for rental invoices) ===== */}
+   488→        {invoice.invoiceType === 'RENTAL' && (invoice.equipmentName || invoice.operatingHours || invoice.hourlyRate) && (
+   489→          <div className="px-8 py-4 border-b border-gray-200">
+   490→            <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50/30">
+   491→              <div className="bg-amber-100 px-5 py-2 border-b border-amber-200">
+   492→                <h4 className="font-bold text-amber-800 text-sm">بيانات المعدة والإيجار / Equipment & Rental Data</h4>
+   493→              </div>
+   494→              <div className="px-5 py-3 grid grid-cols-3 gap-x-8 gap-y-3 text-sm">
+   495→                {invoice.equipmentName && (
+   496→                  <div className="flex gap-2">
+   497→                    <span className="text-amber-600">المعدة:</span>
+   498→                    <span className="font-semibold text-gray-800">{invoice.equipmentName}</span>
+   499→                  </div>
+   500→                )}
+   501→                {invoice.operatingHours != null && (
+   502→                  <div className="flex gap-2">
+   503→                    <span className="text-amber-600">ساعات التشغيل:</span>
+   504→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+   505→                      {invoice.operatingHours % 1 === 0 ? invoice.operatingHours.toFixed(0) : invoice.operatingHours.toFixed(2)} ساعة
+   506→                    </span>
+   507→                  </div>
+   508→                )}
+   509→                {invoice.hourlyRate != null && (
+   510→                  <div className="flex gap-2">
+   511→                    <span className="text-amber-600">سعر الساعة:</span>
+   512→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+   513→                      {fmt(invoice.hourlyRate)} <CurrencySymbol symbol={symbolAr} size="xs" />
+   514→                    </span>
+   515→                  </div>
+   516→                )}
+   517→                {invoice.deliveryMonth && (
+   518→                  <div className="flex gap-2">
+   519→                    <span className="text-amber-600">فترة الإيجار:</span>
+   520→                    <span className="font-semibold text-gray-800">{fmtDeliveryMonth(invoice.deliveryMonth)}</span>
+   521→                  </div>
+   522→                )}
+   523→                {invoice.contractNo && (
+   524→                  <div className="flex gap-2">
+   525→                    <span className="text-amber-600">رقم العقد:</span>
+   526→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.contractNo}</span>
+   527→                  </div>
+   528→                )}
+   529→                {invoice.salesOrderNo && (
+   530→                  <div className="flex gap-2">
+   531→                    <span className="text-amber-600">رقم طلب البيع:</span>
+   532→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">{invoice.salesOrderNo}</span>
+   533→                  </div>
+   534→                )}
+   535→              </div>
+   536→            </div>
+   537→          </div>
+   538→        )}
+   539→
+   540→        {/* ===== STEP 6: Items Table ===== */}
+   541→        <div className="px-8 py-5">
+   542→          <table className="w-full text-sm border-collapse border border-gray-300">
+   543→            <thead>
+   544→              <tr className="bg-emerald-600 text-white">
+   545→                <th className="py-2.5 px-3 text-center font-semibold w-10 border-l border-emerald-500">#</th>
+   546→                <th className="py-2.5 px-3 text-right font-semibold border-l border-emerald-500">الوصف / Description</th>
+   547→                <th className="py-2.5 px-3 text-center font-semibold w-20 border-l border-emerald-500">الكمية / Qty</th>
+   548→                <th className="py-2.5 px-3 text-center font-semibold w-20 border-l border-emerald-500">الوحدة / Unit</th>
+   549→                <th className="py-2.5 px-3 text-left font-semibold w-32 border-l border-emerald-500" dir="ltr">السعر / Price</th>
+   550→                <th className="py-2.5 px-3 text-left font-semibold w-32" dir="ltr">الإجمالي / Total</th>
+   551→              </tr>
+   552→            </thead>
+   553→            <tbody>
+   554→              {invoice.items.map((item, idx) => (
+   555→                <tr key={item.id} className={`border-b border-gray-200 ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}`}>
+   556→                  <td className="py-2.5 px-3 text-gray-600 font-mono text-center border-l border-gray-200">{idx + 1}</td>
+   557→                  <td className="py-2.5 px-3 text-gray-900 font-medium border-l border-gray-200">{item.description}</td>
+   558→                  <td className="py-2.5 px-3 text-center text-gray-800 font-mono border-l border-gray-200">
+   559→                    {item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)}
+   560→                  </td>
+   561→                  <td className="py-2.5 px-3 text-center text-gray-600 border-l border-gray-200">{item.unit || '—'}</td>
+   562→                  <td className="py-2.5 px-3 text-left text-gray-800 font-mono border-l border-gray-200" dir="ltr">
+   563→                    {fmt(item.unitPrice)} <CurrencySymbol symbol={symbolAr} size="xs" />
+   564→                  </td>
+   565→                  <td className="py-2.5 px-3 text-left text-gray-900 font-semibold font-mono" dir="ltr">
+   566→                    {fmt(item.totalPrice)} <CurrencySymbol symbol={symbolAr} size="xs" />
+   567→                  </td>
+   568→                </tr>
+   569→              ))}
+   570→            </tbody>
+   571→            <tfoot>
+   572→              <tr className="border-t-2 border-gray-400 bg-emerald-50">
+   573→                <td colSpan={5} className="py-2.5 px-3 text-left font-bold text-emerald-800">
+   574→                  الإجمالي / Subtotal
+   575→                </td>
+   576→                <td className="py-2.5 px-3 text-left font-bold text-emerald-800 font-mono" dir="ltr">
+   577→                  {fmt(invoice.subtotal)} <CurrencySymbol symbol={symbolAr} size="xs" />
+   578→                </td>
+   579→              </tr>
+   580→            </tfoot>
+   581→          </table>
+   582→        </div>
+   583→
+   584→        {/* ===== STEP 7: QR Code + Totals (SIDE BY SIDE) ===== */}
+   585→        <div className="px-8 pb-5">
+   586→          <div className="grid grid-cols-2 gap-6">
+   587→            {/* QR Code - LEFT side */}
+   588→            <div className="flex items-start justify-center">
+   589→              <div className="border border-gray-200 rounded-lg p-4 bg-white">
+   590→                <p className="text-xs text-center text-gray-500 mb-2 font-medium">رمز الاستجابة السريعة / QR Code</p>
+   591→                {qrDataUrl ? (
+   592→                  <img
+   593→                    src={qrDataUrl}
+   594→                    alt="ZATCA QR Code"
+   595→                    className="mx-auto"
+   596→                    style={{ width: '120px', height: '120px', minWidth: '120px', minHeight: '120px' }}
+   597→                  />
+   598→                ) : (
+   599→                  <div
+   600→                    className="mx-auto bg-gray-100 rounded flex items-center justify-center text-gray-400 text-xs"
+   601→                    style={{ width: '120px', height: '120px', minWidth: '120px', minHeight: '120px' }}
+   602→                  >
+   603→                    جاري التحميل...
+   604→                  </div>
+   605→                )}
+   606→                <p className="text-[10px] text-center text-gray-400 mt-1">ZATCA E-Invoice</p>
+   607→              </div>
+   608→            </div>
+   609→
+   610→            {/* Totals Box - RIGHT side */}
+   611→            <div className="border border-gray-200 rounded-lg overflow-hidden">
+   612→              <div className="bg-emerald-50 px-5 py-2 border-b border-emerald-200">
+   613→                <h4 className="font-bold text-emerald-700 text-sm text-center">الإجماليات / Totals</h4>
+   614→              </div>
+   615→              <div className="px-5 py-3 space-y-2 text-sm">
+   616→                {/* Subtotal */}
+   617→                <div className="flex justify-between">
+   618→                  <span className="text-gray-600">الإجمالي قبل الضريبة</span>
+   619→                  <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+   620→                    {fmtAr(invoice.subtotal, company)}
+   621→                  </span>
+   622→                </div>
+   623→
+   624→                {/* Discount */}
+   625→                {invoice.discountAmount > 0 && (
+   626→                  <div className="flex justify-between text-rose-600">
+   627→                    <span>الخصم {invoice.discountRate > 0 ? `(${(invoice.discountRate * 100).toFixed(0)}%)` : ''}</span>
+   628→                    <span className="font-semibold font-mono" dir="ltr">-{fmtAr(invoice.discountAmount, company)}</span>
+   629→                  </div>
+   630→                )}
+   631→
+   632→                {/* Net Amount */}
+   633→                {(invoice.discountAmount > 0) && (
+   634→                  <div className="flex justify-between">
+   635→                    <span className="text-gray-600">صافي المبلغ</span>
+   636→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+   637→                      {fmtAr(netAmount, company)}
+   638→                    </span>
+   639→                  </div>
+   640→                )}
+   641→
+   642→                {/* Delivery Charges */}
+   643→                {deliveryAmt > 0 && (
+   644→                  <div className="flex justify-between text-amber-700">
+   645→                    <span>مصروف التوصيل</span>
+   646→                    <span className="font-semibold font-mono" dir="ltr">
+   647→                      {fmtAr(deliveryAmt, company)}
+   648→                    </span>
+   649→                  </div>
+   650→                )}
+   651→
+   652→                {/* VAT */}
+   653→                {invoice.includeVat !== false && (
+   654→                  <div className="flex justify-between">
+   655→                    <span className="text-gray-600">ضريبة القيمة المضافة ({(invoice.vatRate * 100).toFixed(0)}%)</span>
+   656→                    <span className="font-semibold text-gray-800 font-mono" dir="ltr">
+   657→                      {fmtAr(invoice.vatAmount, company)}
+   658→                    </span>
+   659→                  </div>
+   660→                )}
+   661→
+   662→                {/* Separator */}
+   663→                <div className="border-t-2 border-emerald-600 my-1" />
+   664→
+   665→                {/* Grand Total */}
+   666→                <div className="flex justify-between items-center bg-emerald-600 -mx-5 px-5 py-3 rounded-b-lg">
+   667→                  <span className="text-white font-bold text-base">الإجمالي النهائي</span>
+   668→                  <span className="text-white font-bold text-lg font-mono flex items-center gap-1" dir="ltr">
+   669→                    {fmt(invoice.totalAmount)} <CurrencySymbol symbol={symbolAr} size="sm" className="text-white" />
+   670→                  </span>
+   671→                </div>
+   672→              </div>
+   673→            </div>
+   674→          </div>
+   675→        </div>
+   676→
+   677→        {/* ===== STEP 8: Amount in Words ===== */}
+   678→        <div className="px-8 pb-5">
+   679→          <div className="bg-amber-50 border border-amber-200 rounded-lg px-5 py-4">
+   680→            <p className="text-sm text-amber-800 font-medium mb-1">
+   681→              <span className="text-amber-600 font-bold">المبلغ كتابة: </span>
+   682→              {amountAr} <span className="text-amber-600">ريال سعودي</span>
+   683→            </p>
+   684→            <p className="text-sm text-amber-700" dir="ltr">
+   685→              <span className="font-bold">The amount in words: </span>
+   686→              {amountEn} <span className="text-amber-600">Saudi Riyals</span>
+   687→            </p>
+   688→          </div>
+   689→        </div>
+   690→
+   691→        {/* ===== STEP 9: Signatures + Company Stamp (3 columns) ===== */}
+   692→        <div className="px-8 pb-5">
+   693→          <div className="grid grid-cols-3 gap-6">
+   694→            {/* Sales Rep Signature */}
+   695→            <div className="text-center">
+   696→              <p className="text-sm font-semibold text-gray-700">مسؤول المبيعات</p>
+   697→              <p className="text-xs text-gray-400 mt-0.5">Sales Representative</p>
+   698→              <div className="mt-8 border-t-2 border-gray-300 pt-2">
+   699→                <p className="text-xs text-gray-400">التوقيع / Signature</p>
+   700→              </div>
+   701→            </div>
+   702→
+   703→            {/* Client Signature */}
+   704→            <div className="text-center">
+   705→              <p className="text-sm font-semibold text-gray-700">العميل</p>
+   706→              <p className="text-xs text-gray-400 mt-0.5">Client</p>
+   707→              <div className="mt-8 border-t-2 border-gray-300 pt-2">
+   708→                <p className="text-xs text-gray-400">التوقيع / Signature</p>
+   709→              </div>
+   710→            </div>
+   711→
+   712→            {/* Company Stamp */}
+   713→            <div className="text-center">
+   714→              <p className="text-sm font-semibold text-gray-700">ختم الشركة</p>
+   715→              <p className="text-xs text-gray-400 mt-0.5">Company Stamp</p>
+   716→              <div className="mt-4 flex items-center justify-center">
+   717→                {company.stamp ? (
+   718→                  <img
+   719→                    src={company.stamp}
+   720→                    alt="Company Stamp"
+   721→                    className="object-contain"
+   722→                    style={{ maxWidth: '160px', maxHeight: '160px', minWidth: '120px', minHeight: '120px' }}
+   723→                  />
+   724→                ) : (
+   725→                  <div className="w-[120px] h-[120px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+   726→                    <Stamp className="size-8 text-gray-300" />
+   727→                  </div>
+   728→                )}
+   729→              </div>
+   730→            </div>
+   731→          </div>
+   732→        </div>
+   733→
+   734→        {/* ===== STEP 10: FOOTER (Full-width emerald) ===== */}
+   735→        <div className="bg-gradient-to-l from-emerald-700 via-emerald-600 to-emerald-800 px-8 py-5">
+   736→          <div className="text-center">
+   737→            <p className="text-sm font-bold text-white mb-1">
+   738→              متوافق مع هيئة الزكاة والضريبة والجمارك
+   739→            </p>
+   740→            <p className="text-xs text-emerald-100 mb-3" dir="ltr">
+   741→              ZATCA (Zakat, Tax and Customs Authority) Compliant
+   742→            </p>
+   743→            <div className="h-px bg-emerald-400/30 mb-3" />
+   744→            <div className="flex items-center justify-center gap-4 text-xs text-emerald-100">
+   745→              <span>{company.nameAr}</span>
+   746→              <span className="text-emerald-300">|</span>
+   747→              <span>الرقم الضريبي: <span dir="ltr">{company.taxNumber}</span></span>
+   748→              <span className="text-emerald-300">|</span>
+   749→              <span>التاريخ: <span dir="ltr">{fmtDate(invoice.date)}</span></span>
+   750→            </div>
+   751→            <div className="flex items-center justify-center gap-4 text-xs text-emerald-200 mt-1">
+   752→              <span>الإجمالي: <span dir="ltr">{fmtAr(invoice.totalAmount, company)}</span></span>
+   753→              <span className="text-emerald-300">|</span>
+   754→              <span>إجمالي الضريبة: <span dir="ltr">{fmtAr(effectiveVatAmount, company)}</span></span>
+   755→            </div>
+   756→          </div>
+   757→        </div>
+   758→      </div>
+   759→    </div>
+   760→  )
+   761→}
+   762→
+   763→export type { InvoiceData, CompanySettings, InvoiceItem, ClientInfo, ProjectInfo, ContractInfo }
+   764→

@@ -1,0 +1,2002 @@
+     1→// ============================================================================
+     2→// خدمة الطباعة الموحدة الاحترافية - Professional Unified Print Service
+     3→// نظام بِنَاء ERP - Binaa Construction ERP
+     4→//
+     5→// Centralized print service - NO window.print() on pages.
+     6→// Each document gets its own professional A4 portrait template with:
+     7→// - Company header with logo, name, address, tax number
+     8→// - Professional document body
+     9→// - Currency display (SAR/ر.س)
+    10→// - Amount in words (Arabic + English)
+    11→// - Company footer with contact info
+    12→// - Stamp & signature sections
+    13→// ============================================================================
+    14→
+    15→// Inline format function for print service (avoids import from client component)
+    16→function formatAmount(value: number, mode: 'system' | 'official' = 'official'): string {
+    17→  if (mode === 'official') {
+    18→    return value.toFixed(2)
+    19→  }
+    20→  return value.toLocaleString('en-US', {
+    21→    minimumFractionDigits: 2,
+    22→    maximumFractionDigits: 2,
+    23→  })
+    24→}
+    25→
+    26→function formatMoneyPrint(value: number): string {
+    27→  return formatAmount(value, 'official')
+    28→}
+    29→
+    30→// ============ Document Types ============
+    31→export type PrintDocumentType =
+    32→  | 'service-invoice'
+    33→  | 'rental-invoice'
+    34→  | 'extract'
+    35→  | 'purchase-order'
+    36→  | 'supplier-invoice'
+    37→  | 'tax-declaration'
+    38→  | 'delivery-order'
+    39→  | 'purchase-request'
+    40→  | 'goods-receipt'
+    41→  | 'salary-slip'
+    42→  | 'attendance-report'
+    43→  | 'client-payment'
+    44→  | 'supplier-payment'
+    45→  | 'rental-payment'
+    46→  | 'expense-report'
+    47→  | 'advance-voucher'
+    48→  | 'petty-cash-voucher'
+    49→  | 'rental-contract'
+    50→  | 'equipment-report'
+    51→  | 'fuel-report'
+    52→  | 'maintenance-report'
+    53→  | 'timesheet-report'
+    54→  | 'work-team-report'
+    55→  | 'resource-distribution'
+    56→  | 'journal-entry'
+    57→  | 'trial-balance'
+    58→  | 'account-statement'
+    59→  | 'generic-table'
+    60→
+    61→export interface PrintOptions {
+    62→  type: PrintDocumentType
+    63→  data: Record<string, unknown>
+    64→  settings: {
+    65→    nameAr: string
+    66→    nameEn: string
+    67→    taxNumber: string | null
+    68→    commercialReg: string | null
+    69→    address: string | null
+    70→    phone: string | null
+    71→    email: string | null
+    72→    website: string | null
+    73→    logoUrl: string | null
+    74→    headerImage: string | null
+    75→    footerImage: string | null
+    76→    stamp: string | null
+    77→    currencySymbolImage: string | null
+    78→    currencySymbol: string | null
+    79→    currencySymbolAr: string | null
+    80→    currencySymbolEn: string | null
+    81→    defaultVatRate: number
+    82→    bankName: string | null
+    83→    bankIban: string | null
+    84→    bankAccountName: string | null
+    85→    invoiceTerms: string | null
+    86→  }
+    87→  lang?: 'ar' | 'en'
+    88→}
+    89→
+    90→// ============ Currency Display ============
+    91→function getCurrencySymbol(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+    92→  if (lang === 'ar') {
+    93→    return settings.currencySymbolAr || settings.currencySymbol || 'ر.س'
+    94→  }
+    95→  return settings.currencySymbolEn || settings.currencySymbol || 'SAR'
+    96→}
+    97→
+    98→function getCurrencyName(lang: 'ar' | 'en'): string {
+    99→  return lang === 'ar' ? 'ريال سعودي' : 'Saudi Riyal'
+   100→}
+   101→
+   102→// ============ Amount in Words (Inline) ============
+   103→function numberToArabicWords(amount: number): string {
+   104→  if (amount === 0) return 'صفر ريالاً سعودياً فقط لا غير'
+   105→  const riyals = Math.floor(amount)
+   106→  const halalas = Math.round((amount - riyals) * 100)
+   107→  const ones = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر']
+   108→  const tens = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون']
+   109→  const hundreds = ['', 'مائة', 'مئتان', 'ثلاثمائة', 'أربعمائة', 'خمسمائة', 'ستمائة', 'سبعمائة', 'ثمانمائة', 'تسعمائة']
+   110→  function below1000(n: number): string {
+   111→    if (n === 0) return ''
+   112→    if (n < 20) return ones[n]
+   113→    if (n < 100) { const t = Math.floor(n / 10); const o = n % 10; return o === 0 ? tens[t] : ones[o] + ' و' + tens[t] }
+   114→    const h = Math.floor(n / 100); const r = n % 100; return r === 0 ? hundreds[h] : hundreds[h] + ' و' + below1000(r)
+   115→  }
+   116→  function convert(n: number): string {
+   117→    if (n === 0) return ''
+   118→    if (n < 1000) return below1000(n)
+   119→    if (n < 1000000) { const th = Math.floor(n / 1000); const r = n % 1000; let w = th === 1 ? 'ألف' : th === 2 ? 'ألفان' : th <= 10 ? below1000(th) + ' آلاف' : below1000(th) + ' ألفاً'; return r === 0 ? w : w + ' و' + below1000(r) }
+   120→    if (n < 1000000000) { const m = Math.floor(n / 1000000); const r = n % 1000000; let w = m === 1 ? 'مليون' : m === 2 ? 'مليونان' : m <= 10 ? below1000(m) + ' ملايين' : below1000(m) + ' مليوناً'; return r === 0 ? w : w + ' و' + convert(r) }
+   121→    const b = Math.floor(n / 1000000000); const r = n % 1000000000; let w = b === 1 ? 'مليار' : b === 2 ? 'ملياران' : below1000(b) + ' ملياراً'; return r === 0 ? w : w + ' و' + convert(r)
+   122→  }
+   123→  let result = ''
+   124→  if (riyals > 0) result = convert(riyals) + ' ريالاً سعودياً'
+   125→  if (halalas > 0) { if (riyals > 0) result += ' و'; result += convert(halalas) + ' هللة' }
+   126→  return result + ' فقط لا غير'
+   127→}
+   128→
+   129→function numberToEnglishWords(amount: number): string {
+   130→  if (amount === 0) return 'Zero Saudi Riyals only'
+   131→  const riyals = Math.floor(amount)
+   132→  const halalas = Math.round((amount - riyals) * 100)
+   133→  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen']
+   134→  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety']
+   135→  function below1000(n: number): string {
+   136→    if (n === 0) return ''
+   137→    if (n < 20) return ones[n]
+   138→    if (n < 100) { const t = Math.floor(n / 10); const o = n % 10; return o === 0 ? tens[t] : tens[t] + '-' + ones[o] }
+   139→    const h = Math.floor(n / 100); const r = n % 100; return r === 0 ? ones[h] + ' Hundred' : ones[h] + ' Hundred and ' + below1000(r)
+   140→  }
+   141→  function convert(n: number): string {
+   142→    if (n === 0) return ''
+   143→    if (n < 1000) return below1000(n)
+   144→    if (n < 1000000) { const th = Math.floor(n / 1000); const r = n % 1000; return r === 0 ? below1000(th) + ' Thousand' : below1000(th) + ' Thousand ' + below1000(r) }
+   145→    if (n < 1000000000) { const m = Math.floor(n / 1000000); const r = n % 1000000; return r === 0 ? below1000(m) + ' Million' : below1000(m) + ' Million ' + convert(r) }
+   146→    const b = Math.floor(n / 1000000000); const r = n % 1000000000; return r === 0 ? below1000(b) + ' Billion' : below1000(b) + ' Billion ' + convert(r)
+   147→  }
+   148→  let result = ''
+   149→  if (riyals > 0) result = convert(riyals) + ' Saudi Riyals'
+   150→  if (halalas > 0) { if (riyals > 0) result += ' and '; result += convert(halalas) + ' Halalas' }
+   151→  return result + ' only'
+   152→}
+   153→
+   154→function getAmountInWords(amount: number, lang: 'ar' | 'en'): string {
+   155→  return lang === 'ar' ? numberToArabicWords(amount) : numberToEnglishWords(amount)
+   156→}
+   157→
+   158→// ============ Shared CSS ============
+   159→function getSharedCSS(lang: 'ar' | 'en'): string {
+   160→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+   161→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+   162→  const textAlign = lang === 'ar' ? 'right' : 'left'
+   163→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+   164→
+   165→  return `
+   166→    * { margin: 0; padding: 0; box-sizing: border-box; }
+   167→    body {
+   168→      font-family: ${fontFamily};
+   169→      font-size: 11px;
+   170→      color: #1a1a1a;
+   171→      direction: ${dir};
+   172→      background: #e5e7eb;
+   173→      line-height: 1.6;
+   174→    }
+   175→    @page {
+   176→      size: A4 portrait;
+   177→      margin: 0;
+   178→    }
+   179→    @media print {
+   180→      body { background: white; }
+   181→      .page { margin: 0; box-shadow: none; }
+   182→      .no-print { display: none !important; }
+   183→      .page-break { page-break-before: always; }
+   184→    }
+   185→    .page {
+   186→      width: 210mm;
+   187→      min-height: 297mm;
+   188→      padding: 0;
+   189→      margin: 0 auto 20px;
+   190→      background: white;
+   191→      box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+   192→      position: relative;
+   193→      overflow: hidden;
+   194→    }
+   195→    /* ──── HEADER ──── */
+   196→    .doc-header {
+   197→      background: linear-gradient(135deg, #065f46 0%, #047857 50%, #059669 100%);
+   198→      color: white;
+   199→      padding: 18px 25px;
+   200→      display: flex;
+   201→      align-items: center;
+   202→      gap: 15px;
+   203→      position: relative;
+   204→    }
+   205→    .doc-header::after {
+   206→      content: '';
+   207→      position: absolute;
+   208→      bottom: 0;
+   209→      left: 0;
+   210→      right: 0;
+   211→      height: 4px;
+   212→      background: linear-gradient(90deg, #fbbf24, #f59e0b, #fbbf24);
+   213→    }
+   214→    .header-logo {
+   215→      width: 60px;
+   216→      height: 60px;
+   217→      border-radius: 10px;
+   218→      background: white;
+   219→      padding: 4px;
+   220→      flex-shrink: 0;
+   221→      object-fit: contain;
+   222→    }
+   223→    .header-company {
+   224→      flex: 1;
+   225→    }
+   226→    .header-company-name {
+   227→      font-size: 18px;
+   228→      font-weight: 700;
+   229→      letter-spacing: 0.5px;
+   230→    }
+   231→    .header-company-details {
+   232→      font-size: 9px;
+   233→      opacity: 0.9;
+   234→      margin-top: 3px;
+   235→      display: flex;
+   236→      flex-wrap: wrap;
+   237→      gap: 8px;
+   238→    }
+   239→    .header-company-details span {
+   240→      display: inline-flex;
+   241→      align-items: center;
+   242→      gap: 3px;
+   243→    }
+   244→    .header-doc-title-section {
+   245→      flex-shrink: 0;
+   246→      text-align: center;
+   247→      background: rgba(255,255,255,0.15);
+   248→      border-radius: 8px;
+   249→      padding: 8px 16px;
+   250→      backdrop-filter: blur(4px);
+   251→    }
+   252→    .header-doc-title {
+   253→      font-size: 14px;
+   254→      font-weight: 700;
+   255→    }
+   256→    .header-doc-subtitle {
+   257→      font-size: 9px;
+   258→      opacity: 0.85;
+   259→      margin-top: 2px;
+   260→    }
+   261→    /* ──── CUSTOM HEADER IMAGE ──── */
+   262→    .custom-header img {
+   263→      width: 100%;
+   264→      max-height: 100px;
+   265→      object-fit: contain;
+   266→    }
+   267→    /* ──── BODY ──── */
+   268→    .doc-body {
+   269→      padding: 20px 25px 10px;
+   270→    }
+   271→    /* ──── INFO GRID ──── */
+   272→    .info-grid {
+   273→      display: grid;
+   274→      grid-template-columns: 1fr 1fr;
+   275→      gap: 10px 20px;
+   276→      margin: 12px 0;
+   277→    }
+   278→    .info-grid-3 {
+   279→      display: grid;
+   280→      grid-template-columns: 1fr 1fr 1fr;
+   281→      gap: 10px 20px;
+   282→      margin: 12px 0;
+   283→    }
+   284→    .info-item {
+   285→      padding: 6px 10px;
+   286→      background: #f9fafb;
+   287→      border-radius: 4px;
+   288→      border-right: 3px solid #059669;
+   289→      border-left: none;
+   290→    }
+   291→    [dir="ltr"] .info-item {
+   292→      border-right: none;
+   293→      border-left: 3px solid #059669;
+   294→    }
+   295→    .info-label {
+   296→      font-size: 8px;
+   297→      color: #9ca3af;
+   298→      text-transform: uppercase;
+   299→      letter-spacing: 0.5px;
+   300→      margin-bottom: 2px;
+   301→    }
+   302→    .info-value {
+   303→      font-size: 11px;
+   304→      font-weight: 600;
+   305→      color: #1a1a1a;
+   306→    }
+   307→    /* ──── RENTAL EQUIPMENT SECTION ──── */
+   308→    .rental-equipment-section {
+   309→      border: 1px solid #fbbf24;
+   310→      border-radius: 8px;
+   311→      padding: 12px;
+   312→      margin: 12px 0;
+   313→      background: #fffbeb;
+   314→    }
+   315→    .rental-equipment-section .section-title {
+   316→      font-size: 11px;
+   317→      font-weight: 700;
+   318→      color: #92400e;
+   319→      margin-bottom: 8px;
+   320→      padding-bottom: 5px;
+   321→      border-bottom: 1px solid #fbbf24;
+   322→    }
+   323→    .rental-equipment-section .info-grid {
+   324→      grid-template-columns: 1fr 1fr 1fr;
+   325→    }
+   326→    .rental-equipment-section .info-item {
+   327→      border-right-color: #f59e0b;
+   328→      background: #fefce8;
+   329→    }
+   330→    /* ──── PARTIES SECTION ──── */
+   331→    .parties-section {
+   332→      display: grid;
+   333→      grid-template-columns: 1fr 1fr;
+   334→      gap: 15px;
+   335→      margin: 15px 0;
+   336→    }
+   337→    .party-card {
+   338→      border: 1px solid #e5e7eb;
+   339→      border-radius: 8px;
+   340→      padding: 12px;
+   341→      background: #fafafa;
+   342→    }
+   343→    .party-card-title {
+   344→      font-size: 9px;
+   345→      font-weight: 700;
+   346→      color: #059669;
+   347→      text-transform: uppercase;
+   348→      letter-spacing: 0.5px;
+   349→      margin-bottom: 8px;
+   350→      padding-bottom: 5px;
+   351→      border-bottom: 1px solid #e5e7eb;
+   352→    }
+   353→    .party-card-row {
+   354→      display: flex;
+   355→      justify-content: space-between;
+   356→      margin: 3px 0;
+   357→      font-size: 10px;
+   358→    }
+   359→    .party-card-row .label { color: #6b7280; }
+   360→    .party-card-row .value { font-weight: 600; color: #1a1a1a; }
+   361→    /* ──── TABLE ──── */
+   362→    .doc-table {
+   363→      width: 100%;
+   364→      border-collapse: collapse;
+   365→      margin: 15px 0;
+   366→      border-radius: 8px;
+   367→      overflow: hidden;
+   368→      border: 1px solid #e5e7eb;
+   369→    }
+   370→    .doc-table thead {
+   371→      background: linear-gradient(135deg, #065f46, #047857);
+   372→    }
+   373→    .doc-table thead th {
+   374→      padding: 10px 12px;
+   375→      color: white;
+   376→      font-size: 9px;
+   377→      font-weight: 600;
+   378→      text-transform: uppercase;
+   379→      letter-spacing: 0.3px;
+   380→      text-align: ${textAlign};
+   381→    }
+   382→    .doc-table thead th.amount-header {
+   383→      text-align: ${amountAlign};
+   384→    }
+   385→    .doc-table tbody tr {
+   386→      border-bottom: 1px solid #f3f4f6;
+   387→      transition: background 0.15s;
+   388→    }
+   389→    .doc-table tbody tr:nth-child(even) {
+   390→      background: #f9fafb;
+   391→    }
+   392→    .doc-table tbody tr:hover {
+   393→      background: #f0fdf4;
+   394→    }
+   395→    .doc-table tbody td {
+   396→      padding: 8px 12px;
+   397→      font-size: 10px;
+   398→      text-align: ${textAlign};
+   399→    }
+   400→    .doc-table tbody td.amount-cell {
+   401→      text-align: ${amountAlign};
+   402→      font-variant-numeric: tabular-nums;
+   403→      direction: ltr;
+   404→      font-weight: 500;
+   405→    }
+   406→    /* ──── CURRENCY SYMBOL IMAGE ──── */
+   407→    .ri-currency-img {
+   408→      height: 1.3em;
+   409→      width: auto;
+   410→      max-width: 2em;
+   411→      vertical-align: middle;
+   412→      display: inline;
+   413→      object-fit: contain;
+   414→      mix-blend-mode: multiply;
+   415→    }
+   416→    .doc-header .ri-currency-img {
+   417→      mix-blend-mode: screen;
+   418→    }
+   419→    .doc-table tbody td.row-num {
+   420→      text-align: center;
+   421→      color: #9ca3af;
+   422→      font-weight: 600;
+   423→      width: 35px;
+   424→    }
+   425→    /* ──── TOTALS SECTION ──── */
+   426→    .totals-section {
+   427→      margin-top: 15px;
+   428→      display: flex;
+   429→      justify-content: flex-end;
+   430→    }
+   431→    .totals-box {
+   432→      width: 280px;
+   433→      border: 1px solid #e5e7eb;
+   434→      border-radius: 8px;
+   435→      overflow: hidden;
+   436→    }
+   437→    .total-row {
+   438→      display: flex;
+   439→      justify-content: space-between;
+   440→      padding: 7px 12px;
+   441→      font-size: 10px;
+   442→      border-bottom: 1px solid #f3f4f6;
+   443→    }
+   444→    .total-row .label { color: #6b7280; }
+   445→    .total-row .value { font-weight: 600; direction: ltr; }
+   446→    .total-row.grand {
+   447→      background: linear-gradient(135deg, #065f46, #047857);
+   448→      color: white;
+   449→      font-size: 13px;
+   450→      font-weight: 700;
+   451→      padding: 10px 12px;
+   452→      border-bottom: none;
+   453→    }
+   454→    .total-row.grand .label { color: rgba(255,255,255,0.9); }
+   455→    .total-row.grand .value { color: white; font-size: 14px; }
+   456→    /* ──── AMOUNT IN WORDS ──── */
+   457→    .amount-words {
+   458→      margin-top: 12px;
+   459→      padding: 10px 14px;
+   460→      background: #fefce8;
+   461→      border: 1px dashed #fbbf24;
+   462→      border-radius: 6px;
+   463→      font-size: 10px;
+   464→    }
+   465→    .amount-words-label {
+   466→      font-size: 8px;
+   467→      font-weight: 700;
+   468→      color: #92400e;
+   469→      text-transform: uppercase;
+   470→      letter-spacing: 0.3px;
+   471→      margin-bottom: 3px;
+   472→    }
+   473→    .amount-words-text {
+   474→      color: #78350f;
+   475→      font-weight: 600;
+   476→      line-height: 1.5;
+   477→    }
+   478→    /* ──── BANK INFO ──── */
+   479→    .bank-info {
+   480→      margin-top: 12px;
+   481→      padding: 10px 14px;
+   482→      background: #f0f9ff;
+   483→      border: 1px solid #bae6fd;
+   484→      border-radius: 6px;
+   485→      font-size: 9px;
+   486→    }
+   487→    .bank-info-title {
+   488→      font-weight: 700;
+   489→      color: #0369a1;
+   490→      margin-bottom: 5px;
+   491→    }
+   492→    .bank-info-row {
+   493→      display: flex;
+   494→      gap: 15px;
+   495→      color: #0c4a6e;
+   496→    }
+   497→    .bank-info-row span { font-weight: 600; }
+   498→    /* ──── TERMS ──── */
+   499→    .terms-section {
+   500→      margin-top: 12px;
+   501→      padding: 10px 14px;
+   502→      background: #f9fafb;
+   503→      border: 1px solid #e5e7eb;
+   504→      border-radius: 6px;
+   505→      font-size: 9px;
+   506→      color: #6b7280;
+   507→    }
+   508→    .terms-title {
+   509→      font-weight: 700;
+   510→      color: #374151;
+   511→      margin-bottom: 4px;
+   512→    }
+   513→    /* ──── STAMP & SIGNATURE ──── */
+   514→    .signatures-section {
+   515→      margin-top: 25px;
+   516→      display: flex;
+   517→      justify-content: space-between;
+   518→      align-items: flex-end;
+   519→    }
+   520→    .stamp-area {
+   521→      text-align: center;
+   522→    }
+   523→    .stamp-area img {
+   524→      max-width: 120px;
+   525→      max-height: 120px;
+   526→      object-fit: contain;
+   527→    }
+   528→    .signature-box {
+   529→      text-align: center;
+   530→      min-width: 160px;
+   531→    }
+   532→    .signature-line {
+   533→      border-top: 1px dashed #9ca3af;
+   534→      margin-top: 40px;
+   535→      padding-top: 5px;
+   536→      font-size: 9px;
+   537→      color: #6b7280;
+   538→    }
+   539→    /* ──── FOOTER ──── */
+   540→    .doc-footer {
+   541→      position: absolute;
+   542→      bottom: 0;
+   543→      left: 0;
+   544→      right: 0;
+   545→      background: #f9fafb;
+   546→      border-top: 2px solid #059669;
+   547→      padding: 8px 25px;
+   548→      display: flex;
+   549→      justify-content: space-between;
+   550→      align-items: center;
+   551→      font-size: 8px;
+   552→      color: #9ca3af;
+   553→    }
+   554→    .doc-footer .company-info {
+   555→      display: flex;
+   556→      gap: 10px;
+   557→      flex-wrap: wrap;
+   558→    }
+   559→    .doc-footer .page-info {
+   560→      font-weight: 600;
+   561→    }
+   562→    .custom-footer img {
+   563→      width: 100%;
+   564→      max-height: 60px;
+   565→      object-fit: contain;
+   566→    }
+   567→    /* ──── STATUS BADGE ──── */
+   568→    .status-badge {
+   569→      display: inline-block;
+   570→      padding: 3px 10px;
+   571→      border-radius: 12px;
+   572→      font-size: 9px;
+   573→      font-weight: 700;
+   574→      letter-spacing: 0.3px;
+   575→    }
+   576→    .status-draft { background: #fef3c7; color: #92400e; }
+   577→    .status-active { background: #d1fae5; color: #065f46; }
+   578→    .status-paid { background: #d1fae5; color: #065f46; }
+   579→    .status-partial { background: #dbeafe; color: #1e40af; }
+   580→    .status-overdue { background: #fee2e2; color: #991b1b; }
+   581→    .status-cancelled { background: #f3f4f6; color: #6b7280; }
+   582→    /* ──── DIVIDER ──── */
+   583→    .section-divider {
+   584→      border: none;
+   585→      border-top: 1px dashed #d1d5db;
+   586→      margin: 12px 0;
+   587→    }
+   588→    /* ──── PRINT BUTTON ──── */
+   589→    .print-actions {
+   590→      position: fixed;
+   591→      top: 10px;
+   592→      left: 50%;
+   593→      transform: translateX(-50%);
+   594→      z-index: 999;
+   595→      display: flex;
+   596→      gap: 8px;
+   597→    }
+   598→    .print-actions button {
+   599→      padding: 8px 20px;
+   600→      background: #059669;
+   601→      color: white;
+   602→      border: none;
+   603→      border-radius: 8px;
+   604→      font-size: 13px;
+   605→      font-weight: 600;
+   606→      cursor: pointer;
+   607→      font-family: ${fontFamily};
+   608→      box-shadow: 0 2px 8px rgba(5,150,105,0.3);
+   609→      transition: all 0.2s;
+   610→    }
+   611→    .print-actions button:hover {
+   612→      background: #047857;
+   613→      box-shadow: 0 4px 12px rgba(5,150,105,0.4);
+   614→      transform: translateY(-1px);
+   615→    }
+   616→    .print-actions .close-btn {
+   617→      background: #6b7280;
+   618→      box-shadow: 0 2px 8px rgba(107,114,128,0.3);
+   619→    }
+   620→    .print-actions .close-btn:hover {
+   621→      background: #4b5563;
+   622→    }
+   623→    /* ──── WATERMARK ──── */
+   624→    .watermark {
+   625→      position: absolute;
+   626→      top: 50%;
+   627→      left: 50%;
+   628→      transform: translate(-50%, -50%) rotate(-45deg);
+   629→      font-size: 80px;
+   630→      color: rgba(0,0,0,0.03);
+   631→      font-weight: 700;
+   632→      pointer-events: none;
+   633→      white-space: nowrap;
+   634→    }
+   635→  `
+   636→}
+   637→
+   638→// ============ Header Generator ============
+   639→function generateHeader(settings: PrintOptions['settings'], lang: 'ar' | 'en', docTitle: string, docSubtitle?: string): string {
+   640→  const currency = getCurrencySymbol(settings, lang)
+   641→
+   642→  if (settings.headerImage) {
+   643→    return `<div class="custom-header"><img src="${settings.headerImage}" alt="Header" /></div>`
+   644→  }
+   645→
+   646→  return `
+   647→    <div class="doc-header">
+   648→      ${settings.logoUrl ? `<img class="header-logo" src="${settings.logoUrl}" alt="Logo" />` : '<div class="header-logo" style="display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#059669;">ب</div>'}
+   649→      <div class="header-company">
+   650→        <div class="header-company-name">${lang === 'ar' ? settings.nameAr : settings.nameEn}</div>
+   651→        <div class="header-company-details">
+   652→          ${settings.taxNumber ? `<span>📋 ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
+   653→          ${settings.commercialReg ? `<span>🏢 ${lang === 'ar' ? 'س.ت' : 'CR'}: ${settings.commercialReg}</span>` : ''}
+   654→          ${settings.address ? `<span>📍 ${settings.address}</span>` : ''}
+   655→          ${settings.phone ? `<span>📞 ${settings.phone}</span>` : ''}
+   656→          ${settings.email ? `<span>✉ ${settings.email}</span>` : ''}
+   657→          ${settings.website ? `<span>🌐 ${settings.website}</span>` : ''}
+   658→          <span>💰 ${currency}</span>
+   659→        </div>
+   660→      </div>
+   661→      <div class="header-doc-title-section">
+   662→        <div class="header-doc-title">${docTitle}</div>
+   663→        ${docSubtitle ? `<div class="header-doc-subtitle">${docSubtitle}</div>` : ''}
+   664→      </div>
+   665→    </div>
+   666→  `
+   667→}
+   668→
+   669→// ============ Footer Generator ============
+   670→function generateFooter(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   671→  if (settings.footerImage) {
+   672→    return `<div class="custom-footer"><img src="${settings.footerImage}" alt="Footer" /></div>`
+   673→  }
+   674→
+   675→  const companyName = lang === 'ar' ? settings.nameAr : settings.nameEn
+   676→  return `
+   677→    <div class="doc-footer">
+   678→      <div class="company-info">
+   679→        <span>${companyName}</span>
+   680→        ${settings.address ? `<span>| ${settings.address}</span>` : ''}
+   681→        ${settings.phone ? `<span>| ${settings.phone}</span>` : ''}
+   682→        ${settings.email ? `<span>| ${settings.email}</span>` : ''}
+   683→        ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
+   684→      </div>
+   685→      <div class="page-info">
+   686→        ${lang === 'ar' ? 'نظام بِنَاء ERP' : 'Binaa ERP'}
+   687→      </div>
+   688→    </div>
+   689→  `
+   690→}
+   691→
+   692→// ============ Document Title Map ============
+   693→function getDocumentTitle(type: PrintDocumentType, lang: 'ar' | 'en'): { title: string; subtitle: string } {
+   694→  const titles: Record<PrintDocumentType, { ar: string; en: string; subAr?: string; subEn?: string }> = {
+   695→    'service-invoice': { ar: 'فاتورة خدمات', en: 'Service Invoice' },
+   696→    'rental-invoice': { ar: 'فاتورة تأجير معدات', en: 'Equipment Rental Invoice' },
+   697→    'extract': { ar: 'مستخلص أعمال', en: 'Progress Claim' },
+   698→    'purchase-order': { ar: 'أمر شراء', en: 'Purchase Order' },
+   699→    'supplier-invoice': { ar: 'فاتورة مورد', en: 'Supplier Invoice' },
+   700→    'tax-declaration': { ar: 'إقرار ضريبي', en: 'Tax Declaration' },
+   701→    'delivery-order': { ar: 'أمر تسليم', en: 'Delivery Order' },
+   702→    'purchase-request': { ar: 'طلب شراء', en: 'Purchase Request' },
+   703→    'goods-receipt': { ar: 'محضر استلام', en: 'Goods Receipt' },
+   704→    'salary-slip': { ar: 'مسير راتب', en: 'Salary Slip' },
+   705→    'attendance-report': { ar: 'تقرير الحضور', en: 'Attendance Report' },
+   706→    'client-payment': { ar: 'سند تحصيل', en: 'Collection Receipt' },
+   707→    'supplier-payment': { ar: 'سند صرف', en: 'Payment Voucher' },
+   708→    'rental-payment': { ar: 'سند تحصيل إيجار', en: 'Rental Collection Receipt' },
+   709→    'expense-report': { ar: 'سند مصروف', en: 'Expense Voucher' },
+   710→    'advance-voucher': { ar: 'سند سلفة', en: 'Advance Voucher' },
+   711→    'petty-cash-voucher': { ar: 'سند صرف نقدي', en: 'Petty Cash Voucher' },
+   712→    'rental-contract': { ar: 'عقد تأجير', en: 'Rental Contract' },
+   713→    'equipment-report': { ar: 'تقرير معدات', en: 'Equipment Report' },
+   714→    'fuel-report': { ar: 'تقرير وقود', en: 'Fuel Report' },
+   715→    'maintenance-report': { ar: 'تقرير صيانة', en: 'Maintenance Report' },
+   716→    'timesheet-report': { ar: 'سجل حضور معدات', en: 'Equipment Timesheet' },
+   717→    'work-team-report': { ar: 'تقرير فريق عمل', en: 'Work Team Report' },
+   718→    'resource-distribution': { ar: 'تقرير توزيع الموارد', en: 'Resource Distribution Report' },
+   719→    'journal-entry': { ar: 'قيد يومية', en: 'Journal Entry' },
+   720→    'trial-balance': { ar: 'ميزان مراجعة', en: 'Trial Balance' },
+   721→    'account-statement': { ar: 'كشف حساب', en: 'Account Statement' },
+   722→    'generic-table': { ar: 'تقرير', en: 'Report' },
+   723→  }
+   724→  const t = titles[type] || titles['generic-table']
+   725→  return {
+   726→    title: lang === 'ar' ? t.ar : t.en,
+   727→    subtitle: t.subAr && lang === 'ar' ? t.subAr : (t.subEn || '')
+   728→  }
+   729→}
+   730→
+   731→// ============ Status Badge ============
+   732→function statusBadge(status: string | undefined | null, lang: 'ar' | 'en'): string {
+   733→  if (!status) return ''
+   734→  const statusMap: Record<string, { ar: string; en: string; cls: string }> = {
+   735→    'DRAFT': { ar: 'مسودة', en: 'Draft', cls: 'status-draft' },
+   736→    'ACTIVE': { ar: 'نشط', en: 'Active', cls: 'status-active' },
+   737→    'SENT': { ar: 'مرسل', en: 'Sent', cls: 'status-active' },
+   738→    'PAID': { ar: 'مدفوع', en: 'Paid', cls: 'status-paid' },
+   739→    'PARTIALLY_PAID': { ar: 'مدفوع جزئياً', en: 'Partially Paid', cls: 'status-partial' },
+   740→    'OVERDUE': { ar: 'متأخر', en: 'Overdue', cls: 'status-overdue' },
+   741→    'CANCELLED': { ar: 'ملغي', en: 'Cancelled', cls: 'status-cancelled' },
+   742→    'APPROVED': { ar: 'معتمد', en: 'Approved', cls: 'status-active' },
+   743→    'COMPLETED': { ar: 'مكتمل', en: 'Completed', cls: 'status-paid' },
+   744→  }
+   745→  const s = statusMap[status]
+   746→  if (!s) return ''
+   747→  return `<span class="status-badge ${s.cls}">${lang === 'ar' ? s.ar : s.en}</span>`
+   748→}
+   749→
+   750→// ============ Bank Info Section ============
+   751→function bankInfoSection(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   752→  if (!settings.bankName && !settings.bankIban) return ''
+   753→  return `
+   754→    <div class="bank-info">
+   755→      <div class="bank-info-title">${lang === 'ar' ? '🏦 معلومات البنك' : '🏦 Bank Details'}</div>
+   756→      <div class="bank-info-row">
+   757→        ${settings.bankName ? `<span>${lang === 'ar' ? 'البنك' : 'Bank'}: ${settings.bankName}</span>` : ''}
+   758→        ${settings.bankIban ? `<span>IBAN: ${settings.bankIban}</span>` : ''}
+   759→        ${settings.bankAccountName ? `<span>${lang === 'ar' ? 'اسم الحساب' : 'Account'}: ${settings.bankAccountName}</span>` : ''}
+   760→      </div>
+   761→    </div>
+   762→  `
+   763→}
+   764→
+   765→// ============ Signatures Section ============
+   766→function signaturesSection(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+   767→  return `
+   768→    <div class="signatures-section">
+   769→      <div class="stamp-area">
+   770→        ${settings.stamp ? `<img src="${settings.stamp}" alt="${lang === 'ar' ? 'ختم' : 'Stamp'}" />` : ''}
+   771→      </div>
+   772→      <div class="signature-box">
+   773→        <div class="signature-line">${lang === 'ar' ? 'توقيع المدير المالي' : 'CFO Signature'}</div>
+   774→      </div>
+   775→      <div class="signature-box">
+   776→        <div class="signature-line">${lang === 'ar' ? 'توقيع المدير العام' : 'GM Signature'}</div>
+   777→      </div>
+   778→    </div>
+   779→  `
+   780→}
+   781→
+   782→// ============ Amount In Words Section ============
+   783→function amountInWordsSection(amount: number, lang: 'ar' | 'en'): string {
+   784→  if (amount <= 0) return ''
+   785→  return `
+   786→    <div class="amount-words">
+   787→      <div class="amount-words-label">${lang === 'ar' ? '💰 المبلغ كتابة' : '💰 Amount in Words'}</div>
+   788→      <div class="amount-words-text">
+   789→        ${numberToArabicWords(amount)}
+   790→        <br/>
+   791→        <span style="color:#9ca3af; font-size:9px;">${numberToEnglishWords(amount)}</span>
+   792→      </div>
+   793→    </div>
+   794→  `
+   795→}
+   796→
+   797→// ============ ZATCA TLV Encoding (Inline for print service) ============
+   798→function encodeZATCATLV(sellerName: string, vatNumber: string, date: string, total: string, vatTotal: string): string {
+   799→  // TLV encoding: Tag (1 byte) + Length (1 byte) + Value
+   800→  const encodeTag = (tag: number, value: string): Buffer => {
+   801→    const buf = Buffer.from(value, 'utf8')
+   802→    return Buffer.concat([Buffer.from([tag, buf.length]), buf])
+   803→  }
+   804→  const tlv = Buffer.concat([
+   805→    encodeTag(0x01, sellerName),
+   806→    encodeTag(0x02, vatNumber),
+   807→    encodeTag(0x03, date),
+   808→    encodeTag(0x04, total),
+   809→    encodeTag(0x05, vatTotal),
+   810→  ])
+   811→  return tlv.toString('base64')
+   812→}
+   813→
+   814→// ============ Rental Invoice CSS ============
+   815→function getRentalInvoiceCSS(lang: 'ar' | 'en'): string {
+   816→  const dir = lang === 'ar' ? 'rtl' : 'ltr'
+   817→  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
+   818→  const textAlign = lang === 'ar' ? 'right' : 'left'
+   819→  const amountAlign = lang === 'ar' ? 'left' : 'right'
+   820→
+   821→  return `
+   822→    * { margin: 0; padding: 0; box-sizing: border-box; }
+   823→    body {
+   824→      font-family: ${fontFamily};
+   825→      font-size: 10px;
+   826→      color: #1e293b;
+   827→      direction: ${dir};
+   828→      background: #e2e8f0;
+   829→      line-height: 1.5;
+   830→    }
+   831→    @page {
+   832→      size: A4 portrait;
+   833→      margin: 0;
+   834→    }
+   835→    @media print {
+   836→      body { background: white; }
+   837→      .page { margin: 0; box-shadow: none; }
+   838→      .no-print { display: none !important; }
+   839→    }
+   840→    .page {
+   841→      width: 210mm;
+   842→      min-height: 297mm;
+   843→      padding: 0;
+   844→      margin: 0 auto 20px;
+   845→      background: white;
+   846→      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+   847→      position: relative;
+   848→      overflow: hidden;
+   849→    }
+   850→
+   851→    /* ──── HEADER ──── */
+   852→    .ri-header {
+   853→      background: linear-gradient(135deg, #064e3b 0%, #065f46 40%, #047857 100%);
+   854→      color: white;
+   855→      padding: 20px 28px 16px;
+   856→      position: relative;
+   857→      display: flex;
+   858→      align-items: flex-start;
+   859→      gap: 16px;
+   860→    }
+   861→    .ri-header::after {
+   862→      content: '';
+   863→      position: absolute;
+   864→      bottom: 0; left: 0; right: 0;
+   865→      height: 4px;
+   866→      background: linear-gradient(90deg, #d97706, #f59e0b, #d97706);
+   867→    }
+   868→    .ri-header-logo {
+   869→      width: 72px; height: 72px;
+   870→      border-radius: 12px;
+   871→      background: white;
+   872→      padding: 5px;
+   873→      flex-shrink: 0;
+   874→      object-fit: contain;
+   875→    }
+   876→    .ri-header-logo-placeholder {
+   877→      width: 72px; height: 72px;
+   878→      border-radius: 12px;
+   879→      background: rgba(255,255,255,0.15);
+   880→      display: flex; align-items: center; justify-content: center;
+   881→      font-size: 30px; font-weight: 800; color: #d97706;
+   882→      flex-shrink: 0;
+   883→    }
+   884→    .ri-header-company {
+   885→      flex: 1;
+   886→      min-width: 0;
+   887→    }
+   888→    .ri-header-company-name {
+   889→      font-size: 20px;
+   890→      font-weight: 800;
+   891→      letter-spacing: 0.5px;
+   892→      line-height: 1.3;
+   893→    }
+   894→    .ri-header-company-name-en {
+   895→      font-size: 11px;
+   896→      opacity: 0.8;
+   897→      font-weight: 400;
+   898→      margin-top: 1px;
+   899→    }
+   900→    .ri-header-details {
+   901→      display: flex;
+   902→      flex-wrap: wrap;
+   903→      gap: 6px 14px;
+   904→      margin-top: 6px;
+   905→      font-size: 8.5px;
+   906→      opacity: 0.9;
+   907→    }
+   908→    .ri-header-details span {
+   909→      display: inline-flex;
+   910→      align-items: center;
+   911→      gap: 3px;
+   912→      white-space: nowrap;
+   913→    }
+   914→    .ri-header-title-box {
+   915→      flex-shrink: 0;
+   916→      text-align: center;
+   917→      background: rgba(255,255,255,0.12);
+   918→      border-radius: 10px;
+   919→      padding: 10px 18px;
+   920→      backdrop-filter: blur(4px);
+   921→      border: 1px solid rgba(255,255,255,0.2);
+   922→      align-self: center;
+   923→    }
+   924→    .ri-header-title {
+   925→      font-size: 14px;
+   926→      font-weight: 700;
+   927→      white-space: nowrap;
+   928→    }
+   929→    .ri-header-title-en {
+   930→      font-size: 9px;
+   931→      opacity: 0.85;
+   932→      margin-top: 2px;
+   933→    }
+   934→
+   935→    /* ──── CUSTOM HEADER IMAGE ──── */
+   936→    .ri-custom-header img {
+   937→      width: 100%;
+   938→      max-height: 100px;
+   939→      object-fit: contain;
+   940→    }
+   941→
+   942→    /* ──── BODY ──── */
+   943→    .ri-body {
+   944→      padding: 16px 28px 8px;
+   945→    }
+   946→
+   947→    /* ──── INVOICE INFO ──── */
+   948→    .ri-info-section {
+   949→      display: grid;
+   950→      grid-template-columns: 1fr 1fr;
+   951→      gap: 8px 20px;
+   952→      margin: 0 0 14px;
+   953→    }
+   954→    .ri-info-item {
+   955→      padding: 5px 10px;
+   956→      background: #f8fafc;
+   957→      border-radius: 4px;
+   958→      border-right: 3px solid #047857;
+   959→    }
+   960→    [dir="ltr"] .ri-info-item {
+   961→      border-right: none;
+   962→      border-left: 3px solid #047857;
+   963→    }
+   964→    .ri-info-label {
+   965→      font-size: 7.5px;
+   966→      color: #94a3b8;
+   967→      text-transform: uppercase;
+   968→      letter-spacing: 0.4px;
+   969→      margin-bottom: 1px;
+   970→    }
+   971→    .ri-info-value {
+   972→      font-size: 10px;
+   973→      font-weight: 600;
+   974→      color: #1e293b;
+   975→    }
+   976→
+   977→    /* ──── PARTIES SECTION ──── */
+   978→    .ri-parties {
+   979→      display: grid;
+   980→      grid-template-columns: 1fr 1fr;
+   981→      gap: 14px;
+   982→      margin: 0 0 14px;
+   983→    }
+   984→    .ri-party-card {
+   985→      border: 1.5px solid #e2e8f0;
+   986→      border-radius: 8px;
+   987→      padding: 10px 12px;
+   988→      background: #fafafa;
+   989→    }
+   990→    .ri-party-title {
+   991→      font-size: 8px;
+   992→      font-weight: 700;
+   993→      color: #047857;
+   994→      text-transform: uppercase;
+   995→      letter-spacing: 0.5px;
+   996→      margin-bottom: 6px;
+   997→      padding-bottom: 4px;
+   998→      border-bottom: 1px solid #e2e8f0;
+   999→    }
+  1000→    .ri-party-row {
+  1001→      display: flex;
+  1002→      justify-content: space-between;
+  1003→      margin: 2px 0;
+  1004→      font-size: 9px;
+  1005→    }
+  1006→    .ri-party-row .label { color: #64748b; }
+  1007→    .ri-party-row .value { font-weight: 600; color: #1e293b; }
+  1008→
+  1009→    /* ──── ITEMS TABLE ──── */
+  1010→    .ri-table {
+  1011→      width: 100%;
+  1012→      border-collapse: collapse;
+  1013→      margin: 0 0 14px;
+  1014→      border-radius: 8px;
+  1015→      overflow: hidden;
+  1016→      border: 1px solid #e2e8f0;
+  1017→    }
+  1018→    .ri-table thead {
+  1019→      background: linear-gradient(135deg, #064e3b, #047857);
+  1020→    }
+  1021→    .ri-table thead th {
+  1022→      padding: 8px 10px;
+  1023→      color: white;
+  1024→      font-size: 8px;
+  1025→      font-weight: 600;
+  1026→      text-transform: uppercase;
+  1027→      letter-spacing: 0.3px;
+  1028→      text-align: ${textAlign};
+  1029→      white-space: nowrap;
+  1030→    }
+  1031→    .ri-table thead th.amount-header {
+  1032→      text-align: ${amountAlign};
+  1033→    }
+  1034→    .ri-table tbody tr {
+  1035→      border-bottom: 1px solid #f1f5f9;
+  1036→      transition: background 0.15s;
+  1037→    }
+  1038→    .ri-table tbody tr:nth-child(even) {
+  1039→      background: #f8fafc;
+  1040→    }
+  1041→    .ri-table tbody td {
+  1042→      padding: 6px 10px;
+  1043→      font-size: 9px;
+  1044→      text-align: ${textAlign};
+  1045→    }
+  1046→    .ri-table tbody td.amount-cell {
+  1047→      text-align: ${amountAlign};
+  1048→      font-variant-numeric: tabular-nums;
+  1049→      direction: ltr;
+  1050→      font-weight: 500;
+  1051→    }
+  1052→    .ri-table tbody td.row-num {
+  1053→      text-align: center;
+  1054→      color: #94a3b8;
+  1055→      font-weight: 600;
+  1056→      width: 30px;
+  1057→    }
+  1058→
+  1059→    /* ──── BILLING SUMMARY ──── */
+  1060→    .ri-totals {
+  1061→      margin: 0 0 12px;
+  1062→      display: flex;
+  1063→      justify-content: flex-end;
+  1064→    }
+  1065→    .ri-totals-box {
+  1066→      width: 280px;
+  1067→      border: 1.5px solid #e2e8f0;
+  1068→      border-radius: 8px;
+  1069→      overflow: hidden;
+  1070→    }
+  1071→    .ri-total-row {
+  1072→      display: flex;
+  1073→      justify-content: space-between;
+  1074→      padding: 5px 12px;
+  1075→      font-size: 9.5px;
+  1076→      border-bottom: 1px solid #f1f5f9;
+  1077→    }
+  1078→    .ri-total-row .label { color: #64748b; }
+  1079→    .ri-total-row .value { font-weight: 600; direction: ltr; }
+  1080→    .ri-total-row.grand {
+  1081→      background: linear-gradient(135deg, #064e3b, #047857);
+  1082→      color: white;
+  1083→      font-size: 12px;
+  1084→      font-weight: 700;
+  1085→      padding: 8px 12px;
+  1086→      border-bottom: none;
+  1087→    }
+  1088→    .ri-total-row.grand .label { color: rgba(255,255,255,0.9); }
+  1089→    .ri-total-row.grand .value { color: white; font-size: 13px; }
+  1090→
+  1091→    /* ──── AMOUNT IN WORDS ──── */
+  1092→    .ri-amount-words {
+  1093→      margin: 0 0 10px;
+  1094→      padding: 8px 12px;
+  1095→      background: #fffbeb;
+  1096→      border: 1px dashed #f59e0b;
+  1097→      border-radius: 6px;
+  1098→      font-size: 9px;
+  1099→    }
+  1100→    .ri-amount-words-label {
+  1101→      font-size: 7.5px;
+  1102→      font-weight: 700;
+  1103→      color: #92400e;
+  1104→      text-transform: uppercase;
+  1105→      letter-spacing: 0.3px;
+  1106→      margin-bottom: 2px;
+  1107→    }
+  1108→    .ri-amount-words-text {
+  1109→      color: #78350f;
+  1110→      font-weight: 600;
+  1111→      line-height: 1.5;
+  1112→    }
+  1113→    .ri-amount-words-en {
+  1114→      color: #94a3b8;
+  1115→      font-size: 8px;
+  1116→      margin-top: 2px;
+  1117→    }
+  1118→
+  1119→    /* ──── QR CODE SECTION ──── */
+  1120→    .ri-qr-section {
+  1121→      display: flex;
+  1122→      align-items: flex-start;
+  1123→      gap: 12px;
+  1124→      margin: 0 0 10px;
+  1125→      padding: 8px 12px;
+  1126→      background: #f0fdf4;
+  1127→      border: 1px solid #bbf7d0;
+  1128→      border-radius: 6px;
+  1129→    }
+  1130→    .ri-qr-image {
+  1131→      width: 100px;
+  1132→      height: 100px;
+  1133→      flex-shrink: 0;
+  1134→      object-fit: contain;
+  1135→    }
+  1136→    .ri-qr-info {
+  1137→      flex: 1;
+  1138→      font-size: 8px;
+  1139→      color: #64748b;
+  1140→    }
+  1141→    .ri-qr-title {
+  1142→      font-weight: 700;
+  1143→      color: #065f46;
+  1144→      font-size: 9px;
+  1145→      margin-bottom: 4px;
+  1146→    }
+  1147→
+  1148→    /* ──── BANK INFO ──── */
+  1149→    .ri-bank {
+  1150→      margin: 0 0 10px;
+  1151→      padding: 8px 12px;
+  1152→      background: #eff6ff;
+  1153→      border: 1px solid #bfdbfe;
+  1154→      border-radius: 6px;
+  1155→      font-size: 8.5px;
+  1156→    }
+  1157→    .ri-bank-title {
+  1158→      font-weight: 700;
+  1159→      color: #1e40af;
+  1160→      margin-bottom: 4px;
+  1161→      font-size: 9px;
+  1162→    }
+  1163→    .ri-bank-grid {
+  1164→      display: grid;
+  1165→      grid-template-columns: 1fr 1fr 1fr;
+  1166→      gap: 6px;
+  1167→      color: #1e3a5f;
+  1168→    }
+  1169→    .ri-bank-item-label {
+  1170→      color: #64748b;
+  1171→      font-size: 7.5px;
+  1172→    }
+  1173→    .ri-bank-item-value {
+  1174→      font-weight: 600;
+  1175→      color: #1e293b;
+  1176→      font-size: 9px;
+  1177→      direction: ltr;
+  1178→      unicode-bidi: plaintext;
+  1179→    }
+  1180→
+  1181→    /* ──── SIGNATURES ──── */
+  1182→    .ri-signatures {
+  1183→      margin: 14px 0 8px;
+  1184→      display: grid;
+  1185→      grid-template-columns: 1fr 1fr;
+  1186→      gap: 20px;
+  1187→    }
+  1188→    .ri-sign-box {
+  1189→      border: 1.5px dashed #cbd5e1;
+  1190→      border-radius: 8px;
+  1191→      padding: 12px;
+  1192→      text-align: center;
+  1193→      min-height: 80px;
+  1194→      display: flex;
+  1195→      flex-direction: column;
+  1196→      justify-content: flex-end;
+  1197→    }
+  1198→    .ri-sign-box .sign-label {
+  1199→      font-size: 8px;
+  1200→      color: #64748b;
+  1201→      font-weight: 600;
+  1202→      margin-top: 8px;
+  1203→      padding-top: 6px;
+  1204→      border-top: 1px solid #e2e8f0;
+  1205→    }
+  1206→    .ri-sign-box .stamp-img {
+  1207→      max-width: 80px;
+  1208→      max-height: 60px;
+  1209→      object-fit: contain;
+  1210→      margin: 0 auto;
+  1211→    }
+  1212→
+  1213→    /* ──── TERMS ──── */
+  1214→    .ri-terms {
+  1215→      margin: 0 0 8px;
+  1216→      padding: 8px 12px;
+  1217→      background: #f8fafc;
+  1218→      border: 1px solid #e2e8f0;
+  1219→      border-radius: 6px;
+  1220→      font-size: 8px;
+  1221→      color: #64748b;
+  1222→    }
+  1223→    .ri-terms-title {
+  1224→      font-weight: 700;
+  1225→      color: #334155;
+  1226→      margin-bottom: 3px;
+  1227→      font-size: 8.5px;
+  1228→    }
+  1229→
+  1230→    /* ──── FOOTER ──── */
+  1231→    .ri-footer {
+  1232→      position: absolute;
+  1233→      bottom: 0; left: 0; right: 0;
+  1234→      background: #f1f5f9;
+  1235→      border-top: 2px solid #047857;
+  1236→      padding: 6px 28px;
+  1237→      display: flex;
+  1238→      justify-content: space-between;
+  1239→      align-items: center;
+  1240→      font-size: 7.5px;
+  1241→      color: #94a3b8;
+  1242→    }
+  1243→    .ri-footer .company-info {
+  1244→      display: flex;
+  1245→      gap: 8px;
+  1246→      flex-wrap: wrap;
+  1247→    }
+  1248→    .ri-custom-footer img {
+  1249→      width: 100%;
+  1250→      max-height: 50px;
+  1251→      object-fit: contain;
+  1252→    }
+  1253→
+  1254→    /* ──── STATUS BADGE ──── */
+  1255→    .ri-status-badge {
+  1256→      display: inline-block;
+  1257→      padding: 2px 8px;
+  1258→      border-radius: 10px;
+  1259→      font-size: 8px;
+  1260→      font-weight: 700;
+  1261→    }
+  1262→    .ri-status-draft { background: #fef3c7; color: #92400e; }
+  1263→    .ri-status-active { background: #d1fae5; color: #065f46; }
+  1264→    .ri-status-paid { background: #d1fae5; color: #065f46; }
+  1265→    .ri-status-partial { background: #dbeafe; color: #1e40af; }
+  1266→    .ri-status-overdue { background: #fee2e2; color: #991b1b; }
+  1267→    .ri-status-cancelled { background: #f3f4f6; color: #6b7280; }
+  1268→    .ri-status-sent { background: #d1fae5; color: #065f46; }
+  1269→    .ri-status-approved { background: #d1fae5; color: #065f46; }
+  1270→    .ri-status-completed { background: #d1fae5; color: #065f46; }
+  1271→
+  1272→    /* ──── CURRENCY SYMBOL IMAGE ──── */
+  1273→    .ri-currency-img {
+  1274→      height: 1.3em;
+  1275→      width: auto;
+  1276→      max-width: 2em;
+  1277→      vertical-align: middle;
+  1278→      display: inline;
+  1279→      object-fit: contain;
+  1280→      /* Remove white/light background from currency symbol images */
+  1281→      mix-blend-mode: multiply;
+  1282→    }
+  1283→    /* For dark backgrounds (footer, headers), use screen blend instead */
+  1284→    .ri-footer .ri-currency-img,
+  1285→    .ri-header .ri-currency-img {
+  1286→      mix-blend-mode: screen;
+  1287→    }
+  1288→
+  1289→    /* ──── WATERMARK ──── */
+  1290→    .ri-watermark {
+  1291→      position: absolute;
+  1292→      top: 50%;
+  1293→      left: 50%;
+  1294→      transform: translate(-50%, -50%) rotate(-45deg);
+  1295→      font-size: 80px;
+  1296→      color: rgba(0,0,0,0.03);
+  1297→      font-weight: 700;
+  1298→      pointer-events: none;
+  1299→      white-space: nowrap;
+  1300→    }
+  1301→
+  1302→    /* ──── PRINT ACTIONS ──── */
+  1303→    .ri-print-actions {
+  1304→      position: fixed;
+  1305→      top: 10px;
+  1306→      left: 50%;
+  1307→      transform: translateX(-50%);
+  1308→      z-index: 999;
+  1309→      display: flex;
+  1310→      gap: 8px;
+  1311→    }
+  1312→    .ri-print-actions button {
+  1313→      padding: 8px 18px;
+  1314→      color: white;
+  1315→      border: none;
+  1316→      border-radius: 8px;
+  1317→      font-size: 12px;
+  1318→      font-weight: 600;
+  1319→      cursor: pointer;
+  1320→      font-family: ${fontFamily};
+  1321→      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  1322→      transition: all 0.2s;
+  1323→    }
+  1324→    .ri-print-actions button:hover {
+  1325→      transform: translateY(-1px);
+  1326→      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  1327→    }
+  1328→    .ri-btn-print { background: #047857; }
+  1329→    .ri-btn-print:hover { background: #065f46; }
+  1330→    .ri-btn-jpg { background: #d97706; }
+  1331→    .ri-btn-jpg:hover { background: #b45309; }
+  1332→    .ri-btn-png { background: #7c3aed; }
+  1333→    .ri-btn-png:hover { background: #6d28d9; }
+  1334→    .ri-btn-close { background: #6b7280; }
+  1335→    .ri-btn-close:hover { background: #4b5563; }
+  1336→    .ri-export-loading {
+  1337→      opacity: 0.6;
+  1338→      pointer-events: none;
+  1339→    }
+  1340→
+  1341→    /* ──── DIVIDER ──── */
+  1342→    .ri-divider {
+  1343→      border: none;
+  1344→      border-top: 1px dashed #d1d5db;
+  1345→      margin: 10px 0;
+  1346→    }
+  1347→  `
+  1348→}
+  1349→
+  1350→// ============ Rental Invoice Header ============
+  1351→function generateRentalInvoiceHeader(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1352→  const currency = getCurrencySymbol(settings, lang)
+  1353→
+  1354→  if (settings.headerImage) {
+  1355→    return `<div class="ri-custom-header"><img src="${settings.headerImage}" alt="Header" /></div>`
+  1356→  }
+  1357→
+  1358→  return `
+  1359→    <div class="ri-header">
+  1360→      ${settings.logoUrl
+  1361→        ? `<img class="ri-header-logo" src="${settings.logoUrl}" alt="Logo" />`
+  1362→        : '<div class="ri-header-logo-placeholder">ب</div>'
+  1363→      }
+  1364→      <div class="ri-header-company">
+  1365→        <div class="ri-header-company-name">${lang === 'ar' ? settings.nameAr : settings.nameEn}</div>
+  1366→        <div class="ri-header-company-name-en">${lang === 'ar' ? settings.nameEn : settings.nameAr}</div>
+  1367→        <div class="ri-header-details">
+  1368→          ${settings.commercialReg ? `<span>${lang === 'ar' ? 'ض.ر' : 'CR'}: ${settings.commercialReg}</span>` : ''}
+  1369→          ${settings.taxNumber ? `<span>${lang === 'ar' ? 'س.ت' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
+  1370→          ${settings.address ? `<span>${settings.address}</span>` : ''}
+  1371→          ${settings.phone ? `<span>${settings.phone}</span>` : ''}
+  1372→          ${settings.email ? `<span>${settings.email}</span>` : ''}
+  1373→          <span>${currency}</span>
+  1374→        </div>
+  1375→      </div>
+  1376→      <div class="ri-header-title-box">
+  1377→        <div class="ri-header-title">${lang === 'ar' ? 'فاتورة ضريبية' : 'Tax Invoice'}</div>
+  1378→        <div class="ri-header-title-en">${lang === 'ar' ? 'Tax Invoice' : 'فاتورة ضريبية'}</div>
+  1379→      </div>
+  1380→    </div>
+  1381→  `
+  1382→}
+  1383→
+  1384→// ============ Rental Invoice Footer ============
+  1385→function generateRentalInvoiceFooter(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1386→  if (settings.footerImage) {
+  1387→    return `<div class="ri-custom-footer"><img src="${settings.footerImage}" alt="Footer" /></div>`
+  1388→  }
+  1389→
+  1390→  const companyName = lang === 'ar' ? settings.nameAr : settings.nameEn
+  1391→  return `
+  1392→    <div class="ri-footer">
+  1393→      <div class="company-info">
+  1394→        <span>${companyName}</span>
+  1395→        ${settings.address ? `<span>| ${settings.address}</span>` : ''}
+  1396→        ${settings.phone ? `<span>| ${settings.phone}</span>` : ''}
+  1397→        ${settings.email ? `<span>| ${settings.email}</span>` : ''}
+  1398→        ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
+  1399→      </div>
+  1400→      <span>${lang === 'ar' ? 'نظام بِنَاء ERP' : 'Binaa ERP'}</span>
+  1401→    </div>
+  1402→  `
+  1403→}
+  1404→
+  1405→// ============ Rental Invoice Status Badge ============
+  1406→function rentalStatusBadge(status: string | undefined | null, lang: 'ar' | 'en'): string {
+  1407→  if (!status) return ''
+  1408→  const map: Record<string, { ar: string; en: string; cls: string }> = {
+  1409→    'DRAFT': { ar: 'مسودة', en: 'Draft', cls: 'ri-status-draft' },
+  1410→    'ACTIVE': { ar: 'نشط', en: 'Active', cls: 'ri-status-active' },
+  1411→    'SENT': { ar: 'مرسل', en: 'Sent', cls: 'ri-status-sent' },
+  1412→    'PAID': { ar: 'مدفوع', en: 'Paid', cls: 'ri-status-paid' },
+  1413→    'PARTIALLY_PAID': { ar: 'مدفوع جزئياً', en: 'Partially Paid', cls: 'ri-status-partial' },
+  1414→    'OVERDUE': { ar: 'متأخر', en: 'Overdue', cls: 'ri-status-overdue' },
+  1415→    'CANCELLED': { ar: 'ملغي', en: 'Cancelled', cls: 'ri-status-cancelled' },
+  1416→    'APPROVED': { ar: 'معتمد', en: 'Approved', cls: 'ri-status-approved' },
+  1417→    'COMPLETED': { ar: 'مكتمل', en: 'Completed', cls: 'ri-status-completed' },
+  1418→  }
+  1419→  const s = map[status]
+  1420→  if (!s) return ''
+  1421→  return `<span class="ri-status-badge ${s.cls}">${lang === 'ar' ? s.ar : s.en}</span>`
+  1422→}
+  1423→
+  1424→// ============ Currency Display ============
+  1425→function currencyDisplay(settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1426→  if (settings.currencySymbolImage) {
+  1427→    return `<img class="ri-currency-img" src="${settings.currencySymbolImage}" alt="SAR" />`
+  1428→  }
+  1429→  return lang === 'ar' ? 'ر.س' : 'SAR'
+  1430→}
+  1431→
+  1432→/**
+  1433→ * Format a money value with currency symbol for print templates.
+  1434→ * Uses currency symbol image if available, otherwise text.
+  1435→ * This should be used for ALL amount displays in print templates.
+  1436→ */
+  1437→function fmtMoney(value: number, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1438→  const formatted = formatMoneyPrint(value)
+  1439→  const symbol = currencyDisplay(settings, lang)
+  1440→  // Arabic: number then symbol (RTL) | English: symbol then number
+  1441→  if (lang === 'ar') {
+  1442→    return `${formatted} ${symbol}`
+  1443→  }
+  1444→  return `${symbol} ${formatted}`
+  1445→}
+  1446→
+  1447→// ============ Rental Invoice Body Generator ============
+  1448→function generateRentalInvoiceBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1449→  const items = (data.items as Array<Record<string, unknown>>) || []
+  1450→  const currency = getCurrencySymbol(settings, lang)
+  1451→  const totalAmount = Number(data.totalAmount) || 0
+  1452→  const subtotal = Number(data.subtotal) || 0
+  1453→  const vatAmount = Number(data.vatAmount) || 0
+  1454→  const vatRate = settings.defaultVatRate || 0.15
+  1455→  const deliveryFees = Number(data.deliveryAmount || data.deliveryFees) || 0
+  1456→  const includeDelivery = data.includeDelivery === true || deliveryFees > 0
+  1457→
+  1458→  // Compute delivery VAT if applicable
+  1459→  const deliveryFeesTaxable = data.deliveryFeesTaxable === true || data.deliveryFeesTaxable === 'true'
+  1460→  const deliveryVat = deliveryFeesTaxable ? deliveryFees * vatRate : 0
+  1461→
+  1462→  // Date formatting
+  1463→  const formatDate = (d: unknown) => {
+  1464→    if (!d) return ''
+  1465→    try {
+  1466→      return new Date(d as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  1467→    } catch {
+  1468→      return String(d)
+  1469→    }
+  1470→  }
+  1471→
+  1472→  // ─── Section 1: Invoice Info ───
+  1473→  const invoiceInfoSection = `
+  1474→    <div class="ri-info-section">
+  1475→      <div class="ri-info-item">
+  1476→        <div class="ri-info-label">${lang === 'ar' ? 'رقم الفاتورة / Invoice No' : 'Invoice No'}</div>
+  1477→        <div class="ri-info-value">${data.invoiceNo || data.id || ''}</div>
+  1478→      </div>
+  1479→      <div class="ri-info-item">
+  1480→        <div class="ri-info-label">${lang === 'ar' ? 'شروط السداد / Payment Terms' : 'Payment Terms'}</div>
+  1481→        <div class="ri-info-value">${(data.paymentTerms as string) || (lang === 'ar' ? 'حسب العقد' : 'As per contract')}</div>
+  1482→      </div>
+  1483→      <div class="ri-info-item">
+  1484→        <div class="ri-info-label">${lang === 'ar' ? 'تاريخ الفاتورة / Invoice Date' : 'Invoice Date'}</div>
+  1485→        <div class="ri-info-value">${formatDate(data.date)}</div>
+  1486→      </div>
+  1487→      <div class="ri-info-item">
+  1488→        <div class="ri-info-label">${lang === 'ar' ? 'الحالة / Status' : 'Status'}</div>
+  1489→        <div class="ri-info-value">${rentalStatusBadge(data.status as string, lang)}</div>
+  1490→      </div>
+  1491→      <div class="ri-info-item">
+  1492→        <div class="ri-info-label">${lang === 'ar' ? 'تاريخ الاستحقاق / Due Date' : 'Due Date'}</div>
+  1493→        <div class="ri-info-value">${formatDate(data.dueDate)}</div>
+  1494→      </div>
+  1495→      <div class="ri-info-item">
+  1496→        <div class="ri-info-label">${lang === 'ar' ? 'فترة التسليم / Delivery Period' : 'Delivery Period'}</div>
+  1497→        <div class="ri-info-value">${(data.deliveryMonth as string) || '-'}</div>
+  1498→      </div>
+  1499→      <div class="ri-info-item">
+  1500→        <div class="ri-info-label">${lang === 'ar' ? 'رقم العقد / Contract No' : 'Contract No'}</div>
+  1501→        <div class="ri-info-value">${data.contractNo || '-'}</div>
+  1502→      </div>
+  1503→      <div class="ri-info-item">
+  1504→        <div class="ri-info-label">${lang === 'ar' ? 'ساعات التشغيل / Operating Hours' : 'Operating Hours'}</div>
+  1505→        <div class="ri-info-value">${data.operatingHours != null ? `${data.operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'}` : '-'}</div>
+  1506→      </div>
+  1507→      <div class="ri-info-item">
+  1508→        <div class="ri-info-label">${lang === 'ar' ? 'رقم طلب البيع / Sales Order' : 'Sales Order'}</div>
+  1509→        <div class="ri-info-value">${data.salesOrderNo || '-'}</div>
+  1510→      </div>
+  1511→    </div>
+  1512→  `
+  1513→
+  1514→  // ─── Section 2: Parties ───
+  1515→  const partiesSection = `
+  1516→    <div class="ri-parties">
+  1517→      <div class="ri-party-card">
+  1518→        <div class="ri-party-title">${lang === 'ar' ? 'من / From' : 'From'}</div>
+  1519→        <div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+  1520→        ${settings.address ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
+  1521→        ${settings.taxNumber ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${settings.taxNumber}</span></div>` : ''}
+  1522→        ${settings.commercialReg ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'سجل تجاري' : 'CR No'}</span><span class="value">${settings.commercialReg}</span></div>` : ''}
+  1523→      </div>
+  1524→      <div class="ri-party-card">
+  1525→        <div class="ri-party-title">${lang === 'ar' ? 'إلى / To' : 'To'}</div>
+  1526→        <div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${data.clientName || ''}</span></div>
+  1527→        ${data.clientAddress ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${data.clientAddress}</span></div>` : ''}
+  1528→        ${data.clientTaxNumber ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${data.clientTaxNumber}</span></div>` : ''}
+  1529→      </div>
+  1530→    </div>
+  1531→  `
+  1532→
+  1533→  // ─── Section 3: Items Table ───
+  1534→  const tableRows = items.map((item, i) => `
+  1535→    <tr>
+  1536→      <td class="row-num">${i + 1}</td>
+  1537→      <td>${item.description || ''}</td>
+  1538→      <td style="text-align:center;">${item.quantity || 0}</td>
+  1539→      <td>${(item.unit as string) || (lang === 'ar' ? 'ساعة' : 'hr')}</td>
+  1540→      <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+  1541→      <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
+  1542→    </tr>
+  1543→  `).join('')
+  1544→
+  1545→  const itemsTable = `
+  1546→    <table class="ri-table">
+  1547→      <thead>
+  1548→        <tr>
+  1549→          <th>#</th>
+  1550→          <th>${lang === 'ar' ? 'الوصف / Description' : 'Description'}</th>
+  1551→          <th>${lang === 'ar' ? 'الكمية / Qty' : 'Qty'}</th>
+  1552→          <th>${lang === 'ar' ? 'الوحدة / Unit' : 'Unit'}</th>
+  1553→          <th class="amount-header">${lang === 'ar' ? `سعر الوحدة / Unit Price` : 'Unit Price'} (${currency})</th>
+  1554→          <th class="amount-header">${lang === 'ar' ? `الإجمالي / Total` : 'Total'} (${currency})</th>
+  1555→        </tr>
+  1556→      </thead>
+  1557→      <tbody>${tableRows}</tbody>
+  1558→    </table>
+  1559→  `
+  1560→
+  1561→  // ─── Section 4: Billing Summary ───
+  1562→  const billingSummary = `
+  1563→    <div class="ri-totals">
+  1564→      <div class="ri-totals-box">
+  1565→        <div class="ri-total-row">
+  1566→          <span class="label">${lang === 'ar' ? 'المجموع الفرعي / Subtotal' : 'Subtotal'}</span>
+  1567→          <span class="value">${fmtMoney(subtotal, settings, lang)}</span>
+  1568→        </div>
+  1569→        ${includeDelivery ? `
+  1570→        <div class="ri-total-row">
+  1571→          <span class="label">${lang === 'ar' ? 'رسوم النقل / Delivery Fees' : 'Delivery Fees'}</span>
+  1572→          <span class="value">${fmtMoney(deliveryFees, settings, lang)}</span>
+  1573→        </div>
+  1574→        ${deliveryFeesTaxable && deliveryVat > 0 ? `
+  1575→        <div class="ri-total-row">
+  1576→          <span class="label">${lang === 'ar' ? 'ضريبة رسوم النقل / Delivery VAT' : 'Delivery VAT'}</span>
+  1577→          <span class="value">${fmtMoney(deliveryVat, settings, lang)}</span>
+  1578→        </div>
+  1579→        ` : ''}` : ''}
+  1580→        <div class="ri-total-row">
+  1581→          <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة ${vatRate * 100}% / VAT ${vatRate * 100}%` : `VAT ${vatRate * 100}%`}</span>
+  1582→          <span class="value">${fmtMoney(vatAmount, settings, lang)}</span>
+  1583→        </div>
+  1584→        <div class="ri-total-row grand">
+  1585→          <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة / Grand Total' : 'Grand Total incl. VAT'}</span>
+  1586→          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
+  1587→        </div>
+  1588→      </div>
+  1589→    </div>
+  1590→  `
+  1591→
+  1592→  // ─── Section 5: Amount in Words ───
+  1593→  const amountWordsHtml = totalAmount > 0 ? `
+  1594→    <div class="ri-amount-words">
+  1595→      <div class="ri-amount-words-label">${lang === 'ar' ? 'المبلغ كتابة / Amount in Words' : 'Amount in Words'}</div>
+  1596→      <div class="ri-amount-words-text">${numberToArabicWords(totalAmount)}</div>
+  1597→      <div class="ri-amount-words-en">${numberToEnglishWords(totalAmount)}</div>
+  1598→    </div>
+  1599→  ` : ''
+  1600→
+  1601→  // ─── Section 6: QR Code ───
+  1602→  // Generate ZATCA TLV base64 string for QR code
+  1603→  const sellerName = lang === 'ar' ? settings.nameAr : settings.nameEn
+  1604→  const vatNumber = settings.taxNumber || ''
+  1605→  const invoiceDate = data.date ? new Date(data.date as string).toISOString().split('T')[0] : ''
+  1606→  const totalStr = formatMoneyPrint(totalAmount)
+  1607→  const vatTotalStr = formatMoneyPrint(vatAmount)
+  1608→  const tlvBase64 = encodeZATCATLV(sellerName, vatNumber, invoiceDate, totalStr, vatTotalStr)
+  1609→
+  1610→  // QR code image: use server-generated data URL if provided, otherwise use inline fallback
+  1611→  const qrDataUrl = data.qrDataUrl as string | undefined
+  1612→
+  1613→  const qrSection = settings.taxNumber ? `
+  1614→    <div class="ri-qr-section">
+  1615→      ${qrDataUrl
+  1616→        ? `<img class="ri-qr-image" src="${qrDataUrl}" alt="ZATCA QR Code" style="display:block;" />`
+  1617→        : `<canvas id="ri-qr-canvas" style="display:none;"></canvas>
+  1618→           <img id="ri-qr-image" class="ri-qr-image" alt="ZATCA QR Code" style="display:none;" />`
+  1619→      }
+  1620→      <div class="ri-qr-info">
+  1621→        <div class="ri-qr-title">${lang === 'ar' ? 'رمز الاستجابة السريعة - هيئة الزكاة والضريبة والجمارك' : 'ZATCA QR Code'}</div>
+  1622→        <div>${lang === 'ar' ? 'اسم البائع' : 'Seller'}: ${sellerName}</div>
+  1623→        <div>${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}: ${vatNumber}</div>
+  1624→        <div>${lang === 'ar' ? 'تاريخ الفاتورة' : 'Invoice Date'}: ${invoiceDate}</div>
+  1625→        <div>${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Total incl. VAT'}: ${fmtMoney(totalAmount, settings, lang)}</div>
+  1626→        <div>${lang === 'ar' ? 'مبلغ الضريبة' : 'VAT Amount'}: ${fmtMoney(vatAmount, settings, lang)}</div>
+  1627→      </div>
+  1628→    </div>
+  1629→    ${!qrDataUrl ? `
+  1630→    <script>
+  1631→      (function() {
+  1632→        var tlvBase64 = "${tlvBase64}";
+  1633→        function generateQR() {
+  1634→          if (typeof QRCode === 'undefined') return;
+  1635→          var canvas = document.getElementById('ri-qr-canvas');
+  1636→          if (!canvas) return;
+  1637→          QRCode.toCanvas(canvas, tlvBase64, {
+  1638→            width: 100,
+  1639→            margin: 1,
+  1640→            color: { dark: '#000000', light: '#ffffff' }
+  1641→          }, function(error) {
+  1642→            if (error) return;
+  1643→            var img = document.getElementById('ri-qr-image');
+  1644→            if (img) {
+  1645→              img.src = canvas.toDataURL('image/png');
+  1646→              img.style.display = 'block';
+  1647→            }
+  1648→          });
+  1649→        }
+  1650→        if (typeof QRCode !== 'undefined') {
+  1651→          generateQR();
+  1652→        } else {
+  1653→          var checkInterval = setInterval(function() {
+  1654→            if (typeof QRCode !== 'undefined') {
+  1655→              clearInterval(checkInterval);
+  1656→              generateQR();
+  1657→            }
+  1658→          }, 200);
+  1659→          setTimeout(function() { clearInterval(checkInterval); }, 5000);
+  1660→        }
+  1661→      })();
+  1662→    </script>
+  1663→    ` : ''}
+  1664→  ` : ''
+  1665→
+  1666→  // ─── Section 7: Bank Info ───
+  1667→  const bankHtml = (settings.bankName || settings.bankIban || settings.bankAccountName) ? `
+  1668→    <div class="ri-bank">
+  1669→      <div class="ri-bank-title">${lang === 'ar' ? '🏦 معلومات البنك / Bank Details' : '🏦 Bank Details'}</div>
+  1670→      <div class="ri-bank-grid">
+  1671→        <div>
+  1672→          <div class="ri-bank-item-label">${lang === 'ar' ? 'اسم البنك / Bank Name' : 'Bank Name'}</div>
+  1673→          <div class="ri-bank-item-value">${settings.bankName || '-'}</div>
+  1674→        </div>
+  1675→        <div>
+  1676→          <div class="ri-bank-item-label">${lang === 'ar' ? 'الآيبان / IBAN' : 'IBAN'}</div>
+  1677→          <div class="ri-bank-item-value">${settings.bankIban || '-'}</div>
+  1678→        </div>
+  1679→        <div>
+  1680→          <div class="ri-bank-item-label">${lang === 'ar' ? 'اسم الحساب / Account Name' : 'Account Name'}</div>
+  1681→          <div class="ri-bank-item-value">${settings.bankAccountName || '-'}</div>
+  1682→        </div>
+  1683→      </div>
+  1684→    </div>
+  1685→  ` : ''
+  1686→
+  1687→  // ─── Section 8: Signatures ───
+  1688→  const signaturesHtml = `
+  1689→    <div class="ri-signatures">
+  1690→      <div class="ri-sign-box">
+  1691→        ${settings.stamp ? `<img class="stamp-img" src="${settings.stamp}" alt="Stamp" />` : ''}
+  1692→        <div class="sign-label">${lang === 'ar' ? 'ختم الشركة وتوقيعها / Company Stamp & Signature' : 'Company Stamp & Signature'}</div>
+  1693→      </div>
+  1694→      <div class="ri-sign-box">
+  1695→        <div class="sign-label">${lang === 'ar' ? 'ختم العميل وتوقيعه / Customer Stamp & Signature' : 'Customer Stamp & Signature'}</div>
+  1696→      </div>
+  1697→    </div>
+  1698→  `
+  1699→
+  1700→  // ─── Section 9: Terms ───
+  1701→  const termsHtml = (data.terms || settings.invoiceTerms) ? `
+  1702→    <div class="ri-terms">
+  1703→      <div class="ri-terms-title">${lang === 'ar' ? '📝 الشروط والأحكام / Terms & Conditions' : '📝 Terms & Conditions'}</div>
+  1704→      ${(data.terms as string) || settings.invoiceTerms || ''}
+  1705→    </div>
+  1706→  ` : ''
+  1707→
+  1708→  // ─── Assemble all sections ───
+  1709→  return `
+  1710→    ${invoiceInfoSection}
+  1711→    ${partiesSection}
+  1712→    ${itemsTable}
+  1713→    ${billingSummary}
+  1714→    ${amountWordsHtml}
+  1715→    ${qrSection}
+  1716→    ${bankHtml}
+  1717→    ${termsHtml}
+  1718→    ${signaturesHtml}
+  1719→  `
+  1720→}
+  1721→
+  1722→// ============ Document Body Generators ============
+  1723→
+  1724→function generateInvoiceBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1725→  const items = (data.items as Array<Record<string, unknown>>) || []
+  1726→  const currency = getCurrencySymbol(settings, lang)
+  1727→  const totalAmount = Number(data.totalAmount) || 0
+  1728→  const isRental = data.invoiceType === 'RENTAL'
+  1729→
+  1730→  // Rental-specific info section
+  1731→  const rentalSection = isRental && (data.equipmentName || data.operatingHours || data.hourlyRate) ? `
+  1732→    <div class="rental-equipment-section">
+  1733→      <div class="section-title">${lang === 'ar' ? '⚙️ بيانات المعدة والإيجار / Equipment & Rental Data' : '⚙️ Equipment & Rental Data'}</div>
+  1734→      <div class="info-grid">
+  1735→        ${data.equipmentName ? `<div class="info-item">
+  1736→          <div class="info-label">${lang === 'ar' ? 'المعدة' : 'Equipment'}</div>
+  1737→          <div class="info-value">${data.equipmentName}</div>
+  1738→        </div>` : ''}
+  1739→        ${data.operatingHours != null ? `<div class="info-item">
+  1740→          <div class="info-label">${lang === 'ar' ? 'ساعات التشغيل' : 'Operating Hours'}</div>
+  1741→          <div class="info-value">${data.operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'}</div>
+  1742→        </div>` : ''}
+  1743→        ${data.hourlyRate != null ? `<div class="info-item">
+  1744→          <div class="info-label">${lang === 'ar' ? 'سعر الساعة' : 'Hourly Rate'}</div>
+  1745→          <div class="info-value">${fmtMoney(Number(data.hourlyRate) || 0, settings, lang)}</div>
+  1746→        </div>` : ''}
+  1747→        ${data.deliveryMonth ? `<div class="info-item">
+  1748→          <div class="info-label">${lang === 'ar' ? 'فترة الإيجار' : 'Rental Period'}</div>
+  1749→          <div class="info-value">${data.deliveryMonth}</div>
+  1750→        </div>` : ''}
+  1751→        ${data.salesOrderNo ? `<div class="info-item">
+  1752→          <div class="info-label">${lang === 'ar' ? 'رقم طلب البيع' : 'Sales Order No'}</div>
+  1753→          <div class="info-value">${data.salesOrderNo}</div>
+  1754→        </div>` : ''}
+  1755→      </div>
+  1756→    </div>
+  1757→  ` : ''
+  1758→
+  1759→  return `
+  1760→    <div class="parties-section">
+  1761→      <div class="party-card">
+  1762→        <div class="party-card-title">${lang === 'ar' ? '🏘️ من :' : '🏘️ From:'}</div>
+  1763→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+  1764→        ${settings.address ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
+  1765→        ${settings.taxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'Tax No'}</span><span class="value">${settings.taxNumber}</span></div>` : ''}
+  1766→      </div>
+  1767→      <div class="party-card">
+  1768→        <div class="party-card-title">${lang === 'ar' ? '👤 إلى :' : '👤 To:'}</div>
+  1769→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${data.clientName || ''}</span></div>
+  1770→        ${data.clientAddress ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${data.clientAddress}</span></div>` : ''}
+  1771→        ${data.clientTaxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'Tax No'}</span><span class="value">${data.clientTaxNumber}</span></div>` : ''}
+  1772→      </div>
+  1773→    </div>
+  1774→
+  1775→    <div class="info-grid">
+  1776→      <div class="info-item">
+  1777→        <div class="info-label">${lang === 'ar' ? 'رقم الفاتورة' : 'Invoice No'}</div>
+  1778→        <div class="info-value">${data.invoiceNo || data.id || ''}</div>
+  1779→      </div>
+  1780→      <div class="info-item">
+  1781→        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+  1782→        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+  1783→      </div>
+  1784→      <div class="info-item">
+  1785→        <div class="info-label">${lang === 'ar' ? 'رقم العقد' : 'Contract No'}</div>
+  1786→        <div class="info-value">${data.contractNo || '-'}</div>
+  1787→      </div>
+  1788→      <div class="info-item">
+  1789→        <div class="info-label">${lang === 'ar' ? 'الحالة' : 'Status'}</div>
+  1790→        <div class="info-value">${statusBadge(data.status as string, lang)}</div>
+  1791→      </div>
+  1792→    </div>
+  1793→
+  1794→    ${rentalSection}
+  1795→
+  1796→    <table class="doc-table">
+  1797→      <thead>
+  1798→        <tr>
+  1799→          <th>#</th>
+  1800→          <th>${lang === 'ar' ? 'الوصف' : 'Description'}</th>
+  1801→          <th>${lang === 'ar' ? 'الكمية' : 'Qty'}</th>
+  1802→          <th class="amount-header">${lang === 'ar' ? 'السعر' : 'Price'} (${currency})</th>
+  1803→          <th class="amount-header">${lang === 'ar' ? 'الإجمالي' : 'Total'} (${currency})</th>
+  1804→        </tr>
+  1805→      </thead>
+  1806→      <tbody>
+  1807→        ${items.map((item, i) => `
+  1808→          <tr>
+  1809→            <td class="row-num">${i + 1}</td>
+  1810→            <td>${item.description || ''}</td>
+  1811→            <td>${item.quantity || 0}</td>
+  1812→            <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+  1813→            <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
+  1814→          </tr>
+  1815→        `).join('')}
+  1816→      </tbody>
+  1817→    </table>
+  1818→
+  1819→    <div class="totals-section">
+  1820→      <div class="totals-box">
+  1821→        <div class="total-row">
+  1822→          <span class="label">${lang === 'ar' ? 'المجموع الفرعي' : 'Subtotal'}</span>
+  1823→          <span class="value">${fmtMoney(Number(data.subtotal) || 0, settings, lang)}</span>
+  1824→        </div>
+  1825→        <div class="total-row">
+  1826→          <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة (${(settings.defaultVatRate * 100).toFixed(0)}%)` : `VAT (${(settings.defaultVatRate * 100).toFixed(0)}%)`}</span>
+  1827→          <span class="value">${fmtMoney(Number(data.vatAmount) || 0, settings, lang)}</span>
+  1828→        </div>
+  1829→        ${data.includeDelivery && Number(data.deliveryAmount) > 0 ? `
+  1830→        <div class="total-row">
+  1831→          <span class="label">${lang === 'ar' ? 'رسوم النقل' : 'Delivery Fees'}</span>
+  1832→          <span class="value">${fmtMoney(Number(data.deliveryAmount) || 0, settings, lang)}</span>
+  1833→        </div>
+  1834→        ` : ''}
+  1835→        <div class="total-row grand">
+  1836→          <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
+  1837→          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
+  1838→        </div>
+  1839→      </div>
+  1840→    </div>
+  1841→
+  1842→    ${amountInWordsSection(totalAmount, lang)}
+  1843→    ${bankInfoSection(settings, lang)}
+  1844→    ${data.terms || settings.invoiceTerms ? `
+  1845→    <div class="terms-section">
+  1846→      <div class="terms-title">${lang === 'ar' ? '📝 الشروط والأحكام' : '📝 Terms & Conditions'}</div>
+  1847→      ${(data.terms as string) || settings.invoiceTerms || ''}
+  1848→    </div>` : ''}
+  1849→    ${signaturesSection(settings, lang)}
+  1850→  `
+  1851→}
+  1852→
+  1853→function generateExtractBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1854→  const currency = getCurrencySymbol(settings, lang)
+  1855→  const totalAmount = Number(data.totalAmount) || 0
+  1856→
+  1857→  return `
+  1858→    <div class="info-grid">
+  1859→      <div class="info-item">
+  1860→        <div class="info-label">${lang === 'ar' ? 'رقم المستخلص' : 'Claim No'}</div>
+  1861→        <div class="info-value">${data.claimNo || data.id || ''}</div>
+  1862→      </div>
+  1863→      <div class="info-item">
+  1864→        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+  1865→        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+  1866→      </div>
+  1867→      <div class="info-item">
+  1868→        <div class="info-label">${lang === 'ar' ? 'المشروع' : 'Project'}</div>
+  1869→        <div class="info-value">${data.projectName || ''}</div>
+  1870→      </div>
+  1871→      <div class="info-item">
+  1872→        <div class="info-label">${lang === 'ar' ? 'نسبة الإنجاز' : 'Completion %'}</div>
+  1873→        <div class="info-value">${data.percentage || 0}%</div>
+  1874→      </div>
+  1875→    </div>
+  1876→
+  1877→    <table class="doc-table">
+  1878→      <thead>
+  1879→        <tr>
+  1880→          <th>${lang === 'ar' ? 'البيان' : 'Description'}</th>
+  1881→          <th class="amount-header">${lang === 'ar' ? 'المبلغ' : 'Amount'} (${currency})</th>
+  1882→        </tr>
+  1883→      </thead>
+  1884→      <tbody>
+  1885→        <tr>
+  1886→          <td>${lang === 'ar' ? 'قيمة العقد' : 'Contract Value'}</td>
+  1887→          <td class="amount-cell">${fmtMoney(Number(data.contractValue) || 0, settings, lang)}</td>
+  1888→        </tr>
+  1889→        <tr>
+  1890→          <td>${lang === 'ar' ? 'قيمة المستخلص' : 'Claim Amount'}</td>
+  1891→          <td class="amount-cell">${fmtMoney(Number(data.amount) || 0, settings, lang)}</td>
+  1892→        </tr>
+  1893→        <tr>
+  1894→          <td>${lang === 'ar' ? `ضريبة القيمة المضافة (${(settings.defaultVatRate * 100).toFixed(0)}%)` : `VAT (${(settings.defaultVatRate * 100).toFixed(0)}%)`}</td>
+  1895→          <td class="amount-cell">${fmtMoney(Number(data.vatAmount) || 0, settings, lang)}</td>
+  1896→        </tr>
+  1897→      </tbody>
+  1898→    </table>
+  1899→
+  1900→    <div class="totals-section">
+  1901→      <div class="totals-box">
+  1902→        <div class="total-row grand">
+  1903→          <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
+  1904→          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
+  1905→        </div>
+  1906→      </div>
+  1907→    </div>
+  1908→
+  1909→    ${amountInWordsSection(totalAmount, lang)}
+  1910→    ${signaturesSection(settings, lang)}
+  1911→  `
+  1912→}
+  1913→
+  1914→function generateSupplierInvoiceBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1915→  const items = (data.items as Array<Record<string, unknown>>) || []
+  1916→  const currency = getCurrencySymbol(settings, lang)
+  1917→  const totalAmount = Number(data.totalAmount) || 0
+  1918→
+  1919→  return `
+  1920→    <div class="parties-section">
+  1921→      <div class="party-card">
+  1922→        <div class="party-card-title">${lang === 'ar' ? '🏢 المورد :' : '🏢 Supplier:'}</div>
+  1923→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.supplierName || ''}</span></div>
+  1924→        ${data.supplierTaxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'Tax No'}</span><span class="value">${data.supplierTaxNumber}</span></div>` : ''}
+  1925→      </div>
+  1926→      <div class="party-card">
+  1927→        <div class="party-card-title">${lang === 'ar' ? '🏢 المشتري :' : '🏢 Buyer:'}</div>
+  1928→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+  1929→        ${settings.taxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'Tax No'}</span><span class="value">${settings.taxNumber}</span></div>` : ''}
+  1930→      </div>
+  1931→    </div>
+  1932→
+  1933→    <div class="info-grid">
+  1934→      <div class="info-item">
+  1935→        <div class="info-label">${lang === 'ar' ? 'رقم الفاتورة' : 'Invoice No'}</div>
+  1936→        <div class="info-value">${data.invoiceNo || data.id || ''}</div>
+  1937→      </div>
+  1938→      <div class="info-item">
+  1939→        <div class="info-label">${lang === 'ar' ? 'التاريخ' : 'Date'}</div>
+  1940→        <div class="info-value">${data.date ? new Date(data.date as string).toLocaleDateString(lang === 'ar' ? 'ar-SA-u-ca-gregory' : 'en-US') : ''}</div>
+  1941→      </div>
+  1942→    </div>
+  1943→
+  1944→    <table class="doc-table">
+  1945→      <thead>
+  1946→        <tr>
+  1947→          <th>#</th>
+  1948→          <th>${lang === 'ar' ? 'الوصف' : 'Description'}</th>
+  1949→          <th>${lang === 'ar' ? 'الكمية' : 'Qty'}</th>
+  1950→          <th class="amount-header">${lang === 'ar' ? 'السعر' : 'Price'} (${currency})</th>
+  1951→          <th class="amount-header">${lang === 'ar' ? 'الإجمالي' : 'Total'} (${currency})</th>
+  1952→        </tr>
+  1953→      </thead>
+  1954→      <tbody>
+  1955→        ${items.map((item, i) => `
+  1956→          <tr>
+  1957→            <td class="row-num">${i + 1}</td>
+  1958→            <td>${item.description || ''}</td>
+  1959→            <td>${item.quantity || 0}</td>
+  1960→            <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
+  1961→            <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
+  1962→          </tr>
+  1963→        `).join('')}
+  1964→      </tbody>
+  1965→    </table>
+  1966→
+  1967→    <div class="totals-section">
+  1968→      <div class="totals-box">
+  1969→        <div class="total-row">
+  1970→          <span class="label">${lang === 'ar' ? 'المجموع الفرعي' : 'Subtotal'}</span>
+  1971→          <span class="value">${fmtMoney(Number(data.subtotal) || 0, settings, lang)}</span>
+  1972→        </div>
+  1973→        <div class="total-row">
+  1974→          <span class="label">${lang === 'ar' ? `ضريبة القيمة المضافة (${(settings.defaultVatRate * 100).toFixed(0)}%)` : `VAT (${(settings.defaultVatRate * 100).toFixed(0)}%)`}</span>
+  1975→          <span class="value">${fmtMoney(Number(data.vatAmount) || 0, settings, lang)}</span>
+  1976→        </div>
+  1977→        <div class="total-row grand">
+  1978→          <span class="label">${lang === 'ar' ? 'الإجمالي شامل الضريبة' : 'Grand Total incl. VAT'}</span>
+  1979→          <span class="value">${fmtMoney(totalAmount, settings, lang)}</span>
+  1980→        </div>
+  1981→      </div>
+  1982→    </div>
+  1983→
+  1984→    ${amountInWordsSection(totalAmount, lang)}
+  1985→    ${signaturesSection(settings, lang)}
+  1986→  `
+  1987→}
+  1988→
+  1989→function generatePurchaseOrderBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
+  1990→  const items = (data.items as Array<Record<string, unknown>>) || []
+  1991→  const currency = getCurrencySymbol(settings, lang)
+  1992→
+  1993→  return `
+  1994→    <div class="parties-section">
+  1995→      <div class="party-card">
+  1996→        <div class="party-card-title">${lang === 'ar' ? '🏢 الطالب :' : '🏢 Buyer:'}</div>
+  1997→        <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
+  1998→        ${settings.address ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
+  1999→      </div>
+  2000→      <div class="party-card">
+
+[showing lines 1-2000 of 2548; use offset=2001 with limit to continue reading]
