@@ -4,71 +4,82 @@ import { NextResponse } from 'next/server'
 
 // ============ POST: Reopen a closed fiscal year (admin override) ============
 // Removes the closing marker, reopens all 12 periods, and optionally reverses the closing JE.
-// The reversal now goes through reverseEntry() so all R1-R12 rules are enforced centrally.
+// ATOMIC: reverseEntry + fiscalYear.update + fiscalPeriod.updateMany are wrapped in a single
+// $transaction so partial failure cannot leave a reversal JE with a still-closed year.
+// The reversal goes through reverseEntry() so all R1-R12 rules are enforced centrally.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params
+  let body: any
   try {
-    const { id } = await params
-    const body = await request.json().catch(() => ({}))
+    body = await request.json()
+  } catch {
+    body = {}
+  }
 
-    const fiscalYear = await db.fiscalYear.findUnique({ where: { id } })
-    if (!fiscalYear) {
-      return NextResponse.json({ error: 'السنة المالية غير موجودة' }, { status: 404 })
-    }
+  const fiscalYear = await db.fiscalYear.findUnique({ where: { id } })
+  if (!fiscalYear) {
+    return NextResponse.json({ error: 'السنة المالية غير موجودة' }, { status: 404 })
+  }
 
-    if (fiscalYear.status !== 'CLOSED') {
-      return NextResponse.json(
-        { error: `لا يمكن إعادة فتح سنة بحالة: ${fiscalYear.status}` },
-        { status: 400 }
-      )
-    }
+  if (fiscalYear.status !== 'CLOSED') {
+    return NextResponse.json(
+      { error: `لا يمكن إعادة فتح سنة بحالة: ${fiscalYear.status}` },
+      { status: 400 }
+    )
+  }
 
-    const reopenNotes = body.notes || 'أُعيد فتح السنة بواسطة مدير النظام'
-    const reverseJE = body.reverseClosingJE !== false // default true
+  const reopenNotes = body.notes || 'أُعيد فتح السنة بواسطة مدير النظام'
+  const reverseJE = body.reverseClosingJE !== false // default true
 
-    let reversalEntryId: string | null = null
-    let reversalEntryNo: string | null = null
+  try {
+    const { reversalEntryId, reversalEntryNo } = await db.$transaction(async (tx) => {
+      let revId: string | null = null
+      let revNo: string | null = null
 
-    // Optionally reverse the closing JE using the unified reverseEntry().
-    // This enforces all R1-R12 rules (balance, period, entryNo uniqueness, etc.)
-    // instead of bypassing them with direct db.journalEntry.create.
-    if (reverseJE && fiscalYear.closingJournalEntryId) {
-      const closingJE = await db.journalEntry.findUnique({
-        where: { id: fiscalYear.closingJournalEntryId },
-      })
-
-      if (closingJE && closingJE.status === 'POSTED' && !closingJE.isReversal) {
-        // Check it's not already reversed
-        const existingReversal = await db.journalEntry.findFirst({
-          where: { reversedEntryId: closingJE.id, deletedAt: null },
+      // Optionally reverse the closing JE using the unified reverseEntry().
+      // This enforces all R1-R12 rules (balance, period, entryNo uniqueness, etc.)
+      // instead of bypassing them with direct db.journalEntry.create.
+      if (reverseJE && fiscalYear.closingJournalEntryId) {
+        const closingJE = await tx.journalEntry.findUnique({
+          where: { id: fiscalYear.closingJournalEntryId },
         })
-        if (!existingReversal) {
-          // Use reverseEntry — it creates a proper reversal with swapped debit/credit,
-          // keeps the original POSTED, and enforces all guard rules.
-          const reversal = await reverseEntry(closingJE.id, db)
-          reversalEntryId = reversal.id
-          reversalEntryNo = reversal.entryNo
+
+        if (closingJE && closingJE.status === 'POSTED' && !closingJE.isReversal) {
+          // Check it's not already reversed
+          const existingReversal = await tx.journalEntry.findFirst({
+            where: { reversedEntryId: closingJE.id, deletedAt: null },
+          })
+          if (!existingReversal) {
+            // Use reverseEntry with the transaction client so the reversal is atomic
+            // with the fiscal year / period status updates below.
+            const reversal = await reverseEntry(closingJE.id, tx)
+            revId = reversal.id
+            revNo = reversal.entryNo
+          }
         }
       }
-    }
 
-    // Reopen the fiscal year
-    await db.fiscalYear.update({
-      where: { id },
-      data: {
-        status: 'OPEN',
-        closedAt: null,
-        closedBy: null,
-        closingNotes: reopenNotes,
-      },
-    })
+      // Reopen the fiscal year
+      await tx.fiscalYear.update({
+        where: { id },
+        data: {
+          status: 'OPEN',
+          closedAt: null,
+          closedBy: null,
+          closingNotes: reopenNotes,
+        },
+      })
 
-    // Reopen all 12 periods
-    await db.fiscalPeriod.updateMany({
-      where: { fiscalYearId: id },
-      data: { status: 'OPEN' },
+      // Reopen all 12 periods
+      await tx.fiscalPeriod.updateMany({
+        where: { fiscalYearId: id },
+        data: { status: 'OPEN' },
+      })
+
+      return { reversalEntryId: revId, reversalEntryNo: revNo }
     })
 
     return NextResponse.json({
