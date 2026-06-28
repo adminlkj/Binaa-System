@@ -4134,3 +4134,68 @@ Stage Summary:
 - Browser-verified interactivity across Dashboard, HR module (Employees, Payroll, Salaries), Accounting/Trial Balance
 - Mobile + Desktop responsive layouts verified
 - Ready for commit + push, then Phase 5
+
+---
+Task ID: 5-impact-audit
+Agent: Z.ai Code (main session)
+Task: Phase 5 (pre-stage) — Audit "Account Impact" (أثر الحسابات) calculation logic + account name display
+
+Work Log:
+- المستخدم قدم بيانات من تبويب "أثر الحسابات" لقيد يومية يصيب 3 حسابات:
+  - 1210 (عملاء/ASSET): Dr 23,575 — before 0, after 23,575 ✓ صحيح
+  - 6210 (إيرادات تأجير المعدات/REVENUE): Cr 20,500 — before 41,000, after 20,500 ✗ خطأ
+  - 3110 (ضريبة مخرجات/LIABILITY): Cr 3,075 — before 6,150, after 3,075 ✗ خطأ
+- الفحص الأولي للكود: عثرت على حساب beforeBalance في src/components/modules/accounting.tsx:607:
+    const beforeBalance = currentBalance - (info.totalDebit - info.totalCredit)
+  هذه المعادلة تستخدم صيغة debit-normal لجميع الحسابات بدون تمييز.
+- تحققت من أن /api/accounts/route.ts:53 يحسب الرصيد بشكل صحيح بمراعاة normalBalance:
+    const balance = normalBalance === 'DEBIT' ? totalDebit - totalCredit : totalCredit - totalDebit
+  إذن الخلل محصور في الواجهة الأمامية (front-end) فقط.
+- فحص المواقع المشابهة:
+  - /api/accounts/[id]/route.ts:63-73 → يستخدم isDebitNormal بشكل صحيح ✓
+  - /api/accounts/statement/route.ts:84-129 → يستخدم isDebitNormal بشكل صحيح ✓
+  - /api/financial-reports/route.ts:217-224 → يستخدم isDebitNormal بشكل صحيح ✓
+  - src/lib/accounting/engine.ts:1787-1796 → يستخدم normalBalance بشكل صحيح ✓
+  - src/lib/account-impact.ts:306 → netBalance للعرض فقط (معلومة debit-credit) ✓
+  - src/lib/print-service.ts:3594 → fallback عند عدم وجود closingBalance (latent bug لكن مسار الإسناد دائماً يوفر closingBalance)
+  القرار: الخلل الوحيد الفعلي في accounting.tsx.
+
+- الفحص العملي (PRACTICAL — وفقاً لمنهجية المستخدم الإلزامية):
+  كتبت scripts/test-impact-credit.ts يحاكي منطق الواجهة لـ JE-000001 (فاتورة مبيعات RNT-0001).
+  النتائج أكدت الخلل تماماً:
+    1210 (ASSET/DEBIT): buggy_before=0, fixed_before=0 → OK (debit-normal)
+    6210 (REVENUE/CREDIT): buggy_before=41000 (WRONG), fixed_before=0 (OK)
+    3110 (LIABILITY/CREDIT): buggy_before=6150 (WRONG), fixed_before=0 (OK)
+  مطابقة 100% لبيانات المستخدم.
+
+- الإصلاح (src/components/modules/accounting.tsx:595-622):
+  استبدلت السطر:
+    const beforeBalance = currentBalance - (info.totalDebit - info.totalCredit)
+  بمنطق يحترم normalBalance:
+    const isDebitNormal = !acct?.type || acct.type === 'ASSET' || acct.type === 'EXPENSE'
+    const balanceChange = isDebitNormal
+      ? (info.totalDebit - info.totalCredit)
+      : (info.totalCredit - info.totalDebit)
+    const beforeBalance = currentBalance - balanceChange
+  أضفت تعليقاً توضيحياً يشرح الخلل والإصلاح.
+
+- التحقق العملي بعد الإصلاح (Agent Browser):
+  فتحت http://localhost:3000/ → المحاسبة → قيود اليومية → نقرت JE-000001 → تبويب "أثر الحسابات".
+  استخرجت قيم الجدول عبر eval:
+    1210 | عملاء | Dr=23,575.00 | Cr=(empty) | before=0.00 | after=23,575.00 ✓
+    6210 | إيرادات تأجير المعدات | Dr=(empty) | Cr=20,500.00 | before=0.00 | after=20,500.00 ✓ (FIXED)
+    3110 | ضريبة مخرجات | Dr=(empty) | Cr=3,075.00 | before=0.00 | after=3,075.00 ✓ (FIXED)
+  أسماء الحسابات تُعرض بشكل صحيح (nameAr عند الوضع العربي).
+  اختبرت JE-000003 (قيد عكسي يصيب 1110, 1210 — debit-normal): before/after صحيحان، الإصلاح لم يكسر debit-normal.
+  Trial Balance: Dr=106,175 = Cr=106,175 (متوازن).
+  Mobile (375×812): لا يوجد تجاوز أفقي (scrollWidth ≤ clientWidth).
+  Desktop (1440×900): التخطيط سليم.
+  Console: لا أخطاء. Lint: نظيف.
+
+Stage Summary:
+- BUG FIXED: accountImpactData.beforeBalance كان يستخدم صيغة debit-normal لكل الحسابات، مما ضاعف أثر الدائن للحسابات الدائنة الطبيعة (REVENUE/LIABILITY/EQUITY) بدلاً من طرحه.
+- IMPACT: تبويب "أثر الحسابات" (Account Impact) في تفاصيل قيد اليومية كان يعرض أرصدة "قبل" خاطئة لجميع الحسابات الدائنة. الآن يعرضها بشكل صحيح.
+- VERIFIED: عملياً عبر Agent Browser + API + DB. JE-000001 يعرض قبل=0 للحسابات 6210 و 3110 (كانت 41,000 و 6,150).
+- اسم الحساب (nameAr): يعمل بشكل صحيح، يعرض الأسماء العربية في الوضع العربي.
+- لا أخطاء console، lint نظيف، mيزان متوازن، تجاوب سليم.
+- جاهز لـ commit + push ثم الانتقال للمرحلة 5 الكاملة.

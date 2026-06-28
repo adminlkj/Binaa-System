@@ -600,11 +600,22 @@ function JournalEntryDetail({ entry, onBack, accounts, onEntryChanged }: { entry
       else { uniqueAccounts.set(line.accountId, { code: line.account.code, name: line.account.name, nameAr: line.account.nameAr, totalDebit: line.debit, totalCredit: line.credit }) }
     }
 
+    // Determine each account's normal balance side so that "before" balance is computed correctly:
+    //   DEBIT-normal (ASSET, EXPENSE):  balance = totalDebit  - totalCredit  (debit increases balance)
+    //   CREDIT-normal (LIABILITY, EQUITY, REVENUE): balance = totalCredit - totalDebit (credit increases balance)
+    // BUG FIX (Phase 5-Audit): previously the formula used `(info.totalDebit - info.totalCredit)`
+    // unconditionally, which DOUBLED the credit impact for credit-normal accounts instead of
+    // subtracting it (e.g. for 6210 REVENUE with current=20,500 and Cr=20,500, the buggy formula
+    // returned before=41,000 instead of the correct before=0). Now we respect the normal balance.
     const impactItems: { accountId: string; code: string; name: string; nameAr: string | null; totalDebit: number; totalCredit: number; beforeBalance: number; afterBalance: number }[] = []
     for (const [accountId, info] of uniqueAccounts) {
       const acct = accounts.find(a => a.id === accountId)
       const currentBalance = acct?.balance || 0
-      const beforeBalance = currentBalance - (info.totalDebit - info.totalCredit)
+      const isDebitNormal = !acct?.type || acct.type === 'ASSET' || acct.type === 'EXPENSE'
+      const balanceChange = isDebitNormal
+        ? (info.totalDebit - info.totalCredit)   // debit increases
+        : (info.totalCredit - info.totalDebit)   // credit increases
+      const beforeBalance = currentBalance - balanceChange
       impactItems.push({ accountId, ...info, beforeBalance, afterBalance: currentBalance })
     }
     return impactItems
