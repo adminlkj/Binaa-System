@@ -97,6 +97,7 @@ export async function POST(request: Request) {
     const employeeWhere: Record<string, unknown> = {
       isActive: true,
       status: 'ACTIVE',
+      deletedAt: null,
     }
 
     if (salaryTypeFilter) {

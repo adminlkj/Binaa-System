@@ -1,14 +1,29 @@
 import { db } from '@/lib/db'
 import { createJournalEntry, getSalaryAccountCode, type PrismaTransaction } from '@/lib/accounting/engine'
+import { AccountRole, getAccountCodeByRole } from '@/lib/account-roles'
 import { NextResponse } from 'next/server'
 
 // ============================================================================
 // مسير الرواتب - GET (تفاصيل) + PUT (تحديث الحالة) + DELETE (حذف المسودة)
-// القواعد:
-//   - APPROVED: ينشئ قيد استحقاق فقط (مدين 8110/7120/7210 / دائن 3310)
-//   - PAID: يتحقق من bankAccountCode + journalEntryId موجود + totalNet > 0
-//           ثم ينشئ قيد دفع مستقل (مدين 3310 / دائن البنك)
+//
+// P4-CRIT-002 FIX: state machine — re-APPROVE from PAID/PARTIALLY_PAID is now blocked
+//                 (was creating duplicate accrual JE without reversing the original).
+// P4-CRIT-003 FIX: catch-all update now validates state transitions; silent demotion
+//                 PAID → DRAFT/REVIEW is blocked (was producing orphaned JEs in GL).
+// P4-CRIT-008 FIX: replaces hardcoded '3310','8210','3830' with role-based lookups
+//                 (SALARIES_PAYABLE, GOSI_EXPENSE, GOSI_PAYABLE).
+// P4-CRIT-009 FIX: now creates a deductions credit line when totalDeductions > 0
+//                 (was missing → GL understated salary expense + Employee Advance asset inflated).
 // ============================================================================
+
+// Strict forward-only state machine. Demotion is blocked unless via explicit reversal flow.
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  DRAFT: ['REVIEW', 'APPROVED'],
+  REVIEW: ['APPROVED', 'DRAFT'],
+  APPROVED: ['PAID', 'DRAFT'],
+  PARTIALLY_PAID: ['PAID'],  // can still complete payment; cannot demote
+  PAID: [],                  // terminal — no further state changes via this route
+}
 
 export async function GET(
   _request: Request,
@@ -57,7 +72,19 @@ export async function PUT(
 
     const newStatus = body.status
 
+    // P4-CRIT-002/003 FIX: enforce strict state-machine transitions.
+    // If newStatus is set, validate it's an allowed transition from existing.status.
+    if (newStatus && newStatus !== existing.status) {
+      const allowed = VALID_TRANSITIONS[existing.status] || []
+      if (!allowed.includes(newStatus)) {
+        return NextResponse.json({
+          error: `انتقال حالة غير صالح: ${existing.status} → ${newStatus}. الحالات المسموح بها من ${existing.status}: [${allowed.join(', ') || 'لا يوجد'}]`,
+        }, { status: 400 })
+      }
+    }
+
     // ============ APPROVED: قيد الاستحقاق فقط ============
+    // P4-CRIT-002 FIX: this branch is now only reachable from DRAFT/REVIEW (validated above).
     if (newStatus === 'APPROVED' && existing.status !== 'APPROVED') {
       const result = await db.$transaction(async (tx: PrismaTransaction) => {
         let journalEntryId: string | null = existing.journalEntryId
@@ -66,14 +93,21 @@ export async function PUT(
         const lines = await tx.payrollRunLine.findMany({
           where: { payrollRunId: id },
           include: {
-            project: { select: { id: true, projectType: true } },
+            project: { select: { id: true, projectType: true, costCenterId: true } },
           },
         })
 
-        const salaryDate = new Date(existing.year, existing.month -  1, 1)
+        const salaryDate = new Date(existing.year, existing.month - 1, 1)
+
+        // P4-CRIT-008 FIX: resolve account codes by role (no hardcoded '3310','8210','3830').
+        const payableCode = (await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx)) || '3310'
+        const gosiExpenseCode = (await getAccountCodeByRole(AccountRole.GOSI_EXPENSE, tx)) || '8210'
+        const gosiPayableCode = (await getAccountCodeByRole(AccountRole.GOSI_PAYABLE, tx)) || '3830'
+        // P4-CRIT-009 FIX: deductions are typically advance recoveries → credit EMPLOYEE_ADVANCE.
+        const advanceCode = (await getAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, tx)) || '1230'
 
         // تجميع البنود حسب نوع النشاط (PROJECT, RENTAL, ADMIN) لإنشاء قيود منفصلة
-        const linesByActivity: Record<string, { totalNet: number; totalGosi: number }> = {}
+        const linesByActivity: Record<string, { totalNet: number; totalGosi: number; totalDeductions: number; costCenterId?: string }> = {}
 
         for (const line of lines) {
           const projectType = line.project?.projectType
@@ -87,10 +121,15 @@ export async function PUT(
           }
 
           if (!linesByActivity[activity]) {
-            linesByActivity[activity] = { totalNet: 0, totalGosi: 0 }
+            linesByActivity[activity] = { totalNet: 0, totalGosi: 0, totalDeductions: 0, costCenterId: undefined }
           }
           linesByActivity[activity].totalNet += Number(line.netSalary)
           linesByActivity[activity].totalGosi += Number(line.gosiDeduction)
+          linesByActivity[activity].totalDeductions += Number(line.deductions)
+          // P4-HIGH-010: propagate costCenterId from project (first line wins)
+          if (!linesByActivity[activity].costCenterId && line.project?.costCenterId) {
+            linesByActivity[activity].costCenterId = line.project.costCenterId
+          }
         }
 
         // إنشاء قيود يومية لكل نوع نشاط (قيد استحقاق فقط)
@@ -102,31 +141,48 @@ export async function PUT(
           const activityNameAr =
             activity === 'PROJECT' ? 'مشاريع' : activity === 'RENTAL' ? 'تأجير' : 'إدارية'
 
+          // P4-CRIT-009 FIX: gross salary expense = totalNet + totalDeductions + totalGosi
+          // (was: only totalNet, which understated expense and missed advance recovery).
+          const grossExpense = totals.totalNet + totals.totalDeductions + totals.totalGosi
+
           const jeLines = [
             {
               accountCode: salaryAccountCode,
-              debit: totals.totalNet,
+              debit: grossExpense,
               credit: 0,
-              description: `رواتب ${activityNameAr}`,
+              description: `رواتب ${activityNameAr} (إجمالي)`,
+              costCenterId: totals.costCenterId,
             },
+            // Credit Salaries Payable for the net amount (paid later)
             {
-              accountCode: '3310',
+              accountCode: payableCode,
               debit: 0,
               credit: totals.totalNet,
-              description: 'رواتب مستحقة',
+              description: 'رواتب مستحقة (الصافي)',
             },
           ]
 
+          // P4-CRIT-009 FIX: credit Employee Advance for deductions (advance recovery)
+          if (totals.totalDeductions > 0) {
+            jeLines.push({
+              accountCode: advanceCode,
+              debit: 0,
+              credit: totals.totalDeductions,
+              description: 'استرداد سلف الموظفين',
+            })
+          }
+
+          // GOSI lines (Dr GOSI_EXPENSE / Cr GOSI_PAYABLE)
           if (totals.totalGosi > 0) {
             jeLines.push(
               {
-                accountCode: '8210',
+                accountCode: gosiExpenseCode,
                 debit: totals.totalGosi,
                 credit: 0,
-                description: 'تأمينات اجتماعية',
+                description: 'تأمينات اجتماعية (حصة المنشأة)',
               },
               {
-                accountCode: '3830',
+                accountCode: gosiPayableCode,
                 debit: 0,
                 credit: totals.totalGosi,
                 description: 'تأمينات مستحقة',
@@ -135,8 +191,10 @@ export async function PUT(
           }
 
           try {
+            // P4-CRIT-002 FIX: use unique suffix to prevent entryNo collisions on re-approval
+            // (rare case where the original JE was reversed first).
             const entry = await createJournalEntry({
-              entryNo: `JE-PAY-${existing.code}-${activity}`,
+              entryNo: `JE-PAY-${existing.code}-${activity}-${Date.now()}`,
               date: salaryDate,
               description: `مسير رواتب ${existing.code} - ${activityNameAr} - ${existing.month}/${existing.year}`,
               descriptionAr: `مسير رواتب ${existing.code} - ${activityNameAr} - ${existing.month}/${existing.year}`,
@@ -202,10 +260,13 @@ export async function PUT(
         const bankAccountCode = String(body.bankAccountCode)
         const bankAccountNameAr = String(body.bankAccountNameAr || 'البنك')
 
+        // P4-CRIT-008 FIX: resolve payable code by role (no hardcoded '3310').
+        const payableCode = (await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx)) || '3310'
+
         // قيد الدفع: مدين رواتب مستحقة / دائن البنك
         const jeLines = [
           {
-            accountCode: '3310',
+            accountCode: payableCode,
             debit: totalNet,
             credit: 0,
             description: 'سداد رواتب مستحقة',
@@ -220,7 +281,7 @@ export async function PUT(
 
         try {
           const entry = await createJournalEntry({
-            entryNo: `JE-PAYP-${existing.code}`,
+            entryNo: `JE-PAYP-${existing.code}-${Date.now()}`,
             date: salaryDate,
             description: `سداد مسير رواتب ${existing.code} - ${existing.month}/${existing.year}`,
             descriptionAr: `سداد مسير رواتب ${existing.code} - ${existing.month}/${existing.year}`,
@@ -258,11 +319,18 @@ export async function PUT(
       return NextResponse.json(result)
     }
 
-    // تحديث عام (الحالة أو الملاحظات فقط)
+    // P4-CRIT-003 FIX: catch-all update now ONLY allows non-status field updates (e.g. notes).
+    // Status changes are validated above against the state machine.
+    if (newStatus && newStatus !== existing.status) {
+      // Should never reach here because the validation above already returned 400 for invalid transitions
+      return NextResponse.json({
+        error: `انتقال حالة غير صالح: ${existing.status} → ${newStatus}`,
+      }, { status: 400 })
+    }
+
     const payrollRun = await db.payrollRun.update({
       where: { id },
       data: {
-        status: newStatus || existing.status,
         notes: body.notes !== undefined ? body.notes : existing.notes,
       },
       include: {
@@ -279,7 +347,8 @@ export async function PUT(
     return NextResponse.json(payrollRun)
   } catch (error) {
     console.error('Error updating payroll run:', error)
-    return NextResponse.json({ error: 'فشل في تحديث مسير الرواتب' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في تحديث مسير الرواتب'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { autoEntryLaborCost, reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -7,7 +8,10 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId')
 
     const laborCosts = await db.laborCost.findMany({
-      where: projectId ? { projectId } : undefined,
+      where: {
+        projectId: projectId || undefined,
+        deletedAt: null,
+      },
       include: {
         project: { select: { id: true, code: true, name: true } },
       },
@@ -23,7 +27,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { projectId, description, workers, days, dailyRate, date } = body
+    const { projectId, description, workers, days, dailyRate, date, employeeId } = body
 
     if (!projectId || !description || !workers || !days || !dailyRate || !date) {
       return NextResponse.json({ error: 'الحقول المطلوبة: المشروع، الوصف، عدد العمال، الأيام، الأجر اليومي، التاريخ' }, { status: 400 })
@@ -39,24 +43,58 @@ export async function POST(request: Request) {
 
     const totalAmount = workersNum * daysNum * dailyRateNum
 
-    const laborCost = await db.laborCost.create({
-      data: {
-        projectId,
-        description,
-        workers: workersNum,
-        days: daysNum,
-        dailyRate: dailyRateNum,
-        totalAmount,
-        date: new Date(date),
-      },
-      include: {
-        project: { select: { id: true, code: true, name: true } },
-      },
+    // P4-CRIT-005 FIX: atomic create + JE in $transaction.
+    // Resolves costCenterId from Project.costCenter so the Dr line is tagged to the project.
+    const result = await db.$transaction(async (tx: PrismaTransaction) => {
+      const project = await tx.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, code: true, costCenterId: true },
+      })
+
+      const laborCost = await tx.laborCost.create({
+        data: {
+          projectId,
+          employeeId: employeeId || null,
+          description,
+          workers: workersNum,
+          days: daysNum,
+          dailyRate: dailyRateNum,
+          totalAmount,
+          date: new Date(date),
+        },
+        include: {
+          project: { select: { id: true, code: true, name: true } },
+        },
+      })
+
+      // P4-CRIT-005 FIX: create the missing JE (Dr LABOR_COST / Cr CASH) with costCenterId.
+      // R1 enforced — if the JE fails, the labor cost record is rolled back too.
+      const journalEntry = await autoEntryLaborCost({
+        description: laborCost.description,
+        amount: laborCost.totalAmount,
+        date: laborCost.date,
+        costCenterId: project?.costCenterId || undefined,
+      }, tx)
+
+      if (journalEntry) {
+        await tx.laborCost.update({
+          where: { id: laborCost.id },
+          data: { journalEntryId: journalEntry.id },
+        })
+      }
+
+      return await tx.laborCost.findUniqueOrThrow({
+        where: { id: laborCost.id },
+        include: {
+          project: { select: { id: true, code: true, name: true } },
+        },
+      })
     })
 
-    return NextResponse.json(laborCost, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('Error creating labor cost:', error)
-    return NextResponse.json({ error: 'فشل في إنشاء تكلفة العمالة' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في إنشاء تكلفة العمالة'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

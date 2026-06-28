@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const page = pageParam ? Math.max(1, parseInt(pageParam) || 1) : null
     const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { deletedAt: null }
     if (activeOnly) where.isActive = true
     if (branchId) where.branchId = branchId
     if (status) where.status = status

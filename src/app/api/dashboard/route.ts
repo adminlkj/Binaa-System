@@ -131,7 +131,7 @@ export async function GET() {
 
     // ===== 2. Active Employees count =====
     const activeEmployees = await db.employee.count({
-      where: { status: 'ACTIVE' },
+      where: { status: 'ACTIVE', deletedAt: null },
     })
 
     // ===== 3. Equipment count by status =====
@@ -399,6 +399,7 @@ export async function GET() {
     const expiringResidences = await db.employee.findMany({
       where: {
         status: 'ACTIVE',
+        deletedAt: null,
         residenceExpiry: { lte: ninetyDaysFromNow, gte: now },
       },
       select: { id: true, code: true, name: true, residenceExpiry: true },

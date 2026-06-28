@@ -4,8 +4,8 @@ import { NextResponse } from 'next/server'
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const employee = await db.employee.findUnique({
-      where: { id },
+    const employee = await db.employee.findFirst({
+      where: { id, deletedAt: null },
       include: {
         branch: { select: { id: true, code: true, name: true } },
         contracts: { orderBy: { startDate: 'desc' } },
@@ -59,11 +59,47 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
+// P4-CRIT-012 FIX: was hard-delete → crashed on FK restrict + no audit trail.
+// Now: blocks delete if employee has financial records; otherwise soft-deletes
+// (deletedAt + isActive=false + status=TERMINATED) preserving referential integrity.
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    await db.employee.delete({ where: { id } })
-    return NextResponse.json({ success: true })
+
+    const existing = await db.employee.findUnique({ where: { id } })
+    if (!existing) {
+      return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 })
+    }
+    if (existing.deletedAt) {
+      return NextResponse.json({ error: 'الموظف محذوف بالفعل' }, { status: 400 })
+    }
+
+    // Pre-flight: block delete if employee has financial records (FK restrict)
+    const [salaryCount, advanceCount, attendanceCount, contractCount] = await Promise.all([
+      db.salary.count({ where: { employeeId: id } }),
+      db.employeeAdvance.count({ where: { employeeId: id } }),
+      db.attendance.count({ where: { employeeId: id } }),
+      db.employeeContract.count({ where: { employeeId: id } }),
+    ])
+
+    const total = salaryCount + advanceCount + attendanceCount + contractCount
+    if (total > 0) {
+      return NextResponse.json({
+        error: `لا يمكن حذف الموظف لوجود سجلات مرتبطة (${total}): رواتب=${salaryCount}، سلف=${advanceCount}، حضور=${attendanceCount}، عقود=${contractCount}. استخدم خيار "إنهاء الخدمة" بدلاً من ذلك.`,
+      }, { status: 400 })
+    }
+
+    // Soft-delete: mark deletedAt, deactivate, set status TERMINATED
+    await db.employee.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        isActive: false,
+        status: 'TERMINATED',
+      },
+    })
+
+    return NextResponse.json({ success: true, message: 'تم حذف الموظف (soft-delete)' })
   } catch (error) {
     console.error('Error deleting employee:', error)
     return NextResponse.json({ error: 'فشل في حذف الموظف' }, { status: 500 })

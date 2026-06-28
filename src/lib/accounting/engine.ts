@@ -779,8 +779,10 @@ export async function autoEntryEmployeeAdvance(data: {
 
 /**
  * تسوية سلفة - Advance Settlement
- * Dr: Salaries & Wages (8110)
- * Cr: Advances to Employees (1230)
+ * P4-CRIT-010 FIX: Dr SALARIES_PAYABLE (3310) — relieves the salary liability when the
+ * advance is recovered from a future salary. (Was: Dr PAYROLL_EXPENSE which inflated
+ * salary expense and produced negative Salaries Payable before accrual.)
+ * Cr: Advances to Employees (1230) — relieves the advance asset.
  */
 export async function autoEntryAdvanceSettlement(data: {
   employeeName: string
@@ -788,7 +790,7 @@ export async function autoEntryAdvanceSettlement(data: {
   date: Date
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const payrollCode = await getAccountCodeByRole(AccountRole.PAYROLL_EXPENSE, tx) || '8110'
+  const payableCode = await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx) || '3310'
   const advanceCode = await getAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, tx) || '1230'
 
   return createJournalEntry({
@@ -797,7 +799,7 @@ export async function autoEntryAdvanceSettlement(data: {
     description: `Advance settlement - ${data.employeeName}`,
     descriptionAr: `تسوية سلفة - ${data.employeeName}`,
     lines: [
-      { accountCode: payrollCode, debit: data.settledAmount, credit: 0 },
+      { accountCode: payableCode, debit: data.settledAmount, credit: 0 },
       { accountCode: advanceCode, debit: 0, credit: data.settledAmount },
     ],
     sourceType: 'ADVANCE_SETTLEMENT',
@@ -970,8 +972,36 @@ export async function autoEntryPettyCash(data: {
   category: string
   date: Date
   costCenterId?: string
+  // P4-CRIT-011: distinguish fund replenishment from disbursement.
+  //   FUND     → Dr PETTY_CASH (1130) / Cr BANK (1120)   — moves cash from bank to petty cash box
+  //   DISBURSE → Dr EXPENSE  / Cr PETTY_CASH (1130)       — pays for a small expense out of petty cash
+  transactionType?: 'FUND' | 'DISBURSE'
+  bankAccountCode?: string  // optional — for FUND, the bank to credit
 }, tx?: PrismaTransaction) {
-  // Resolved by role — no hardcoded code!
+  const txnType = data.transactionType || 'DISBURSE'
+
+  if (txnType === 'FUND') {
+    // Fund replenishment: Dr PETTY_CASH (1130) / Cr BANK (1120)
+    const pettyCashCode = await getAccountCodeByRole(AccountRole.PETTY_CASH, tx) || '1130'
+    const bankCode = data.bankAccountCode
+      || (await getAccountCodeByRole(AccountRole.BANK, tx))
+      || '1120'
+
+    return createJournalEntry({
+      entryNo: `JE-PTC-${Date.now()}`,
+      date: data.date,
+      description: `Petty Cash Fund: ${data.description}`,
+      descriptionAr: `تغذية صندوق نثرية: ${data.description}`,
+      lines: [
+        { accountCode: pettyCashCode, debit: data.amount, credit: 0 },
+        { accountCode: bankCode, debit: 0, credit: data.amount },
+      ],
+      sourceType: 'PETTY_CASH',
+      sourceId: `PTC-${Date.now()}`,
+    }, tx)
+  }
+
+  // Default: DISBURSE — Dr EXPENSE / Cr PETTY_CASH (1130)
   const categoryRoleMap: Record<string, string> = {
     'OFFICE': AccountRole.ADMIN_EXPENSE,
     'TRANSPORT': AccountRole.TRANSPORT_EXPENSE,
@@ -981,7 +1011,11 @@ export async function autoEntryPettyCash(data: {
   }
   const expenseRole = categoryRoleMap[data.category] || AccountRole.ADMIN_EXPENSE
   const expenseAccountCode = await getAccountCodeByRole(expenseRole, tx) || '8630'
-  const cashCode = await getAccountCodeByRole(AccountRole.CASH, tx) || '1130'
+  // P4-CRIT-011 FIX: use PETTY_CASH (1130), not the first CASH (1110 = Treasury).
+  // The CASH role has defaultCodes ['1110', '1130'] and getAccountCodeByRole returns
+  // the first by code:asc, which is 1110 (Treasury) — so all petty cash disbursements
+  // hit Treasury instead of the Petty Cash sub-account 1130. Use PETTY_CASH role instead.
+  const pettyCashCode = await getAccountCodeByRole(AccountRole.PETTY_CASH, tx) || '1130'
 
   return createJournalEntry({
     entryNo: `JE-PTC-${Date.now()}`,
@@ -990,7 +1024,7 @@ export async function autoEntryPettyCash(data: {
     descriptionAr: `صندوق نقدي: ${data.description}`,
     lines: [
       { accountCode: expenseAccountCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
-      { accountCode: cashCode, debit: 0, credit: data.amount },
+      { accountCode: pettyCashCode, debit: 0, credit: data.amount },
     ],
     sourceType: 'PETTY_CASH',
     sourceId: `PTC-${Date.now()}`,
@@ -1687,6 +1721,38 @@ export async function autoEntryManualCost(data: {
     ],
     sourceType: 'MANUAL_COST',
     sourceId: `MCE-${Date.now()}`,
+  }, tx)
+}
+
+/**
+ * تكلفة العمالة المباشرة - Direct Labor Cost
+ * P4-CRIT-005 FIX: previously LaborCost had NO journal entry — GL was blind to all
+ * project labor costs. Now creates:
+ *   Dr LABOR_COST (7110) — with costCenterId from Project.costCenter
+ *   Cr CASH (1110)        — cash paid to laborers
+ * If a specific employee is linked AND paid via salary accrual, this is a direct cash
+ * payment (e.g. daily laborers) which is distinct from monthly salaries.
+ */
+export async function autoEntryLaborCost(data: {
+  description: string
+  amount: number
+  date: Date
+  costCenterId?: string
+}, tx?: PrismaTransaction) {
+  const laborCode = await getAccountCodeByRole(AccountRole.LABOR_COST, tx) || '7110'
+  const cashCode = await resolvePaymentAccountCode('TREASURY', tx)
+
+  return createJournalEntry({
+    entryNo: `JE-LC-${Date.now()}`,
+    date: data.date,
+    description: `Labor Cost - ${data.description}`,
+    descriptionAr: `تكلفة عمالة - ${data.description}`,
+    lines: [
+      { accountCode: laborCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+      { accountCode: cashCode, debit: 0, credit: data.amount },
+    ],
+    sourceType: 'LABOR_COST',
+    sourceId: `LC-${Date.now()}`,
   }, tx)
 }
 

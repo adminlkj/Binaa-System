@@ -516,6 +516,7 @@ model Employee {
   email           String?
   isActive        Boolean        @default(true)
   expenseAccountId String?       // حساب مصروف الراتب - يحدد الحساب المحاسبي لرواتب هذا الموظف
+  deletedAt       DateTime?      // soft-delete (P4-CRIT-012)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
@@ -1367,17 +1368,19 @@ model Expense {
 // ============ LABOR COSTS ============
 
 model LaborCost {
-  id          String   @id @default(cuid())
-  projectId   String
-  employeeId  String?  // ربط بالموظف
-  description String
-  workers     Int
-  days        Decimal  @default(0)
-  dailyRate   Decimal  @default(0)
-  totalAmount Decimal  @default(0)
-  date        DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String   @id @default(cuid())
+  projectId       String
+  employeeId      String?  // ربط بالموظف
+  description     String
+  workers         Int
+  days            Decimal  @default(0)
+  dailyRate       Decimal  @default(0)
+  totalAmount     Decimal  @default(0)
+  date            DateTime
+  journalEntryId  String?  // JE link (P4-CRIT-005) — Dr PROJECT_COST (with costCenterId) / Cr CASH
+  deletedAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   project  Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
   employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
@@ -1688,17 +1691,18 @@ model Timesheet {
 // ============ PETTY CASH & ADVANCES ============
 
 model PettyCash {
-  id             String   @id @default(cuid())
-  branchId       String
-  description    String
-  amount         Decimal  @default(0)
-  date           DateTime
-  category       String?
-  reference      String?
-  journalEntryId String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  deletedAt      DateTime?
+  id              String   @id @default(cuid())
+  branchId        String
+  description     String
+  amount          Decimal  @default(0)
+  date            DateTime
+  category        String?
+  reference       String?
+  transactionType String   @default("DISBURSE") // DISBURSE | FUND (P4-CRIT-011): FUND = Dr PETTY_CASH / Cr BANK; DISBURSE = Dr EXPENSE / Cr PETTY_CASH
+  journalEntryId  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
 
   branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
 

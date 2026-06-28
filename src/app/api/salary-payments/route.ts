@@ -3,57 +3,40 @@ import { NextResponse } from 'next/server'
 import { createJournalEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { getDefaultAccountByRole, requireAccountByRole, AccountRole } from '@/lib/account-roles'
 
+// ============================================================================
+// سداد الرواتب — Salary Payments
+// P4-CRIT-001 FIX: previously the route created/updated `Salary` records, NOT
+// `SalaryPayment` records — the entire SalaryPayment subledger was empty.
+// P4-CRIT-004 FIX: previously re-paying an already-PAID salary was allowed
+// (only the entryNo @unique collision masked the bug). Now explicit idempotency.
+// Now:
+//   - POST creates a SalaryPayment record (payrollRunId optional, employeeId required)
+//   - Idempotency: blocks re-payment if Salary is already PAID
+//   - JE: Dr SALARIES_PAYABLE / Cr Cash (settles the liability accrued at salary APPROVE)
+//   - Updates Salary.status to PAID if the salary is fully paid
+//   - GET queries SalaryPayment records (not Salary)
+// ============================================================================
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const employeeId = searchParams.get('employeeId')
-    const month = searchParams.get('month')
-    const year = searchParams.get('year')
-    const status = searchParams.get('status')
+    const payrollRunId = searchParams.get('payrollRunId')
 
     const where: Record<string, unknown> = {}
     if (employeeId) where.employeeId = employeeId
-    if (month) where.month = parseInt(month)
-    if (year) where.year = parseInt(year)
-    if (status) where.status = status
+    if (payrollRunId) where.payrollRunId = payrollRunId
 
-    const salaries = await db.salary.findMany({
-      where: Object.keys(where).length > 0 ? where : undefined,
+    const payments = await db.salaryPayment.findMany({
+      where,
       include: {
-        employee: {
-          select: {
-            id: true,
-            code: true,
-            name: true,
-            nameAr: true,
-            profession: true,
-          },
-        },
-        project: {
-          select: {
-            id: true,
-            name: true,
-            nameAr: true,
-            code: true,
-          },
-        },
+        employee: { select: { id: true, code: true, name: true, nameAr: true, profession: true } },
+        payrollRun: { select: { id: true, code: true, month: true, year: true, status: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { paymentDate: 'desc' },
     })
 
-    // Convert Decimal values to numbers for JSON serialization
-    const serialized = salaries.map(s => ({
-      ...s,
-      basicSalary: Number(s.basicSalary),
-      housingAllowance: Number(s.housingAllowance),
-      transportAllowance: Number(s.transportAllowance),
-      otherAllowances: Number(s.otherAllowances),
-      overtimeAmount: Number(s.overtimeAmount),
-      deductions: Number(s.deductions),
-      netSalary: Number(s.netSalary),
-    }))
-
-    return NextResponse.json(serialized)
+    return NextResponse.json(payments)
   } catch (error) {
     console.error('Error fetching salary payments:', error)
     return NextResponse.json({ error: 'فشل في تحميل سداد الرواتب' }, { status: 500 })
@@ -64,16 +47,39 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const employeeId = body.employeeId
+    const payrollRunId = body.payrollRunId || null
     const month = body.month
     const year = body.year
     const paymentMethod = body.paymentMethod || 'BANK'
+    const reference = body.reference || null
     const notes = body.notes || null
-    // Optional: explicit paying account (from AccountSelector). Falls back to default role lookup.
-    const payingAccountId = body.payingAccountId || null
     const payingAccountCode = body.payingAccountCode || null
     const payingAccountName = body.payingAccountName || null
 
-    // Resolve the credit (cash/bank) account code: caller-provided > role lookup > hardcoded fallback
+    if (!employeeId) {
+      return NextResponse.json({ error: 'رقم الموظف مطلوب' }, { status: 400 })
+    }
+    if (!month || !year) {
+      return NextResponse.json({ error: 'الشهر والسنة مطلوبان' }, { status: 400 })
+    }
+
+    // Find the salary record (must exist + be APPROVED, not PAID)
+    const existingSalary = await db.salary.findFirst({
+      where: { employeeId, month, year, deletedAt: null },
+    })
+    if (!existingSalary) {
+      return NextResponse.json({ error: 'لا يوجد سجل راتب لهذا الموظف في هذه الفترة. أنشئ واعتمد الراتب أولاً.' }, { status: 404 })
+    }
+
+    // P4-CRIT-004 FIX: explicit idempotency — block re-payment of an already-PAID salary.
+    if (existingSalary.status === 'PAID') {
+      return NextResponse.json({ error: 'الراتب مدفوع بالفعل — لا يمكن السداد مرة أخرى' }, { status: 400 })
+    }
+    if (existingSalary.status !== 'APPROVED') {
+      return NextResponse.json({ error: 'يجب اعتماد الراتب أولاً قبل السداد' }, { status: 400 })
+    }
+
+    // Resolve the credit (cash/bank) account code
     const resolveCreditAccount = async (tx?: PrismaTransaction) => {
       if (payingAccountCode) {
         return { code: payingAccountCode, name: payingAccountName || 'الحساب المحدد' }
@@ -83,188 +89,78 @@ export async function POST(request: Request) {
       if (acc) {
         return { code: acc.code, name: acc.nameAr || acc.name }
       }
-      // Last-resort hardcoded fallback (preserves legacy behaviour)
       return paymentMethod === 'BANK'
         ? { code: '1120', name: 'البنك' }
         : { code: '1110', name: 'الصندوق (الخزينة)' }
     }
 
-    // Validate required fields
-    if (!employeeId) {
-      return NextResponse.json({ error: 'رقم الموظف مطلوب' }, { status: 400 })
-    }
-    if (!month || !year) {
-      return NextResponse.json({ error: 'الشهر والسنة مطلوبان' }, { status: 400 })
-    }
+    const netSalary = Number(existingSalary.netSalary)
 
-    // Find or create the salary record
-    const existingSalary = await db.salary.findFirst({
-      where: { employeeId, month, year },
+    // Atomic: SalaryPayment record + payment JE + Salary.status update in one transaction.
+    // R1 enforced — if the JE fails, no SalaryPayment record is created and Salary stays APPROVED.
+    const result = await db.$transaction(async (tx: PrismaTransaction) => {
+      // P4-CRIT-001 FIX: create the SalaryPayment record (was missing entirely).
+      const salaryPayment = await tx.salaryPayment.create({
+        data: {
+          payrollRunId,
+          employeeId,
+          amount: netSalary,
+          paymentDate: new Date(),
+          paymentMethod,
+          reference,
+          notes,
+        },
+        include: {
+          employee: { select: { id: true, code: true, name: true, nameAr: true, profession: true } },
+          payrollRun: { select: { id: true, code: true, status: true } },
+        },
+      })
+
+      // Payment JE: Dr SALARIES_PAYABLE / Cr Cash (settles the liability accrued at approve).
+      const creditAccount = await resolveCreditAccount(tx)
+      const payableAccount = await requireAccountByRole(AccountRole.SALARIES_PAYABLE, 'سداد راتب', tx)
+
+      const entry = await createJournalEntry({
+        entryNo: `JE-SAL-PAY-${salaryPayment.id}`,
+        date: new Date(),
+        description: `سداد راتب ${salaryPayment.employee?.nameAr || salaryPayment.employee?.name || ''} - ${month}/${year}`,
+        descriptionAr: `سداد راتب ${salaryPayment.employee?.nameAr || salaryPayment.employee?.name || ''} - ${month}/${year}`,
+        lines: [
+          { accountCode: payableAccount.code, debit: netSalary, credit: 0, description: 'سداد رواتب مستحقة' },
+          { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
+        ],
+        sourceType: 'SALARY_PAYMENT',
+        sourceId: salaryPayment.id,
+      }, tx)
+
+      // Link JE to the SalaryPayment record
+      await tx.salaryPayment.update({
+        where: { id: salaryPayment.id },
+        data: { journalEntryId: entry.id },
+      })
+
+      // Update Salary.status to PAID
+      await tx.salary.update({
+        where: { id: existingSalary.id },
+        data: { status: 'PAID', journalEntryId: entry.id },
+      })
+
+      return await tx.salaryPayment.findUniqueOrThrow({
+        where: { id: salaryPayment.id },
+        include: {
+          employee: { select: { id: true, code: true, name: true, nameAr: true, profession: true } },
+          payrollRun: { select: { id: true, code: true, status: true } },
+        },
+      })
     })
 
-    if (!existingSalary) {
-      // Get employee details to calculate salary
-      const employee = await db.employee.findUnique({
-        where: { id: employeeId },
-      })
-
-      if (!employee) {
-        return NextResponse.json({ error: 'الموظف غير موجود' }, { status: 404 })
-      }
-
-      // Create salary payment + journal entry in transaction
-      const result = await db.$transaction(async (tx: PrismaTransaction) => {
-        const basicSalary = Number(employee.basicSalary || 0)
-        const housingAllowance = Number(employee.housingAllowance || 0)
-        const transportAllowance = Number(employee.transportAllowance || 0)
-        const otherAllowances = Number(employee.otherAllowances || 0)
-        const deductions = Number(body.deductions || 0)
-        const netSalary = basicSalary + housingAllowance + transportAllowance + otherAllowances - deductions
-
-        const salary = await tx.salary.create({
-          data: {
-            employeeId,
-            projectId: body.projectId || null,
-            activityType: body.activityType || 'GENERAL',
-            month,
-            year,
-            basicSalary,
-            housingAllowance,
-            transportAllowance,
-            otherAllowances,
-            overtimeAmount: Number(body.overtimeAmount || 0),
-            deductions,
-            netSalary,
-            status: 'PAID',
-          },
-          include: {
-            employee: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-                nameAr: true,
-                profession: true,
-              },
-            },
-            project: {
-              select: {
-                id: true,
-                name: true,
-                nameAr: true,
-                code: true,
-              },
-            },
-          },
-        })
-
-        // Create accounting journal entry.
-        // R1 enforced: if the JE fails, the entire transaction rolls back — no salary
-        // can be marked PAID without a posted journal entry.
-        // Accounting: Dr SALARIES_PAYABLE / Cr Cash (settles the liability accrued at approve).
-        const creditAccount = await resolveCreditAccount(tx)
-        const payableAccount = await requireAccountByRole(AccountRole.SALARIES_PAYABLE, 'سداد راتب', tx)
-
-        const entry = await createJournalEntry({
-          entryNo: `JE-SAL-${employee.code}-${month}${year}`,
-          date: new Date(),
-          description: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
-          descriptionAr: `سداد راتب ${employee.nameAr || employee.name} - ${month}/${year}`,
-          lines: [
-            { accountCode: payableAccount.code, debit: netSalary, credit: 0, description: 'سداد رواتب مستحقة' },
-            { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
-          ],
-          sourceType: 'SALARY_PAYMENT',
-          sourceId: salary.id,
-        }, tx)
-
-        await tx.salary.update({
-          where: { id: salary.id },
-          data: { journalEntryId: entry.id },
-        })
-
-        return salary
-      })
-
-      return NextResponse.json({
-        ...result,
-        basicSalary: Number(result.basicSalary),
-        housingAllowance: Number(result.housingAllowance),
-        transportAllowance: Number(result.transportAllowance),
-        otherAllowances: Number(result.otherAllowances),
-        overtimeAmount: Number(result.overtimeAmount),
-        deductions: Number(result.deductions),
-        netSalary: Number(result.netSalary),
-      }, { status: 201 })
-    } else {
-      // Update existing salary to PAID status
-      const result = await db.$transaction(async (tx: PrismaTransaction) => {
-        const salary = await tx.salary.update({
-          where: { id: existingSalary.id },
-          data: { status: 'PAID' },
-          include: {
-            employee: {
-              select: {
-                id: true,
-                code: true,
-                name: true,
-                nameAr: true,
-                profession: true,
-              },
-            },
-            project: {
-              select: {
-                id: true,
-                name: true,
-                nameAr: true,
-                code: true,
-              },
-            },
-          },
-        })
-
-        // Create journal entry.
-        // R1 enforced: if the JE fails, the entire transaction rolls back — no salary
-        // can be marked PAID without a posted journal entry.
-        // Accounting: Dr SALARIES_PAYABLE / Cr Cash (settles the liability accrued at approve).
-        const netSalary = Number(salary.netSalary)
-        const creditAccount = await resolveCreditAccount(tx)
-        const payableAccount = await requireAccountByRole(AccountRole.SALARIES_PAYABLE, 'سداد راتب', tx)
-
-        const entry = await createJournalEntry({
-          entryNo: `JE-SAL-${salary.employee?.code || 'EMP'}-${month}${year}`,
-          date: new Date(),
-          description: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
-          descriptionAr: `سداد راتب ${salary.employee?.nameAr || salary.employee?.name || ''} - ${month}/${year}`,
-          lines: [
-            { accountCode: payableAccount.code, debit: netSalary, credit: 0, description: 'سداد رواتب مستحقة' },
-            { accountCode: creditAccount.code, debit: 0, credit: netSalary, description: creditAccount.name },
-          ],
-          sourceType: 'SALARY_PAYMENT',
-          sourceId: salary.id,
-        }, tx)
-
-        await tx.salary.update({
-          where: { id: salary.id },
-          data: { journalEntryId: entry.id },
-        })
-
-        return salary
-      })
-
-      return NextResponse.json({
-        ...result,
-        basicSalary: Number(result.basicSalary),
-        housingAllowance: Number(result.housingAllowance),
-        transportAllowance: Number(result.transportAllowance),
-        otherAllowances: Number(result.otherAllowances),
-        overtimeAmount: Number(result.overtimeAmount),
-        deductions: Number(result.deductions),
-        netSalary: Number(result.netSalary),
-      }, { status: 201 })
-    }
+    return NextResponse.json({
+      ...result,
+      amount: Number(result.amount),
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating salary payment:', error)
-    return NextResponse.json({ error: 'فشل في تسجيل سداد الرواتب' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في تسجيل سداد الرواتب'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -25,6 +25,7 @@ import { db } from '@/lib/db'
 export const AccountRole = {
   CASH: 'CASH',
   BANK: 'BANK',
+  PETTY_CASH: 'PETTY_CASH',
   CUSTOMER_AR: 'CUSTOMER_AR',
   SUPPLIER_AP: 'SUPPLIER_AP',
   SUBCONTRACTOR_AP: 'SUBCONTRACTOR_AP',
@@ -37,6 +38,7 @@ export const AccountRole = {
   TRANSPORT_EXPENSE: 'TRANSPORT_EXPENSE',
   RENTAL_DEPRECIATION: 'RENTAL_DEPRECIATION',
   PROJECT_COST: 'PROJECT_COST',
+  LABOR_COST: 'LABOR_COST',
   SUBCONTRACTOR_COST: 'SUBCONTRACTOR_COST',
   PAYROLL_EXPENSE: 'PAYROLL_EXPENSE',
   GOSI_EXPENSE: 'GOSI_EXPENSE',
@@ -112,6 +114,14 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     labelEn: 'Cash',
     description: 'حسابات النقدية والصناديق النقدية',
     defaultCodes: ['1110', '1130'],
+  },
+
+  PETTY_CASH: {
+    role: 'PETTY_CASH',
+    labelAr: 'النثرية',
+    labelEn: 'Petty Cash',
+    description: 'صندوق المصروفات النثرية (حساب 1130) — يُميز عن الخزينة العامة 1110',
+    defaultCodes: ['1130'],
   },
 
   BANK: {
@@ -293,6 +303,14 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     labelEn: 'Project Direct Costs',
     description: 'التكاليف المباشرة للمشاريع الإنشائية',
     defaultCodes: ['7110', '7120', '7130', '7140', '7150', '7160', '7170', '7180'],
+  },
+
+  LABOR_COST: {
+    role: 'LABOR_COST',
+    labelAr: 'تكلفة العمالة المباشرة',
+    labelEn: 'Direct Labor Cost',
+    description: 'تكلفة العمالة المباشرة للمشاريع — حساب فرعي من تكاليف المشاريع',
+    defaultCodes: ['7110'],
   },
 
   SUBCONTRACTOR_COST: {
