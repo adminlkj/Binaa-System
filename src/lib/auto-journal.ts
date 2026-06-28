@@ -31,7 +31,7 @@ export async function createSalesInvoiceJournalEntry(
 ) {
   const invoice = await tx.salesInvoice.findUnique({
     where: { id: invoiceId },
-    include: { client: true },
+    include: { client: true, project: { select: { id: true, costCenter: { select: { id: true } } } } },
   })
   if (!invoice) {
     throw new Error(`فاتورة المبيعات غير موجودة: ${invoiceId}`)
@@ -50,6 +50,12 @@ export async function createSalesInvoiceJournalEntry(
     )
   }
 
+  // P6-HIGH-001 FIX: propagate costCenterId from the linked project's cost center
+  // (mirror of the P5-CRIT-010 fix applied to createPurchaseInvoiceJournalEntry).
+  // Previously sales-invoice JEs had costCenterId=null even when the invoice was
+  // linked to a project with a cost center, breaking project-profitability reports.
+  const costCenterId = invoice.project?.costCenter?.id || null
+
   // P3-BUG (discovered via practical E2E test): The previous JE only credited
   // `netAmount` (= subtotal) + `vatAmount` (VAT on subtotal only), but debited
   // `totalAmount` (which includes deliveryFees + deliveryVat). This produced an
@@ -67,10 +73,10 @@ export async function createSalesInvoiceJournalEntry(
     ? Math.round(deliveryAmount * vatRate * 100) / 100
     : 0
 
-  const lines: Array<{ accountId: string; debit: number; credit: number; description: string }> = [
-    { accountId: clientAccount.id, debit: toNumber(invoice.totalAmount), credit: 0, description: `فاتورة ${invoice.invoiceNo} - ${invoice.client.name}` },
-    { accountId: revenueAccount.id, debit: 0, credit: toNumber(invoice.netAmount), description: `إيرادات فاتورة ${invoice.invoiceNo}` },
-    { accountId: outputVatAccount.id, debit: 0, credit: toNumber(invoice.vatAmount), description: `ضريبة مخرجات فاتورة ${invoice.invoiceNo}` },
+  const lines: Array<{ accountId: string; debit: number; credit: number; description: string; costCenterId?: string }> = [
+    { accountId: clientAccount.id, debit: toNumber(invoice.totalAmount), credit: 0, description: `فاتورة ${invoice.invoiceNo} - ${invoice.client.name}`, costCenterId: costCenterId || undefined },
+    { accountId: revenueAccount.id, debit: 0, credit: toNumber(invoice.netAmount), description: `إيرادات فاتورة ${invoice.invoiceNo}`, costCenterId: costCenterId || undefined },
+    { accountId: outputVatAccount.id, debit: 0, credit: toNumber(invoice.vatAmount), description: `ضريبة مخرجات فاتورة ${invoice.invoiceNo}`, costCenterId: costCenterId || undefined },
   ]
 
   if (includeDelivery) {
@@ -79,6 +85,7 @@ export async function createSalesInvoiceJournalEntry(
       debit: 0,
       credit: deliveryAmount,
       description: `إيرادات رسوم نقل فاتورة ${invoice.invoiceNo}`,
+      costCenterId: costCenterId || undefined,
     })
     if (deliveryVat > 0) {
       lines.push({
@@ -86,6 +93,7 @@ export async function createSalesInvoiceJournalEntry(
         debit: 0,
         credit: deliveryVat,
         description: `ضريبة مخرجات رسوم نقل فاتورة ${invoice.invoiceNo}`,
+        costCenterId: costCenterId || undefined,
       })
     }
   }
@@ -203,7 +211,10 @@ export async function createClientPaymentJournalEntry(
 ) {
   const payment = await tx.clientPayment.findUnique({
     where: { id: paymentId },
-    include: { client: true },
+    include: {
+      client: true,
+      invoice: { select: { id: true, project: { select: { id: true, costCenter: { select: { id: true } } } } } },
+    },
   })
   if (!payment) {
     throw new Error(`تحصيل العميل غير موجود: ${paymentId}`)
@@ -225,6 +236,9 @@ export async function createClientPaymentJournalEntry(
     )
   }
 
+  // P6-HIGH-002 FIX: propagate costCenterId from the linked invoice's project cost center.
+  const costCenterId = payment.invoice?.project?.costCenter?.id || null
+
   const entryNo = await getNextEntryNo(tx)
   const entry = await postJournalEntry(
     {
@@ -234,8 +248,8 @@ export async function createClientPaymentJournalEntry(
       sourceType: 'CLIENT_PAYMENT',
       sourceId: payment.id,
       lines: [
-        { accountId: receivingAccount.id, debit: toNumber(payment.amount), credit: 0, description: `تحصيل نقدي` },
-        { accountId: clientAccount.id, debit: 0, credit: toNumber(payment.amount), description: `تحصيل من ${payment.client.name}` },
+        { accountId: receivingAccount.id, debit: toNumber(payment.amount), credit: 0, description: `تحصيل نقدي`, costCenterId: costCenterId || undefined },
+        { accountId: clientAccount.id, debit: 0, credit: toNumber(payment.amount), description: `تحصيل من ${payment.client.name}`, costCenterId: costCenterId || undefined },
       ],
     },
     tx

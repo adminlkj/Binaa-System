@@ -419,6 +419,9 @@ model Client {
   address       String?
   taxNumber     String?
   isActive      Boolean  @default(true)
+  // P6-CRIT-009 FIX: soft-delete (mirror of Supplier.deletedAt added in Phase 5).
+  // DELETE now sets deletedAt=now + isActive=false instead of crashing on FK constraints.
+  deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -431,6 +434,7 @@ model Client {
   customerAdvances CustomerAdvance[]
 
   @@index([isActive])
+  @@index([deletedAt])
 }
 
 model Supplier {

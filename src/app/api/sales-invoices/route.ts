@@ -269,10 +269,13 @@ async function createInvoiceFromExtract(body: Record<string, unknown>) {
       data: { invoiced: true },
     })
 
-    // Create auto accounting entry (throws on failure → tx rolls back).
-    await createSalesInvoiceJournalEntry(invoice.id, tx)
+    // P6-CRIT-002 FIX: do NOT create the JE at DRAFT creation. The JE is created
+    // only when the invoice transitions DRAFT → SENT via PATCH /api/sales-invoices/[id]
+    // (mirrors the P5-CRIT-001 fix applied to purchase-invoices in Phase 5).
+    // Previously every DRAFT invoice inflated GL revenue/AR/VAT_OUTPUT — a ZATCA
+    // compliance problem and an audit-trail integrity problem.
 
-    // Re-fetch to include journalEntryId
+    // Re-fetch to include journalEntryId (will be null at DRAFT)
     return await tx.salesInvoice.findUnique({
       where: { id: invoice.id },
       include: {
@@ -495,10 +498,10 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
       data: { status: 'INVOICED', invoiced: true, invoiceId: invoice.id, approvedDate: timesheet.approvedDate || new Date() },
     })
 
-    // Create auto accounting entry (throws on failure → tx rolls back).
-    await createSalesInvoiceJournalEntry(invoice.id, tx)
+    // P6-CRIT-002 FIX: do NOT create the JE at DRAFT creation. The JE is created
+    // only when the invoice transitions DRAFT → SENT via PATCH /api/sales-invoices/[id].
 
-    // Re-fetch to include journalEntryId
+    // Re-fetch to include journalEntryId (will be null at DRAFT)
     return await tx.salesInvoice.findUnique({
       where: { id: invoice.id },
       include: {
@@ -632,10 +635,10 @@ async function createInvoiceManual(body: Record<string, unknown>) {
       },
     })
 
-    // Auto-create accounting journal entry (throws on failure → tx rolls back).
-    await createSalesInvoiceJournalEntry(invoice.id, tx)
+    // P6-CRIT-002 FIX: do NOT create the JE at DRAFT creation. The JE is created
+    // only when the invoice transitions DRAFT → SENT via PATCH /api/sales-invoices/[id].
 
-    // Re-fetch to include journalEntryId
+    // Re-fetch to include journalEntryId (will be null at DRAFT)
     return await tx.salesInvoice.findUnique({
       where: { id: invoice.id },
       include: {
@@ -660,13 +663,27 @@ async function createInvoiceManual(body: Record<string, unknown>) {
 }
 
 // PUT: Update a sales invoice (with reversal for approved/posted invoices)
+// P6-CRIT-006 FIX: this endpoint is dead-code (no UI caller) but reachable via API.
+// It previously accepted `status` via updateData spread, allowing direct API callers
+// to flip DRAFT→PAID without payment, PAID→CANCELLED without reversing JEs, etc.
+// Now `status` is FORBIDDEN via PUT — status transitions must go through
+// PATCH /api/sales-invoices/[id] which enforces proper transition rules + JE reversal.
+// Field updates (notes, dueDate, paymentTerms, etc.) are still allowed.
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
-    const { id, ...updateData } = body
+    const { id, status: _forbiddenStatus, ...updateData } = body
 
     if (!id) {
       return NextResponse.json({ error: 'معرف الفاتورة مطلوب' }, { status: 400 })
+    }
+
+    // P6-CRIT-006 FIX: status changes via PUT are forbidden. Use PATCH /api/sales-invoices/[id].
+    if (_forbiddenStatus !== undefined) {
+      return NextResponse.json(
+        { error: 'لا يمكن تغيير حالة الفاتورة عبر PUT. استخدم PATCH /api/sales-invoices/[id] لتطبيق انتقالات الحالة الصحيحة (مع عكس القيود).' },
+        { status: 400 }
+      )
     }
 
     const existing = await db.salesInvoice.findUnique({ where: { id } })

@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import type { PrismaTransaction } from '@/lib/accounting/engine'
 
 // GET: Single delivery order with full details
 export async function GET(
@@ -25,12 +26,12 @@ export async function GET(
     }
 
     // Enrich with client and project info
-    let client = null
-    let project = null
+    let client: { id: string; code: string; name: string; nameAr: string | null } | null = null
+    let project: { id: string; code: string; name: string; nameAr: string | null } | null = null
 
     if (order.clientId) {
-      client = await db.client.findUnique({
-        where: { id: order.clientId },
+      client = await db.client.findFirst({
+        where: { id: order.clientId, deletedAt: null },
         select: { id: true, code: true, name: true, nameAr: true },
       })
     }
@@ -53,7 +54,16 @@ export async function GET(
   }
 }
 
-// PATCH: Update delivery order status
+// PATCH /api/delivery-orders/[id]
+// P6-CRIT-008 FIX: this duplicate PATCH endpoint reintroduced the Phase 3 bug
+// (equipment.status clobbering — no RENTED check). It now mirrors the corrected
+// logic in /api/delivery-orders/route.ts PATCH:
+//   - Use $transaction so the DO update + equipment update are atomic.
+//   - When DELIVERED: only flip equipment to IN_USE if currently AVAILABLE.
+//     If RENTED (active rental contract), leave the equipment status alone —
+//     the rental contract owns it.
+//   - When RETURNED: only flip to AVAILABLE if not RENTED.
+//   - When CANCELLED: only revert to AVAILABLE if not RENTED.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -73,59 +83,74 @@ export async function PATCH(
     if (body.status !== undefined) {
       updateData.status = body.status
     }
-
     if (body.site !== undefined) {
       updateData.site = body.site || null
     }
-
     if (body.notes !== undefined) {
       updateData.notes = body.notes || null
     }
-
     if (body.returnDate !== undefined) {
       updateData.returnDate = body.returnDate ? new Date(body.returnDate) : null
     }
 
-    const order = await db.equipmentDeliveryOrder.update({
-      where: { id },
-      data: updateData,
-      include: {
-        equipment: {
-          select: { id: true, code: true, name: true, nameAr: true },
+    const newStatus = body.status as string | undefined
+
+    const order = await db.$transaction(async (tx: PrismaTransaction) => {
+      const updated = await tx.equipmentDeliveryOrder.update({
+        where: { id },
+        data: updateData,
+        include: {
+          equipment: {
+            select: { id: true, code: true, name: true, nameAr: true },
+          },
+          rental: {
+            select: { id: true, pricingType: true, status: true, hourlyRate: true },
+          },
         },
-        rental: {
-          select: { id: true, pricingType: true, status: true, hourlyRate: true },
-        },
-      },
-    })
-
-    // If returned, set equipment back to AVAILABLE
-    if (body.status === 'RETURNED') {
-      await db.equipment.update({
-        where: { id: order.equipmentId },
-        data: { status: 'AVAILABLE' },
       })
-    }
 
-    // If delivered, set equipment to IN_USE
-    if (body.status === 'DELIVERED') {
-      await db.equipment.update({
-        where: { id: order.equipmentId },
-        data: { status: 'IN_USE' },
-      })
-    }
-
-    // If cancelled, revert equipment status
-    if (body.status === 'CANCELLED') {
-      if (existing.status === 'DELIVERED') {
-        // Was IN_USE, revert to AVAILABLE
-        await db.equipment.update({
-          where: { id: order.equipmentId },
-          data: { status: 'AVAILABLE' },
+      // P3-BUG / P6-CRIT-008 fix: respect RENTED equipment state.
+      if (newStatus === 'DELIVERED') {
+        const currentEq = await tx.equipment.findUnique({
+          where: { id: updated.equipmentId },
+          select: { status: true },
         })
+        if (currentEq?.status === 'AVAILABLE') {
+          await tx.equipment.update({
+            where: { id: updated.equipmentId },
+            data: { status: 'IN_USE' },
+          })
+        }
+        // If RENTED or any other state — leave it alone (rental contract owns the status).
+      } else if (newStatus === 'RETURNED') {
+        const currentEq = await tx.equipment.findUnique({
+          where: { id: updated.equipmentId },
+          select: { status: true },
+        })
+        if (currentEq?.status !== 'RENTED') {
+          await tx.equipment.update({
+            where: { id: updated.equipmentId },
+            data: { status: 'AVAILABLE' },
+          })
+        }
+      } else if (newStatus === 'CANCELLED') {
+        if (existing.status === 'DELIVERED') {
+          const currentEq = await tx.equipment.findUnique({
+            where: { id: updated.equipmentId },
+            select: { status: true },
+          })
+          if (currentEq?.status !== 'RENTED') {
+            await tx.equipment.update({
+              where: { id: updated.equipmentId },
+              data: { status: 'AVAILABLE' },
+            })
+          }
+        }
+        // PENDING → CANCELLED: equipment was never changed, no revert needed.
       }
-      // PENDING → CANCELLED: equipment was never changed, no revert needed
-    }
+
+      return updated
+    })
 
     return NextResponse.json(order)
   } catch (error) {

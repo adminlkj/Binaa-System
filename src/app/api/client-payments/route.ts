@@ -73,18 +73,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
     }
 
-    // Validate client exists
-    const client = await db.client.findUnique({
-      where: { id: clientId },
+    const payAmount = parseFloat(amount) || 0
+    if (payAmount <= 0) {
+      return NextResponse.json({ error: 'المبلغ يجب أن يكون أكبر من صفر' }, { status: 400 })
+    }
+
+    // Validate client exists + not soft-deleted (P6-CRIT-009 mirror)
+    const client = await db.client.findFirst({
+      where: { id: clientId, deletedAt: null },
     })
     if (!client) {
       return NextResponse.json({ error: 'العميل غير موجود' }, { status: 404 })
     }
 
-    // If invoiceId provided, validate and check amount
+    // P6-CRIT-005 FIX: If invoiceId provided, validate invoice status + overpayment.
+    // Previously the POST allowed paying DRAFT / PAID / CANCELLED invoices and
+    // had no overpayment check — a direct API call could un-CANCEL an invoice,
+    // double-pay a PAID invoice, or pay a DRAFT invoice (mirror of P5-CRIT-009
+    // fix applied to supplier-payments).
+    let linkedInvoice: { id: string; status: string; totalAmount: any; paidAmount: any; clientId: string } | null = null
     if (invoiceId) {
       const invoice = await db.salesInvoice.findUnique({
         where: { id: invoiceId },
+        select: { id: true, status: true, totalAmount: true, paidAmount: true, clientId: true },
       })
       if (!invoice) {
         return NextResponse.json({ error: 'فاتورة البيع غير موجودة' }, { status: 404 })
@@ -95,6 +106,24 @@ export async function POST(request: Request) {
           { status: 400 }
         )
       }
+      if (invoice.status === 'CANCELLED') {
+        return NextResponse.json({ error: 'لا يمكن التحصيل لفاتورة ملغاة' }, { status: 400 })
+      }
+      if (invoice.status === 'DRAFT') {
+        return NextResponse.json({ error: 'لا يمكن التحصيل لفاتورة مسودة — اعتمد الفاتورة أولاً (DRAFT → SENT)' }, { status: 400 })
+      }
+      if (invoice.status === 'PAID') {
+        return NextResponse.json({ error: 'الفاتورة مدفوعة بالكامل' }, { status: 400 })
+      }
+      // Overpayment check
+      const remaining = toNumber(invoice.totalAmount) - toNumber(invoice.paidAmount)
+      if (payAmount > remaining + 0.01) {
+        return NextResponse.json(
+          { error: `المبلغ ${payAmount} يتجاوز المتبقي على الفاتورة (${remaining.toFixed(2)})` },
+          { status: 400 }
+        )
+      }
+      linkedInvoice = invoice
     }
 
     // Create the payment + accounting entry + update invoice in transaction
@@ -104,7 +133,7 @@ export async function POST(request: Request) {
         data: {
           clientId,
           invoiceId: invoiceId || null,
-          amount,
+          amount: payAmount,
           date: new Date(date),
           receivedIn: receivedIn || 'TREASURY',
           receivingAccountId: receivingAccountId || null,
@@ -122,23 +151,23 @@ export async function POST(request: Request) {
       // Create accounting entry (throws on failure → tx rolls back).
       await createClientPaymentJournalEntry(payment.id, tx)
 
-      // Update sales invoice paidAmount and status
-      if (invoiceId) {
+      // Update sales invoice paidAmount and status (only if linked invoice passed validation)
+      if (linkedInvoice) {
         const invoice = await tx.salesInvoice.findUnique({
-          where: { id: invoiceId },
+          where: { id: linkedInvoice.id },
         })
         if (invoice) {
-          const newPaidAmount = toNumber(invoice.paidAmount) + amount
+          const newPaidAmount = toNumber(invoice.paidAmount) + payAmount
           let newStatus = invoice.status
 
-          if (newPaidAmount >= toNumber(invoice.totalAmount)) {
+          if (newPaidAmount >= toNumber(invoice.totalAmount) - 0.01) {
             newStatus = 'PAID'
           } else if (newPaidAmount > 0) {
             newStatus = 'PARTIALLY_PAID'
           }
 
           await tx.salesInvoice.update({
-            where: { id: invoiceId },
+            where: { id: linkedInvoice.id },
             data: {
               paidAmount: newPaidAmount,
               status: newStatus,

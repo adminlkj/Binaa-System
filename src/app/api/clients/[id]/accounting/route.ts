@@ -9,13 +9,17 @@ import { NextResponse } from 'next/server'
 // - Number of journal entries linked to this client
 // - Number of sales invoices
 // - Last transaction date
+//
+// P6-CRIT-001 FIX: JournalEntry has NO clientId field. Query by sourceType + sourceId
+// where sourceId is the ID of a SalesInvoice or ClientPayment belonging to this client.
+// (Mirror of the P5-CRIT-007 fix applied to suppliers/[id]/accounting/route.ts.)
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
 
-    // Verify client exists
-    const client = await db.client.findUnique({
-      where: { id },
+    // Verify client exists (and is not soft-deleted)
+    const client = await db.client.findFirst({
+      where: { id, deletedAt: null },
       select: { id: true, code: true, name: true, nameAr: true },
     })
 
@@ -36,17 +40,46 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       _sum: { amount: true },
     })
 
-    // Get journal entry stats
-    const journalCount = await db.journalEntry.count({
-      where: { clientId: id, deletedAt: null },
+    // Get journal entry stats — query by sourceType+sourceId where the source
+    // belongs to this client (SalesInvoice.clientId=id OR ClientPayment.clientId=id).
+    const clientInvoiceIds = await db.salesInvoice.findMany({
+      where: { clientId: id },
+      select: { id: true },
+    })
+    const clientPaymentIds = await db.clientPayment.findMany({
+      where: { clientId: id },
+      select: { id: true },
     })
 
-    // Get last journal entry date
-    const lastEntry = await db.journalEntry.findFirst({
-      where: { clientId: id, deletedAt: null },
-      orderBy: { date: 'desc' },
-      select: { date: true },
-    })
+    const invoiceIdList = clientInvoiceIds.map((i) => i.id)
+    const paymentIdList = clientPaymentIds.map((p) => p.id)
+
+    const journalEntryFilter = {
+      deletedAt: null,
+      OR: [
+        ...(invoiceIdList.length > 0
+          ? [{ sourceType: 'SALES_INVOICE', sourceId: { in: invoiceIdList } }]
+          : []),
+        ...(paymentIdList.length > 0
+          ? [{ sourceType: 'CLIENT_PAYMENT', sourceId: { in: paymentIdList } }]
+          : []),
+      ],
+    }
+
+    // If no linked sources at all, skip the JE queries (empty OR would match everything)
+    const hasSources = invoiceIdList.length > 0 || paymentIdList.length > 0
+
+    const journalCount = hasSources
+      ? await db.journalEntry.count({ where: journalEntryFilter })
+      : 0
+
+    const lastEntry = hasSources
+      ? await db.journalEntry.findFirst({
+          where: journalEntryFilter,
+          orderBy: { date: 'desc' },
+          select: { date: true },
+        })
+      : null
 
     // Calculate current balance (what the client owes us = invoiced - paid)
     const totalInvoiced = toNumber(invoiceAgg._sum.totalAmount)

@@ -11,7 +11,8 @@ export async function GET(request: Request) {
     const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
     const search = searchParams.get('search') || ''
 
-    const where: Record<string, unknown> = {}
+    // P6-CRIT-009 FIX: filter out soft-deleted clients (mirror of suppliers/route.ts).
+    const where: Record<string, unknown> = { deletedAt: null }
     if (activeOnly) where.isActive = true
     if (search) {
       where.OR = [
