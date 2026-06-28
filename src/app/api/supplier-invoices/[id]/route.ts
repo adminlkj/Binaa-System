@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
-import { autoEntryPurchaseInvoice, reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { createPurchaseInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { reverseEntry } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 // Valid status transitions for Supplier Invoices
@@ -88,6 +89,10 @@ export async function PUT(
       }
 
       // CRITICAL: When status changes from DRAFT to SENT, auto-create accounting journal entry
+      // P5-CRIT-006 FIX: use unified createPurchaseInvoiceJournalEntry (auto-journal.ts)
+      // which is expenseCategory-aware + propagates costCenterId + uses requireAccountByRole
+      // (no hardcoded fallback codes). Previously this used autoEntryPurchaseInvoice (engine.ts)
+      // which had divergent account-selection logic + hardcoded fallbacks.
       if (body.status === 'SENT' && existing.status === 'DRAFT') {
         const result = await db.$transaction(async (tx: PrismaTransaction) => {
           let journalEntryId = existing.journalEntryId
@@ -95,23 +100,11 @@ export async function PUT(
           if (!journalEntryId) {
             // R1 enforced: if the JE fails, the entire transaction rolls back —
             // no invoice can transition to SENT without a posted journal entry.
-            // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
-            const journalEntry = await autoEntryPurchaseInvoice({
-              invoiceNo: existing.invoiceNo,
-              supplierId: existing.supplierId,
-              subtotal: existing.subtotal,
-              vatRate: existing.vatRate,
-              vatAmount: existing.vatAmount,
-              totalAmount: existing.totalAmount,
-              date: existing.date,
-              projectId: existing.projectId || undefined,
-              // costCenterId is a distinct entity from projectId. Passing projectId as
-              // costCenterId causes wrong cost-center linking or FK violations.
-              // Leave costCenterId null unless a real cost center is provided.
-              costCenterId: undefined,
-              expenseCategory: existing.expenseCategory || undefined,
-            }, tx)
-            journalEntryId = journalEntry.id
+            // createPurchaseInvoiceJournalEntry reads the invoice from DB (including
+            // expenseCategory + project.costCenter) and sets journalEntryId.
+            await createPurchaseInvoiceJournalEntry(existing.id, tx)
+            const updated = await tx.purchaseInvoice.findUnique({ where: { id: existing.id }, select: { journalEntryId: true } })
+            journalEntryId = updated?.journalEntryId || null
           }
 
           return await tx.purchaseInvoice.update({
@@ -130,6 +123,27 @@ export async function PUT(
           })
         })
 
+        return NextResponse.json(result)
+      }
+
+      // P5-CRIT-003 FIX: When status changes to CANCELLED, reverse the linked JE.
+      if (body.status === 'CANCELLED' && existing.status !== 'CANCELLED') {
+        const result = await db.$transaction(async (tx: PrismaTransaction) => {
+          if (existing.journalEntryId) {
+            await reverseEntry(existing.journalEntryId, tx)
+          }
+          return await tx.purchaseInvoice.update({
+            where: { id },
+            data: { status: 'CANCELLED' },
+            include: {
+              supplier: { select: { id: true, name: true, code: true } },
+              purchaseOrder: { select: { id: true, orderNo: true, status: true } },
+              goodsReceipt: { select: { id: true, receiptNo: true, status: true } },
+              project: { select: { id: true, name: true, code: true } },
+              items: true,
+            },
+          })
+        })
         return NextResponse.json(result)
       }
 
@@ -162,8 +176,10 @@ export async function PUT(
       )
     }
 
-    // Handle modification with reversal if journal entry exists
-    if (existing.journalEntryId && (body.subtotal !== undefined || body.totalAmount !== undefined || body.vatAmount !== undefined)) {
+    // Handle modification with reversal if journal entry exists.
+    // P5-CRIT-006 FIX: use unified createPurchaseInvoiceJournalEntry so POST and PUT
+    // produce the SAME account mapping (no more divergence between 7220 vs 7210).
+    if (existing.journalEntryId && (body.subtotal !== undefined || body.totalAmount !== undefined || body.vatAmount !== undefined || body.items !== undefined)) {
       const result = await db.$transaction(async (tx: PrismaTransaction) => {
         const originalEntry = await tx.journalEntry.findUnique({
           where: { id: existing.journalEntryId!, deletedAt: null },
@@ -172,45 +188,48 @@ export async function PUT(
 
         if (originalEntry) {
           // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
-          // Avoids double-cancellation bug + Decimal conversion bug.
           await reverseEntry(existing.journalEntryId!, tx)
         }
 
-        // Create new entry with updated values
-        const newSubtotal = body.subtotal ?? existing.subtotal
-        const newVatAmount = body.vatAmount ?? existing.vatAmount
-        const newTotalAmount = body.totalAmount ?? existing.totalAmount
+        // Update invoice with new values FIRST so createPurchaseInvoiceJournalEntry reads them.
+        const updateDataFirst: Record<string, unknown> = {}
+        if (body.subtotal !== undefined) updateDataFirst.subtotal = body.subtotal
+        if (body.vatAmount !== undefined) updateDataFirst.vatAmount = body.vatAmount
+        if (body.totalAmount !== undefined) updateDataFirst.totalAmount = body.totalAmount
+        if (body.supplierInvoiceNo !== undefined) updateDataFirst.supplierInvoiceNo = body.supplierInvoiceNo
+        if (body.supplierInvoiceDate !== undefined) updateDataFirst.supplierInvoiceDate = body.supplierInvoiceDate ? new Date(body.supplierInvoiceDate) : null
+        if (body.attachmentPath !== undefined) updateDataFirst.attachmentPath = body.attachmentPath
+        if (body.notes !== undefined) updateDataFirst.notes = body.notes
+        if (body.date !== undefined) updateDataFirst.date = new Date(body.date)
+        if (body.dueDate !== undefined) updateDataFirst.dueDate = new Date(body.dueDate)
+        if (body.expenseCategory !== undefined) updateDataFirst.expenseCategory = body.expenseCategory || null
 
-        // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
-        const newJournalEntry = await autoEntryPurchaseInvoice({
-          invoiceNo: existing.invoiceNo,
-          supplierId: existing.supplierId,
-          subtotal: newSubtotal,
-          vatRate: existing.vatRate,
-          vatAmount: newVatAmount,
-          totalAmount: newTotalAmount,
-          date: existing.date,
-          projectId: existing.projectId || undefined,
-          // costCenterId is distinct from projectId — do not conflate the two.
-          costCenterId: undefined,
-          expenseCategory: existing.expenseCategory || undefined,
-        }, tx)
+        if (Object.keys(updateDataFirst).length > 0) {
+          await tx.purchaseInvoice.update({ where: { id }, data: updateDataFirst })
+        }
 
-        body.journalEntryId = newJournalEntry.id
+        // Update items if provided
+        if (body.items !== undefined && Array.isArray(body.items)) {
+          await tx.purchaseInvoiceItem.deleteMany({ where: { invoiceId: id } })
+          await tx.purchaseInvoiceItem.createMany({
+            data: body.items.map((item: { description: string; quantity: number; unitPrice: number }) => ({
+              invoiceId: id,
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              totalPrice: item.quantity * item.unitPrice,
+            })),
+          })
+        }
 
-        // General update for DRAFT invoices
-        const updateData: Record<string, unknown> = {}
-        if (body.supplierInvoiceNo !== undefined) updateData.supplierInvoiceNo = body.supplierInvoiceNo
-        if (body.supplierInvoiceDate !== undefined) updateData.supplierInvoiceDate = body.supplierInvoiceDate ? new Date(body.supplierInvoiceDate) : null
-        if (body.attachmentPath !== undefined) updateData.attachmentPath = body.attachmentPath
-        if (body.notes !== undefined) updateData.notes = body.notes
-        if (body.journalEntryId !== undefined) updateData.journalEntryId = body.journalEntryId
-        if (body.date !== undefined) updateData.date = new Date(body.date)
-        if (body.dueDate !== undefined) updateData.dueDate = new Date(body.dueDate)
+        // Clear the old journalEntryId so createPurchaseInvoiceJournalEntry creates a fresh one
+        await tx.purchaseInvoice.update({ where: { id }, data: { journalEntryId: null } })
 
-        return await tx.purchaseInvoice.update({
+        // Create new JE with updated values (reads invoice + expenseCategory + project.costCenter from DB)
+        await createPurchaseInvoiceJournalEntry(existing.id, tx)
+
+        return await tx.purchaseInvoice.findUnique({
           where: { id },
-          data: updateData,
           include: {
             supplier: { select: { id: true, name: true, code: true } },
             purchaseOrder: { select: { id: true, orderNo: true, status: true } },
@@ -276,8 +295,13 @@ export async function DELETE(
       )
     }
 
-    // Delete items first then the invoice (in transaction)
+    // P5-CRIT-002 FIX: reverse the linked JE (if any) BEFORE hard-deleting.
+    // Previously the DELETE hard-deleted the invoice but left the JE POSTED in the GL,
+    // creating orphaned JEs with sourceId pointing to deleted records.
     await db.$transaction(async (tx: PrismaTransaction) => {
+      if (existing.journalEntryId) {
+        await reverseEntry(existing.journalEntryId, tx)
+      }
       await tx.purchaseInvoiceItem.deleteMany({ where: { invoiceId: id } })
       await tx.purchaseInvoice.delete({ where: { id } })
     })

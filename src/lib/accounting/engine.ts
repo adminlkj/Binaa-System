@@ -529,7 +529,25 @@ export async function autoEntrySalesInvoice(data: {
  * Dr: VAT Receivable (1400) - vatAmount
  * Cr: Suppliers Payable (3110) - totalAmount
  */
-export async function autoEntryPurchaseInvoice(data: {
+/**
+ * فاتورة مشتريات - Purchase Invoice (DEPRECATED — use createPurchaseInvoiceJournalEntry instead)
+ *
+ * P5-CRIT-006/015 FIX: This function is DEPRECATED. The unified generator is
+ * `createPurchaseInvoiceJournalEntry` in `src/lib/auto-journal.ts`, which:
+ *   - Is expenseCategory-aware (uses the same category→role map)
+ *   - Uses requireAccountByRole (throws on missing role mapping, no hardcoded fallbacks)
+ *   - Uses getNextEntryNo (standard JE-NNNNNN format, not JE-PI-...)
+ *   - Propagates costCenterId from the linked project's cost center
+ *
+ * This function is kept for backwards compatibility but now THROWS to force
+ * callers to migrate. The only previous callers were supplier-invoices/[id]
+ * (PUT approve + PUT edit), which have been migrated to createPurchaseInvoiceJournalEntry.
+ *
+ * DEPRECATED — purchase invoices use createPurchaseInvoiceJournalEntry (auto-journal.ts).
+ *
+ * Cr: Suppliers Payable (3110) - totalAmount
+ */
+export async function autoEntryPurchaseInvoice(_data: {
   invoiceNo: string
   supplierId: string
   subtotal: number
@@ -541,54 +559,12 @@ export async function autoEntryPurchaseInvoice(data: {
   costCenterId?: string
   expenseCategory?: string
   activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL' | 'BOTH'
-}, tx?: PrismaTransaction) {
-  // Resolve expense account by ROLE based on category — no hardcoded map!
-  const categoryRoleMap: Record<string, string> = {
-    'CONSUMABLES': AccountRole.PROJECT_COST,
-    'SERVICES': data.activityType === 'EQUIPMENT_RENTAL' ? AccountRole.FUEL_EXPENSE : AccountRole.SUBCONTRACTOR_COST,
-    'MAINTENANCE': AccountRole.MAINTENANCE_EXPENSE,
-    'FUEL': AccountRole.FUEL_EXPENSE,
-    'DRIVERS': AccountRole.DRIVER_EXPENSE,
-    'TRANSPORT': AccountRole.TRANSPORT_EXPENSE,
-    'DELIVERY': AccountRole.TRANSPORT_EXPENSE,
-    'RENT': AccountRole.ADMIN_EXPENSE,
-    'OFFICE': AccountRole.ADMIN_EXPENSE,
-    'INTERNET': AccountRole.ADMIN_EXPENSE,
-    'ELECTRICITY': AccountRole.ADMIN_EXPENSE,
-    'WATER': AccountRole.ADMIN_EXPENSE,
-    'SALARIES': AccountRole.PAYROLL_EXPENSE,
-    'INSURANCE': AccountRole.PROJECT_COST,
-    'PERMITS': AccountRole.PROJECT_COST,
-    'HOSPITALITY': AccountRole.ADMIN_EXPENSE,
-    'MANAGEMENT_CARS': AccountRole.ADMIN_EXPENSE,
-    'OTHER': AccountRole.ADMIN_EXPENSE,
-  }
-  const expenseRole = data.expenseCategory ? (categoryRoleMap[data.expenseCategory] || AccountRole.ADMIN_EXPENSE) : AccountRole.ADMIN_EXPENSE
-  const expenseCode = await getAccountCodeByRole(expenseRole, tx) || '8630'
-
-  // Resolve AP and VAT accounts by role
-  const apCode = await getAccountCodeByRole(AccountRole.SUPPLIER_AP, tx) || '3210'
-  const vatInputCode = await getAccountCodeByRole(AccountRole.VAT_INPUT, tx) || '3120'
-
-  const lines = [
-    { accountCode: expenseCode, debit: data.subtotal, credit: 0, costCenterId: data.costCenterId },
-  ]
-
-  if (data.vatAmount > 0) {
-    lines.push({ accountCode: vatInputCode, debit: data.vatAmount, credit: 0 })
-  }
-
-  lines.push({ accountCode: apCode, debit: 0, credit: data.totalAmount })
-
-  return createJournalEntry({
-    entryNo: `JE-PI-${Date.now()}`,
-    date: data.date,
-    description: `Purchase Invoice ${data.invoiceNo}`,
-    descriptionAr: `فاتورة مشتريات ${data.invoiceNo}`,
-    lines,
-    sourceType: 'PURCHASE_INVOICE',
-    sourceId: data.invoiceNo,
-  }, tx)
+}, _tx?: PrismaTransaction) {
+  throw new Error(
+    'autoEntryPurchaseInvoice is DEPRECATED. Use createPurchaseInvoiceJournalEntry(invoiceId, tx) ' +
+    'from src/lib/auto-journal.ts instead — it is expenseCategory-aware, uses requireAccountByRole ' +
+    '(no hardcoded fallback codes), uses getNextEntryNo (standard JE-NNNNNN format), and propagates costCenterId.'
+  )
 }
 
 /**

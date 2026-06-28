@@ -68,18 +68,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })
     }
 
+    const payAmount = parseFloat(amount) || 0
+    if (payAmount <= 0) {
+      return NextResponse.json({ error: 'المبلغ يجب أن يكون أكبر من صفر' }, { status: 400 })
+    }
+
     // Validate supplier exists
-    const supplier = await db.supplier.findUnique({
-      where: { id: supplierId },
+    const supplier = await db.supplier.findFirst({
+      where: { id: supplierId, deletedAt: null },
     })
     if (!supplier) {
       return NextResponse.json({ error: 'المورد غير موجود' }, { status: 404 })
     }
 
-    // If invoiceId provided, validate and check amount
+    // P5-CRIT-009 FIX: If invoiceId provided, validate invoice status + overpayment.
+    // Previously the POST allowed paying DRAFT / PAID / CANCELLED invoices and
+    // had no overpayment check — a direct API call could un-CANCEL an invoice,
+    // double-pay a PAID invoice, or pay a DRAFT invoice.
+    let linkedInvoice: { id: string; status: string; totalAmount: bigint; paidAmount: bigint; purchaseOrderId: string | null } | null = null
     if (invoiceId) {
       const invoice = await db.purchaseInvoice.findUnique({
         where: { id: invoiceId },
+        select: { id: true, status: true, totalAmount: true, paidAmount: true, supplierId: true, purchaseOrderId: true },
       })
       if (!invoice) {
         return NextResponse.json({ error: 'فاتورة الشراء غير موجودة' }, { status: 404 })
@@ -90,16 +100,34 @@ export async function POST(request: Request) {
           { status: 400 }
         )
       }
+      if (invoice.status === 'CANCELLED') {
+        return NextResponse.json({ error: 'لا يمكن الدفع لفاتورة ملغاة' }, { status: 400 })
+      }
+      if (invoice.status === 'DRAFT') {
+        return NextResponse.json({ error: 'لا يمكن الدفع لفاتورة مسودة — اعتمد الفاتورة أولاً' }, { status: 400 })
+      }
+      if (invoice.status === 'PAID') {
+        return NextResponse.json({ error: 'الفاتورة مدفوعة بالكامل' }, { status: 400 })
+      }
+      // Overpayment check
+      const remaining = toNumber(invoice.totalAmount) - toNumber(invoice.paidAmount)
+      if (payAmount > remaining + 0.01) {
+        return NextResponse.json(
+          { error: `المبلغ ${payAmount} يتجاوز المتبقي على الفاتورة (${remaining.toFixed(2)})` },
+          { status: 400 }
+        )
+      }
+      linkedInvoice = invoice
     }
 
-    // Create the payment + accounting entry + update invoice in transaction
+    // Create the payment + accounting entry + update invoice + update PO in transaction
     const result = await db.$transaction(async (tx: PrismaTransaction) => {
       // Create the payment
       const payment = await tx.supplierPayment.create({
         data: {
           supplierId,
           invoiceId: invoiceId || null,
-          amount: parseFloat(amount) || 0,
+          amount: payAmount,
           date: new Date(date),
           paidFrom: paidFrom || 'TREASURY',
           payingAccountId: payingAccountId || null,
@@ -119,27 +147,42 @@ export async function POST(request: Request) {
       await createSupplierPaymentJournalEntry(payment.id, tx)
 
       // Update purchase invoice paidAmount and status
-      if (invoiceId) {
+      if (linkedInvoice) {
         const invoice = await tx.purchaseInvoice.findUnique({
-          where: { id: invoiceId },
+          where: { id: linkedInvoice.id },
         })
         if (invoice) {
-          const newPaidAmount = toNumber(invoice.paidAmount) + (parseFloat(amount) || 0)
+          const newPaidAmount = toNumber(invoice.paidAmount) + payAmount
           let newStatus = invoice.status
 
-          if (newPaidAmount >= toNumber(invoice.totalAmount)) {
+          if (newPaidAmount >= toNumber(invoice.totalAmount) - 0.01) {
             newStatus = 'PAID'
           } else if (newPaidAmount > 0) {
             newStatus = 'PARTIALLY_PAID'
           }
 
           await tx.purchaseInvoice.update({
-            where: { id: invoiceId },
+            where: { id: linkedInvoice.id },
             data: {
               paidAmount: newPaidAmount,
               status: newStatus,
             },
           })
+
+          // P5-CRIT-011 FIX: also update PurchaseOrder.paidAmount if the invoice is linked to a PO.
+          // Previously PO.paidAmount was never updated — UI showed "paid: 0" forever.
+          if (invoice.purchaseOrderId) {
+            const po = await tx.purchaseOrder.findUnique({
+              where: { id: invoice.purchaseOrderId },
+              select: { id: true, paidAmount: true },
+            })
+            if (po) {
+              await tx.purchaseOrder.update({
+                where: { id: po.id },
+                data: { paidAmount: toNumber(po.paidAmount) + payAmount },
+              })
+            }
+          }
         }
       }
 

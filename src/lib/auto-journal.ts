@@ -13,7 +13,7 @@
 import { db } from '@/lib/db'
 import { PrismaClient } from '@prisma/client'
 import { toNumber } from '@/lib/decimal'
-import { AccountRole, getDefaultAccountByRole } from '@/lib/account-roles'
+import { AccountRole, getDefaultAccountByRole, requireAccountByRole, type AccountRoleKey } from '@/lib/account-roles'
 import { postJournalEntry, getNextEntryNo, type PrismaTransaction } from '@/lib/accounting/guard'
 
 // Re-export for backwards compatibility
@@ -109,34 +109,67 @@ export async function createSalesInvoiceJournalEntry(
 
 // ---------------------------------------------------------------------------
 // Purchase Invoice → Journal Entry
-//   Dr: Cost (PROJECT_COST or MAINTENANCE_EXPENSE) — subtotal
+//   Dr: Cost (expense-category-aware role mapping) — subtotal
 //   Dr: Input VAT (VAT_INPUT) — vatAmount
 //   Cr: Suppliers (SUPPLIER_AP) — totalAmount
+//
+// P5-CRIT-006/010/015 FIX: Unified generator — expenseCategory-aware + costCenterId propagation.
+// This is the SINGLE source of truth for purchase-invoice JEs (used by both
+// POST approve-flow and PUT edit-flow). No hardcoded fallback codes.
 // ---------------------------------------------------------------------------
+// Category → AccountRole map (mirrors the engine.ts categoryRoleMap, but
+// resolved via requireAccountByRole which throws on missing role mapping).
+const PURCHASE_CATEGORY_ROLE_MAP: Record<string, string> = {
+  'CONSUMABLES': AccountRole.PROJECT_COST,
+  'SERVICES': AccountRole.SUBCONTRACTOR_COST,
+  'MAINTENANCE': AccountRole.MAINTENANCE_EXPENSE,
+  'FUEL': AccountRole.FUEL_EXPENSE,
+  'DRIVERS': AccountRole.DRIVER_EXPENSE,
+  'TRANSPORT': AccountRole.TRANSPORT_EXPENSE,
+  'DELIVERY': AccountRole.TRANSPORT_EXPENSE,
+  'RENT': AccountRole.ADMIN_EXPENSE,
+  'OFFICE': AccountRole.ADMIN_EXPENSE,
+  'INTERNET': AccountRole.ADMIN_EXPENSE,
+  'ELECTRICITY': AccountRole.ADMIN_EXPENSE,
+  'WATER': AccountRole.ADMIN_EXPENSE,
+  'SALARIES': AccountRole.PAYROLL_EXPENSE,
+  'INSURANCE': AccountRole.PROJECT_COST,
+  'PERMITS': AccountRole.PROJECT_COST,
+  'HOSPITALITY': AccountRole.ADMIN_EXPENSE,
+  'MANAGEMENT_CARS': AccountRole.ADMIN_EXPENSE,
+  'OTHER': AccountRole.ADMIN_EXPENSE,
+}
+
 export async function createPurchaseInvoiceJournalEntry(
   invoiceId: string,
   tx: PrismaTransaction
 ) {
   const invoice = await tx.purchaseInvoice.findUnique({
     where: { id: invoiceId },
-    include: { supplier: true },
+    include: { supplier: true, project: { select: { id: true, costCenter: { select: { id: true } } } } },
   })
   if (!invoice) {
     throw new Error(`فاتورة الشراء غير موجودة: ${invoiceId}`)
   }
 
-  const costAccount = invoice.projectId
-    ? await getDefaultAccountByRole(AccountRole.PROJECT_COST, tx)
-    : await getDefaultAccountByRole(AccountRole.MAINTENANCE_EXPENSE, tx)
-  const inputVatAccount = await getDefaultAccountByRole(AccountRole.VAT_INPUT, tx)
-  const supplierAccount = await getDefaultAccountByRole(AccountRole.SUPPLIER_AP, tx)
-
-  if (!costAccount || !inputVatAccount || !supplierAccount) {
-    throw new Error(
-      `حساب مفقود لقيد فاتورة الشراء: costAccount=${!!costAccount}, ` +
-      `inputVatAccount=${!!inputVatAccount}, supplierAccount=${!!supplierAccount}`
-    )
+  // Resolve expense account by ROLE based on category (P5-CRIT-006).
+  // Default: if projectId present → PROJECT_COST, else ADMIN_EXPENSE.
+  // If expenseCategory is set, use the category map.
+  let expenseRole: string
+  if (invoice.expenseCategory && PURCHASE_CATEGORY_ROLE_MAP[invoice.expenseCategory]) {
+    expenseRole = PURCHASE_CATEGORY_ROLE_MAP[invoice.expenseCategory]
+  } else if (invoice.projectId) {
+    expenseRole = AccountRole.PROJECT_COST
+  } else {
+    expenseRole = AccountRole.ADMIN_EXPENSE
   }
+
+  const costAccount = await requireAccountByRole(expenseRole as AccountRoleKey, `فاتورة مشتريات ${invoice.invoiceNo}`, tx)
+  const inputVatAccount = await requireAccountByRole(AccountRole.VAT_INPUT, `فاتورة مشتريات ${invoice.invoiceNo}`, tx)
+  const supplierAccount = await requireAccountByRole(AccountRole.SUPPLIER_AP, `فاتورة مشتريات ${invoice.invoiceNo}`, tx)
+
+  // P5-CRIT-010: propagate costCenterId from the linked project's cost center.
+  const costCenterId = invoice.project?.costCenter?.id || null
 
   const entryNo = await getNextEntryNo(tx)
   const entry = await postJournalEntry(
@@ -147,9 +180,9 @@ export async function createPurchaseInvoiceJournalEntry(
       sourceType: 'PURCHASE_INVOICE',
       sourceId: invoice.id,
       lines: [
-        { accountId: costAccount.id, debit: toNumber(invoice.subtotal), credit: 0, description: `تكلفة فاتورة ${invoice.invoiceNo}` },
-        { accountId: inputVatAccount.id, debit: toNumber(invoice.vatAmount), credit: 0, description: `ضريبة مدخلات فاتورة ${invoice.invoiceNo}` },
-        { accountId: supplierAccount.id, debit: 0, credit: toNumber(invoice.totalAmount), description: `مورد ${invoice.supplier.name}` },
+        { accountId: costAccount.id, debit: toNumber(invoice.subtotal), credit: 0, description: `تكلفة فاتورة ${invoice.invoiceNo}`, costCenterId: costCenterId || undefined },
+        { accountId: inputVatAccount.id, debit: toNumber(invoice.vatAmount), credit: 0, description: `ضريبة مدخلات فاتورة ${invoice.invoiceNo}`, costCenterId: costCenterId || undefined },
+        { accountId: supplierAccount.id, debit: 0, credit: toNumber(invoice.totalAmount), description: `مورد ${invoice.supplier.name}`, costCenterId: costCenterId || undefined },
       ],
     },
     tx
@@ -216,6 +249,9 @@ export async function createClientPaymentJournalEntry(
 // Supplier Payment → Journal Entry
 //   Dr: Suppliers (SUPPLIER_AP) — amount
 //   Cr: Cash/Bank (payingAccount or CASH role) — amount
+//
+// P5-CRIT-010 FIX: propagate costCenterId from the linked invoice's project
+// (if any) so that project profitability reports include AP payments.
 // ---------------------------------------------------------------------------
 export async function createSupplierPaymentJournalEntry(
   paymentId: string,
@@ -229,7 +265,7 @@ export async function createSupplierPaymentJournalEntry(
     throw new Error(`سداد المورد غير موجود: ${paymentId}`)
   }
 
-  const supplierAccount = await getDefaultAccountByRole(AccountRole.SUPPLIER_AP, tx)
+  const supplierAccount = await requireAccountByRole(AccountRole.SUPPLIER_AP, `سداد مورد ${payment.supplier.name}`, tx)
   let payingAccount: { id: string } | null = null
   if (payment.payingAccountId) {
     payingAccount = await tx.account.findUnique({ where: { id: payment.payingAccountId } })
@@ -238,11 +274,18 @@ export async function createSupplierPaymentJournalEntry(
     payingAccount = await getDefaultAccountByRole(AccountRole.CASH, tx)
   }
 
-  if (!supplierAccount || !payingAccount) {
-    throw new Error(
-      `حساب مفقود لقيد سداد المورد: supplierAccount=${!!supplierAccount}, ` +
-      `payingAccount=${!!payingAccount}`
-    )
+  if (!payingAccount) {
+    throw new Error(`حساب مفقود لقيد سداد المورد: payingAccount غير موجود`)
+  }
+
+  // P5-CRIT-010: resolve costCenterId from the linked invoice's project (if any).
+  let costCenterId: string | null = null
+  if (payment.invoiceId) {
+    const inv = await tx.purchaseInvoice.findUnique({
+      where: { id: payment.invoiceId },
+      select: { project: { select: { costCenter: { select: { id: true } } } } },
+    })
+    costCenterId = inv?.project?.costCenter?.id || null
   }
 
   const entryNo = await getNextEntryNo(tx)
@@ -254,8 +297,8 @@ export async function createSupplierPaymentJournalEntry(
       sourceType: 'SUPPLIER_PAYMENT',
       sourceId: payment.id,
       lines: [
-        { accountId: supplierAccount.id, debit: toNumber(payment.amount), credit: 0, description: `سداد مورد ${payment.supplier.name}` },
-        { accountId: payingAccount.id, debit: 0, credit: toNumber(payment.amount), description: `صرف نقدي` },
+        { accountId: supplierAccount.id, debit: toNumber(payment.amount), credit: 0, description: `سداد مورد ${payment.supplier.name}`, costCenterId: costCenterId || undefined },
+        { accountId: payingAccount.id, debit: 0, credit: toNumber(payment.amount), description: `صرف نقدي`, costCenterId: costCenterId || undefined },
       ],
     },
     tx

@@ -36,14 +36,40 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
       _sum: { amount: true },
     })
 
-    // Get journal entry stats
+    // Get journal entry stats — P5-CRIT-007 FIX:
+    // JournalEntry has NO supplierId field. Query by sourceType + sourceId
+    // where sourceId is the ID of a PurchaseInvoice or SupplierPayment belonging to this supplier.
+    const supplierInvoiceIds = await db.purchaseInvoice.findMany({
+      where: { supplierId: id },
+      select: { id: true },
+    })
+    const supplierPaymentIds = await db.supplierPayment.findMany({
+      where: { supplierId: id },
+      select: { id: true },
+    })
+
+    const invoiceIdList = supplierInvoiceIds.map(i => i.id)
+    const paymentIdList = supplierPaymentIds.map(p => p.id)
+
     const journalCount = await db.journalEntry.count({
-      where: { supplierId: id, deletedAt: null },
+      where: {
+        deletedAt: null,
+        OR: [
+          ...(invoiceIdList.length > 0 ? [{ sourceType: 'PURCHASE_INVOICE', sourceId: { in: invoiceIdList } }] : []),
+          ...(paymentIdList.length > 0 ? [{ sourceType: 'SUPPLIER_PAYMENT', sourceId: { in: paymentIdList } }] : []),
+        ],
+      },
     })
 
     // Get last journal entry date
     const lastEntry = await db.journalEntry.findFirst({
-      where: { supplierId: id, deletedAt: null },
+      where: {
+        deletedAt: null,
+        OR: [
+          ...(invoiceIdList.length > 0 ? [{ sourceType: 'PURCHASE_INVOICE', sourceId: { in: invoiceIdList } }] : []),
+          ...(paymentIdList.length > 0 ? [{ sourceType: 'SUPPLIER_PAYMENT', sourceId: { in: paymentIdList } }] : []),
+        ],
+      },
       orderBy: { date: 'desc' },
       select: { date: true },
     })

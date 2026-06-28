@@ -450,6 +450,7 @@ model Supplier {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
 
   purchaseOrders       PurchaseOrder[]
   purchaseInvoices     PurchaseInvoice[]
@@ -459,6 +460,7 @@ model Supplier {
   equipmentMaintenance EquipmentMaintenance[]
 
   @@index([isActive])
+  @@index([deletedAt])
 }
 
 model Subcontractor {
@@ -1199,12 +1201,14 @@ model GoodsReceiptItem {
   unitPrice         Decimal  @default(0)
   totalPrice        Decimal  @default(0)
   destination       String   @default("INVENTORY") // INVENTORY or PROJECT
+  inventoryItemId   String?  // explicit link to InventoryItem (P5-CRIT-013 fix)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
 
   @@index([goodsReceiptId])
+  @@index([inventoryItemId])
 }
 
 model PurchaseInvoice {

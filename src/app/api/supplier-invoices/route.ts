@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { createPurchaseInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
+import { type PrismaTransaction } from '@/lib/auto-journal'
 import { toNumber } from '@/lib/decimal'
 import { generateZatcaQRForInvoice } from '@/lib/zatca-qr'
 import { NextResponse } from 'next/server'
@@ -182,10 +182,13 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry (throws on failure → tx rolls back).
-      await createPurchaseInvoiceJournalEntry(invoice.id, tx)
+      // P5-CRIT-001 FIX: DRAFT invoices must NOT have a journal entry.
+      // The JE is created only when the invoice is approved (status → SENT)
+      // via the supplier-invoices/[id] PUT route. Previously the POST created a JE
+      // immediately, which meant DRAFT invoices appeared in the GL (R1 violation)
+      // and the DRAFT→SENT transition was a no-op (journalEntryId already set).
 
-      // Re-fetch to include journalEntryId
+      // Re-fetch to include journalEntryId (will be null for DRAFT)
       return await tx.purchaseInvoice.findUnique({
         where: { id: invoice.id },
         include: {

@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const pageSize = Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50)
     const search = searchParams.get('search') || ''
 
-    const where: Record<string, unknown> = {}
+    const where: Record<string, unknown> = { deletedAt: null }
     if (activeOnly) where.isActive = true
     if (search) {
       where.OR = [

@@ -127,10 +127,11 @@ export async function POST(request: Request) {
         },
       })
 
-      // Auto-create accounting journal entry (throws on failure → tx rolls back).
-      await createPurchaseInvoiceJournalEntry(invoice.id, tx)
-
-      // Re-fetch to include journalEntryId
+      // P5-CRIT-001 FIX: DRAFT invoices must NOT have a journal entry.
+      // The JE is created only when the invoice is approved (status → SENT/APPROVED)
+      // via the supplier-invoices/[id] PUT route. Previously the POST created a JE
+      // immediately, which meant DRAFT invoices appeared in the GL (R1 violation).
+      // Re-fetch to include journalEntryId (will be null for DRAFT)
       return await tx.purchaseInvoice.findUnique({
         where: { id: invoice.id },
         include: {

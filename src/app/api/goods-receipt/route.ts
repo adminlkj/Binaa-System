@@ -145,38 +145,75 @@ export async function POST(request: Request) {
 
       // Handle inventory and project cost based on item destination.
       // Track totals for the GRNI journal entry.
+      // P5-CRIT-012/013/014 FIXES:
+      //   - Create StockMovement records (P5-CRIT-012)
+      //   - Inventory matching: use inventoryItemId if provided, else find by name, else CREATE new (P5-CRIT-013)
+      //   - Set EquipmentCost.journalEntryId after JE is created (P5-CRIT-014) — deferred to after JE creation
       let inventoryTotal = 0
       let projectCostTotal = 0
+      // Track items for StockMovement + EquipmentCost creation after JE is built
+      const inventoryItemUpdates: { inventoryItemId: string; quantity: number; unitPrice: number; description: string }[] = []
+      const projectCostItems: { description: string; quantity: number; unitPrice: number; totalCost: number; inventoryItemId?: string }[] = []
 
       for (const item of items as Array<{
         description: string
         quantityReceived: number
         unitPrice: number
         destination?: string
+        inventoryItemId?: string
       }>) {
         if (item.destination === 'INVENTORY' && item.quantityReceived > 0) {
           const itemCost = item.quantityReceived * item.unitPrice
           inventoryTotal += itemCost
-          // Try to find matching inventory item by description
-          const inventoryItem = await tx.inventoryItem.findFirst({
-            where: { name: item.description },
-          })
-          if (inventoryItem) {
-            await tx.inventoryItem.update({
-              where: { id: inventoryItem.id },
-              data: { quantity: { increment: item.quantityReceived } },
+          // P5-CRIT-013 FIX: match by inventoryItemId (preferred) or name; if no match, CREATE a new InventoryItem.
+          let inventoryItem = null
+          if (item.inventoryItemId) {
+            inventoryItem = await tx.inventoryItem.findUnique({ where: { id: item.inventoryItemId } })
+          }
+          if (!inventoryItem) {
+            inventoryItem = await tx.inventoryItem.findFirst({ where: { name: item.description } })
+          }
+          if (!inventoryItem) {
+            // Create a new inventory item rather than silently skipping
+            // Find any warehouse to attach to (required field)
+            const warehouse = await tx.warehouse.findFirst()
+            if (!warehouse) {
+              throw new Error('لا يوجد مخزون مسجل — أنشئ مستودعاً أولاً')
+            }
+            const newItemCode = 'AUTO-' + Date.now() + '-' + Math.floor(Math.random() * 1000)
+            inventoryItem = await tx.inventoryItem.create({
+              data: {
+                code: newItemCode,
+                name: item.description,
+                unit: 'pcs',
+                quantity: 0,
+                minQuantity: 0,
+                purchasePrice: item.unitPrice,
+                warehouseId: warehouse.id,
+              },
             })
           }
+          await tx.inventoryItem.update({
+            where: { id: inventoryItem.id },
+            data: {
+              quantity: { increment: item.quantityReceived },
+              purchasePrice: item.unitPrice,
+            },
+          })
+          inventoryItemUpdates.push({
+            inventoryItemId: inventoryItem.id,
+            quantity: item.quantityReceived,
+            unitPrice: item.unitPrice,
+            description: item.description,
+          })
         } else if (item.destination === 'PROJECT' && projectId && item.quantityReceived > 0) {
           const totalItemCost = item.quantityReceived * item.unitPrice
           projectCostTotal += totalItemCost
-          await tx.equipmentCost.create({
-            data: {
-              projectId,
-              description: `استلام بضاعة: ${item.description} (${receiptNo})`,
-              amount: totalItemCost,
-              date: new Date(date),
-            },
+          projectCostItems.push({
+            description: item.description,
+            quantity: item.quantityReceived,
+            unitPrice: item.unitPrice,
+            totalCost: totalItemCost,
           })
         }
       }
@@ -186,6 +223,7 @@ export async function POST(request: Request) {
       // Dr Project Cost (for project-destination items)
       // Cr GRNI (Goods Received Not Invoiced — liability until supplier invoice arrives)
       const totalAmount = inventoryTotal + projectCostTotal
+      let grJEId: string | null = null
       if (totalAmount > 0) {
         const lines: { accountCode: string; debit: number; credit: number; description?: string }[] = []
         const grniAccount = await requireAccountByRole(AccountRole.GRNI, 'إيصال استلام بضاعة', tx)
@@ -216,8 +254,11 @@ export async function POST(request: Request) {
           description: desc,
         })
 
+        // P5-CRIT-015 FIX: use standard JE-NNNNNN format via getNextEntryNo (not JE-GR-...)
+        const { getNextEntryNo } = await import('@/lib/accounting/guard')
+        const stdEntryNo = await getNextEntryNo(tx)
         const je = await createJournalEntry({
-          entryNo: `JE-GR-${receiptNo}-${Date.now()}`,
+          entryNo: stdEntryNo,
           date: new Date(date),
           description: `Goods Receipt ${receiptNo}`,
           descriptionAr: desc,
@@ -226,10 +267,45 @@ export async function POST(request: Request) {
           sourceId: created.id,
         }, tx)
 
+        grJEId = je.id
+
         await tx.goodsReceipt.update({
           where: { id: created.id },
           data: { journalEntryId: je.id },
         })
+      }
+
+      // P5-CRIT-012 FIX: Create StockMovement records for every inventory-destination item.
+      // This writes the inventory audit trail (RECEIPT movement type) that was previously dark.
+      if (grJEId) {
+        for (const inv of inventoryItemUpdates) {
+          await tx.stockMovement.create({
+            data: {
+              inventoryItemId: inv.inventoryItemId,
+              movementType: 'RECEIPT',
+              quantity: inv.quantity,
+              unitCost: inv.unitPrice,
+              totalAmount: inv.quantity * inv.unitPrice,
+              movementDate: new Date(date),
+              reference: receiptNo,
+              journalEntryId: grJEId,
+            },
+          })
+        }
+
+        // P5-CRIT-014 FIX: Create EquipmentCost records WITH journalEntryId linked to the GRNI JE.
+        // Previously these were created without the link, making GL ↔ subledger reconciliation impossible.
+        for (const projItem of projectCostItems) {
+          await tx.equipmentCost.create({
+            data: {
+              projectId,
+              description: `استلام بضاعة: ${projItem.description} (${receiptNo})`,
+              amount: projItem.totalCost,
+              date: new Date(date),
+              journalEntryId: grJEId,
+            },
+          })
+        }
       }
 
       return await tx.goodsReceipt.findUniqueOrThrow({
