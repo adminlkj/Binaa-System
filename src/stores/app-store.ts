@@ -7,15 +7,15 @@ export type NavItem =
   // الرئيسية
   | 'dashboard'
   // محور المشاريع التنفيذية (Construction Hub)
-  | 'projects' | 'contracts' | 'boq' | 'extracts' | 'sales' | 'client-payments'
+  | 'projects' | 'contracts' | 'boq' | 'extracts' | 'sales' | 'service-invoices' | 'client-payments'
   // محور تأجير المعدات (Rental Hub)
   | 'equipment' | 'rental-contracts' | 'delivery-orders' | 'timesheets' | 'rental-invoices' | 'rental-payments'
   // الموارد البشرية (feed both hubs)
-  | 'employees' | 'employee-contracts' | 'work-teams' | 'attendance' | 'payroll-runs' | 'salaries' | 'resource-distribution'
+  | 'employees' | 'employee-contracts' | 'work-teams' | 'attendance' | 'payroll-runs' | 'salaries' | 'salary-payments' | 'advances' | 'resource-distribution'
   // سلسلة التوريد (feed both hubs)
   | 'purchase-requests' | 'purchase-orders' | 'goods-receipt' | 'supplier-invoices' | 'supplier-payments'
   // التشغيل والصيانة (equipment-related)
-  | 'equipment-operations' | 'equipment-maintenance' | 'fuel' | 'subcontractors'
+  | 'equipment-operations' | 'equipment-maintenance' | 'fuel' | 'subcontractors' | 'labor' | 'petty-cash'
   // المحاسبة والتقارير
   | 'accounting' | 'vat' | 'reports' | 'depreciation' | 'financial-years'
   // الإعدادات والبيانات الأساسية
@@ -48,7 +48,7 @@ export const navGroups: NavGroupConfig[] = [
     label: { ar: 'المشاريع التنفيذية', en: 'Construction Projects' },
     icon: 'Building2',
     color: 'text-emerald-600',
-    items: ['projects', 'contracts', 'boq', 'extracts', 'sales', 'client-payments'],
+    items: ['projects', 'contracts', 'boq', 'extracts', 'sales', 'service-invoices', 'client-payments'],
   },
   {
     key: 'rental-hub',
@@ -62,7 +62,7 @@ export const navGroups: NavGroupConfig[] = [
     label: { ar: 'الموارد البشرية', en: 'Human Resources' },
     icon: 'Users',
     color: 'text-violet-600',
-    items: ['employees', 'employee-contracts', 'work-teams', 'attendance', 'payroll-runs', 'salaries', 'resource-distribution'],
+    items: ['employees', 'employee-contracts', 'work-teams', 'attendance', 'payroll-runs', 'salaries', 'salary-payments', 'advances', 'resource-distribution'],
   },
   {
     key: 'supply-chain',
@@ -76,7 +76,7 @@ export const navGroups: NavGroupConfig[] = [
     label: { ar: 'التشغيل والصيانة', en: 'Operations & Maintenance' },
     icon: 'Wrench',
     color: 'text-orange-600',
-    items: ['equipment-operations', 'equipment-maintenance', 'fuel', 'subcontractors', 'expenses'],
+    items: ['equipment-operations', 'equipment-maintenance', 'fuel', 'subcontractors', 'expenses', 'labor', 'petty-cash'],
   },
   {
     key: 'accounting-reports',
@@ -103,6 +103,7 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'boq': { ar: 'جدول الكميات BOQ', en: 'Bill of Quantities' },
   'extracts': { ar: 'المستخلصات', en: 'Extracts' },
   'sales': { ar: 'فواتير العملاء', en: 'Client Invoices' },
+  'service-invoices': { ar: 'فواتير الخدمات', en: 'Service Invoices' },
   'client-payments': { ar: 'التحصيلات', en: 'Collections' },
   // محور تأجير المعدات
   'equipment': { ar: 'المعدات', en: 'Equipment' },
@@ -115,9 +116,11 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'employees': { ar: 'الموظفون', en: 'Employees' },
   'employee-contracts': { ar: 'العقود', en: 'Contracts' },
   'work-teams': { ar: 'فريق العمل', en: 'Work Teams' },
-  'attendance': { ar: 'الساعات', en: 'Hours' },
+  'attendance': { ar: 'الحضور والانصراف', en: 'Attendance' },
   'payroll-runs': { ar: 'مسيرات الرواتب', en: 'Payroll Runs' },
-  'salaries': { ar: 'سلف الرواتب', en: 'Salary Advances' },
+  'salaries': { ar: 'الرواتب', en: 'Salaries' },
+  'salary-payments': { ar: 'سداد الرواتب', en: 'Salary Payments' },
+  'advances': { ar: 'السلف', en: 'Advances' },
   'resource-distribution': { ar: 'توزيع الموارد', en: 'Resource Distribution' },
   // سلسلة التوريد
   'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
@@ -131,6 +134,8 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'fuel': { ar: 'الوقود', en: 'Fuel' },
   'subcontractors': { ar: 'مقاولو الباطن', en: 'Subcontractors' },
   'expenses': { ar: 'المصروفات', en: 'Expenses' },
+  'labor': { ar: 'تكاليف العمالة', en: 'Labor Costs' },
+  'petty-cash': { ar: 'الصندوق النقدي', en: 'Petty Cash' },
   // المحاسبة والتقارير
   'accounting': { ar: 'المحاسبة', en: 'Accounting' },
   'depreciation': { ar: 'الإهلاك', en: 'Depreciation' },
@@ -154,6 +159,7 @@ export const navItemActivity: Record<NavItem, ActivityType> = {
   'boq': 'construction',
   'extracts': 'construction',
   'sales': 'construction',
+  'service-invoices': 'construction',
   'client-payments': 'construction',
   // Rental hub
   'equipment': 'rental',
@@ -168,6 +174,8 @@ export const navItemActivity: Record<NavItem, ActivityType> = {
   'attendance': 'both',
   'payroll-runs': 'both',
   'salaries': 'both',
+  'salary-payments': 'both',
+  'advances': 'both',
   'work-teams': 'both',
   'resource-distribution': 'both',
   // Supply chain - feeds both
@@ -182,6 +190,8 @@ export const navItemActivity: Record<NavItem, ActivityType> = {
   'fuel': 'rental',
   'subcontractors': 'construction',
   'expenses': 'both',
+  'labor': 'construction',
+  'petty-cash': 'both',
   // Accounting
   'accounting': 'both',
   'depreciation': 'both',

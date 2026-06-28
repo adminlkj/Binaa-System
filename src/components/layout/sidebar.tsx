@@ -9,7 +9,7 @@ import {
   PackageCheck, FilePlus, ReceiptText, Cog, Network,
   Receipt, ArrowRightLeft, Hammer, ListChecks, HardHat,
   DollarSign, Warehouse, Link2, Wallet, Circle,
-  TrendingDown, CalendarRange,
+  TrendingDown, CalendarRange, HandCoins, Coins, FileSignature,
 } from 'lucide-react'
 import {
   useAppStore,
@@ -30,6 +30,7 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'boq': ListChecks,
   'extracts': TrendingUp,
   'sales': Receipt,
+  'service-invoices': FileSignature,
   'client-payments': CreditCard,
   // Rental Hub
   'equipment': Truck,
@@ -44,6 +45,8 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'attendance': CalendarDays,
   'payroll-runs': Wallet,
   'salaries': Banknote,
+  'salary-payments': Coins,
+  'advances': HandCoins,
   'work-teams': UsersRound,
   'resource-distribution': Network,
   // Supply Chain
@@ -58,6 +61,8 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'fuel': FuelIcon,
   'subcontractors': HardHat,
   'expenses': DollarSign,
+  'labor': HardHat,
+  'petty-cash': Wallet,
   // Accounting
   'accounting': Calculator,
   'depreciation': TrendingDown,

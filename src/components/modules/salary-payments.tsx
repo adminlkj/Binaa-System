@@ -395,7 +395,7 @@ export function SalaryPaymentsModule() {
       if (!search) return true
       const s = search.toLowerCase()
       return (
-        p.payrollRun.code.toLowerCase().includes(s) ||
+        (p.payrollRun?.code?.toLowerCase().includes(s)) ||
         (p.referenceNumber?.toLowerCase().includes(s)) ||
         (p.notes?.toLowerCase().includes(s))
       )
@@ -426,8 +426,8 @@ export function SalaryPaymentsModule() {
     ]
     exportToCSV(
       filtered.map(p => ({
-        code: p.payrollRun.code,
-        monthYear: formatMonth(p.payrollRun.month, p.payrollRun.year, lang),
+        code: p.payrollRun?.code || '—',
+        monthYear: p.payrollRun ? formatMonth(p.payrollRun.month, p.payrollRun.year, lang) : '—',
         paymentMethod: paymentMethodConfig[p.paymentMethod]?.label[lang] || p.paymentMethod,
         amount: p.amount,
         referenceNumber: p.referenceNumber || '',
@@ -450,8 +450,8 @@ export function SalaryPaymentsModule() {
       { key: 'paymentDate', label: lang === 'ar' ? 'تاريخ السداد' : 'Date' },
     ],
     rows: filtered.map(p => ({
-      code: p.payrollRun.code,
-      monthYear: formatMonth(p.payrollRun.month, p.payrollRun.year, lang),
+      code: p.payrollRun?.code || '—',
+      monthYear: p.payrollRun ? formatMonth(p.payrollRun?.month, p.payrollRun?.year, lang) : '—',
       paymentMethod: paymentMethodConfig[p.paymentMethod]?.label[lang] || p.paymentMethod,
       amount: p.amount,
       referenceNumber: p.referenceNumber || '—',
@@ -582,9 +582,9 @@ export function SalaryPaymentsModule() {
                       <TableRow key={p.id}>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="font-mono font-medium">{p.payrollRun.code}</span>
+                            <span className="font-mono font-medium">{p.payrollRun?.code || '—'}</span>
                             <span className="text-xs text-muted-foreground">
-                              {formatMonth(p.payrollRun.month, p.payrollRun.year, lang)}
+                              {p.payrollRun ? formatMonth(p.payrollRun.month, p.payrollRun.year, lang) : '—'}
                             </span>
                           </div>
                         </TableCell>

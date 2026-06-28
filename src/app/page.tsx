@@ -27,6 +27,7 @@ const ContractsModule = dynamic(() => import('@/components/modules/contracts').t
 const BOQModule = dynamic(() => import('@/components/modules/boq').then(m => ({ default: m.BOQModule })), { loading: ModuleLoading, ssr: false })
 const ExtractsModule = dynamic(() => import('@/components/modules/progress-claims').then(m => ({ default: m.ProgressClaimsModule })), { loading: ModuleLoading, ssr: false })
 const SalesModule = dynamic(() => import('@/components/modules/sales').then(m => ({ default: m.SalesModule })), { loading: ModuleLoading, ssr: false })
+const ServiceInvoicesModule = dynamic(() => import('@/components/modules/service-invoices').then(m => ({ default: m.ServiceInvoicesModule })), { loading: ModuleLoading, ssr: false })
 const ClientPaymentsModule = dynamic(() => import('@/components/modules/client-payments').then(m => ({ default: m.ClientPaymentsModule })), { loading: ModuleLoading, ssr: false })
 
 // Rental Hub modules
@@ -43,6 +44,8 @@ const EmployeeContractsModule = dynamic(() => import('@/components/modules/emplo
 const AttendanceModule = dynamic(() => import('@/components/modules/attendance').then(m => ({ default: m.AttendanceModule })), { loading: ModuleLoading, ssr: false })
 const PayrollRunsModule = dynamic(() => import('@/components/modules/payroll-runs').then(m => ({ default: m.PayrollRunsModule })), { loading: ModuleLoading, ssr: false })
 const SalariesModule = dynamic(() => import('@/components/modules/salaries').then(m => ({ default: m.SalariesModule })), { loading: ModuleLoading, ssr: false })
+const SalaryPaymentsModule = dynamic(() => import('@/components/modules/salary-payments').then(m => ({ default: m.SalaryPaymentsModule })), { loading: ModuleLoading, ssr: false })
+const AdvancesModule = dynamic(() => import('@/components/modules/advances').then(m => ({ default: m.AdvancesModule })), { loading: ModuleLoading, ssr: false })
 const WorkTeamsModule = dynamic(() => import('@/components/modules/work-teams').then(m => ({ default: m.WorkTeamsModule })), { loading: ModuleLoading, ssr: false })
 const ResourceDistributionModule = dynamic(() => import('@/components/modules/resource-distribution').then(m => ({ default: m.ResourceDistributionModule })), { loading: ModuleLoading, ssr: false })
 
@@ -58,6 +61,8 @@ const EquipmentOperationsModule = dynamic(() => import('@/components/modules/equ
 const EquipmentMaintenanceModule = dynamic(() => import('@/components/modules/equipment-maintenance').then(m => ({ default: m.EquipmentMaintenanceModule })), { loading: ModuleLoading, ssr: false })
 const FuelModule = dynamic(() => import('@/components/modules/fuel').then(m => ({ default: m.FuelModule })), { loading: ModuleLoading, ssr: false })
 const SubcontractorsModule = dynamic(() => import('@/components/modules/subcontractors').then(m => ({ default: m.SubcontractorsModule })), { loading: ModuleLoading, ssr: false })
+const LaborModule = dynamic(() => import('@/components/modules/labor').then(m => ({ default: m.LaborModule })), { loading: ModuleLoading, ssr: false })
+const PettyCashModule = dynamic(() => import('@/components/modules/petty-cash').then(m => ({ default: m.PettyCashModule })), { loading: ModuleLoading, ssr: false })
 const ExpensesModule = dynamic(() => import('@/components/modules/expenses').then(m => ({ default: m.ExpensesModule })), { loading: ModuleLoading, ssr: false })
 
 // Accounting & Reports
@@ -86,6 +91,7 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   'boq': BOQModule,
   'extracts': ExtractsModule,
   'sales': SalesModule,
+  'service-invoices': ServiceInvoicesModule,
   'client-payments': ClientPaymentsModule,
   // محور تأجير المعدات
   'equipment': EquipmentModule,
@@ -101,6 +107,8 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   'attendance': AttendanceModule,
   'payroll-runs': PayrollRunsModule,
   'salaries': SalariesModule,
+  'salary-payments': SalaryPaymentsModule,
+  'advances': AdvancesModule,
   'resource-distribution': ResourceDistributionModule,
   // سلسلة التوريد
   'purchase-requests': PurchaseRequestsModule,
@@ -114,6 +122,8 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
   'fuel': FuelModule,
   'subcontractors': SubcontractorsModule,
   'expenses': ExpensesModule,
+  'labor': LaborModule,
+  'petty-cash': PettyCashModule,
   // المحاسبة والتقارير
   'accounting': AccountingModule,
   'depreciation': DepreciationModule,

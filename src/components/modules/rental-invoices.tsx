@@ -652,7 +652,7 @@ export function RentalInvoicesModule() {
             )}
             {invoice.status !== 'CANCELLED' && (
               <Button variant="outline" size="sm" className="gap-1 text-rose-600" onClick={() => handleCancel(invoice.id)} disabled={statusMutation.isPending}>
-                <XCircle className="size-4" /> {t('إلغاء', 'Cancel')}
+                <XCircle className="size-4" /> {t('إلغاء الفاتورة', 'Cancel Invoice')}
               </Button>
             )}
             {(invoice.status === 'DRAFT' || invoice.status === 'CANCELLED') && (

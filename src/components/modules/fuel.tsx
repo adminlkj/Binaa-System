@@ -120,7 +120,7 @@ function FuelFormDialog({ open, onOpenChange, equipment, projects }: {
             <Card className="bg-emerald-50 border-emerald-200">
               <CardContent className="p-3">
                 <p className="text-sm text-emerald-600">{t('الإجمالي', 'Total', lang)}: <span className="font-bold text-emerald-700"><MoneyDisplay value={totalCost} lang={lang} size="md" inline bold /></span></p>
-                <p className="text-xs text-emerald-500 mt-1">{form.liters} {t('لتر ×', 'L ×', lang)} {form.costPerLiter} {t('ريال/لتر', 'SAR/L', lang)}</p>
+                <p className="text-xs text-emerald-500 mt-1">{form.liters} {t('لتر ×', 'L ×', lang)} {form.costPerLiter} {t('ر.س/لتر', 'SAR/L', lang)}</p>
               </CardContent>
             </Card>
           )}

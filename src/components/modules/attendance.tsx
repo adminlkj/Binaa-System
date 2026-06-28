@@ -151,7 +151,7 @@ function AttendanceFormDialog({ open, onOpenChange, employees }: {
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !form.employeeId || !form.date} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...', lang) : t('تسجيل', 'Record', lang)}</Button>
+            <Button type="submit" disabled={createMutation.isPending || !form.employeeId || !form.date} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...', lang) : t('حفظ', 'Save', lang)}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

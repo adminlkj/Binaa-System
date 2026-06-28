@@ -30,7 +30,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
 // ============ Types ============
 interface Branch { id: string; code: string; name: string }
@@ -92,7 +92,6 @@ function InventoryFormDialog({ open, onOpenChange, warehouses, editItem }: {
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const isEdit = !!editItem
 
   const [name, setName] = useState('')
@@ -137,14 +136,11 @@ function InventoryFormDialog({ open, onOpenChange, warehouses, editItem }: {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
-      toast({
-        title: t(isEdit ? 'تم التحديث' : 'تم الإنشاء', isEdit ? 'Updated' : 'Created', lang),
-        description: t(isEdit ? 'تم تحديث الصنف بنجاح' : 'تم إضافة الصنف بنجاح', isEdit ? 'Item updated successfully' : 'Item created successfully', lang),
-      })
+      toast(t(isEdit ? 'تم تحديث الصنف بنجاح' : 'تم إضافة الصنف بنجاح', isEdit ? 'Item updated successfully' : 'Item created successfully', lang))
       onOpenChange(false)
     },
     onError: () => {
-      toast({ title: t('خطأ', 'Error', lang), description: t('فشل في حفظ الصنف', 'Failed to save item', lang), variant: 'destructive' })
+      toast.error(t('فشل في حفظ الصنف', 'Failed to save item', lang))
     },
   })
 
@@ -458,7 +454,6 @@ function WarehousesTab({ warehouses, branches, isLoading }: {
 export function InventoryModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const [activeTab, setActiveTab] = useState('items')
   const [itemDialogOpen, setItemDialogOpen] = useState(false)
   const [editItem, setEditItem] = useState<InventoryItem | null>(null)
@@ -485,11 +480,11 @@ export function InventoryModule() {
       fetch(`/api/inventory/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
-      toast({ title: t('تم الحذف', 'Deleted', lang), description: t('تم حذف الصنف بنجاح', 'Item deleted successfully', lang) })
+      toast(t('تم حذف الصنف بنجاح', 'Item deleted successfully', lang))
       setDeleteId(null)
     },
     onError: () => {
-      toast({ title: t('خطأ', 'Error', lang), description: t('فشل في حذف الصنف', 'Failed to delete item', lang), variant: 'destructive' })
+      toast.error(t('فشل في حذف الصنف', 'Failed to delete item', lang))
     },
   })
 

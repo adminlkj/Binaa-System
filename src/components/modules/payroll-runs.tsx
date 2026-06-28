@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from 'sonner'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
@@ -212,7 +213,7 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
             <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">
               {t('الفترة', 'Period', lang)}
             </h4>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t('الشهر *', 'Month *', lang)}</Label>
                 <Select value={form.month} onValueChange={v => setForm(f => ({ ...f, month: v }))}>
@@ -351,7 +352,7 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
             <Button type="submit" disabled={createMutation.isPending} className="bg-emerald-600 hover:bg-emerald-700">
-              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('إنشاء الكشف', 'Create Statement', lang)}
+              {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...', lang) : t('حفظ', 'Save', lang)}
             </Button>
           </DialogFooter>
         </form>
@@ -512,7 +513,7 @@ function PayrollRunDetail({ payrollRun, onBack }: {
 
   const handlePay = () => {
     if (!bankAccountId) {
-      alert(t('يرجى اختيار حساب البنك للدفع أولاً', 'Please select a bank account for payment first', lang))
+      toast.error(t('يرجى اختيار حساب البنك للدفع أولاً', 'Please select a bank account for payment first', lang))
       return
     }
     if (confirm(t(
@@ -564,7 +565,7 @@ function PayrollRunDetail({ payrollRun, onBack }: {
               onClick={handleApprove}
               disabled={statusMutation.isPending}
             >
-              <CheckCircle2 className="size-4" />{t('اعتماد', 'Approve', lang)}
+              <CheckCircle2 className="size-4" />{t('اعتماد وترحيل', 'Approve & Post', lang)}
             </Button>
           )}
           {payrollRun.status === 'APPROVED' && (
@@ -861,8 +862,8 @@ export function PayrollRunsModule() {
   if (selectedRunId && selectedRun) {
     return (
       <ModuleLayout
-        title={{ ar: 'كشوف الرواتب', en: 'Payroll Statements' }}
-        subtitle={{ ar: 'كشف تفصيلي برواتب الموظفين مع القيود المحاسبية', en: 'Detailed payroll statements with journal entries' }}
+        title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
+        subtitle={{ ar: 'كشف تفصيلي برواتب الموظفين مع القيود المحاسبية', en: 'Detailed payroll runs with journal entries' }}
       >
         <PayrollRunDetail payrollRun={selectedRun} onBack={() => setSelectedRunId(null)} />
       </ModuleLayout>
@@ -872,8 +873,8 @@ export function PayrollRunsModule() {
   if (selectedRunId && isLoadingDetail) {
     return (
       <ModuleLayout
-        title={{ ar: 'كشوف الرواتب', en: 'Payroll Statements' }}
-        subtitle={{ ar: 'كشف تفصيلي برواتب الموظفين', en: 'Detailed payroll statements' }}
+        title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
+        subtitle={{ ar: 'كشف تفصيلي برواتب الموظفين', en: 'Detailed payroll runs' }}
       >
         <div className="flex items-center justify-center py-20">
           <RefreshCw className="size-8 animate-spin text-muted-foreground" />
@@ -884,8 +885,8 @@ export function PayrollRunsModule() {
 
   return (
     <ModuleLayout
-      title={{ ar: 'كشوف الرواتب', en: 'Payroll Statements' }}
-      subtitle={{ ar: 'إدارة كشوف رواتب الموظفين بفلاتر احترافية وتفاصيل كاملة', en: 'Manage payroll statements with professional filters and full details' }}
+      title={{ ar: 'مسيرات الرواتب', en: 'Payroll Runs' }}
+      subtitle={{ ar: 'إدارة مسيرات رواتب الموظفين بفلاتر احترافية وتفاصيل كاملة', en: 'Manage payroll runs with professional filters and full details' }}
       actions={
         <div className="flex items-center gap-2">
           <PrintButton type="generic-table" data={printData} size="icon" />

@@ -321,7 +321,7 @@ function AssetFormDialog({ open, onClose, editAsset }: {
           </div>
           <div className="space-y-1 col-span-2">
             <Label className="text-xs">{t(lang, 'اسم الأصل (إنجليزي)', 'Asset Name (English)')}</Label>
-            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Excavator CAT 320" />
+            <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={t(lang, "مثال: حفار CAT 320", "e.g. Excavator CAT 320")} />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">{t(lang, 'نوع الأصل', 'Asset Category')} *</Label>

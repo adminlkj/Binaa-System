@@ -32,6 +32,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, CONSTRUCTION_WORKFLOW } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { PrintButton } from '@/components/shared/print-button'
+import { ModuleLayout } from '@/components/shared/module-layout'
 
 // ============ Types ============
 interface Client { id: string; code: string; name: string }
@@ -339,8 +340,8 @@ function ProjectFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'تعديل المشروع' : 'مشروع جديد'}</DialogTitle>
-          <DialogDescription>{isEdit ? 'تعديل بيانات المشروع' : 'إضافة مشروع جديد للنظام'}</DialogDescription>
+          <DialogTitle>{lang === 'ar' ? (isEdit ? 'تعديل المشروع' : 'مشروع جديد') : (isEdit ? 'Edit Project' : 'New Project')}</DialogTitle>
+          <DialogDescription>{lang === 'ar' ? (isEdit ? 'تعديل بيانات المشروع' : 'إضافة مشروع جديد للنظام') : (isEdit ? 'Edit project details' : 'Add a new project to the system')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Project Type Selector */}
@@ -366,7 +367,7 @@ function ProjectFormDialog({
                     {lang === 'ar' ? 'مشروع تنفيذي' : 'Construction'}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {lang === 'ar' ? 'Construction Project' : 'Construction Project'}
+                    {lang === 'ar' ? 'مشروع تنفيذي' : 'Construction Project'}
                   </p>
                 </div>
               </button>
@@ -389,7 +390,7 @@ function ProjectFormDialog({
                     {lang === 'ar' ? 'مشروع تأجير معدات' : 'Equipment Rental'}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {lang === 'ar' ? 'Equipment Rental Project' : 'Equipment Rental Project'}
+                    {lang === 'ar' ? 'مشروع تأجير معدات' : 'Equipment Rental Project'}
                   </p>
                 </div>
               </button>
@@ -796,7 +797,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No')}</TableHead>
@@ -825,8 +826,8 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
                   <TableCell><MoneyDisplay value={purchaseTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell />
                 </TableRow>
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -841,7 +842,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('الفئة', 'Category')}</TableHead>
@@ -873,8 +874,8 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
                   <TableCell><MoneyDisplay value={project.expenses.reduce((s, e) => s + Number(e.vatAmount || 0), 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell><MoneyDisplay value={expenseTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                 </TableRow>
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -889,7 +890,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('الوصف', 'Description')}</TableHead>
@@ -916,8 +917,8 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
                   <TableCell><MoneyDisplay value={laborTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell />
                 </TableRow>
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -932,7 +933,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('النوع', 'Type')}</TableHead>
@@ -965,8 +966,8 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
                   <TableCell colSpan={4}>{t('الإجمالي', 'Total')}</TableCell>
                   <TableCell><MoneyDisplay value={equipmentTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                 </TableRow>
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -981,7 +982,7 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No')}</TableHead>
@@ -1010,8 +1011,8 @@ function CostsTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en'
                   <TableCell><MoneyDisplay value={subcontractorTotal} mode="system" lang={lang} bold size="sm" /></TableCell>
                   <TableCell />
                 </TableRow>
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -1077,7 +1078,7 @@ function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'e
         </CardHeader>
         <CardContent className="px-0 pb-2">
           {project.progressClaims.length > 0 ? (
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('رقم المستخلص', 'Claim No')}</TableHead>
@@ -1112,7 +1113,7 @@ function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'e
                   <TableCell />
                 </TableRow>
               </TableBody>
-            </Table>
+            </Table></div>
           ) : (
             <p className="px-6 py-6 text-center text-muted-foreground">{t('لا توجد مستخلصات', 'No claims')}</p>
           )}
@@ -1129,7 +1130,7 @@ function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'e
         </CardHeader>
         <CardContent className="px-0 pb-2">
           {project.salesInvoices.length > 0 ? (
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('رقم الفاتورة', 'Invoice No')}</TableHead>
@@ -1166,7 +1167,7 @@ function RevenueTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'e
                   <TableCell />
                 </TableRow>
               </TableBody>
-            </Table>
+            </Table></div>
           ) : (
             <p className="px-6 py-6 text-center text-muted-foreground">{t('لا توجد فواتير', 'No invoices')}</p>
           )}
@@ -1289,7 +1290,7 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
@@ -1307,8 +1308,8 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
                     <TableCell>{eo.hours}</TableCell>
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -1323,7 +1324,7 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
@@ -1349,8 +1350,8 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
                   <TableCell />
                   <TableCell><MoneyDisplay value={project.fuelLogs.reduce((s, f) => s + (Number(f.totalCost) || 0), 0)} mode="system" lang={lang} bold size="sm" /></TableCell>
                 </TableRow>
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -1365,7 +1366,7 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('المعدة', 'Equipment')}</TableHead>
@@ -1387,8 +1388,8 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
                     </TableCell>
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -1403,7 +1404,7 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
             </CardTitle>
           </CardHeader>
           <CardContent className="px-0 pb-2">
-            <Table>
+            <div className="overflow-x-auto"><Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-right">{t('نوع المورد', 'Resource Type')}</TableHead>
@@ -1431,8 +1432,8 @@ function ResourcesTab({ project, lang }: { project: ProjectDetail; lang: 'ar' | 
                     <TableCell>{ra.notes || '—'}</TableCell>
                   </TableRow>
                 ))}
-              </TableBody>
-            </Table>
+              </TableBody></Table>
+          </div>
           </CardContent>
         </Card>
       )}
@@ -1730,14 +1731,11 @@ export function ProjectsModule() {
   const rentalProjects = filtered.filter(p => p.projectType === 'EQUIPMENT_RENTAL').length
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('المشاريع', 'Projects')}</h1>
-          <p className="text-sm text-muted-foreground">{t('إدارة ومتابعة مشاريع المقاولات', 'Manage and track construction projects')}</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <ModuleLayout
+      title={{ ar: 'المشاريع', en: 'Projects' }}
+      subtitle={{ ar: 'إدارة ومتابعة مشاريع المقاولات', en: 'Manage and track construction projects' }}
+      actions={
+        <>
           <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh')}>
             <RefreshCw className="size-4" />
@@ -1745,8 +1743,9 @@ export function ProjectsModule() {
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => { setEditingProject(null); setDialogOpen(true) }}>
             <Plus className="size-4" /> {t('مشروع جديد', 'New Project')}
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1871,6 +1870,6 @@ export function ProjectsModule() {
         clients={clients}
         branches={branches}
       />
-    </div>
+    </ModuleLayout>
   )
 }

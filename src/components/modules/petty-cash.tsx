@@ -29,7 +29,7 @@ import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-dis
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
 // ============ Types ============
 interface Branch { id: string; code: string; name: string }
@@ -83,7 +83,6 @@ function PettyCashFormDialog({ open, onOpenChange, branches, editItem }: {
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const isEdit = !!editItem
 
   const [branchId, setBranchId] = useState('')
@@ -120,14 +119,11 @@ function PettyCashFormDialog({ open, onOpenChange, branches, editItem }: {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] })
-      toast({
-        title: t(lang, isEdit ? 'تم التحديث' : 'تم الإنشاء', isEdit ? 'Updated' : 'Created'),
-        description: t(lang, isEdit ? 'تم تحديث السلفة النقدية بنجاح' : 'تم إضافة السلفة النقدية بنجاح', isEdit ? 'Petty cash updated successfully' : 'Petty cash added successfully'),
-      })
+      toast(t(lang, isEdit ? 'تم تحديث السلفة النقدية بنجاح' : 'تم إضافة السلفة النقدية بنجاح', isEdit ? 'Petty cash updated successfully' : 'Petty cash added successfully'))
       onOpenChange(false)
     },
     onError: () => {
-      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حفظ السلفة النقدية', 'Failed to save petty cash'), variant: 'destructive' })
+      toast.error(t(lang, 'فشل في حفظ السلفة النقدية', 'Failed to save petty cash'))
     },
   })
 
@@ -203,7 +199,6 @@ function PettyCashFormDialog({ open, onOpenChange, branches, editItem }: {
 export function PettyCashModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
@@ -235,11 +230,11 @@ export function PettyCashModule() {
       fetch(`/api/petty-cash/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] })
-      toast({ title: t(lang, 'تم الحذف', 'Deleted'), description: t(lang, 'تم حذف السلفة النقدية بنجاح', 'Petty cash deleted successfully') })
+      toast(t(lang, 'تم حذف السلفة النقدية بنجاح', 'Petty cash deleted successfully'))
       setDeleteId(null)
     },
     onError: () => {
-      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حذف السلفة النقدية', 'Failed to delete petty cash'), variant: 'destructive' })
+      toast.error(t(lang, 'فشل في حذف السلفة النقدية', 'Failed to delete petty cash'))
     },
   })
 

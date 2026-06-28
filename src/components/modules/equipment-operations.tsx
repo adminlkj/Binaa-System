@@ -291,6 +291,7 @@ export function EquipmentOperationsModule() {
         <Card>
           <CardContent className="p-0">
             <div className="p-4"><h3 className="text-sm font-semibold text-emerald-700">{t('تكاليف حسب المشروع', 'Costs by Project', lang)}</h3></div>
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader><TableRow>
                 <TableHead className="text-right">{t('المشروع', 'Project', lang)}</TableHead>
@@ -307,6 +308,7 @@ export function EquipmentOperationsModule() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}

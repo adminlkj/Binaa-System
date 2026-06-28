@@ -1004,7 +1004,7 @@ function ContractFormView({
                     <span className="font-semibold text-emerald-800">{formatNumber(refHours)}</span>
                     <span className="text-emerald-500">=</span>
                     <span className="font-bold text-emerald-900 text-xl">{(calculatedHourlyRate ?? 0).toFixed(2)}</span>
-                    <span className="text-emerald-600">{t('﷼', 'SAR', lang)}</span>
+                    <span className="text-emerald-600">{t('ر.س', 'SAR', lang)}</span>
                   </div>
                   <p className="text-xs text-emerald-500 mt-1">
                     {t(

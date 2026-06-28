@@ -1551,7 +1551,7 @@ export function EquipmentModule() {
 
   return (
     <ModuleLayout
-      title={{ ar: 'المعدات', en: 'Equipment Hub' }}
+      title={{ ar: 'المعدات', en: 'Equipment' }}
       subtitle={{ ar: 'كرت المعدة - مركز نشاط التأجير', en: 'Equipment Card - Center of Rental Activity' }}
       actions={
         <div className="flex items-center gap-2">

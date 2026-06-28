@@ -152,7 +152,7 @@ const SECTIONS: SectionConfig[] = [
     roles: ['TRANSPORT_EXPENSE'],
     categories: ['TRANSPORT', 'DELIVERY'],
     color: 'teal',
-    descriptionAr: 'تكاليف نقل المعدات والآليات وال materials',
+    descriptionAr: 'تكاليف نقل المعدات والآليات والمواد',
     descriptionEn: 'Transportation and delivery costs',
     defaultLinkType: 'PROJECT',
   },

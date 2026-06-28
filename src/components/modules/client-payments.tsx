@@ -32,7 +32,7 @@ import { AccountSelector } from '@/components/shared/account-selector'
 import { JePreview } from '@/components/shared/je-preview'
 import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
 // ============ Types ============
 
@@ -136,7 +136,6 @@ function AddPaymentDialog({
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [clientId, setClientId] = useState('')
@@ -216,11 +215,11 @@ function AddPaymentDialog({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client-payments'] })
-      toast({ title: tt('تم تسجيل التحصيل', 'Payment recorded'), description: tt('تم تسجيل التحصيل بنجاح', 'Payment has been recorded successfully') })
+      toast(tt('تم تسجيل التحصيل بنجاح', 'Payment has been recorded successfully'))
       onClose()
     },
     onError: () => {
-      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تسجيل التحصيل', 'Failed to record payment'), variant: 'destructive' })
+      toast.error(tt('فشل في تسجيل التحصيل', 'Failed to record payment'))
     },
   })
 
@@ -287,7 +286,7 @@ function AddPaymentDialog({
                   const remaining = inv.totalAmount - inv.paidAmount
                   return (
                     <SelectItem key={inv.id} value={inv.id}>
-                      {inv.invoiceNo} — {tt('متبقي', 'Remaining', lang)}: <MoneyDisplay value={remaining} lang={lang} size="sm" inline />
+                      {inv.invoiceNo} — {tt('متبقي', 'Remaining')}: <MoneyDisplay value={remaining} lang={lang} size="sm" inline />
                     </SelectItem>
                   )
                 })}
@@ -299,11 +298,11 @@ function AddPaymentDialog({
           {selectedInvoice && (
             <div className="p-3 rounded-lg border bg-emerald-50 text-sm space-y-1">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{tt('إجمالي الفاتورة', 'Invoice Total', lang)}</span>
+                <span className="text-muted-foreground">{tt('إجمالي الفاتورة', 'Invoice Total')}</span>
                 <MoneyDisplay value={selectedInvoice.totalAmount} lang={lang} size="sm" inline bold />
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">{tt('المدفوع', 'Paid', lang)}</span>
+                <span className="text-muted-foreground">{tt('المدفوع', 'Paid')}</span>
                 <MoneyDisplay value={selectedInvoice.paidAmount} lang={lang} size="sm" inline />
               </div>
               <Separator />
@@ -317,7 +316,7 @@ function AddPaymentDialog({
           {/* Amount */}
           <div className="space-y-2">
             <Label>
-              {tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *
+              {tt(labels.amount.ar, labels.amount.en)} *
               {selectedInvoice && (
                 <span className="text-xs text-emerald-600 ml-2">({tt(labels.autoFill.ar, labels.autoFill.en)})</span>
               )}
@@ -335,7 +334,7 @@ function AddPaymentDialog({
           </div>
 
           {/* Date & Received In */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
@@ -351,20 +350,20 @@ function AddPaymentDialog({
                 setReceivedIn(account.accountRole === 'BANK' ? 'BANK' : 'TREASURY')
               }}
               label={tt(labels.receivedIn.ar, labels.receivedIn.en)}
-              placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...', lang)}
+              placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...')}
             />
           </div>
 
           {/* Reference */}
           <div className="space-y-2">
             <Label>{tt(labels.reference.ar, labels.reference.en)}</Label>
-            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={tt('رقم الإيصال', 'Receipt No.', lang)} />
+            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={tt('رقم الإيصال', 'Receipt No.')} />
           </div>
 
           {/* Notes */}
           <div className="space-y-2">
             <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
-            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes', lang)} />
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes')} />
           </div>
 
           {/* JE Preview */}
@@ -418,7 +417,6 @@ function EditPaymentDialog({
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [amount, setAmount] = useState('')
@@ -453,11 +451,11 @@ function EditPaymentDialog({
       }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client-payments'] })
-      toast({ title: tt('تم تحديث التحصيل', 'Payment updated'), description: tt('تم تحديث التحصيل بنجاح', 'Payment has been updated successfully') })
+      toast(tt('تم تحديث التحصيل بنجاح', 'Payment has been updated successfully'))
       onClose()
     },
     onError: () => {
-      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تحديث التحصيل', 'Failed to update payment'), variant: 'destructive' })
+      toast.error(tt('فشل في تحديث التحصيل', 'Failed to update payment'))
     },
   })
 
@@ -507,11 +505,11 @@ function EditPaymentDialog({
           </div>
 
           <div className="space-y-2">
-            <Label>{tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *</Label>
+            <Label>{tt(labels.amount.ar, labels.amount.en)} *</Label>
             <Input type="number" step="0.01" min="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required disabled={isPosted} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required disabled={isPosted} />
@@ -526,7 +524,7 @@ function EditPaymentDialog({
                 setReceivedIn(account.accountRole === 'BANK' ? 'BANK' : 'TREASURY')
               }}
               label={tt(labels.receivedIn.ar, labels.receivedIn.en)}
-              placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...', lang)}
+              placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...')}
             />
           </div>
 
@@ -670,7 +668,7 @@ function PaymentDetailDialog({
                   <span className="text-xs font-medium">{tt(labels.accountingEntry.ar, labels.accountingEntry.en)}</span>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {tt('تم إنشاء قيد محاسبي تلقائي', 'Auto journal entry created', lang)}
+                  {tt('تم إنشاء قيد محاسبي تلقائي', 'Auto journal entry created')}
                 </p>
                 <p className="text-xs font-mono mt-0.5">{payment.journalEntryId}</p>
               </div>
@@ -687,7 +685,6 @@ function PaymentDetailDialog({
 export function ClientPaymentsModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [search, setSearch] = useState('')
@@ -728,11 +725,11 @@ export function ClientPaymentsModule() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['client-payments'] })
-      toast({ title: tt('تم الحذف', 'Deleted'), description: tt('تم حذف التحصيل بنجاح', 'Payment has been deleted') })
+      toast(tt('تم حذف التحصيل بنجاح', 'Payment has been deleted'))
       setDeleteId(null)
     },
     onError: () => {
-      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في حذف التحصيل', 'Failed to delete payment'), variant: 'destructive' })
+      toast.error(tt('فشل في حذف التحصيل', 'Failed to delete payment'))
     },
   })
 
@@ -844,7 +841,7 @@ export function ClientPaymentsModule() {
                 <SelectValue placeholder={tt(labels.receivedIn.ar, labels.receivedIn.en)} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{tt('الكل', 'All', lang)}</SelectItem>
+                <SelectItem value="all">{tt('الكل', 'All')}</SelectItem>
                 <SelectItem value="TREASURY">{tt(receivedInLabels.TREASURY.ar, receivedInLabels.TREASURY.en)}</SelectItem>
                 <SelectItem value="BANK">{tt(receivedInLabels.BANK.ar, receivedInLabels.BANK.en)}</SelectItem>
               </SelectContent>
@@ -921,7 +918,7 @@ export function ClientPaymentsModule() {
                       <TableCell>
                         {p.journalEntryId ? (
                           <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">
-                            {tt('قيد', 'JE', lang)}
+                            {tt('قيد', 'JE')}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground text-xs">—</span>

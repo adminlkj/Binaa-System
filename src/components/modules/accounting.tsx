@@ -33,7 +33,7 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
@@ -586,7 +586,6 @@ function AccountTransactionsDialog({ account, open, onClose }: {
 // ============ Journal Entry Detail ============
 function JournalEntryDetail({ entry, onBack, accounts, onEntryChanged }: { entry: JournalEntry; onBack: () => void; accounts: Account[]; onEntryChanged?: (updated: JournalEntry) => void }) {
   const { lang } = useAppStore()
-  const { toast } = useToast()
   const queryClient = useQueryClient()
   const [detailTab, setDetailTab] = useState('lines')
   const [actionInProgress, setActionInProgress] = useState(false)
@@ -661,24 +660,17 @@ function JournalEntryDetail({ entry, onBack, accounts, onEntryChanged }: { entry
                     throw new Error(err.error || `HTTP ${res.status}`)
                   }
                   const updated = await res.json()
-                  toast({
-                    title: t('تم الترحيل', 'Posted', lang),
-                    description: t(
-                      `تم ترحيل القيد ${entry.entryNo} بنجاح. سيظهر الآن في ميزان المراجعة والتقارير.`,
-                      `Journal entry ${entry.entryNo} posted. It will now appear in Trial Balance and reports.`,
-                      lang
-                    ),
-                  })
+                  toast(t(
+                    `تم ترحيل القيد ${entry.entryNo} بنجاح. سيظهر الآن في ميزان المراجعة والتقارير.`,
+                    `Journal entry ${entry.entryNo} posted. It will now appear in Trial Balance and reports.`,
+                    lang
+                  ))
                   queryClient.invalidateQueries({ queryKey: ['journal-entries'] })
                   queryClient.invalidateQueries({ queryKey: ['trial-balance'] })
                   queryClient.invalidateQueries({ queryKey: ['dashboard'] })
                   onEntryChanged?.(updated)
                 } catch (e) {
-                  toast({
-                    title: t('خطأ', 'Error', lang),
-                    description: e instanceof Error ? e.message : t('فشل في ترحيل القيد', 'Failed to post entry', lang),
-                    variant: 'destructive',
-                  })
+                  toast.error(e instanceof Error ? e.message : t('فشل في ترحيل القيد', 'Failed to post entry', lang))
                 } finally {
                   setActionInProgress(false)
                 }
@@ -823,25 +815,18 @@ function JournalEntryDetail({ entry, onBack, accounts, onEntryChanged }: { entry
                     throw new Error(err.error || `HTTP ${res.status}`)
                   }
                   const reversal = await res.json()
-                  toast({
-                    title: t('تم عكس القيد', 'Entry Reversed', lang),
-                    description: t(
-                      `تم إنشاء القيد العكسي ${reversal.entryNo}. القيد الأصلي ${entry.entryNo} أصبح ملغياً.`,
-                      `Reversal entry ${reversal.entryNo} created. Original entry ${entry.entryNo} is now CANCELLED.`,
-                      lang
-                    ),
-                  })
+                  toast(t(
+                    `تم إنشاء القيد العكسي ${reversal.entryNo}. القيد الأصلي ${entry.entryNo} أصبح ملغياً.`,
+                    `Reversal entry ${reversal.entryNo} created. Original entry ${entry.entryNo} is now CANCELLED.`,
+                    lang
+                  ))
                   queryClient.invalidateQueries({ queryKey: ['journal-entries'] })
                   queryClient.invalidateQueries({ queryKey: ['trial-balance'] })
                   queryClient.invalidateQueries({ queryKey: ['dashboard'] })
                   setReverseDialogOpen(false)
                   onBack()
                 } catch (e) {
-                  toast({
-                    title: t('خطأ', 'Error', lang),
-                    description: e instanceof Error ? e.message : t('فشل في عكس القيد', 'Failed to reverse entry', lang),
-                    variant: 'destructive',
-                  })
+                  toast.error(e instanceof Error ? e.message : t('فشل في عكس القيد', 'Failed to reverse entry', lang))
                 } finally {
                   setActionInProgress(false)
                 }
@@ -865,7 +850,6 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
   onViewLedger: (accountCode: string) => void
 }) {
   const { lang } = useAppStore()
-  const { toast } = useToast()
   const queryClient = useQueryClient()
   const [activityFilter, setActivityFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<string>('all')
@@ -1002,18 +986,11 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
       }
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       queryClient.invalidateQueries({ queryKey: ['financial-mapping-overview'] })
-      toast({
-        title: t('تم', 'Done', lang),
-        description: newActive
-          ? t('تم تفعيل الحساب', 'Account activated', lang)
-          : t('تم تعطيل الحساب', 'Account deactivated', lang),
-      })
+      toast(newActive
+        ? t('تم تفعيل الحساب', 'Account activated', lang)
+        : t('تم تعطيل الحساب', 'Account deactivated', lang))
     } catch (err) {
-      toast({
-        title: t('خطأ', 'Error', lang),
-        description: err instanceof Error ? err.message : t('فشل التحديث', 'Update failed'),
-        variant: 'destructive',
-      })
+      toast.error(err instanceof Error ? err.message : t('فشل التحديث', 'Update failed', lang))
     }
   }
 
@@ -1101,7 +1078,8 @@ function ChartOfAccountsTab({ accounts, isLoading, onInitialize, onReInitialize,
         <p className="text-xs text-teal-800 leading-relaxed">
           {t(
             'عند إنشاء حساب جديد وربطه بدور وظيفي (مثل: البنوك، النقدية، ذمم العملاء، ذمم الموردين...) سيظهر هذا الحساب تلقائياً في شاشة "ربط الحسابات" وضمن كل العمليات المرتبطة بهذا الدور (الدفع، التحصيل، السداد، الفواتير، المصروفات...). مثال: إضافة حساب بنكي جديد بدور "BANK" → سيظهر فوراً في قائمة البنوك عند تسجيل دفعة مورد أو تحصيل عميل أو صرف مصروف.',
-            'When you create a new account and assign it a functional role (e.g. BANK, CASH, CUSTOMER_AR, SUPPLIER_AP...), it will automatically appear in the "Role Mapping" screen and in every operation linked to that role (payments, collections, invoices, expenses...). Example: add a new bank account with role "BANK" → it instantly shows up in the bank list when recording a supplier payment, client collection, or expense payment.'
+            'When you create a new account and assign it a functional role (e.g. BANK, CASH, CUSTOMER_AR, SUPPLIER_AP...), it will automatically appear in the "Role Mapping" screen and in every operation linked to that role (payments, collections, invoices, expenses...). Example: add a new bank account with role "BANK" → it instantly shows up in the bank list when recording a supplier payment, client collection, or expense payment.',
+            lang
           )}
         </p>
       </div>
@@ -1556,7 +1534,8 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
         <p className="text-xs text-teal-800 leading-relaxed">
           {t(
             'كل دور في هذه الشاشة يقابله نوع عملية محدد في النظام. عند ربط حساب بدور معين أو إنشاء حساب جديد لهذا الدور، يظهر الحساب تلقائياً في كل الشاشات والنماذج التي تستخدم هذا الدور. على سبيل المثال: الأدوار CASH و BANK تظهر في شاشات (تحصيل العملاء، سداد الموردين، صرف المصروفات، سداد الرواتب). ويمكن إنشاء عدة حسابات بنفس الدور (مثل عدة بنوك) وستظهر كلها في القائمة المنسدلة للاختيار عند تنفيذ العملية.',
-            'Each role in this screen corresponds to a specific operation type in the system. When you link an account to a role or create a new account for that role, the account automatically appears in every screen and form that uses this role. For example: CASH and BANK roles appear in (client collections, supplier payments, expense payments, salary payments). You can create multiple accounts with the same role (e.g. multiple banks) and they will all appear in the dropdown list when performing the operation.'
+            'Each role in this screen corresponds to a specific operation type in the system. When you link an account to a role or create a new account for that role, the account automatically appears in every screen and form that uses this role. For example: CASH and BANK roles appear in (client collections, supplier payments, expense payments, salary payments). You can create multiple accounts with the same role (e.g. multiple banks) and they will all appear in the dropdown list when performing the operation.',
+            lang
           )}
         </p>
       </div>
@@ -2511,7 +2490,6 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
   entries: JournalEntry[]; isLoading: boolean; isError: boolean; refetch: () => void; accounts: Account[]
 }) {
   const { lang } = useAppStore()
-  const { toast } = useToast()
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
@@ -2559,28 +2537,16 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
   const handleCreateJE = async () => {
     // Validate
     if (!formDate || !formDebitAccountCode || !formCreditAccountCode || !formAmount) {
-      toast({
-        title: t('حقول ناقصة', 'Missing fields', lang),
-        description: t('يرجى تعبئة التاريخ والحساب المدين والحساب الدائن والمبلغ', 'Please fill date, debit account, credit account, and amount', lang),
-        variant: 'destructive',
-      })
+      toast.error(t('يرجى تعبئة التاريخ والحساب المدين والحساب الدائن والمبلغ', 'Please fill date, debit account, credit account, and amount', lang))
       return
     }
     if (formDebitAccountCode === formCreditAccountCode) {
-      toast({
-        title: t('خطأ', 'Error', lang),
-        description: t('لا يمكن أن يكون الحساب المدين والدائن نفس الحساب', 'Debit and credit accounts cannot be the same', lang),
-        variant: 'destructive',
-      })
+      toast.error(t('لا يمكن أن يكون الحساب المدين والدائن نفس الحساب', 'Debit and credit accounts cannot be the same', lang))
       return
     }
     const amount = parseFloat(formAmount)
     if (isNaN(amount) || amount <= 0) {
-      toast({
-        title: t('مبلغ غير صالح', 'Invalid amount', lang),
-        description: t('المبلغ يجب أن يكون رقماً موجباً', 'Amount must be a positive number', lang),
-        variant: 'destructive',
-      })
+      toast.error(t('المبلغ يجب أن يكون رقماً موجباً', 'Amount must be a positive number', lang))
       return
     }
 
@@ -2609,14 +2575,11 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
         throw new Error(err.error || `HTTP ${res.status}`)
       }
       const created = await res.json()
-      toast({
-        title: t('تم إنشاء القيد', 'Entry Created', lang),
-        description: t(
-          `تم إنشاء القيد ${created.entryNo} بحالة ${formPostImmediately ? 'مرحّل' : 'مسودة'}.`,
-          `Entry ${created.entryNo} created with status ${formPostImmediately ? 'POSTED' : 'DRAFT'}.`,
-          lang
-        ),
-      })
+      toast(t(
+        `تم إنشاء القيد ${created.entryNo} بحالة ${formPostImmediately ? 'مرحّل' : 'مسودة'}.`,
+        `Entry ${created.entryNo} created with status ${formPostImmediately ? 'POSTED' : 'DRAFT'}.`,
+        lang
+      ))
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] })
       queryClient.invalidateQueries({ queryKey: ['trial-balance'] })
       queryClient.invalidateQueries({ queryKey: ['dashboard'] })
@@ -2624,11 +2587,7 @@ function JournalEntriesTab({ entries, isLoading, isError, refetch, accounts }: {
       setCreateDialogOpen(false)
       refetch()
     } catch (e) {
-      toast({
-        title: t('خطأ', 'Error', lang),
-        description: e instanceof Error ? e.message : t('فشل في إنشاء القيد', 'Failed to create entry', lang),
-        variant: 'destructive',
-      })
+      toast.error(e instanceof Error ? e.message : t('فشل في إنشاء القيد', 'Failed to create entry', lang))
     } finally {
       setCreating(false)
     }

@@ -28,7 +28,7 @@ import { PrintButton } from '@/components/shared/print-button'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatNumber, formatDate, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
 // ============ Types ============
 interface ProjectSummary { id: string; name: string; code: string }
@@ -72,7 +72,6 @@ function BOQFormDialog({
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const isEdit = !!editItem
 
   const [form, setForm] = useState<BOQFormData>({
@@ -120,14 +119,11 @@ function BOQFormDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boq'] })
-      toast({
-        title: t(lang, isEdit ? 'تم التحديث' : 'تم الإنشاء', isEdit ? 'Updated' : 'Created'),
-        description: t(lang, isEdit ? 'تم تحديث البند بنجاح' : 'تم إنشاء البند بنجاح', isEdit ? 'Item updated successfully' : 'Item created successfully'),
-      })
+      toast(t(lang, isEdit ? 'تم تحديث البند بنجاح' : 'تم إنشاء البند بنجاح', isEdit ? 'Item updated successfully' : 'Item created successfully'))
       onOpenChange(false)
     },
     onError: () => {
-      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حفظ البند', 'Failed to save item'), variant: 'destructive' })
+      toast.error(t(lang, 'فشل في حفظ البند', 'Failed to save item'))
     },
   })
 
@@ -215,7 +211,6 @@ function BOQFormDialog({
 export function BOQModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
 
   const [search, setSearch] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all')
@@ -251,11 +246,11 @@ export function BOQModule() {
       fetch(`/api/boq/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['boq'] })
-      toast({ title: t(lang, 'تم الحذف', 'Deleted'), description: t(lang, 'تم حذف البند بنجاح', 'Item deleted successfully') })
+      toast(t(lang, 'تم حذف البند بنجاح', 'Item deleted successfully'))
       setDeleteId(null)
     },
     onError: () => {
-      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حذف البند', 'Failed to delete item'), variant: 'destructive' })
+      toast.error(t(lang, 'فشل في حذف البند', 'Failed to delete item'))
     },
   })
 

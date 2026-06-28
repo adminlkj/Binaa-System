@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   HardHat, Plus, Search, RefreshCw, Users, Calculator, Trash2, Pencil, Download,
@@ -27,7 +27,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
 // ============ Types ============
 interface ProjectOption { id: string; code: string; name: string }
@@ -65,7 +65,6 @@ function LaborCostFormDialog({
 }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const isEdit = !!editItem
 
   const [projectId, setProjectId] = useState('')
@@ -108,14 +107,11 @@ function LaborCostFormDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['labor-costs'] })
-      toast({
-        title: t(lang, isEdit ? 'تم التحديث' : 'تم الإنشاء', isEdit ? 'Updated' : 'Created'),
-        description: t(lang, isEdit ? 'تم تحديث تكلفة العمالة بنجاح' : 'تم إضافة تكلفة العمالة بنجاح', isEdit ? 'Labor cost updated successfully' : 'Labor cost added successfully'),
-      })
+      toast(t(lang, isEdit ? 'تم تحديث تكلفة العمالة بنجاح' : 'تم إضافة تكلفة العمالة بنجاح', isEdit ? 'Labor cost updated successfully' : 'Labor cost added successfully'))
       onOpenChange(false)
     },
     onError: () => {
-      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حفظ تكلفة العمالة', 'Failed to save labor cost'), variant: 'destructive' })
+      toast.error(t(lang, 'فشل في حفظ تكلفة العمالة', 'Failed to save labor cost'))
     },
   })
 
@@ -201,7 +197,6 @@ function LaborCostFormDialog({
 export function LaborModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
 
   const [search, setSearch] = useState('')
   const [projectFilter, setProjectFilter] = useState<string>('all')
@@ -233,11 +228,11 @@ export function LaborModule() {
       fetch(`/api/labor-costs/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['labor-costs'] })
-      toast({ title: t(lang, 'تم الحذف', 'Deleted'), description: t(lang, 'تم حذف تكلفة العمالة بنجاح', 'Labor cost deleted successfully') })
+      toast(t(lang, 'تم حذف تكلفة العمالة بنجاح', 'Labor cost deleted successfully'))
       setDeleteId(null)
     },
     onError: () => {
-      toast({ title: t(lang, 'خطأ', 'Error'), description: t(lang, 'فشل في حذف تكلفة العمالة', 'Failed to delete labor cost'), variant: 'destructive' })
+      toast.error(t(lang, 'فشل في حذف تكلفة العمالة', 'Failed to delete labor cost'))
     },
   })
 

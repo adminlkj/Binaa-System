@@ -30,7 +30,7 @@ import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
-import { useToast } from '@/hooks/use-toast'
+import { toast } from 'sonner'
 
 // ============ Types ============
 
@@ -123,7 +123,6 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [clientId, setClientId] = useState('')
@@ -178,11 +177,11 @@ function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => voi
       }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rental-client-payments'] })
-      toast({ title: tt('تم تسجيل التحصيل', 'Collection recorded'), description: tt('تم تسجيل التحصيل بنجاح', 'Collection has been recorded successfully') })
+      toast(tt('تم تسجيل التحصيل بنجاح', 'Collection has been recorded successfully'))
       onClose()
     },
     onError: () => {
-      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تسجيل التحصيل', 'Failed to record collection'), variant: 'destructive' })
+      toast.error(tt('فشل في تسجيل التحصيل', 'Failed to record collection'))
     },
   })
 
@@ -251,7 +250,7 @@ function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
           {/* Amount */}
           <div className="space-y-2">
-            <Label>{tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *</Label>
+            <Label>{tt(labels.amount.ar, labels.amount.en)} *</Label>
             <Input type="number" step="0.01" min="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" dir="ltr" required />
           </div>
 
@@ -286,13 +285,13 @@ function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => voi
           {/* Reference */}
           <div className="space-y-2">
             <Label>{tt(labels.reference.ar, labels.reference.en)}</Label>
-            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={tt('رقم الإيصال', 'Receipt No.', lang)} />
+            <Input value={reference} onChange={e => setReference(e.target.value)} placeholder={tt('رقم الإيصال', 'Receipt No.')} />
           </div>
 
           {/* Notes */}
           <div className="space-y-2">
             <Label>{tt(labels.notes.ar, labels.notes.en)}</Label>
-            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes', lang)} />
+            <Input value={notes} onChange={e => setNotes(e.target.value)} placeholder={tt('ملاحظات', 'Notes')} />
           </div>
 
           <DialogFooter>
@@ -312,7 +311,6 @@ function AddPaymentDialog({ open, onClose }: { open: boolean; onClose: () => voi
 function EditPaymentDialog({ payment, open, onClose }: { payment: RentalPaymentItem | null; open: boolean; onClose: () => void }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [amount, setAmount] = useState('')
@@ -341,11 +339,11 @@ function EditPaymentDialog({ payment, open, onClose }: { payment: RentalPaymentI
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rental-client-payments'] })
       queryClient.invalidateQueries({ queryKey: ['client-payments'] })
-      toast({ title: tt('تم تحديث التحصيل', 'Collection updated'), description: tt('تم تحديث التحصيل بنجاح', 'Collection has been updated successfully') })
+      toast(tt('تم تحديث التحصيل بنجاح', 'Collection has been updated successfully'))
       onClose()
     },
     onError: () => {
-      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في تحديث التحصيل', 'Failed to update collection'), variant: 'destructive' })
+      toast.error(tt('فشل في تحديث التحصيل', 'Failed to update collection'))
     },
   })
 
@@ -392,7 +390,7 @@ function EditPaymentDialog({ payment, open, onClose }: { payment: RentalPaymentI
           </div>
 
           <div className="space-y-2">
-            <Label>{tt(labels.amount.ar, labels.amount.en)} (ر.س / SAR) *</Label>
+            <Label>{tt(labels.amount.ar, labels.amount.en)} *</Label>
             <Input type="number" step="0.01" min="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required disabled={isPosted} />
           </div>
 
@@ -440,7 +438,6 @@ function EditPaymentDialog({ payment, open, onClose }: { payment: RentalPaymentI
 export function RentalPaymentsModule() {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
-  const { toast } = useToast()
   const tt = (ar: string, en: string) => t(ar, en, lang)
 
   const [search, setSearch] = useState('')
@@ -470,11 +467,11 @@ export function RentalPaymentsModule() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rental-client-payments'] })
-      toast({ title: tt('تم الحذف', 'Deleted'), description: tt('تم حذف التحصيل بنجاح', 'Collection has been deleted') })
+      toast(tt('تم حذف التحصيل بنجاح', 'Collection has been deleted'))
       setDeleteId(null)
     },
     onError: () => {
-      toast({ title: tt('خطأ', 'Error'), description: tt('فشل في حذف التحصيل', 'Failed to delete collection'), variant: 'destructive' })
+      toast.error(tt('فشل في حذف التحصيل', 'Failed to delete collection'))
     },
   })
 
@@ -651,7 +648,7 @@ export function RentalPaymentsModule() {
                       <TableCell>
                         {p.journalEntryId ? (
                           <Badge variant="outline" className="text-[10px] bg-sky-50 text-sky-700 border-sky-200">
-                            {tt('قيد', 'JE', lang)}
+                            {tt('قيد', 'JE')}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground text-xs">—</span>

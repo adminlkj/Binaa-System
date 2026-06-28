@@ -26,6 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { useAppStore, formatDate as storeFormatDate, formatNumber, commonText } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { PrintButton } from '@/components/shared/print-button'
+import { ModuleLayout } from '@/components/shared/module-layout'
 
 // ============ Types ============
 interface EquipmentOption { id: string; code: string; name: string; nameAr?: string | null; hourlyRate: number; dailyRate: number; monthlyRate: number }
@@ -606,13 +607,11 @@ export function DeliveryOrdersModule() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('أوامر التوصيل', 'Delivery Orders')}</h1>
-          <p className="text-sm text-muted-foreground">{t('إدارة أوامر توصيل المعدات للمواقع', 'Manage equipment delivery orders to sites')}</p>
-        </div>
-        <div className="flex items-center gap-2">
+    <ModuleLayout
+      title={{ ar: 'أوامر التوصيل', en: 'Delivery Orders' }}
+      subtitle={{ ar: 'إدارة أوامر توصيل المعدات للمواقع', en: 'Manage equipment delivery orders to sites' }}
+      actions={
+        <>
           <PrintButton type="generic-table" size="icon" />
           <Button variant="outline" size="icon" onClick={handleExport} title={t('تصدير', 'Export')}>
             <Download className="size-4" />
@@ -623,8 +622,9 @@ export function DeliveryOrdersModule() {
           <Button className="gap-2 bg-emerald-600 hover:bg-emerald-700" onClick={() => setViewState({ type: 'create' })}>
             <Plus className="size-4" /> {t('أمر توصيل جديد', 'New Delivery Order')}
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -764,6 +764,6 @@ export function DeliveryOrdersModule() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </ModuleLayout>
   )
 }
