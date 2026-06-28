@@ -46,6 +46,7 @@ export async function POST(request: Request) {
           cost,
           supplierId: body.supplierId || null,
           nextDate: body.nextDate ? new Date(body.nextDate) : null,
+          status: 'IN_PROGRESS', // P3-HIGH-007: track maintenance lifecycle
         },
         include: {
           equipment: { select: { id: true, code: true, name: true, nameAr: true } },

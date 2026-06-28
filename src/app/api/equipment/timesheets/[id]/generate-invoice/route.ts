@@ -181,7 +181,11 @@ export async function POST(
       const clientId = timesheet.rental?.clientId || contract.clientId
       const projectId = timesheet.rental?.projectId || contract.projectId || timesheet.projectId
 
-      // Step 5: Create the invoice
+      // Step 5: Create the invoice.
+      // P3-HIGH-009: Previously created as 'DRAFT' but the JE is posted
+      // immediately (revenue recognized). A DRAFT invoice with a posted JE is
+      // inconsistent — if the draft is discarded, the JE must be reversed.
+      // Fix: create as 'SENT' since the JE is posted = invoice is issued.
       const inv = await tx.salesInvoice.create({
         data: {
           invoiceNo,
@@ -198,7 +202,7 @@ export async function POST(
           vatAmount,
           totalAmount,
           paidAmount: 0,
-          status: 'DRAFT',
+          status: 'SENT',
           invoiceType: 'RENTAL',
           sourceType: 'TIMESHEET',
           timesheetId: timesheet.id,
@@ -261,7 +265,22 @@ export async function POST(
       // Create auto journal entry (throws on failure → tx rolls back).
       await createSalesInvoiceJournalEntry(inv.id, tx)
 
-      return inv
+      // Re-fetch the invoice so the response includes journalEntryId (the
+      // `inv` object above was captured before createSalesInvoiceJournalEntry
+      // updated it).
+      const invWithJe = await tx.salesInvoice.findUnique({
+        where: { id: inv.id },
+        include: {
+          client: {
+            select: { id: true, name: true, nameAr: true, code: true, taxNumber: true, phone: true, email: true, address: true },
+          },
+          project: {
+            select: { id: true, name: true, nameAr: true, code: true },
+          },
+        },
+      })
+
+      return invWithJe!
     })
 
     return NextResponse.json(invoice, { status: 201 })

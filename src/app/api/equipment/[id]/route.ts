@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -77,6 +78,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     const data: Record<string, unknown> = {}
 
+    // P3-CRIT-003: Removed `clientId` — Equipment model has no such field
     if (body.name !== undefined) data.name = body.name
     if (body.nameAr !== undefined) data.nameAr = body.nameAr || null
     if (body.type !== undefined) data.type = body.type || null
@@ -86,7 +88,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (body.ownershipType !== undefined) data.ownershipType = body.ownershipType
     if (body.supplierId !== undefined) data.supplierId = body.supplierId || null
     if (body.ownerId !== undefined) data.ownerId = body.ownerId || null
-    if (body.clientId !== undefined) data.clientId = body.clientId || null
     if (body.purchasePrice !== undefined) data.purchasePrice = parseFloat(body.purchasePrice) || 0
     if (body.sellingPrice !== undefined) data.sellingPrice = parseFloat(body.sellingPrice) || 0
     if (body.hourlyRate !== undefined) data.hourlyRate = parseFloat(body.hourlyRate) || 0
@@ -112,18 +113,64 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
+// P3-CRIT-002: Replaced dangerous hard-delete cascade with protected soft-delete.
+// - Blocks delete if the equipment has any financial records (rentals with invoices, JEs, timesheets).
+// - Reverses the equipment-purchase JE if one exists.
+// - Soft-deletes by setting isActive=false + deletedAt=now().
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    await db.equipmentRental.deleteMany({ where: { equipmentId: id } })
-    await db.equipmentExpense.deleteMany({ where: { equipmentId: id } })
-    await db.equipmentUsage.deleteMany({ where: { equipmentId: id } })
-    await db.equipmentMaintenance.deleteMany({ where: { equipmentId: id } })
-    await db.equipmentFuelLog.deleteMany({ where: { equipmentId: id } })
-    await db.equipment.delete({ where: { id } })
-    return NextResponse.json({ success: true })
+
+    const existing = await db.equipment.findUnique({
+      where: { id },
+      select: { id: true, code: true, name: true, journalEntryId: true, deletedAt: true },
+    })
+
+    if (!existing) {
+      return NextResponse.json({ error: 'المعدة غير موجودة' }, { status: 404 })
+    }
+
+    if (existing.deletedAt) {
+      return NextResponse.json({ error: 'المعدة محذوفة بالفعل' }, { status: 400 })
+    }
+
+    // Count financial records that block deletion
+    const [activeRentals, timesheetCount, invoiceCount, maintenanceWithJE, fuelWithJE, expenseWithJE] = await Promise.all([
+      db.equipmentRental.count({ where: { equipmentId: id, status: { in: ['ACTIVE', 'UNDER_REVIEW'] } } }),
+      db.timesheet.count({ where: { equipmentId: id } }),
+      db.salesInvoice.count({ where: { invoiceType: 'RENTAL', project: { /* no direct link */ } } }).catch(() => 0),
+      db.equipmentMaintenance.count({ where: { equipmentId: id, journalEntryId: { not: null } } }),
+      db.equipmentFuelLog.count({ where: { equipmentId: id, journalEntryId: { not: null } } }),
+      db.equipmentExpense.count({ where: { equipmentId: id, journalEntryId: { not: null } } }),
+    ])
+
+    const blockingCount = activeRentals + timesheetCount + maintenanceWithJE + fuelWithJE + expenseWithJE
+    if (blockingCount > 0) {
+      return NextResponse.json({
+        error: `لا يمكن حذف المعدة لوجود سجلات مالية مرتبطة: ${activeRentals} عقد نشط، ${timesheetCount} تايم شيت، ${maintenanceWithJE} صيانة مرحّلة، ${fuelWithJE} سجل وقود مرحّل، ${expenseWithJE} مصروف مرحّل. استخدم التعطيل (isActive=false) بدلاً من الحذف.`,
+      }, { status: 400 })
+    }
+
+    // Safe to soft-delete: reverse purchase JE + deactivate
+    await db.$transaction(async (tx: PrismaTransaction) => {
+      if (existing.journalEntryId) {
+        await reverseEntry(existing.journalEntryId, tx)
+      }
+
+      await tx.equipment.update({
+        where: { id },
+        data: {
+          isActive: false,
+          deletedAt: new Date(),
+          status: 'RETIRED',
+        },
+      })
+    })
+
+    return NextResponse.json({ success: true, message: 'تم تعطيل المعدة وعكس قيد الشراء' })
   } catch (error) {
     console.error('Error deleting equipment:', error)
-    return NextResponse.json({ error: 'فشل في حذف المعدة' }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'فشل في حذف المعدة'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

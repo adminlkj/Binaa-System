@@ -99,6 +99,7 @@ export async function PUT(
       const newStatus = body.status
 
       // Validate workflow transitions
+      // P3-HIGH-003: Removed APPROVED→INVOICED — only generate-invoice route can set INVOICED
       if (currentStatus === 'DRAFT' && newStatus === 'SUBMITTED') {
         updateData.status = 'SUBMITTED'
       } else if (currentStatus === 'SUBMITTED' && newStatus === 'APPROVED') {
@@ -107,8 +108,8 @@ export async function PUT(
       } else if (currentStatus === 'SUBMITTED' && newStatus === 'DRAFT') {
         // Allow reverting to DRAFT
         updateData.status = 'DRAFT'
-      } else if (currentStatus === 'APPROVED' && newStatus === 'INVOICED') {
-        updateData.status = 'INVOICED'
+      } else if (currentStatus === 'APPROVED' && newStatus === 'APPROVED') {
+        // No-op (already approved)
       } else {
         return NextResponse.json(
           { error: `لا يمكن تغيير الحالة من ${currentStatus} إلى ${newStatus}` },

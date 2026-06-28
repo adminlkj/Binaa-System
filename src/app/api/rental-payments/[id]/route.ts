@@ -79,7 +79,11 @@ export async function DELETE(
           const newPaidAmount = Math.max(0, toNumber(invoice.paidAmount) - toNumber(existing.amount))
           let newStatus = invoice.status
           if (newPaidAmount === 0) {
-            newStatus = 'APPROVED'
+            // P3-BUG: 'APPROVED' is not a valid InvoiceStatus value.
+            // Valid enum: DRAFT, SENT, PARTIALLY_PAID, PAID, OVERDUE, CANCELLED.
+            // When a payment is reversed and paidAmount returns to 0, the invoice
+            // is still issued (JE was posted) → use 'SENT'.
+            newStatus = 'SENT'
           } else if (newPaidAmount < toNumber(invoice.totalAmount)) {
             newStatus = 'PARTIALLY_PAID'
           }

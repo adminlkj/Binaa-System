@@ -147,12 +147,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'العقد غير موجود' }, { status: 404 })
     }
 
-    // Check for duplicate month/year
+    // P3-MED-003: Check duplicate by rentalId+month+year (not contractId)
     const existing = await db.timesheet.findFirst({
-      where: { contractId, month: parseInt(month), year: parseInt(year) },
+      where: { rentalId, month: parseInt(month), year: parseInt(year) },
     })
     if (existing) {
-      return NextResponse.json({ error: 'يوجد تايم شيت لهذا الشهر بالفعل' }, { status: 400 })
+      return NextResponse.json({ error: 'يوجد تايم شيت لهذا الإيجار في هذا الشهر بالفعل' }, { status: 400 })
     }
 
     const oh = parseFloat(operatingHours) || 0

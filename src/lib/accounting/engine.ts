@@ -888,6 +888,39 @@ export async function autoEntryEquipmentCost(data: {
 }
 
 /**
+ * شراء معدات - Equipment Purchase
+ * Dr: Fixed Asset — Equipment (2120) [FIXED_ASSET role]
+ * Cr: Cash (if payFrom=CASH) or Supplier AP (if payFrom=AP)
+ *
+ * Capitalizes the equipment as a fixed asset on the balance sheet.
+ */
+export async function autoEntryEquipmentPurchase(data: {
+  equipmentCode: string
+  equipmentName: string
+  amount: number
+  date: Date
+  payFrom: 'CASH' | 'AP'
+}, tx?: PrismaTransaction) {
+  const assetCode = await getAccountCodeByRole(AccountRole.FIXED_ASSET, tx) || '2120'
+  const creditAccountCode = data.payFrom === 'AP'
+    ? (await getAccountCodeByRole(AccountRole.SUPPLIER_AP, tx) || '3210')
+    : (await resolvePaymentAccountCode('TREASURY', tx))
+
+  return createJournalEntry({
+    entryNo: `JE-EQP-${Date.now()}`,
+    date: data.date,
+    description: `Equipment Purchase - ${data.equipmentCode} ${data.equipmentName}`,
+    descriptionAr: `شراء معدات - ${data.equipmentCode} ${data.equipmentName}`,
+    lines: [
+      { accountCode: assetCode, debit: data.amount, credit: 0 },
+      { accountCode: creditAccountCode, debit: 0, credit: data.amount },
+    ],
+    sourceType: 'EQUIPMENT_PURCHASE',
+    sourceId: data.equipmentCode,
+  }, tx)
+}
+
+/**
  * إيراد تأجير - Rental Invoice (from Timesheet)
  * Dr: Clients Receivable (1210)
  * Cr: Equipment Rental Revenue (6210)

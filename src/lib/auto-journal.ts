@@ -50,6 +50,46 @@ export async function createSalesInvoiceJournalEntry(
     )
   }
 
+  // P3-BUG (discovered via practical E2E test): The previous JE only credited
+  // `netAmount` (= subtotal) + `vatAmount` (VAT on subtotal only), but debited
+  // `totalAmount` (which includes deliveryFees + deliveryVat). This produced an
+  // UNBALANCED entry whenever an invoice had taxable delivery fees
+  // (e.g. D=23575 ≠ C=23000, diff=575 = 500 delivery + 75 delivery VAT).
+  //
+  // Fix: when the invoice has `includeDelivery && deliveryAmount > 0`, add the
+  // missing credit lines:
+  //   - Cr revenue account: deliveryAmount (the delivery fee itself)
+  //   - Cr VAT output: deliveryVat (deliveryFeesTaxable ? deliveryAmount * vatRate : 0)
+  const deliveryAmount = toNumber(invoice.deliveryAmount || 0)
+  const includeDelivery = Boolean(invoice.includeDelivery) && deliveryAmount > 0
+  const vatRate = toNumber(invoice.vatRate || 0)
+  const deliveryVat = (includeDelivery && invoice.deliveryFeesTaxable)
+    ? Math.round(deliveryAmount * vatRate * 100) / 100
+    : 0
+
+  const lines: Array<{ accountId: string; debit: number; credit: number; description: string }> = [
+    { accountId: clientAccount.id, debit: toNumber(invoice.totalAmount), credit: 0, description: `فاتورة ${invoice.invoiceNo} - ${invoice.client.name}` },
+    { accountId: revenueAccount.id, debit: 0, credit: toNumber(invoice.netAmount), description: `إيرادات فاتورة ${invoice.invoiceNo}` },
+    { accountId: outputVatAccount.id, debit: 0, credit: toNumber(invoice.vatAmount), description: `ضريبة مخرجات فاتورة ${invoice.invoiceNo}` },
+  ]
+
+  if (includeDelivery) {
+    lines.push({
+      accountId: revenueAccount.id,
+      debit: 0,
+      credit: deliveryAmount,
+      description: `إيرادات رسوم نقل فاتورة ${invoice.invoiceNo}`,
+    })
+    if (deliveryVat > 0) {
+      lines.push({
+        accountId: outputVatAccount.id,
+        debit: 0,
+        credit: deliveryVat,
+        description: `ضريبة مخرجات رسوم نقل فاتورة ${invoice.invoiceNo}`,
+      })
+    }
+  }
+
   const entryNo = await getNextEntryNo(tx)
   const entry = await postJournalEntry(
     {
@@ -58,11 +98,7 @@ export async function createSalesInvoiceJournalEntry(
       description: `فاتورة مبيعات ${invoice.invoiceNo}`,
       sourceType: 'SALES_INVOICE',
       sourceId: invoice.id,
-      lines: [
-        { accountId: clientAccount.id, debit: toNumber(invoice.totalAmount), credit: 0, description: `فاتورة ${invoice.invoiceNo} - ${invoice.client.name}` },
-        { accountId: revenueAccount.id, debit: 0, credit: toNumber(invoice.netAmount), description: `إيرادات فاتورة ${invoice.invoiceNo}` },
-        { accountId: outputVatAccount.id, debit: 0, credit: toNumber(invoice.vatAmount), description: `ضريبة مخرجات فاتورة ${invoice.invoiceNo}` },
-      ],
+      lines,
     },
     tx
   )

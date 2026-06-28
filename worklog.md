@@ -3868,3 +3868,84 @@ Stage Summary:
 - ✅ lint نظيف
 - ✅ dev server يعمل بشكل صحيح
 - جاهز للـ push النهائي
+
+---
+Task ID: 3 (Equipment & Rental Cycle Audit + Fix)
+Agent: Z.ai Code (main session)
+Task: Phase 3 — Deep audit of Equipment & Rental cycle + fix all CRITICAL issues via practical E2E testing
+
+Work Log:
+- Phase 3 Audit: Subagent (Task 3-a) completed READ-ONLY deep audit of equipment/rental cycle.
+  Produced audit-reports/03-equipment-rental-cycle.md — 26 issues (9 CRITICAL, 10 HIGH, 7 MEDIUM).
+
+- Pre-existing fixes (from prior session, uncommitted): Schema changes (deletedAt + journalEntryId on
+  Equipment, status + completedAt on EquipmentMaintenance, costType + equipmentId + journalEntryId on
+  EquipmentCost), engine.ts autoEntryEquipmentPurchase(), equipment/[id] soft-delete, maintenance
+  complete route, rental-contracts atomic + availability + overlap checks, usages JE, rentals route
+  de-duplication.
+
+- Practical E2E Testing (THIS SESSION — methodology mandated by user):
+  Ran `scripts/test-equipment-cycle.ts` against live dev server. First run: 21 PASS / 1 FAIL / 1 WARN.
+  The FAIL and WARN exposed real bugs that code-reading could NOT find.
+
+- PRACTICAL-BUG-1 (test script): getGLBalance() hit /api/accounting/trial-balance (404) instead of
+  /api/reports/trial-balance. Returned false D=0 C=0 diff=0 — masked the true GL state.
+  FIX: Corrected path + response field names (totals.totalDebit/totalCredit/isBalanced).
+
+- PRACTICAL-BUG-2 (test script): Delivery-order POST ignored body.status (always creates PENDING).
+  Test expected DELIVERED in one call. FIX: Test now POSTs then PATCHes to DELIVERED.
+
+- PRACTICAL-BUG-3 (production code): delivery-orders PATCH set equipment.status='IN_USE' on DELIVERED,
+  clobbering the RENTED state set by an active rental contract.
+  FIX: PATCH now checks current equipment status — only flips to IN_USE if currently AVAILABLE.
+  Same guard for RETURNED and CANCELLED transitions.
+
+- PRACTICAL-BUG-4 (CRITICAL accounting): createSalesInvoiceJournalEntry() debited totalAmount
+  (includes deliveryFees + deliveryVat) but only credited netAmount + vatAmount. Missing credit
+  lines for deliveryFees (500) and deliveryVat (75) → unbalanced JE by 575. Every rental invoice
+  with taxable delivery fees failed with 500 "القيد غير متوازن".
+  FIX: Added conditional credit lines — Cr revenue: deliveryAmount, Cr VAT output: deliveryVat.
+  src/lib/auto-journal.ts
+
+- PRACTICAL-BUG-5 (production code): rental-payments DELETE set invoice.status='APPROVED' when
+  paidAmount returned to 0. But InvoiceStatus enum has NO 'APPROVED' value
+  (DRAFT|SENT|PARTIALLY_PAID|PAID|OVERDUE|CANCELLED). Prisma validation error → 500.
+  FIX: Changed 'APPROVED' → 'SENT'. src/app/api/rental-payments/[id]/route.ts
+
+- PRACTICAL-BUG-6 (P3-HIGH-009): generate-invoice created invoice as 'DRAFT' but immediately
+  posted JE (revenue recognized). Inconsistent state.
+  FIX: Changed status 'DRAFT' → 'SENT'. src/app/api/equipment/timesheets/[id]/generate-invoice/route.ts
+
+- PRACTICAL-BUG-7: generate-invoice returned stale `inv` object (captured before JE creation
+  updated journalEntryId). Response showed JE=MISSING despite JE existing in DB.
+  FIX: Route now re-fetches invoice via findUnique after JE creation.
+
+- Re-test after each fix cycle. Final run: 27 PASS / 0 FAIL / 1 WARN (expected fresh-DB warning).
+
+- DB integrity verification (scripts/verify-phase3-db.ts): 8/8 PASS.
+  - 8 posted JEs balanced, D=96,175 = C=96,175, diff=0.0000
+  - Rental invoice JE with delivery fees balanced and total matches
+  - No orphaned JEs, soft-delete fields correct, RENTED equipment has ACTIVE rental
+
+- Agent Browser UI verification:
+  - Dashboard: no console/hydration errors
+  - Equipment page: EQ-004 shows status "مؤجرة" (RENTED) — confirms rental cycle works
+  - Rental Invoices page: RNT-0001 shows status "مُرسل" (SENT) + total 23,575.00 SAR
+  - Rental Contracts page: ACTIVE contract for EQ-004
+  - Trial Balance tab: D=96,175.00 = C=96,175.00 (balanced)
+  - Mobile (375×812) + Desktop (1440×900): layout holds
+
+- Lint: CLEAN (0 errors, 0 warnings)
+
+Stage Summary:
+- 7 practical bugs discovered & fixed (3 in production code, 4 in test script + audit-flagged issues)
+- Most critical: PRACTICAL-BUG-4 (unbalanced rental invoice JE when delivery fees present) —
+  this was an ACCOUNTING INTEGRITY violation that code-reading missed entirely. Only practical
+  E2E testing with real HTTP calls + DB verification exposed it.
+- All 9 CRITICAL issues from audit now fixed (P3-CRIT-001 through P3-CRIT-009)
+- 3 HIGH issues fixed (P3-HIGH-003, 004, 009) + 1 new HIGH (PRACTICAL-BUG-3 delivery-order status)
+- GL fully balanced: D=96,175 = C=96,175, diff=0.0000
+- 27/27 E2E checks PASS, 8/8 DB integrity checks PASS
+- Browser-verified interactivity across Dashboard, Equipment, Rental Invoices, Rental Contracts, Trial Balance
+- Ready for commit + push, then Phase 4
+

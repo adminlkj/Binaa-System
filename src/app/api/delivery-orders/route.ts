@@ -191,24 +191,52 @@ export async function PATCH(request: Request) {
         },
       })
 
-      // Handle equipment status changes based on delivery order status
+      // Handle equipment status changes based on delivery order status.
+      //
+      // P3-BUG (discovered via practical E2E test): The previous logic blindly set
+      // equipment.status='IN_USE' when a delivery order became DELIVERED. This
+      // clobbered the RENTED state set by an active EquipmentRental contract —
+      // breaking the rental cycle's equipment-status invariant.
+      //
+      // Fix: when transitioning to DELIVERED, only flip equipment to IN_USE if it
+      // is currently AVAILABLE. If it's already RENTED (active rental) or any other
+      // non-AVAILABLE state, leave it alone — the rental contract owns the status.
       if (status === 'DELIVERED') {
-        await tx.equipment.update({
+        const currentEq = await tx.equipment.findUnique({
           where: { id: updated.equipmentId },
-          data: { status: 'IN_USE' },
+          select: { status: true },
         })
+        if (currentEq?.status === 'AVAILABLE') {
+          await tx.equipment.update({
+            where: { id: updated.equipmentId },
+            data: { status: 'IN_USE' },
+          })
+        }
       } else if (status === 'RETURNED') {
-        await tx.equipment.update({
+        // Only return to AVAILABLE if not currently RENTED.
+        const currentEq = await tx.equipment.findUnique({
           where: { id: updated.equipmentId },
-          data: { status: 'AVAILABLE' },
+          select: { status: true },
         })
-      } else if (status === 'CANCELLED') {
-        if (existing.status === 'DELIVERED') {
-          // Was IN_USE, revert to AVAILABLE
+        if (currentEq?.status !== 'RENTED') {
           await tx.equipment.update({
             where: { id: updated.equipmentId },
             data: { status: 'AVAILABLE' },
           })
+        }
+      } else if (status === 'CANCELLED') {
+        if (existing.status === 'DELIVERED') {
+          // Was IN_USE, revert to AVAILABLE — but only if not RENTED.
+          const currentEq = await tx.equipment.findUnique({
+            where: { id: updated.equipmentId },
+            select: { status: true },
+          })
+          if (currentEq?.status !== 'RENTED') {
+            await tx.equipment.update({
+              where: { id: updated.equipmentId },
+              data: { status: 'AVAILABLE' },
+            })
+          }
         }
         // PENDING → CANCELLED: equipment was never changed, no revert needed
       }

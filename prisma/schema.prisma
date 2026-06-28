@@ -1415,6 +1415,8 @@ model Equipment {
   assetAccountId  String?             // حساب الأصل الثابت
   assetAccountCode String?            // كود حساب الأصل (للعرض السريع)
   isActive        Boolean             @default(true)
+  deletedAt       DateTime?
+  journalEntryId String?             // JE for equipment purchase (Dr EQUIPMENT_ASSET / Cr CASH or AP)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 
@@ -1485,6 +1487,8 @@ model EquipmentMaintenance {
   cost           Decimal   @default(0)
   supplierId     String?
   nextDate       DateTime?
+  status         String    @default("SCHEDULED") // SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED
+  completedAt    DateTime?
   journalEntryId String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -1495,6 +1499,7 @@ model EquipmentMaintenance {
   @@index([equipmentId])
   @@index([supplierId])
   @@index([date])
+  @@index([status])
 }
 
 model EquipmentFuelLog {
@@ -1518,18 +1523,22 @@ model EquipmentFuelLog {
 }
 
 model EquipmentCost {
-  id          String   @id @default(cuid())
-  projectId   String
-  description String
-  amount      Decimal  @default(0)
-  date        DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  projectId      String
+  description    String
+  amount         Decimal  @default(0)
+  date           DateTime
+  costType       String?  // OPERATION, MAINTENANCE, FUEL, OTHER
+  equipmentId    String?
+  journalEntryId String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
   @@index([projectId])
   @@index([date])
+  @@index([costType])
 }
 
 // ============ EQUIPMENT RENTAL ============

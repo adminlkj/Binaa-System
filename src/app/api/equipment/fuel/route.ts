@@ -32,7 +32,8 @@ export async function POST(request: Request) {
     const body = await request.json()
     const liters = parseFloat(body.liters)
     const costPerLiter = parseFloat(body.costPerLiter)
-    const totalCost = liters * costPerLiter
+    // P3-MED-005: Round to 2 decimals to avoid floating-point precision issues
+    const totalCost = Math.round((liters * costPerLiter) * 100) / 100
 
     // Atomic: fuel log + equipment cost + JE + journalEntryId link in one transaction.
     // R1 enforced — if the JE fails, the fuel log is rolled back too.
