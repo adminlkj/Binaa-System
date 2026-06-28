@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
@@ -1116,11 +1116,24 @@ function InvoiceDetailView({
 
 // ============ Main Sales Module ============
 export function SalesModule() {
-  const { lang } = useAppStore()
+  const { lang, prefillProgressClaimId, setPrefillProgressClaimId } = useAppStore()
   const queryClient = useQueryClient()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
-  const [viewState, setViewState] = useState<ViewState>({ type: 'list' })
+  // L2-CRIT-004 fix: if progress-claims module asked to pre-fill a claim, open the
+  // create-from-claim dialog directly with that claim selected.
+  const [viewState, setViewState] = useState<ViewState>(() =>
+    prefillProgressClaimId
+      ? { type: 'create', step: 2, sourceType: 'EXTRACT', selectedSourceId: prefillProgressClaimId }
+      : { type: 'list' }
+  )
+
+  // Clear the prefill once consumed so a later plain navigation to sales starts fresh.
+  useEffect(() => {
+    if (prefillProgressClaimId) {
+      setPrefillProgressClaimId(null)
+    }
+  }, [prefillProgressClaimId, setPrefillProgressClaimId])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [sourceTypeFilter, setSourceTypeFilter] = useState<string>('all')

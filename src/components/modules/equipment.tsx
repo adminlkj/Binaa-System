@@ -813,7 +813,7 @@ function RentalWorkflowChain({ activeRentals, lang, onNavigate }: { activeRental
 
 // ============ Equipment Detail View (كرت المعدة) ============
 function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onBack: () => void }) {
-  const { lang, setActiveItem } = useAppStore()
+  const { lang, setActiveItem, selectEquipment } = useAppStore()
   const [activeTab, setActiveTab] = useState('card')
   const [usageDialogOpen, setUsageDialogOpen] = useState(false)
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false)
@@ -843,6 +843,8 @@ function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onB
   })
 
   const handleNavigate = (navItem: NavItem) => {
+    // L2-CRIT-005 fix: preserve selectedEquipmentId when navigating via workflow chain.
+    selectEquipment(equipmentId)
     setActiveItem(navItem)
   }
 
@@ -1459,10 +1461,12 @@ function EquipmentDetailView({ equipmentId, onBack }: { equipmentId: string; onB
 // ============ Main Equipment Module ============
 export function EquipmentModule() {
   const { lang } = useAppStore()
+  // L2-CRIT-005 fix: selectedEquipmentId now lives in the global store so
+  // cross-module navigation via the workflow chain preserves the detail context.
+  const { selectedEquipmentId, selectEquipment } = useAppStore()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [selectedEquipmentId, setSelectedEquipmentId] = useState<string | null>(null)
 
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
@@ -1546,7 +1550,7 @@ export function EquipmentModule() {
   }
 
   if (selectedEquipmentId) {
-    return <EquipmentDetailView equipmentId={selectedEquipmentId} onBack={() => setSelectedEquipmentId(null)} />
+    return <EquipmentDetailView equipmentId={selectedEquipmentId} onBack={() => selectEquipment(null)} />
   }
 
   return (
@@ -1658,7 +1662,7 @@ export function EquipmentModule() {
                 </TableHeader>
                 <TableBody>
                   {filtered.map(eq => (
-                    <TableRow key={eq.id} className="cursor-pointer hover:bg-cyan-50/50" onClick={() => setSelectedEquipmentId(eq.id)}>
+                    <TableRow key={eq.id} className="cursor-pointer hover:bg-cyan-50/50" onClick={() => selectEquipment(eq.id)}>
                       <TableCell className="font-mono text-xs">{eq.code}</TableCell>
                       <TableCell className="font-medium">{eq.name}</TableCell>
                       <TableCell className="text-muted-foreground">{eq.type || '—'}</TableCell>
@@ -1672,7 +1676,7 @@ export function EquipmentModule() {
                         {eq.status === 'RENTED' ? t('تأجير', 'Rental') : eq.status === 'IN_USE' ? t('تنفيذي', 'Construction') : '—'}
                       </TableCell>
                       <TableCell>
-                        <Button size="sm" variant="ghost" className="gap-1 text-cyan-600 hover:text-cyan-700" onClick={(e) => { e.stopPropagation(); setSelectedEquipmentId(eq.id) }}>
+                        <Button size="sm" variant="ghost" className="gap-1 text-cyan-600 hover:text-cyan-700" onClick={(e) => { e.stopPropagation(); selectEquipment(eq.id) }}>
                           <Eye className="size-3.5" /> {t('كرت المعدة', 'Card')}
                         </Button>
                       </TableCell>

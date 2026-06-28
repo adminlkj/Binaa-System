@@ -287,7 +287,7 @@ function CreateClaimPage({
 
 // ============ Main Progress Claims Module ============
 export function ProgressClaimsModule() {
-  const { lang, setActiveItem } = useAppStore()
+  const { lang, setActiveItem, setPrefillProgressClaimId } = useAppStore()
   const queryClient = useQueryClient()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
@@ -476,7 +476,9 @@ export function ProgressClaimsModule() {
                 <Button
                   className="gap-2 bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => {
-                    // Navigate to sales module with extract pre-fill
+                    // L2-CRIT-004 fix: pass the claim ID to the sales module via the
+                    // global store so the create-from-claim dialog opens pre-filled.
+                    setPrefillProgressClaimId(claim.id)
                     setActiveItem('sales')
                   }}
                 >

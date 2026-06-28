@@ -1,6 +1,6 @@
 'use client'
 
-import React, { Suspense } from 'react'
+import React, { Suspense, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { Providers } from '@/components/layout/providers'
 import { AppShell } from '@/components/layout/app-shell'
@@ -139,7 +139,61 @@ const moduleMap: Record<NavItem, React.ComponentType> = {
 }
 
 function ModuleRouter() {
-  const { activeItem } = useAppStore()
+  const { activeItem, setActiveItem, selectProject, selectEquipment } = useAppStore()
+
+  // On first mount: read URL hash to restore the active module (L2-CRIT-001 deep-linking).
+  // Also wire up the popstate listener so browser back/forward buttons navigate the SPA
+  // instead of leaving the app (L2-CRIT-002).
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const restoreFromUrl = () => {
+      const hash = window.location.hash.replace(/^#/, '')
+      if (!hash) return
+      const [item, query] = hash.split('?')
+      const params = new URLSearchParams(query || '')
+      const validItems = new Set(Object.keys(moduleMap))
+      if (validItems.has(item)) {
+        // If the URL points to a project/equipment detail, restore that too
+        const projectId = params.get('projectId')
+        const equipmentId = params.get('equipmentId')
+        // Use plain set() (via store) without re-pushState to avoid double entries
+        if (projectId && item === 'projects') {
+          selectProject(projectId)
+        } else if (equipmentId && item === 'equipment') {
+          selectEquipment(equipmentId)
+        } else {
+          setActiveItem(item as NavItem)
+        }
+      }
+    }
+
+    // Restore on first load (only if there's a hash)
+    if (window.location.hash) {
+      restoreFromUrl()
+    }
+
+    const onPopState = (event: PopStateEvent) => {
+      const state = event.state as { activeItem?: NavItem; selectedProjectId?: string; selectedEquipmentId?: string } | null
+      if (state?.activeItem) {
+        // Restore state without pushing a new history entry
+        if (state.selectedProjectId && state.activeItem === 'projects') {
+          selectProject(state.selectedProjectId)
+        } else if (state.selectedEquipmentId && state.activeItem === 'equipment') {
+          selectEquipment(state.selectedEquipmentId)
+        } else {
+          setActiveItem(state.activeItem)
+        }
+      } else {
+        // No state — restore from URL hash
+        restoreFromUrl()
+      }
+    }
+
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [setActiveItem, selectProject, selectEquipment])
+
   const Module = moduleMap[activeItem] || PlaceholderModule
   return <Module />
 }

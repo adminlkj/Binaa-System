@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { Printer } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAppStore } from '@/stores/app-store'
 import type { PrintDocumentType } from '@/printing'
@@ -478,10 +479,16 @@ export function PrintButton({
       if (printWindow) {
         printWindow.document.write(html)
         printWindow.document.close()
+      } else {
+        // L2-HIGH-006 fix: popup blocker prevented the print window — surface a
+        // clear actionable error instead of failing silently.
+        toast.error(lang === 'ar'
+          ? 'تعذّر فتح نافذة الطباعة — يرجى السماح بالنوافذ المنبثقة في إعدادات المتصفح'
+          : 'Failed to open print window — please allow pop-ups in your browser settings')
       }
     } catch (error) {
       console.error('Print error:', error)
-      alert(lang === 'ar' ? 'فشل في إنشاء معاينة الطباعة' : 'Failed to generate print preview')
+      toast.error(lang === 'ar' ? 'فشل في إنشاء معاينة الطباعة' : 'Failed to generate print preview')
     } finally {
       setLoading(false)
     }

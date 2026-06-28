@@ -161,10 +161,11 @@ function HubMetricCard({ title, value, icon: Icon, theme }: {
   )
 }
 
-function WorkflowChain({ steps, theme, lang }: {
+function WorkflowChain({ steps, theme, lang, onNavigate }: {
   steps: typeof CONSTRUCTION_WORKFLOW
   theme: 'emerald' | 'cyan'
   lang: 'ar' | 'en'
+  onNavigate?: (item: NavItem) => void
 }) {
   const activeColor = theme === 'emerald'
     ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
@@ -173,16 +174,20 @@ function WorkflowChain({ steps, theme, lang }: {
   const arrowColor = theme === 'emerald' ? 'text-emerald-400' : 'text-cyan-400'
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-thin" dir="ltr">
+    <div className="flex items-center gap-1 overflow-x-auto pb-2 scrollbar-thin" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       {steps.map((step, i) => (
         <React.Fragment key={step.step}>
-          <div
-            className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium whitespace-nowrap transition-colors ${activeColor}`}
+          <button
+            type="button"
+            onClick={() => onNavigate?.(step.navItem)}
+            className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium whitespace-nowrap transition-colors ${activeColor} hover:scale-105 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-emerald-400`}
           >
             {lang === 'ar' ? step.label.ar : step.label.en}
-          </div>
+          </button>
           {i < steps.length - 1 && (
-            <ArrowRight className={`size-3 shrink-0 ${arrowColor}`} />
+            lang === 'ar'
+              ? <ArrowLeft className={`size-3 shrink-0 ${arrowColor}`} />
+              : <ArrowRight className={`size-3 shrink-0 ${arrowColor}`} />
           )}
         </React.Fragment>
       ))}
@@ -289,7 +294,7 @@ function ConstructionHubPanel({ data, lang, onNavigate }: {
         {/* Workflow Chain */}
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-2">{t('سير العمل', 'Workflow Chain', lang)}</p>
-          <WorkflowChain steps={CONSTRUCTION_WORKFLOW} theme="emerald" lang={lang} />
+          <WorkflowChain steps={CONSTRUCTION_WORKFLOW} theme="emerald" lang={lang} onNavigate={onNavigate} />
         </div>
 
         {/* Recent Projects */}
@@ -324,7 +329,7 @@ function ConstructionHubPanel({ data, lang, onNavigate }: {
           className="w-full bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
         >
           {t('عرض جميع المشاريع', 'View All Projects', lang)}
-          <ArrowLeft className="size-4" />
+          {lang === 'ar' ? <ArrowLeft className="size-4" /> : <ArrowRight className="size-4" />}
         </Button>
       </CardContent>
     </Card>
@@ -408,7 +413,7 @@ function RentalHubPanel({ data, lang, onNavigate }: {
         {/* Workflow Chain */}
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-2">{t('سير العمل', 'Workflow Chain', lang)}</p>
-          <WorkflowChain steps={RENTAL_WORKFLOW} theme="cyan" lang={lang} />
+          <WorkflowChain steps={RENTAL_WORKFLOW} theme="cyan" lang={lang} onNavigate={onNavigate} />
         </div>
 
         {/* Equipment Status Summary */}
@@ -466,7 +471,7 @@ function RentalHubPanel({ data, lang, onNavigate }: {
           className="w-full bg-cyan-600 hover:bg-cyan-700 text-white gap-2"
         >
           {t('عرض جميع المعدات', 'View All Equipment', lang)}
-          <ArrowLeft className="size-4" />
+          {lang === 'ar' ? <ArrowLeft className="size-4" /> : <ArrowRight className="size-4" />}
         </Button>
       </CardContent>
     </Card>

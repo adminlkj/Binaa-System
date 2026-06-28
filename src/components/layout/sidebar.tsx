@@ -108,8 +108,10 @@ const groupColors: Record<NavGroup, { bg: string; text: string; border: string; 
 
 export function Sidebar() {
   const { activeItem, setActiveItem, lang, toggleLang, sidebarCollapsed, setSidebarCollapsed } = useAppStore()
+  // L2-MED-002 fix: expand all groups by default on desktop so all 41 nav items are
+  // discoverable without requiring the user to click each group header first.
   const [expandedGroups, setExpandedGroups] = useState<Set<NavGroup>>(
-    new Set(['home', 'construction-hub', 'rental-hub'])
+    new Set(['home', 'construction-hub', 'rental-hub', 'hr', 'supply-chain', 'operations', 'accounting-reports', 'settings-data'])
   )
 
   const toggleGroup = (group: NavGroup) => {
@@ -174,11 +176,9 @@ export function Sidebar() {
                   className={cn(
                     'flex items-center w-full px-3 py-1.5 text-xs font-semibold tracking-wider transition-colors',
                     isHub ? 'border-r-4 pr-2' : '',
-                    hasActiveItem && isHub
+                    hasActiveItem
                       ? cn(colors.text, colors.border, colors.light, 'border-r-4')
-                      : hasActiveItem
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
                   )}
                 >
                   <GroupIcon className="size-3.5 ml-1.5 shrink-0" />
@@ -223,13 +223,13 @@ export function Sidebar() {
                         : 'px-4 py-1.5 gap-2.5 border-r-2',
                       isActive
                         ? sidebarCollapsed
-                          ? cn(colors.light, colors.text)
+                          ? cn(colors.light, colors.text, 'ring-2 ring-offset-1', colors.border)
                           : cn(colors.light, colors.text, 'border-r-4 font-medium', isHub ? colors.border : 'border-emerald-500')
                         : sidebarCollapsed
                           ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
                           : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground border-transparent'
                     )}
-                    title={sidebarCollapsed ? label[lang] : undefined}
+                    title={label[lang]}
                   >
                     <Icon className="size-4 shrink-0" />
                     {!sidebarCollapsed && (
@@ -290,11 +290,15 @@ export function Sidebar() {
             'flex items-center w-full rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors text-sm',
             sidebarCollapsed ? 'justify-center px-2 py-2' : 'gap-3 px-3 py-2'
           )}
-          title={sidebarCollapsed ? 'توسيع' : 'تصغير'}
+          title={lang === 'ar'
+            ? (sidebarCollapsed ? 'توسيع القائمة' : 'تصغير القائمة')
+            : (sidebarCollapsed ? 'Expand Menu' : 'Collapse Menu')}
         >
           <Menu className="size-4 shrink-0" />
           {!sidebarCollapsed && (
-            <span>{sidebarCollapsed ? 'توسيع' : 'تصغير القائمة'}</span>
+            <span>{lang === 'ar'
+              ? (sidebarCollapsed ? 'توسيع القائمة' : 'تصغير القائمة')
+              : (sidebarCollapsed ? 'Expand Menu' : 'Collapse Menu')}</span>
           )}
         </button>
       </div>

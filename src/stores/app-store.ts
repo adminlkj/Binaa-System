@@ -247,120 +247,21 @@ export const PURCHASE_WORKFLOW = [
 // Accounting sub-tabs
 export type AccountingTab = 'chart-of-accounts' | 'role-mapping' | 'journal-entries' | 'general-ledger' | 'trial-balance' | 'receivables' | 'payables'
 
-// ============ SUB-MODULE KEYS ============
-// Union of all sub-module keys used across section tab bars
-
-export type SubModuleKey =
-  // Admin
-  | 'users' | 'permissions' | 'workflow' | 'settings'
-  // Reports
-  | 'report-projects' | 'report-rental' | 'report-finance' | 'report-statements' | 'report-purchases' | 'report-clients' | 'report-tax'
-  // Rental
-  | 'rental-contracts' | 'rental-delivery-orders' | 'rental-timesheets' | 'rental-invoices' | 'rental-collections'
-  // Warehouses
-  | 'warehouse-list' | 'warehouse-items' | 'warehouse-movements' | 'warehouse-inventory' | 'warehouse-transfers'
-  // Finance
-  | 'treasury' | 'banks' | 'checks' | 'journal-entries' | 'chart-of-accounts' | 'general-ledger'
-  | 'receivables' | 'payables' | 'fixed-assets' | 'depreciation' | 'vat' | 'budgets' | 'cash-flow'
-  // CRM
-  | 'clients' | 'opportunities' | 'quotations' | 'follow-ups'
-  // Projects
-  | 'project-list' | 'project-overview' | 'project-contracts' | 'project-extracts'
-  | 'project-invoices' | 'project-costs' | 'project-collections' | 'project-boq' | 'project-documents'
-  // Supply Chain
-  | 'suppliers' | 'subcontractors' | 'purchase-requests' | 'purchase-orders' | 'goods-receipt' | 'supplier-invoices'
-  // Resources
-  | 'employees' | 'employee-contracts' | 'employee-attendance' | 'employee-salaries'
-  | 'equipment-list' | 'equipment-operations' | 'equipment-maintenance' | 'equipment-fuel'
-  | 'teams' | 'team-assignments'
-
-export const subModuleLabels: Record<SubModuleKey, { ar: string; en: string }> = {
-  // Admin
-  'users': { ar: 'المستخدمون', en: 'Users' },
-  'permissions': { ar: 'الصلاحيات', en: 'Permissions' },
-  'workflow': { ar: 'سير العمل', en: 'Workflow' },
-  'settings': { ar: 'الإعدادات', en: 'Settings' },
-  // Reports
-  'report-projects': { ar: 'تقارير المشاريع', en: 'Project Reports' },
-  'report-rental': { ar: 'تقارير التأجير', en: 'Rental Reports' },
-  'report-finance': { ar: 'التقارير المالية', en: 'Financial Reports' },
-  'report-statements': { ar: 'القوائم المالية', en: 'Financial Statements' },
-  'report-purchases': { ar: 'تقارير المشتريات', en: 'Purchase Reports' },
-  'report-clients': { ar: 'تقارير العملاء', en: 'Client Reports' },
-  'report-tax': { ar: 'تقارير الضريبة', en: 'Tax Reports' },
-  // Rental
-  'rental-contracts': { ar: 'عقود التأجير', en: 'Rental Contracts' },
-  'rental-delivery-orders': { ar: 'أوامر التوصيل', en: 'Delivery Orders' },
-  'rental-timesheets': { ar: 'ساعات التشغيل', en: 'Timesheets' },
-  'rental-invoices': { ar: 'فواتير التأجير', en: 'Rental Invoices' },
-  'rental-collections': { ar: 'تحصيلات التأجير', en: 'Rental Collections' },
-  // Warehouses
-  'warehouse-list': { ar: 'المستودعات', en: 'Warehouses' },
-  'warehouse-items': { ar: 'الأصناف', en: 'Items' },
-  'warehouse-movements': { ar: 'الحركات', en: 'Movements' },
-  'warehouse-inventory': { ar: 'الجرد', en: 'Inventory' },
-  'warehouse-transfers': { ar: 'التحويلات', en: 'Transfers' },
-  // Finance
-  'treasury': { ar: 'الخزينة', en: 'Treasury' },
-  'banks': { ar: 'البنوك', en: 'Banks' },
-  'checks': { ar: 'الشيكات', en: 'Checks' },
-  'journal-entries': { ar: 'القيود اليومية', en: 'Journal Entries' },
-  'chart-of-accounts': { ar: 'شجرة الحسابات', en: 'Chart of Accounts' },
-  'general-ledger': { ar: 'دفتر الأستاذ', en: 'General Ledger' },
-  'receivables': { ar: 'المدينون', en: 'Receivables' },
-  'payables': { ar: 'الدائنون', en: 'Payables' },
-  'fixed-assets': { ar: 'الأصول الثابتة', en: 'Fixed Assets' },
-  'depreciation': { ar: 'الإهلاك', en: 'Depreciation' },
-  'vat': { ar: 'ضريبة القيمة المضافة', en: 'VAT' },
-  'budgets': { ar: 'الميزانيات', en: 'Budgets' },
-  'cash-flow': { ar: 'التدفق النقدي', en: 'Cash Flow' },
-  // CRM
-  'clients': { ar: 'العملاء', en: 'Clients' },
-  'opportunities': { ar: 'الفرص', en: 'Opportunities' },
-  'quotations': { ar: 'عروض الأسعار', en: 'Quotations' },
-  'follow-ups': { ar: 'المتابعات', en: 'Follow-ups' },
-  // Projects
-  'project-list': { ar: 'قائمة المشاريع', en: 'Project List' },
-  'project-overview': { ar: 'نظرة عامة', en: 'Overview' },
-  'project-contracts': { ar: 'العقود', en: 'Contracts' },
-  'project-extracts': { ar: 'المستخلصات', en: 'Extracts' },
-  'project-invoices': { ar: 'الفواتير', en: 'Invoices' },
-  'project-costs': { ar: 'التكاليف', en: 'Costs' },
-  'project-collections': { ar: 'التحصيلات', en: 'Collections' },
-  'project-boq': { ar: 'BOQ', en: 'BOQ' },
-  'project-documents': { ar: 'الوثائق', en: 'Documents' },
-  // Supply Chain
-  'suppliers': { ar: 'الموردون', en: 'Suppliers' },
-  'subcontractors': { ar: 'مقاولو الباطن', en: 'Subcontractors' },
-  'purchase-requests': { ar: 'طلبات الشراء', en: 'Purchase Requests' },
-  'purchase-orders': { ar: 'أوامر الشراء', en: 'Purchase Orders' },
-  'goods-receipt': { ar: 'استلام البضائع', en: 'Goods Receipt' },
-  'supplier-invoices': { ar: 'فواتير الموردين', en: 'Supplier Invoices' },
-  // Resources
-  'employees': { ar: 'الموظفون', en: 'Employees' },
-  'employee-contracts': { ar: 'عقود الموظفين', en: 'Employee Contracts' },
-  'employee-attendance': { ar: 'الحضور', en: 'Attendance' },
-  'employee-salaries': { ar: 'الرواتب', en: 'Salaries' },
-  'equipment-list': { ar: 'المعدات', en: 'Equipment' },
-  'equipment-operations': { ar: 'التشغيل', en: 'Operations' },
-  'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
-  'equipment-fuel': { ar: 'الوقود', en: 'Fuel' },
-  'teams': { ar: 'فرق العمل', en: 'Teams' },
-  'team-assignments': { ar: 'توزيع الفرق', en: 'Team Assignments' },
-}
-
 // ============ APP STORE ============
 
 interface AppState {
   // Navigation
   activeItem: NavItem
-  activeSubModule: SubModuleKey | null
   sidebarOpen: boolean
   sidebarCollapsed: boolean
   lang: Lang
-  // Project drill-down
+  // Project drill-down ( persisted in URL via #projects?projectId=xxx )
   selectedProjectId: string | null
   selectedEquipmentId: string | null
+  // Cross-module pre-fill ( e.g. progress-claims → sales invoice creation )
+  prefillProgressClaimId: string | null
+  // Detail-level breadcrumb ( shown in header when inside a detail view )
+  detailBreadcrumb: { ar: string; en: string } | null
   // Currency
   currencySymbolImage: string | null
   // Number formatting settings
@@ -368,7 +269,6 @@ interface AppState {
   useThousandSeparatorsOfficial: boolean
   // Actions
   setActiveItem: (item: NavItem) => void
-  setActiveSubModule: (key: SubModuleKey | null) => void
   setSidebarOpen: (open: boolean) => void
   toggleSidebar: () => void
   setSidebarCollapsed: (collapsed: boolean) => void
@@ -376,30 +276,57 @@ interface AppState {
   toggleLang: () => void
   selectProject: (projectId: string | null) => void
   selectEquipment: (equipmentId: string | null) => void
+  setPrefillProgressClaimId: (id: string | null) => void
+  setDetailBreadcrumb: (crumb: { ar: string; en: string } | null) => void
   setCurrencySymbolImage: (url: string | null) => void
   setThousandSeparatorSettings: (system: boolean, official: boolean) => void
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   activeItem: 'dashboard',
-  activeSubModule: null,
   sidebarOpen: false,
   sidebarCollapsed: false,
   lang: 'ar',
   selectedProjectId: null,
   selectedEquipmentId: null,
+  prefillProgressClaimId: null,
+  detailBreadcrumb: null,
   currencySymbolImage: null,
   useThousandSeparatorsSystem: true,
   useThousandSeparatorsOfficial: false,
-  setActiveItem: (item) => set({ activeItem: item }),
-  setActiveSubModule: (key) => set({ activeSubModule: key }),
+  setActiveItem: (item) => {
+    set({ activeItem: item })
+    // SPA history management — push a new entry on every module switch
+    // so browser back button returns to the previous module (L2-CRIT-001/002).
+    if (typeof window !== 'undefined' && window.history.state?.activeItem !== item) {
+      try {
+        window.history.pushState({ activeItem: item }, '', `/#${item}`)
+      } catch {
+        // ignore — pushState can throw in rare sandboxed contexts
+      }
+    }
+  },
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setLang: (lang) => set({ lang }),
   toggleLang: () => set((s) => ({ lang: s.lang === 'ar' ? 'en' : 'ar' })),
-  selectProject: (projectId) => set({ selectedProjectId: projectId, activeItem: 'projects' }),
-  selectEquipment: (equipmentId) => set({ selectedEquipmentId: equipmentId, activeItem: 'equipment' }),
+  selectProject: (projectId) => {
+    set({ selectedProjectId: projectId, activeItem: 'projects' })
+    if (typeof window !== 'undefined') {
+      const hash = projectId ? `/#projects?projectId=${projectId}` : '/#projects'
+      try { window.history.pushState({ activeItem: 'projects', selectedProjectId: projectId }, '', hash) } catch {}
+    }
+  },
+  selectEquipment: (equipmentId) => {
+    set({ selectedEquipmentId: equipmentId, activeItem: 'equipment' })
+    if (typeof window !== 'undefined') {
+      const hash = equipmentId ? `/#equipment?equipmentId=${equipmentId}` : '/#equipment'
+      try { window.history.pushState({ activeItem: 'equipment', selectedEquipmentId: equipmentId }, '', hash) } catch {}
+    }
+  },
+  setPrefillProgressClaimId: (id) => set({ prefillProgressClaimId: id }),
+  setDetailBreadcrumb: (crumb) => set({ detailBreadcrumb: crumb }),
   setCurrencySymbolImage: (url) => set({ currencySymbolImage: url }),
   setThousandSeparatorSettings: (system, official) => set({
     useThousandSeparatorsSystem: system,

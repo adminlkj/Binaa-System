@@ -613,7 +613,7 @@ function CostSheetView({ costSheet, projectName, lang }: { costSheet: CostSheet;
 
 // ============ Workflow Chain Component (سلسلة العمل) ============
 function WorkflowChainView({ project, lang }: { project: ProjectDetail; lang: 'ar' | 'en' }) {
-  const { setActiveItem } = useAppStore()
+  const { setActiveItem, selectProject } = useAppStore()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
   const steps = CONSTRUCTION_WORKFLOW.map((wf, idx) => {
@@ -635,6 +635,10 @@ function WorkflowChainView({ project, lang }: { project: ProjectDetail; lang: 'a
   })
 
   const handleNavigate = (navItem: string) => {
+    // L2-CRIT-005 fix: when navigating away from ProjectDetailView to another module
+    // via the workflow chain, preserve the selectedProjectId in the store so the user
+    // returns to the same detail view (instead of the project list).
+    selectProject(project.id)
     setActiveItem(navItem as 'projects' | 'contracts' | 'boq' | 'extracts' | 'sales' | 'client-payments' | 'expenses' | 'subcontractors' | 'purchase-requests' | 'attendance' | 'accounting' | 'reports' | 'clients')
   }
 
@@ -1657,7 +1661,10 @@ export function ProjectsModule() {
   const [typeFilter, setTypeFilter] = useState<string>('all')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingProject, setEditingProject] = useState<ProjectListItem | null>(null)
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
+  // L2-CRIT-005 fix: selectedProjectId now lives in the global store so navigating
+  // to another module (e.g. contracts via the workflow chain) and back preserves
+  // the detail context.
+  const { selectedProjectId, selectProject } = useAppStore()
 
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
@@ -1717,7 +1724,7 @@ export function ProjectsModule() {
 
   // Detail view
   if (selectedProjectId && projectDetail) {
-    return <ProjectDetailView project={projectDetail} onBack={() => setSelectedProjectId(null)} lang={lang} />
+    return <ProjectDetailView project={projectDetail} onBack={() => selectProject(null)} lang={lang} />
   }
 
   if (selectedProjectId && isLoadingDetail) {
@@ -1854,7 +1861,7 @@ export function ProjectsModule() {
               key={project.id}
               project={project}
               lang={lang}
-              onClick={() => setSelectedProjectId(project.id)}
+              onClick={() => selectProject(project.id)}
               onEdit={() => { setEditingProject(project); setDialogOpen(true) }}
               onDelete={() => { if (confirm(t('هل أنت متأكد من حذف هذا المشروع؟', 'Are you sure you want to delete this project?'))) deleteMutation.mutate(project.id) }}
             />
