@@ -307,67 +307,45 @@ async function main() {
   }
 
   // ═══════════════════════════════════════════════════════
-  // FIX VERIFICATION: BUG-P2-05 (reject APPROVED claim reverses JE)
+  // ACCOUNTING MODEL VERIFICATION (after rebase with origin/main)
+  // The remote adopts an IFRS 15-compliant model where revenue is recognized
+  // at INVOICING (when a sales invoice is created from an approved claim),
+  // NOT at claim approval. This prevents double-counting. We verify this here.
   // ═══════════════════════════════════════════════════════
-  console.log('\n── Fix: BUG-P2-05 — reject APPROVED claim reverses JE ──')
+  console.log('\n── Verify: IFRS 15 model — no JE on claim approval ──')
   {
     // Submit then approve the claim
     await req('PUT', `/api/progress-claims/${claim1Id}`, { status: 'SUBMITTED' })
     const approveRes = await req('PUT', `/api/progress-claims/${claim1Id}`, { status: 'APPROVED' })
-    if (approveRes.status !== 200 || !approveRes.data?.journalEntryId) {
-      log('Precondition: approve claim', 'FAIL', `status=${approveRes.status}`)
-      return report()
+    if (approveRes.status === 200 && approveRes.data?.status === 'APPROVED') {
+      log('Approve claim', 'PASS', `status=APPROVED`)
+    } else {
+      log('Approve claim', 'FAIL', `status=${approveRes.status}`)
     }
-    const originalJEId = approveRes.data.journalEntryId
-    log('Precondition: approve claim', 'PASS', `JE=${originalJEId.slice(-8)}`)
 
-    // Count JEs before rejection
-    const tbBefore = await req('GET', '/api/reports/trial-balance')
-    const debitBefore = Number(tbBefore.data?.totals?.totalDebit || 0)
+    // CRITICAL: NO journal entry should be created at claim approval
+    // (revenue is recognized at invoicing, not at claim certification)
+    if (approveRes.data?.journalEntryId === null || approveRes.data?.journalEntryId === undefined) {
+      log('No JE at claim approval (IFRS 15)', 'PASS', 'journalEntryId is null — correct, revenue deferred to invoicing')
+    } else {
+      log('No JE at claim approval (IFRS 15)', 'FAIL', `journalEntryId=${approveRes.data?.journalEntryId} — would cause double revenue`)
+    }
 
-    // Now reject the claim
+    // Trial balance should still be zero (no JE from claim)
+    const tb = await req('GET', '/api/reports/trial-balance')
+    const totalDebit = Number(tb.data?.totals?.totalDebit || 0)
+    if (totalDebit === 0) {
+      log('Trial Balance = 0 (no claim JE)', 'PASS', `D=${totalDebit} C=${tb.data?.totals?.totalCredit}`)
+    } else {
+      log('Trial Balance = 0 (no claim JE)', 'WARN', `D=${totalDebit} — there may be other JEs but claim should not add any`)
+    }
+
+    // Now reject the approved claim — should be a simple status update (no JE to reverse)
     const rejectRes = await req('PUT', `/api/progress-claims/${claim1Id}`, { status: 'REJECTED' })
     if (rejectRes.status === 200 && rejectRes.data?.status === 'REJECTED') {
-      log('Reject APPROVED claim', 'PASS', `status=${rejectRes.data.status}`)
+      log('Reject APPROVED claim', 'PASS', `status=REJECTED (no reversal needed — no JE was created)`)
     } else {
-      log('Reject APPROVED claim', 'FAIL', `status=${rejectRes.status} data=${JSON.stringify(rejectRes.data).slice(0, 200)}`)
-    }
-
-    // Verify JE was detached from claim
-    if (rejectRes.data?.journalEntryId === null) {
-      log('JE detached from claim', 'PASS', 'journalEntryId is null')
-    } else {
-      log('JE detached from claim', 'FAIL', `journalEntryId=${rejectRes.data?.journalEntryId}`)
-    }
-
-    // Verify reversal JE was created — both original + reversal should be POSTED
-    // and they should net to zero in the Trial Balance and Income Statement.
-    // Trial Balance after rejection should have 2x the original debit (both JEs POSTED).
-    const tbAfter = await req('GET', '/api/reports/trial-balance')
-    const debitAfter = Number(tbAfter.data?.totals?.totalDebit || 0)
-    const expectedAfter = debitBefore * 2 // both JEs POSTED, so total debits double
-    const tbDiff = Math.abs(debitAfter - expectedAfter)
-    if (tbDiff < 0.01) {
-      log('Reversal JE posted (TB doubled)', 'PASS', `D before=${debitBefore} after=${debitAfter} expected=${expectedAfter}`)
-    } else {
-      log('Reversal JE posted (TB doubled)', 'FAIL', `D before=${debitBefore} after=${debitAfter} expected=${expectedAfter} diff=${tbDiff}`)
-    }
-
-    // Verify the original JE is still POSTED (not CANCELLED — we keep audit trail)
-    const origJE = await req('GET', `/api/journal-entries/${originalJEId}`)
-    if (origJE.data?.status === 'POSTED') {
-      log('Original JE still POSTED', 'PASS', `status=POSTED (audit trail preserved)`)
-    } else {
-      log('Original JE still POSTED', 'FAIL', `status=${origJE.data?.status} — should remain POSTED so both JEs net to zero`)
-    }
-
-    // CRITICAL: Income Statement net should be ZERO (revenue cancelled out by reversal)
-    const isRes = await req('GET', '/api/reports/income-statement')
-    const netIncome = Number(isRes.data?.netIncome || 0)
-    if (Math.abs(netIncome) < 0.01) {
-      log('Income Statement net = 0', 'PASS', `netIncome=${netIncome} (approved+rejected = no net effect)`)
-    } else {
-      log('Income Statement net = 0', 'FAIL', `netIncome=${netIncome} — should be 0 (revenue cancelled by reversal)`)
+      log('Reject APPROVED claim', 'FAIL', `status=${rejectRes.status}`)
     }
   }
 

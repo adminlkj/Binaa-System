@@ -3817,3 +3817,54 @@ Stage Summary:
   P2-CRIT-008 (remaining Decimal conversions), P2-HIGH-001 to P2-HIGH-008,010,011,012,014,
   all MEDIUM/LOW. These are performance/validation/UX improvements, not accounting integrity.
 - Next phase: Phase 3 (Rental cycle) or continue Phase 2 HIGH issues if requested.
+
+---
+Task ID: PHASE-2-REBASE-AND-RETEST
+Agent: Z.ai Code (main)
+Task: دمج (rebase) مع origin/main + إعادة الاختبار بالنموذج المحاسبي المُحدّث
+
+Work Log:
+- محاولة دفع المرحلة 2 كشفت أن origin/main يحتوي على 3 commits إضافية من جلسة سابقة:
+  * Fix(Projects Cycle 1): Subcontractor JEs + cost-entry JE + Decimal + costCenterId
+  * Fix(Projects Cycle 2): Add missing [id] routes for subcontractor entities
+  * Fix(Projects Cycle 3): ChangeOrder value + claim-cert tx + Project soft-delete
+- إصلاح الـ remotes: تحديث origin إلى Binaa-System.git (مع PAT)، إنشاء safety repo
+- إجراء rebase مع حل النزاعات:
+  * change-orders/[id]/route.ts: أُخذت نسخة origin (أكثر اكتمالاً — تعالج un-approval + re-approval)
+  * progress-claims/[id]/route.ts: أُخذت نسخة origin (نموذج IFRS 15 — لا قيد عند الاعتماد)
+  * worklog.md: دُمجت بنجاح
+- اكتشاف نموذج محاسبي مختلف في origin:
+  * القديم (local): قيد يُنشأ عند اعتماد المستخلص (دين عملاء / دائن إيراد + ضريبة)
+  * الجديد (origin/main): لا قيد عند الاعتماد — الإيراد يُعترف به عند الفوترة فقط (IFRS 15)
+  * السبب: إنشاء قيد عند الاعتماد + قيد عند الفوترة = ازدواج محاسبي للإيراد
+- تحديث سكريبتات الاختبار لتعكس النموذج الجديد:
+  * test-projects-cycle.ts: Test 8 يتوقع الآن عدم وجود قيد عند الاعتماد
+  * test-projects-api.ts: Test J يتوقع journalEntryId=null بعد الاعتماد
+  * test-projects-retest.ts: استبدال اختبار BUG-P2-05 بـ "IFRS 15 model verification"
+- إصلاح أخطاء الاختبار (false positives):
+  * Duplicate code test: استخدام project.code الفعلي بدلاً من hardcoded 'PRJ-TEST-001'
+  * contractValue comparison: استخدام Number(r.data.contractValue) لتجاوز Prisma Decimal-as-string
+- إعادة تشغيل dev server + prisma generate + db:push (للحقل deletedAt الجديد في Project)
+
+النتائج النهائية للاختبارات (بعد الـ rebase):
+- test-projects-cycle.ts (DB layer): 32 PASS / 0 FAIL / 2 WARN
+- test-projects-api.ts (HTTP API): 31 PASS / 0 FAIL / 1 WARN
+- test-projects-retest.ts (fix verification): 20 PASS / 0 FAIL / 0 WARN
+- المجموع: 83 check، 83 PASS، 0 FAIL حقيقي
+
+الإصلاحات المُثبَتة عملياً (4 إصلاحات، 2 موجودتان في origin):
+- ✅ BUG-P2-01: ChangeOrder orderNo global unique (إصلاحي)
+- ✅ BUG-P2-02: ProgressClaim claimNo @unique (إصلاحي)
+- ✅ BUG-P2-03: CTR-0NaN contract number (إصلاحي)
+- ✅ BUG-P2-04: Approve CO updates contract.value (نسخة origin الأكثر اكتمالاً)
+- ✅ BUG-P2-06: claim amount > contract value validation (إصلاحي)
+- ✅ IFRS 15 model: لا قيد عند اعتماد المستخلص (نسخة origin)
+
+Stage Summary:
+- ✅ تم بنجاح دمج (rebase) العمل المحلي مع origin/main
+- ✅ تم حل جميع نزاعات الدمج (3 ملفات)
+- ✅ تم تحديث الاختبارات لتعكس نموذج IFRS 15 الصحيح
+- ✅ جميع الاختبارات الثلاثة تمر بدون أي فشل حقيقي (83/83 PASS)
+- ✅ lint نظيف
+- ✅ dev server يعمل بشكل صحيح
+- جاهز للـ push النهائي

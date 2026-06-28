@@ -79,8 +79,9 @@ async function main() {
   // ═══ TEST A: Duplicate project code ═══
   console.log('\n── Test A: Duplicate Project Code ──')
   {
+    // Use the existing project's code (created in preconditions) as the duplicate
     const r = await req('POST', '/api/projects', {
-      code: 'PRJ-TEST-001', // duplicate
+      code: project.code, // duplicate of existing
       name: 'محاولة تكرار',
       clientId, branchId,
       startDate: '2026-02-01',
@@ -119,8 +120,8 @@ async function main() {
       newProjectId = r.data.id
       log('Create via API', 'PASS', `201 id=${r.data.id.slice(-8)} code=${r.data.code}`)
 
-      // Verify defaults
-      if (r.data.contractValue === 500000) {
+      // Verify defaults (Prisma returns Decimal as string)
+      if (Number(r.data.contractValue) === 500000) {
         log('contractValue preserved', 'PASS', `500000`)
       } else {
         log('contractValue preserved', 'FAIL', `got ${r.data.contractValue}`)
@@ -268,17 +269,20 @@ async function main() {
     }
   }
 
-  // ═══ TEST J: Approve claim via API (should create JE) ═══
-  console.log('\n── Test J: Approve Claim via API (JE creation) ──')
+  // ═══ TEST J: Approve claim via API (IFRS 15 — NO JE at approval) ═══
+  console.log('\n── Test J: Approve Claim via API (IFRS 15 — no JE at approval) ──')
   {
-    const beforeJEs = await req('GET', '/api/journal-entries?pageSize=1')
-    const beforeCount = (beforeJEs.data?.total) ?? (Array.isArray(beforeJEs.data) ? beforeJEs.data.length : 0)
-
     const r = await req('PUT', `/api/progress-claims/${newClaimId}`, { status: 'APPROVED' })
-    if (r.status === 200 && r.data?.status === 'APPROVED' && r.data?.journalEntryId) {
-      log('Approve claim', 'PASS', `status=APPROVED JE=${r.data.journalEntryId.slice(-8)}`)
+    if (r.status === 200 && r.data?.status === 'APPROVED') {
+      log('Approve claim', 'PASS', `status=APPROVED`)
     } else {
       log('Approve claim', 'FAIL', `status=${r.status} data=${JSON.stringify(r.data).slice(0, 200)}`)
+    }
+    // IFRS 15: NO JE at claim approval (revenue recognized at invoicing)
+    if (!r.data?.journalEntryId) {
+      log('No JE at approval (IFRS 15)', 'PASS', 'journalEntryId is null — revenue deferred to invoicing')
+    } else {
+      log('No JE at approval (IFRS 15)', 'FAIL', `journalEntryId=${r.data?.journalEntryId} — would double-count revenue`)
     }
   }
 

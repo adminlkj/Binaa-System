@@ -328,85 +328,41 @@ async function main() {
     log('Submit Claim', 'FAIL', e instanceof Error ? e.message : String(e))
   }
 
-  // ═══ TEST 8: Approve Progress Claim (should create JE) ═══
-  console.log('\n── Test 8: Approve Progress Claim ──')
+  // ═══ TEST 8: Approve Progress Claim (IFRS 15 model — NO JE at approval) ═══
+  console.log('\n── Test 8: Approve Progress Claim (IFRS 15 model) ──')
   try {
-    // Call the API route logic: call createProgressClaimJournalEntry
-    const { createProgressClaimJournalEntry } = await import('../src/lib/auto-journal')
-    const { toNumber } = await import('../src/lib/decimal')
-
     // Get claim before approval
     const before = await db.progressClaim.findUnique({ where: { id: claimId } })
     const beforeJECount = await db.journalEntry.count()
 
-    // Approve via transaction (mirrors the [id]/route.ts logic)
-    await db.$transaction(async (tx) => {
-      await tx.progressClaim.update({
-        where: { id: claimId },
-        data: { status: 'APPROVED', approvedDate: new Date() },
-      })
-      await createProgressClaimJournalEntry(claimId, tx)
+    // Approve — under IFRS 15 model, NO JE is created at approval.
+    // Revenue is recognized at invoicing (when a sales invoice is created
+    // from the approved claim). This prevents double-counting.
+    await db.progressClaim.update({
+      where: { id: claimId },
+      data: { status: 'APPROVED', approvedDate: new Date() },
     })
 
     const after = await db.progressClaim.findUnique({ where: { id: claimId } })
     const afterJECount = await db.journalEntry.count()
 
-    if (after?.status === 'APPROVED' && after.journalEntryId) {
-      log('Approve Claim', 'PASS', `status=APPROVED, JE=${after.journalEntryId}`)
+    if (after?.status === 'APPROVED') {
+      log('Approve Claim', 'PASS', `status=APPROVED`)
     } else {
-      log('Approve Claim', 'FAIL', `status=${after?.status}, journalEntryId=${after?.journalEntryId}`)
+      log('Approve Claim', 'FAIL', `status=${after?.status}`)
     }
 
-    if (afterJECount === beforeJECount + 1) {
-      log('JE created', 'PASS', `${beforeJECount} → ${afterJECount}`)
+    // IFRS 15: NO JE should be created at claim approval
+    if (afterJECount === beforeJECount) {
+      log('No JE at approval (IFRS 15)', 'PASS', `${beforeJECount} → ${afterJECount} (revenue deferred to invoicing)`)
     } else {
-      log('JE created', 'FAIL', `expected ${beforeJECount + 1}, got ${afterJECount}`)
+      log('No JE at approval (IFRS 15)', 'FAIL', `JE count changed: ${beforeJECount} → ${afterJECount} — would double-count revenue`)
     }
 
-    // Verify JE has correct lines
-    if (after?.journalEntryId) {
-      const je = await db.journalEntry.findUnique({
-        where: { id: after.journalEntryId },
-        include: { lines: true },
-      })
-      if (je) {
-        const totalDebit = je.lines.reduce((s, l) => s + Number(l.debit), 0)
-        const totalCredit = je.lines.reduce((s, l) => s + Number(l.credit), 0)
-        const diff = Math.abs(totalDebit - totalCredit)
-        if (diff < 0.01) {
-          log('JE balanced', 'PASS', `D=${totalDebit} C=${totalCredit} diff=${diff.toFixed(4)}`)
-        } else {
-          log('JE balanced', 'FAIL', `D=${totalDebit} C=${totalCredit} diff=${diff.toFixed(4)}`)
-        }
-        log('JE lines count', je.lines.length === 3 ? 'PASS' : 'WARN', `${je.lines.length} lines (expected 3: AR / Revenue / VAT)`)
-
-        // Expected: AR debit 287500 (250000+37500), Revenue credit 250000, VAT credit 37500
-        const arLine = je.lines.find(l => Number(l.debit) > 0)
-        const revLine = je.lines.find(l => Number(l.credit) === 250000)
-        const vatLine = je.lines.find(l => Number(l.credit) === 37500)
-        if (arLine && Number(arLine.debit) === 287500) {
-          log('AR line', 'PASS', `debit=${arLine.debit} (expected 287500)`)
-        } else {
-          log('AR line', 'FAIL', `debit=${arLine?.debit} (expected 287500)`)
-        }
-        if (revLine) {
-          log('Revenue line', 'PASS', `credit=250000`)
-        } else {
-          log('Revenue line', 'FAIL', 'no line with credit=250000')
-        }
-        if (vatLine) {
-          log('VAT line', 'PASS', `credit=37500`)
-        } else {
-          log('VAT line', 'FAIL', 'no line with credit=37500')
-        }
-
-        // Verify sourceType
-        if (je.sourceType === 'PROGRESS_CLAIM') {
-          log('JE sourceType', 'PASS', je.sourceType)
-        } else {
-          log('JE sourceType', 'FAIL', `expected PROGRESS_CLAIM, got ${je.sourceType}`)
-        }
-      }
+    if (!after?.journalEntryId) {
+      log('Claim has no JE (correct)', 'PASS', 'JE will be created when invoice is issued from this claim')
+    } else {
+      log('Claim has no JE (correct)', 'FAIL', `journalEntryId=${after?.journalEntryId} — should be null`)
     }
   } catch (e) {
     log('Approve Claim', 'FAIL', e instanceof Error ? e.message : String(e))
