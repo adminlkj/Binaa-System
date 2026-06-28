@@ -44,19 +44,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'العقد غير موجود' }, { status: 404 })
     }
 
-    // Auto-generate orderNo
-    const lastOrder = await db.changeOrder.findFirst({
-      where: { contractId },
-      orderBy: { orderNo: 'desc' },
+    // Auto-generate orderNo.
+    // BUG-P2-01 FIX: `orderNo` is GLOBALLY unique in schema (not per-contract).
+    // Previously this code only looked at the latest CO within the same contractId,
+    // producing `CO-001` for every new contract — causing P2002 unique violation
+    // when creating the first CO on a 2nd contract.
+    // Now we scan ALL change orders, extract the numeric suffix, and pick the max.
+    const allChangeOrders = await db.changeOrder.findMany({
       select: { orderNo: true },
     })
-
-    let nextNum = 1
-    if (lastOrder?.orderNo) {
-      const match = lastOrder.orderNo.match(/CO-(\d+)/)
-      if (match) nextNum = parseInt(match[1]) + 1
+    let maxNum = 0
+    for (const co of allChangeOrders) {
+      const m = co.orderNo.match(/^CO-(\d+)$/)
+      if (m) {
+        const n = parseInt(m[1], 10)
+        if (!Number.isNaN(n) && n > maxNum) maxNum = n
+      }
     }
-    const orderNo = `CO-${String(nextNum).padStart(3, '0')}`
+    const orderNo = `CO-${String(maxNum + 1).padStart(4, '0')}`
 
     const origVal = parseFloat(originalValue) || 0
     const chgVal = parseFloat(changeValue) || 0

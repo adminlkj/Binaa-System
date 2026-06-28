@@ -954,7 +954,7 @@ model ProgressClaim {
   id             String      @id @default(cuid())
   projectId      String
   contractId     String
-  claimNo        String
+  claimNo        String      @unique
   date           DateTime
   percentage     Decimal     @default(0)
   amount         Decimal     @default(0)

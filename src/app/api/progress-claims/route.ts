@@ -68,6 +68,45 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'الحقول المطلوبة: المشروع، العقد، رقم المستخلص، التاريخ، النسبة، المبلغ' }, { status: 400 })
     }
 
+    // BUG-P2-02 FIX: Validate claimNo uniqueness BEFORE attempting create,
+    // to return a clean 400 instead of leaking a Prisma P2002 error as 500.
+    const existingClaim = await db.progressClaim.findUnique({ where: { claimNo } })
+    if (existingClaim) {
+      return NextResponse.json(
+        { error: `رقم المستخلص '${claimNo}' مستخدم بالفعل` },
+        { status: 400 }
+      )
+    }
+
+    // BUG-P2-06 FIX: Validate cumulative claim amount does not exceed
+    // contract.value + approved change orders.
+    const contract = await db.contract.findUnique({ where: { id: contractId } })
+    if (!contract) {
+      return NextResponse.json({ error: 'العقد غير موجود' }, { status: 404 })
+    }
+    // Effective contract value = contract.value + sum of APPROVED change orders
+    const approvedCOs = await db.changeOrder.findMany({
+      where: { contractId, status: 'APPROVED' },
+      select: { changeValue: true },
+    })
+    const effectiveContractValue =
+      Number(contract.value) + approvedCOs.reduce((s, co) => s + Number(co.changeValue), 0)
+
+    const newAmount = parseFloat(amount)
+    const existingClaims = await db.progressClaim.findMany({
+      where: { contractId, deletedAt: null, status: { not: 'REJECTED' } },
+      select: { amount: true },
+    })
+    const cumulativeSoFar = existingClaims.reduce((s, c) => s + Number(c.amount), 0)
+    if (cumulativeSoFar + newAmount > effectiveContractValue) {
+      return NextResponse.json(
+        {
+          error: `مجموع المستخلصات (${cumulativeSoFar + newAmount}) يتجاوز قيمة العقد الفعّالة (${effectiveContractValue}). يجب اعتماد أمر تغيير أولاً أو تصحيح المبلغ.`,
+        },
+        { status: 400 }
+      )
+    }
+
     const rate = vatRate ?? 0.15
     const vatAmount = Math.round(parseFloat(amount) * rate * 100) / 100
     const totalAmount = Math.round((parseFloat(amount) + vatAmount) * 100) / 100

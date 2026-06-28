@@ -53,15 +53,26 @@ export async function POST(request: Request) {
       )
     }
 
-    // Auto-generate contractNo if not provided
+    // Auto-generate contractNo if not provided.
+    // BUG-P2-03 FIX: previously used `parseInt(contractNo.replace('CTR-',''))`
+    // which returned NaN for contracts with non-numeric suffixes (e.g. CTR-TEST-001),
+    // producing "CTR-0NaN". Now we scan ALL CTR-#### contracts, extract the numeric
+    // suffix with a strict regex, and pick the maximum.
     let finalContractNo = contractNo
     if (!finalContractNo) {
-      const lastContract = await db.contract.findFirst({
+      const allCtrContracts = await db.contract.findMany({
         where: { contractNo: { startsWith: 'CTR-' } },
-        orderBy: { contractNo: 'desc' },
+        select: { contractNo: true },
       })
-      const lastNum = lastContract ? parseInt(lastContract.contractNo.replace('CTR-', '')) : 0
-      finalContractNo = `CTR-${String(lastNum + 1).padStart(4, '0')}`
+      let maxNum = 0
+      for (const c of allCtrContracts) {
+        const m = c.contractNo.match(/^CTR-(\d+)$/)
+        if (m) {
+          const n = parseInt(m[1], 10)
+          if (!Number.isNaN(n) && n > maxNum) maxNum = n
+        }
+      }
+      finalContractNo = `CTR-${String(maxNum + 1).padStart(4, '0')}`
     }
 
     // Check uniqueness
