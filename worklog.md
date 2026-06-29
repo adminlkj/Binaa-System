@@ -6705,3 +6705,83 @@ Stage Summary:
 - **أخطاء مُصلحة:** 40 (من 40)
 - **ملفات مُعدلة:** 24
 - **تبقى:** 0 unused-vars في `src/app/api/` ✓
+
+---
+Task ID: PROD-READINESS-FINAL
+Agent: Main Agent + 8 Parallel Subagents
+Task: تطبيق نظام الخصائص على كل الشاشات + تدقيق الإنتاجية بـ10 مراحل
+
+Work Log:
+- المهمة 1: تطبيق نظام الخصائص (filterByProperty) على 8 شاشات
+  * advances.tsx: 3 selectors → filterByProperty (showInCash/showInBank/usableInAdvances)
+  * labor.tsx: conditional filterByProperty based on paymentSource
+  * client-payments, supplier-payments, payroll-runs: kept roles (documented OR-logic)
+  * equipment, employees, accounting-mapping: kept roles (documented, added badges)
+  * كلها مع badges ديناميكية تعرض خصائص الحساب
+
+- المرحلة 1 (Project Health):
+  * tsconfig: exclude scripts/examples/skills/mini-services
+  * next.config: ignoreBuildErrors=false, reactStrictMode=true
+  * package.json: add typecheck script
+  * Build: ✓ Compiled in 11.4s, 107/107 pages
+
+- المرحلة 2 (TypeScript Audit):
+  * 276 خطأ TS في src/ → 0 (5 وكلاء متوازيين أصلحوا 50+ ملف)
+  * أنماط: Decimal arithmetic (Number()), Prisma select/where, type assignability
+
+- المرحلة 3 (ESLint Audit):
+  * إعادة تفعيل 10 قواعد حرجة (no-unused-vars, prefer-const, no-debugger, إلخ)
+  * 330 مشكلة → 0 (248 unused-vars + 15 prefer-const + 9 no-undef + 5 exhaustive-deps + 3 empty)
+  * إبقاء no-explicit-any/no-undef off (Prisma/TS handling)
+
+- المرحلة 4 (API Audit):
+  * 181 endpoint مدققة
+  * 1 تسريب internals مُصلح (seed route)
+  * 3 HTTP codes مُصححة (200→201)
+  * 3 transactions مُضافة (purchase-orders, fiscal-years)
+
+- المرحلة 5 (Prisma Audit):
+  * 13 @@index مضافة على FKs
+  * 25 onDelete مضافة (12 Restrict + 13 SetNull)
+  * 4 @@unique مضافة
+  * 11 unused models موثقة (لم تُحذف)
+
+- المرحلة 6 (PostgreSQL Readiness):
+  * 1 raw SQL مُصلح (isActive=1 → TRUE, quoted identifiers)
+  * Schema نقي 100% (لا @db.Text/@db.VarChar)
+  * Ready for PostgreSQL: YES
+
+- المرحلة 7 (Environment Audit):
+  * .env.example created (SQLite dev + PostgreSQL prod templates)
+  * .env untracked from git (security fix)
+  * 0 secrets in code
+
+- المرحلة 8 (Build Audit):
+  * Clone→Install→Generate→Build→Start: all automated
+  * Build passes with ignoreBuildErrors=false
+  * Standalone output for Docker/Render
+
+- المرحلة 9 (Render Readiness):
+  * /api/health endpoint (DB check, 200/503)
+  * render.yaml (web service + PostgreSQL pserv)
+  * Dockerfile (multi-stage, non-root, HEALTHCHECK)
+  * .dockerignore
+
+- المرحلة 10 (Production Readiness):
+  * console.log in API: 0 (excl seed)
+  * console.log in components/lib: 0
+  * debugger: 0
+  * test data: 0
+  * hidden routes: 0
+
+- التحقق النهائي (Agent Browser):
+  * الصفحة الرئيسية تحمل بدون أخطاء ✓
+  * لا console errors ✓
+  * الصحة المحاسبية: 100/100 (7/7 checks) ✓
+  * Guard R1-R12: healthy, 5/5 passed ✓
+  * ميزان المراجعة: مدين=489,737.45 = دائن=489,737.45 (فرق=0.00) ✓
+
+Stage Summary:
+- 5 commits: d2bc875 → 03022ff → 9200769 → 8dbaa08 → c1ce87a
+- جميع ملتزمة ومدفوعة لـ origin/main
+- قائمة التسليم: 10/10 ✅
