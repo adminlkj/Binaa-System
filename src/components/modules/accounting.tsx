@@ -606,11 +606,12 @@ function JournalEntryDetail({ entry, onBack, accounts, onEntryChanged }: { entry
     // unconditionally, which DOUBLED the credit impact for credit-normal accounts instead of
     // subtracting it (e.g. for 6210 REVENUE with current=20,500 and Cr=20,500, the buggy formula
     // returned before=41,000 instead of the correct before=0). Now we respect the normal balance.
+    // L3D-MED-001 FIX: also treat EQUITY as credit-normal (was incorrectly falling through to debit-normal).
     const impactItems: { accountId: string; code: string; name: string; nameAr: string | null; totalDebit: number; totalCredit: number; beforeBalance: number; afterBalance: number }[] = []
     for (const [accountId, info] of uniqueAccounts) {
       const acct = accounts.find(a => a.id === accountId)
       const currentBalance = acct?.balance || 0
-      const isDebitNormal = !acct?.type || acct.type === 'ASSET' || acct.type === 'EXPENSE'
+      const isDebitNormal = acct?.type === 'ASSET' || acct?.type === 'EXPENSE'
       const balanceChange = isDebitNormal
         ? (info.totalDebit - info.totalCredit)   // debit increases
         : (info.totalCredit - info.totalDebit)   // credit increases

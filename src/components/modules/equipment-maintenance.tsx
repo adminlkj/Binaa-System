@@ -6,6 +6,7 @@ import {
   Wrench, Plus, Search, Pencil, Trash2, RefreshCw,
   Download, BookOpen, MapPin,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -82,17 +83,31 @@ function MaintenanceFormDialog({ open, onOpenChange, editingRecord, equipment, s
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) => fetch('/api/equipment/maintenance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-maintenance'] }); queryClient.invalidateQueries({ queryKey: ['equipment'] }); onOpenChange(false) },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-maintenance'] }); queryClient.invalidateQueries({ queryKey: ['equipment'] }); onOpenChange(false); toast.success(t('تم إنشاء سجل الصيانة', 'Maintenance record created', lang)) },
+    onError: () => { toast.error(t('فشل في إنشاء سجل الصيانة', 'Failed to create maintenance record', lang)) },
+  })
+
+  // L3C-CRIT-002 FIX: added updateMutation that calls PUT /api/equipment/maintenance/[id].
+  // Previously the Edit dialog always called createMutation (POST), creating a duplicate.
+  const updateMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => fetch(`/api/equipment/maintenance/${editingRecord?.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-maintenance'] }); queryClient.invalidateQueries({ queryKey: ['equipment'] }); onOpenChange(false); toast.success(t('تم تحديث سجل الصيانة', 'Maintenance record updated', lang)) },
+    onError: () => { toast.error(t('فشل في تحديث سجل الصيانة', 'Failed to update maintenance record', lang)) },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate({
+    const payload = {
       ...form,
       cost: parseFloat(form.cost) || 0,
       supplierId: form.supplierId || null,
       nextDate: form.nextDate || null,
-    })
+    }
+    if (isEdit && editingRecord) {
+      updateMutation.mutate(payload)
+    } else {
+      createMutation.mutate(payload)
+    }
   }
 
   return (
@@ -130,7 +145,7 @@ function MaintenanceFormDialog({ open, onOpenChange, editingRecord, equipment, s
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !form.equipmentId || !form.date || !form.description} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...', lang) : isEdit ? t('تحديث', 'Update', lang) : t('إنشاء', 'Create', lang)}</Button>
+            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || !form.equipmentId || !form.date || !form.description} className="bg-emerald-600 hover:bg-emerald-700">{(createMutation.isPending || updateMutation.isPending) ? t('جاري الحفظ...', 'Saving...', lang) : isEdit ? t('تحديث', 'Update', lang) : t('إنشاء', 'Create', lang)}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -169,7 +184,8 @@ export function EquipmentMaintenanceModule() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => fetch(`/api/equipment/maintenance/${id}`, { method: 'DELETE' }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['equipment-maintenance'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['equipment-maintenance'] }); queryClient.invalidateQueries({ queryKey: ['equipment'] }); toast.success(t('تم حذف سجل الصيانة', 'Maintenance record deleted', lang)) },
+    onError: () => { toast.error(t('فشل في حذف سجل الصيانة', 'Failed to delete maintenance record', lang)) },
   })
 
   const filtered = records.filter(r => {

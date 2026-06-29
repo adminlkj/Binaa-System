@@ -319,6 +319,50 @@ export async function PUT(
       return NextResponse.json(result)
     }
 
+    // ============ REVIEW: تحويل المسير للمراجعة (بدون قيد محاسبي) ============
+    // L3B-CRIT-003 FIX: DRAFT → REVIEW transition was declared allowed in VALID_TRANSITIONS
+    // but had no handler branch — fell through to the catch-all 400. Now handled explicitly.
+    if (newStatus === 'REVIEW' && existing.status === 'DRAFT') {
+      const payrollRun = await db.payrollRun.update({
+        where: { id },
+        data: {
+          status: 'REVIEW',
+          notes: body.notes !== undefined ? body.notes : existing.notes,
+        },
+        include: {
+          lines: {
+            include: {
+              employee: { select: { id: true, code: true, name: true, nameAr: true } },
+              project: { select: { id: true, code: true, name: true, nameAr: true } },
+              workTeam: { select: { id: true, code: true, name: true, nameAr: true } },
+            },
+          },
+        },
+      })
+      return NextResponse.json(payrollRun)
+    }
+
+    // Also allow REVIEW → DRAFT (return for editing) without any JE side-effects.
+    if (newStatus === 'DRAFT' && existing.status === 'REVIEW') {
+      const payrollRun = await db.payrollRun.update({
+        where: { id },
+        data: {
+          status: 'DRAFT',
+          notes: body.notes !== undefined ? body.notes : existing.notes,
+        },
+        include: {
+          lines: {
+            include: {
+              employee: { select: { id: true, code: true, name: true, nameAr: true } },
+              project: { select: { id: true, code: true, name: true, nameAr: true } },
+              workTeam: { select: { id: true, code: true, name: true, nameAr: true } },
+            },
+          },
+        },
+      })
+      return NextResponse.json(payrollRun)
+    }
+
     // P4-CRIT-003 FIX: catch-all update now ONLY allows non-status field updates (e.g. notes).
     // Status changes are validated above against the state machine.
     if (newStatus && newStatus !== existing.status) {

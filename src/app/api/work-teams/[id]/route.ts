@@ -51,19 +51,25 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     })
 
     // Handle member updates if provided
+    // L3B-CRIT-006 FIX: accept addMembers as `string[]` (employeeIds) OR
+    // `Array<{employeeId, role?, isLeader?}>`.
     if (body.addMembers && Array.isArray(body.addMembers)) {
       for (const member of body.addMembers) {
+        const employeeId = typeof member === 'string' ? member : member?.employeeId
+        const role = typeof member === 'string' ? null : (member.role || null)
+        const isLeader = typeof member === 'string' ? false : (member.isLeader || false)
+        if (!employeeId) continue
         // Check if member already exists
         const existing = await db.teamMember.findFirst({
-          where: { teamId: id, employeeId: member.employeeId },
+          where: { teamId: id, employeeId },
         })
         if (!existing) {
           await db.teamMember.create({
             data: {
               teamId: id,
-              employeeId: member.employeeId,
-              role: member.role || null,
-              isLeader: member.isLeader || false,
+              employeeId,
+              role,
+              isLeader,
             },
           })
         }
@@ -71,7 +77,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     if (body.removeMembers && Array.isArray(body.removeMembers)) {
-      for (const employeeId of body.removeMembers) {
+      for (const entry of body.removeMembers) {
+        const employeeId = typeof entry === 'string' ? entry : entry?.employeeId
+        if (!employeeId) continue
         await db.teamMember.deleteMany({
           where: { teamId: id, employeeId },
         })

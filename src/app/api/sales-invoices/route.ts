@@ -604,6 +604,10 @@ async function createInvoiceManual(body: Record<string, unknown>) {
         paidAmount: 0,
         status: 'DRAFT',
         invoiceType: invoiceType as string,
+        // L3A-CRIT-002 FIX: explicitly set sourceType='MANUAL' for manually-created invoices.
+        // Previously fell back to schema default 'EXTRACT', which polluted the sales.tsx
+        // EXTRACT filter with SERVICE invoices that aren't from progress claims.
+        sourceType: 'MANUAL',
         notes: (notes as string) || null,
         paymentTerms: (paymentTerms as string) || null,
         referenceNo: (referenceNo as string) || null,

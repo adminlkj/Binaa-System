@@ -21,10 +21,11 @@ export async function GET(
     const contractWithTotal = {
       ...contract,
       totalCompensation:
-        (contract.basicSalary ?? 0) +
-        (contract.housingAllowance ?? 0) +
-        (contract.transportAllowance ?? 0) +
-        (contract.otherAllowances ?? 0),
+        // L3B-CRIT-004 FIX: wrap with Number() — Prisma Decimal serializes to string.
+        Number(contract.basicSalary ?? 0) +
+        Number(contract.housingAllowance ?? 0) +
+        Number(contract.transportAllowance ?? 0) +
+        Number(contract.otherAllowances ?? 0),
     }
     return NextResponse.json(contractWithTotal)
   } catch (error) {
@@ -75,10 +76,11 @@ export async function PUT(
     const contractWithTotal = {
       ...contract,
       totalCompensation:
-        (contract.basicSalary ?? 0) +
-        (contract.housingAllowance ?? 0) +
-        (contract.transportAllowance ?? 0) +
-        (contract.otherAllowances ?? 0),
+        // L3B-CRIT-004 FIX: wrap with Number() — Prisma Decimal serializes to string.
+        Number(contract.basicSalary ?? 0) +
+        Number(contract.housingAllowance ?? 0) +
+        Number(contract.transportAllowance ?? 0) +
+        Number(contract.otherAllowances ?? 0),
     }
     return NextResponse.json(contractWithTotal)
   } catch (error) {

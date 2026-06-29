@@ -110,18 +110,41 @@ function ContractFormDialog({ open, onOpenChange, editingContract, employees }: 
       onOpenChange(false)
       toast.success(t('تم حفظ العقد', 'Contract saved', lang))
     },
+    onError: () => {
+      toast.error(t('فشل في حفظ العقد', 'Failed to save contract', lang))
+    },
+  })
+
+  // L3B-CRIT-002 FIX: added updateMutation that calls PUT /api/employee-contracts/[id].
+  // Previously the Edit dialog always called createMutation (POST), creating duplicates.
+  const updateMutation = useMutation({
+    mutationFn: (data: Record<string, unknown>) => fetch(`/api/employee-contracts/${editingContract?.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employee-contracts'] })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+      onOpenChange(false)
+      toast.success(t('تم تحديث العقد', 'Contract updated', lang))
+    },
+    onError: () => {
+      toast.error(t('فشل في تحديث العقد', 'Failed to update contract', lang))
+    },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate({
+    const payload = {
       ...form,
       basicSalary: parseFloat(form.basicSalary) || 0,
       housingAllowance: parseFloat(form.housingAllowance) || 0,
       transportAllowance: parseFloat(form.transportAllowance) || 0,
       otherAllowances: parseFloat(form.otherAllowances) || 0,
       endDate: form.endDate || null,
-    })
+    }
+    if (isEdit && editingContract) {
+      updateMutation.mutate(payload)
+    } else {
+      createMutation.mutate(payload)
+    }
   }
 
   return (
@@ -171,7 +194,7 @@ function ContractFormDialog({ open, onOpenChange, editingContract, employees }: 
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t('إلغاء', 'Cancel', lang)}</Button>
-            <Button type="submit" disabled={createMutation.isPending || !form.employeeId || !form.startDate} className="bg-emerald-600 hover:bg-emerald-700">{createMutation.isPending ? t('جاري الحفظ...', 'Saving...', lang) : isEdit ? t('تحديث', 'Update', lang) : t('إنشاء', 'Create', lang)}</Button>
+            <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending || !form.employeeId || !form.startDate} className="bg-emerald-600 hover:bg-emerald-700">{(createMutation.isPending || updateMutation.isPending) ? t('جاري الحفظ...', 'Saving...', lang) : isEdit ? t('تحديث', 'Update', lang) : t('إنشاء', 'Create', lang)}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

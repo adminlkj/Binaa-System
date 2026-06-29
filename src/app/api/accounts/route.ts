@@ -113,7 +113,7 @@ export async function GET(request: Request) {
         description: a.description,
         descriptionAr: a.descriptionAr,
         parent: a.parent ? { id: a.parent.id, code: a.parent.code, name: a.parent.name, nameAr: a.parent.nameAr } : null,
-        children: a.children.map(c => ({ id: c.id, code: c.code, name: c.name, nameAr: c.nameAr, type: c.type, isActive: c.isActive })),
+        children: a.children.map(c => ({ id: c.id, code: c.code, name: c.name, nameAr: c.nameAr, type: c.type, isActive: c.isActive, balance: c.balance, normalBalance: c.normalBalance, entryCount: c.entryCount })),
         _count: a._count,
         balance: a.balance,
         normalBalance: a.normalBalance,

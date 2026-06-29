@@ -194,45 +194,58 @@ export async function DELETE(
       return NextResponse.json({ error: 'تحصيل العميل غير موجود' }, { status: 404 })
     }
 
-    // Cannot delete payments with journal entries
-    if (existing.journalEntryId) {
-      return NextResponse.json(
-        { error: 'لا يمكن حذف تحصيل مرحّل محاسبياً' },
-        { status: 400 }
-      )
-    }
-
-    // If linked to an invoice, reverse the paidAmount update
-    if (existing.invoiceId) {
-      const invoice = await db.salesInvoice.findUnique({
-        where: { id: existing.invoiceId },
-      })
-      if (invoice) {
-        const newPaidAmount = Math.max(0, invoice.paidAmount - existing.amount)
-        let newStatus = invoice.status
-
-        if (newPaidAmount <= 0) {
-          // Revert to SENT status (not DRAFT) since invoice was already issued
-          newStatus = 'SENT'
-        } else if (newPaidAmount < invoice.totalAmount) {
-          newStatus = 'PARTIALLY_PAID'
+    // L3A-CRIT-001 FIX: previously DELETE always returned 400 because POST always creates
+    // a JE (so journalEntryId was always set). Now we reverse the JE and delete the payment,
+    // mirroring the supplier-payments DELETE behavior. This keeps the GL consistent while
+    // allowing users to correct mistaken payments.
+    await db.$transaction(async (tx: PrismaTransaction) => {
+      // Reverse the linked journal entry (if any) to keep GL balanced.
+      if (existing.journalEntryId) {
+        try {
+          await reverseEntry(existing.journalEntryId, tx)
+        } catch (e) {
+          console.error('Failed to reverse client payment JE on delete:', e)
+          throw new Error('فشل في عكس القيد المحاسبي المرتبط بالتحصيل')
         }
-
-        await db.salesInvoice.update({
-          where: { id: existing.invoiceId },
-          data: {
-            paidAmount: newPaidAmount,
-            status: newStatus,
-          },
-        })
       }
-    }
 
-    await db.clientPayment.delete({ where: { id } })
+      // If linked to an invoice, reverse the paidAmount update
+      if (existing.invoiceId) {
+        const invoice = await tx.salesInvoice.findUnique({
+          where: { id: existing.invoiceId },
+        })
+        if (invoice) {
+          const newPaidAmount = Math.max(0, Number(invoice.paidAmount) - Number(existing.amount))
+          let newStatus = invoice.status
+
+          if (newPaidAmount <= 0) {
+            // Revert to SENT status (not DRAFT) since invoice was already issued
+            newStatus = 'SENT'
+          } else if (newPaidAmount < Number(invoice.totalAmount)) {
+            newStatus = 'PARTIALLY_PAID'
+          }
+
+          await tx.salesInvoice.update({
+            where: { id: existing.invoiceId },
+            data: {
+              paidAmount: newPaidAmount,
+              status: newStatus,
+            },
+          })
+        }
+      }
+
+      // Detach the JE before deleting (so soft-delete of JE doesn't cascade).
+      await tx.clientPayment.update({
+        where: { id },
+        data: { journalEntryId: null },
+      })
+      await tx.clientPayment.delete({ where: { id } })
+    })
 
     return NextResponse.json({ message: 'تم حذف تحصيل العميل بنجاح' })
   } catch (error) {
     console.error('Error deleting client payment:', error)
-    return NextResponse.json({ error: 'فشل في حذف تحصيل العميل' }, { status: 500 })
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'فشل في حذف تحصيل العميل' }, { status: 500 })
   }
 }

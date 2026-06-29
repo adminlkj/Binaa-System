@@ -14,9 +14,10 @@ export async function GET(request: Request) {
       orderBy: { startDate: 'desc' },
     })
     // Calculate totalCompensation since it's not stored in DB
+    // L3B-CRIT-004 FIX: wrap with Number() — Prisma Decimal serializes to string, so '+' was concatenating.
     const contractsWithTotal = contracts.map(c => ({
       ...c,
-      totalCompensation: (c.basicSalary ?? 0) + (c.housingAllowance ?? 0) + (c.transportAllowance ?? 0) + (c.otherAllowances ?? 0),
+      totalCompensation: Number(c.basicSalary ?? 0) + Number(c.housingAllowance ?? 0) + Number(c.transportAllowance ?? 0) + Number(c.otherAllowances ?? 0),
     }))
     return NextResponse.json(contractsWithTotal)
   } catch (error) {
@@ -51,9 +52,10 @@ export async function POST(request: Request) {
     })
 
     // Return contract with computed totalCompensation
+    // L3B-CRIT-004 FIX: wrap with Number() — Prisma Decimal serializes to string.
     const contractWithTotal = {
       ...contract,
-      totalCompensation: (contract.basicSalary ?? 0) + (contract.housingAllowance ?? 0) + (contract.transportAllowance ?? 0) + (contract.otherAllowances ?? 0),
+      totalCompensation: Number(contract.basicSalary ?? 0) + Number(contract.housingAllowance ?? 0) + Number(contract.transportAllowance ?? 0) + Number(contract.otherAllowances ?? 0),
     }
     return NextResponse.json(contractWithTotal, { status: 201 })
   } catch (error) {

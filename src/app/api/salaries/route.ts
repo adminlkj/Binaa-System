@@ -42,7 +42,7 @@ export async function GET(request: Request) {
  * where cash was debited twice (once at approve via autoEntryExpense, once at
  * payment) and Salaries_Payable went negative.
  */
-async function createSalaryAccrualJournalEntry(
+export async function createSalaryAccrualJournalEntry(
   args: {
     employeeName: string
     netSalary: number

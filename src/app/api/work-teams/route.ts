@@ -49,12 +49,20 @@ export async function POST(request: Request) {
     const code = `TM-${String(nextNum).padStart(3, '0')}`
 
     // Create team with optional initial members
+    // L3B-CRIT-006 FIX: accept BOTH formats — `string[]` (employeeIds from UI) and
+    // `Array<{employeeId, role?, isLeader?}>` (legacy/programmatic callers).
     const membersData = body.members && Array.isArray(body.members)
-      ? body.members.map((m: { employeeId: string; role?: string; isLeader?: boolean }) => ({
-          employeeId: m.employeeId,
-          role: m.role || null,
-          isLeader: m.isLeader || false,
-        }))
+      ? body.members.map((m: unknown) => {
+          if (typeof m === 'string') {
+            return { employeeId: m, role: null, isLeader: false }
+          }
+          const obj = m as { employeeId?: string; role?: string; isLeader?: boolean }
+          return {
+            employeeId: obj.employeeId as string,
+            role: obj.role || null,
+            isLeader: obj.isLeader || false,
+          }
+        })
       : []
 
     const team = await db.workTeam.create({

@@ -1,7 +1,6 @@
 import { db } from '@/lib/db'
 import { type PrismaTransaction } from '@/lib/auto-journal'
-import { reverseEntry } from '@/lib/accounting/engine'
-import { toNumber } from '@/lib/decimal'
+// L3A-CRIT-006: removed unused imports (reverseEntry, toNumber) after dead PUT handler removal.
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -148,80 +147,8 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT: Update a progress claim (with reversal for approved/posted claims)
-export async function PUT(request: Request) {
-  try {
-    const body = await request.json()
-    const { id, ...updateData } = body
-
-    if (!id) {
-      return NextResponse.json({ error: 'معرف المستخلص مطلوب' }, { status: 400 })
-    }
-
-    const existing = await db.progressClaim.findUnique({ where: { id } })
-    if (!existing) {
-      return NextResponse.json({ error: 'المستخلص غير موجود' }, { status: 404 })
-    }
-
-    // Cannot modify REJECTED claims
-    if (existing.status === 'REJECTED') {
-      return NextResponse.json({ error: 'لا يمكن تعديل مستخلص مرفوض' }, { status: 400 })
-    }
-
-    // Cannot modify invoiced claims (must cancel the invoice first)
-    if (existing.invoiced && (updateData.amount !== undefined || updateData.status !== undefined)) {
-      return NextResponse.json({ error: 'لا يمكن تعديل مستخلص تم إصدار فاتورة له. يجب إلغاء الفاتورة أولاً' }, { status: 400 })
-    }
-
-    // If the claim has a journal entry (legacy data) and amounts are changing,
-    // reverse the old entry. We do NOT create a new entry here — the claim
-    // workflow does not auto-create JEs. The new JE (if any) will be created
-    // when an invoice is generated from the approved claim.
-    if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
-      await db.$transaction(async (tx: PrismaTransaction) => {
-        const originalEntry = await tx.journalEntry.findUnique({
-          where: { id: existing.journalEntryId!, deletedAt: null },
-          include: { lines: { where: { deletedAt: null } } },
-        })
-
-        if (originalEntry) {
-          // Use unified reverseEntry() — creates proper reversal, keeps original POSTED.
-          // Avoids double-cancellation bug.
-          await reverseEntry(existing.journalEntryId!, tx)
-        }
-
-        // Detach the cancelled JE — a fresh JE will be created only when an
-        // invoice is generated from this claim.
-        updateData.journalEntryId = null
-      })
-    }
-
-    // Recalculate amounts if amount changed
-    if (updateData.amount !== undefined && updateData.vatAmount === undefined) {
-      const newAmount = parseFloat(updateData.amount)
-      const rate = toNumber(existing.vatRate)
-      updateData.vatAmount = Math.round(newAmount * rate * 100) / 100
-      updateData.totalAmount = Math.round((newAmount + updateData.vatAmount) * 100) / 100
-    }
-
-    const updated = await db.progressClaim.update({
-      where: { id },
-      data: {
-        ...updateData,
-        ...(updateData.amount && { amount: parseFloat(updateData.amount) }),
-        ...(updateData.percentage && { percentage: parseFloat(updateData.percentage) }),
-        ...(updateData.date && { date: new Date(updateData.date) }),
-        ...(updateData.approvedDate && { approvedDate: new Date(updateData.approvedDate) }),
-      },
-      include: {
-        project: { select: { id: true, name: true, code: true } },
-        contract: { select: { id: true, contractNo: true, totalValue: true } },
-      },
-    })
-
-    return NextResponse.json(updated)
-  } catch (error) {
-    console.error('[API] Failed to update progress claim:', error)
-    return NextResponse.json({ error: 'Failed to update progress claim', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
-  }
-}
+// L3A-CRIT-006 FIX: removed dead duplicate PUT handler that took `id` from request body.
+// The live PUT handler is at /api/progress-claims/[id]/route.ts (URL parameter routing).
+// The UI always calls `fetch(\`/api/progress-claims/${id}\`, { method: 'PUT' })` which
+// routes to [id]/route.ts, so this body-id handler was unreachable dead code (75 lines)
+// and a maintenance hazard.
