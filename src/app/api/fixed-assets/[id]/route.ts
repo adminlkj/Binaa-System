@@ -109,7 +109,7 @@ export async function PUT(
       schedule: result.schedule,
       message: 'تم تحديث الأصل وإعادة حساب الإهلاك',
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating asset:', error)
     return NextResponse.json(
       { error: 'فشل في تحديث الأصل الثابت' },
@@ -127,7 +127,7 @@ export async function DELETE(
     const { id } = await params
     const result = await deleteAsset(id)
     return NextResponse.json(result)
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error deleting asset:', error)
     return NextResponse.json(
       { error: 'فشل في حذف الأصل الثابت' },

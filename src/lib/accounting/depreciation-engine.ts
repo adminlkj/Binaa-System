@@ -733,7 +733,7 @@ export async function runDepreciationForAsset(
       }, t)
       journalEntryId = je?.id || null
       journalEntryNo = je?.entryNo || null
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`[depreciation-engine] JE failed for ${asset.assetCode}:`, err)
       return {
         assetId, assetCode: asset.assetCode, assetName, period,

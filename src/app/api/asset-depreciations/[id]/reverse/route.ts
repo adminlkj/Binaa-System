@@ -11,7 +11,7 @@ export async function POST(
     const { id } = await params
     const result = await reverseAssetDepreciation(id)
     return NextResponse.json(result)
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error reversing depreciation:', error)
     return NextResponse.json(
       { error: 'فشل في عكس الإهلاك' },

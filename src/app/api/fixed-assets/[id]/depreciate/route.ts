@@ -33,7 +33,7 @@ export async function POST(
         ? 'تم إهلاك الأصل بالكامل — القيمة الدفترية وصلت للقيمة المتبقية'
         : 'تم إنشاء قيد الإهلاك بنجاح',
     }, { status: 201 })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error running depreciation:', error)
     return NextResponse.json(
       { error: 'فشل في تنفيذ الإهلاك' },

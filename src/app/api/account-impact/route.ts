@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ summary })
       }
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Account impact API error:', error)
     return NextResponse.json({ error: 'فشل في تحليل تأثير الحساب' }, { status: 500 })
   }
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Account impact API error:', error)
     return NextResponse.json({ error: 'فشل في تحليل تأثير الحساب' }, { status: 500 })
   }

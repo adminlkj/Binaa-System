@@ -5537,3 +5537,30 @@ Stage Summary:
 - Existing Arabic error messages preserved in `error` field
 - AccountingGuardError handlers untouched (intentional user-friendly messages)
 - Other domain-specific `error: error.message` patterns (e.g. journal-entries POST generic catch) left intact per task rules
+
+---
+Task ID: L6-PERF-001
+Agent: Main Agent + Error Leak Fixer subagent
+Task: Level 6 Performance Audit — فحص الأداء + إصلاح تسريبات error.message
+
+Work Log:
+- كتابة scripts/perf-audit.ts: فحص شامل (N+1، فهارس مفقودة، حجم الجداول)
+- النتائج:
+  * فهارس مفقودة: لا يوجد (كل FKs الرئيسية لها @@index)
+  * جداول كبيرة: لا يوجد (كلها < 1000 صف، بيانات اختبار)
+  * projects/[id] يحمل ~20 علاقة (محدود بالمشروع، مقبول)
+  * تسريبات error.message: 25+ handler في 15+ ملف
+- إصلاح تسريبات error.message (مشكلة أمان):
+  * إزالة `details: error instanceof Error ? error.message` من كل المسارات
+  * استبدال `error: error.message` برسائل عربية عامة في:
+    - financial-mapping, accounts/by-role, accounting-health, account-impact
+    - asset-depreciations/reverse, fixed-assets (4 routes)
+  * الحفاظ على AccountingGuardError handler (رسائل عربية صديقة)
+  * الحفاظ على console.error للتسجيل من جانب الخادم
+- التحقق: lint نظيف، لا تسريبات متبقية
+
+Stage Summary:
+- 50 ملف تم تعديلها (25+ error handler تم إصلاحها)
+- تسريبات Prisma/DB internals تم إزالتها بالكامل
+- لا فهارس مفقودة، لا جداول كبيرة
+- Commit: c85d225 — تم الدفع إلى origin/main

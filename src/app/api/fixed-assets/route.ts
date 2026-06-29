@@ -146,7 +146,7 @@ export async function POST(request: Request) {
         ? 'تم إنشاء الأصل وقيد التملك تلقائياً'
         : 'تم إنشاء الأصل (لم يتم إنشاء قيد التملك - تأكد من ربط الحسابات)',
     }, { status: 201 })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating fixed asset:', error)
     return NextResponse.json(
       { error: 'فشل في إنشاء الأصل الثابت' },

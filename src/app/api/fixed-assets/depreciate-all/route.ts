@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       message: `تم إهلاك ${result.processed} أصل بقيمة إجمالية ${result.totalAmount.toFixed(2)}` +
         (result.skipped > 0 ? ` — تم تخطي ${result.skipped} أصل` : ''),
     }, { status: 201 })
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error running bulk depreciation:', error)
     return NextResponse.json(
       { error: 'فشل في تنفيذ الإهلاك المجمع' },
