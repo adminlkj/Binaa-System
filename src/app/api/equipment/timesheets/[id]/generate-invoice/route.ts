@@ -287,7 +287,7 @@ export async function POST(
   } catch (error) {
     console.error('[API] Failed to generate invoice from timesheet:', error)
     return NextResponse.json(
-      { error: 'Failed to generate invoice from timesheet', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to generate invoice from timesheet' },
       { status: 500 }
     )
   }

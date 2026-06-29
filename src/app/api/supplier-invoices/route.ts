@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('[API] Failed to fetch supplier invoices:', error)
-    return NextResponse.json({ error: 'Failed to fetch supplier invoices', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch supplier invoices' }, { status: 500 })
   }
 }
 
@@ -227,6 +227,6 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('[API] Failed to create supplier invoice:', error)
-    return NextResponse.json({ error: 'Failed to create supplier invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create supplier invoice' }, { status: 500 })
   }
 }

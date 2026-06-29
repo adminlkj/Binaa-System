@@ -38,7 +38,7 @@ export async function GET(
   } catch (error) {
     console.error('[API] Failed to fetch subcontractor payment:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch subcontractor payment', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch subcontractor payment' },
       { status: 500 }
     )
   }
@@ -82,7 +82,7 @@ export async function PUT(
   } catch (error) {
     console.error('[API] Failed to update subcontractor payment:', error)
     return NextResponse.json(
-      { error: 'Failed to update subcontractor payment', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to update subcontractor payment' },
       { status: 500 }
     )
   }
@@ -145,7 +145,7 @@ export async function DELETE(
   } catch (error) {
     console.error('[API] Failed to cancel subcontractor payment:', error)
     return NextResponse.json(
-      { error: 'Failed to cancel subcontractor payment', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to cancel subcontractor payment' },
       { status: 500 }
     )
   }

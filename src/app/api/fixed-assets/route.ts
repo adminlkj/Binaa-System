@@ -149,7 +149,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Error creating fixed asset:', error)
     return NextResponse.json(
-      { error: error.message || 'فشل في إنشاء الأصل الثابت' },
+      { error: 'فشل في إنشاء الأصل الثابت' },
       { status: 500 }
     )
   }

@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Subcontractor retentions GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch subcontractor retentions', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch subcontractor retentions' },
       { status: 500 }
     )
   }
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Subcontractor retentions POST error:', error)
     return NextResponse.json(
-      { error: 'Failed to create subcontractor retention', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to create subcontractor retention' },
       { status: 500 }
     )
   }

@@ -36,7 +36,7 @@ export async function POST(
   } catch (error: any) {
     console.error('Error running depreciation:', error)
     return NextResponse.json(
-      { error: error.message || 'فشل في تنفيذ الإهلاك' },
+      { error: 'فشل في تنفيذ الإهلاك' },
       { status: 500 }
     )
   }

@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('[API] Failed to fetch progress claims:', error)
-    return NextResponse.json({ error: 'Failed to fetch progress claims', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch progress claims' }, { status: 500 })
   }
 }
 
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('[API] Failed to create progress claim:', error)
-    return NextResponse.json({ error: 'Failed to create progress claim', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create progress claim' }, { status: 500 })
   }
 }
 

@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Cost codes GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch cost codes', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch cost codes' },
       { status: 500 }
     )
   }
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Cost codes POST error:', error)
     return NextResponse.json(
-      { error: 'Failed to create cost code', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to create cost code' },
       { status: 500 }
     )
   }

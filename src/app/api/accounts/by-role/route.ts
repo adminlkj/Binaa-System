@@ -111,6 +111,6 @@ export async function GET(request: Request) {
     return NextResponse.json(accounts)
   } catch (error: any) {
     console.error('Error fetching accounts by role:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'فشل في تحميل الحسابات' }, { status: 500 })
   }
 }

@@ -94,7 +94,7 @@ export async function GET(
   } catch (error: unknown) {
     console.error('Project summary GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch project summary', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch project summary' },
       { status: 500 }
     )
   }

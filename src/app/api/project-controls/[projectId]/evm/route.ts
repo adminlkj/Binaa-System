@@ -77,7 +77,7 @@ export async function GET(
   } catch (error: unknown) {
     console.error('EVM GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to calculate EVM', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to calculate EVM' },
       { status: 500 }
     )
   }

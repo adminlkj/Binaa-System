@@ -70,7 +70,7 @@ export async function GET(
   } catch (error: unknown) {
     console.error('Project ledger GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch project ledger', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch project ledger' },
       { status: 500 }
     )
   }

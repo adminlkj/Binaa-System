@@ -10,7 +10,7 @@ export async function GET() {
   } catch (error) {
     console.error('[API] Accounting guard health check error:', error)
     return NextResponse.json(
-      { error: 'فشل في فحص السلامة المحاسبية', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'فشل في فحص السلامة المحاسبية' },
       { status: 500 }
     )
   }

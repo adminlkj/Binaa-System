@@ -26,7 +26,7 @@ export async function GET(
   } catch (error) {
     console.error('[API] Failed to fetch rental payment:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch rental payment', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch rental payment' },
       { status: 500 }
     )
   }
@@ -102,7 +102,7 @@ export async function DELETE(
   } catch (error) {
     console.error('[API] Failed to delete rental payment:', error)
     return NextResponse.json(
-      { error: 'Failed to delete rental payment', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to delete rental payment' },
       { status: 500 }
     )
   }

@@ -152,7 +152,7 @@ export async function POST(
   } catch (error: unknown) {
     console.error('Backfill POST error:', error)
     return NextResponse.json(
-      { error: 'Failed to backfill costs', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to backfill costs' },
       { status: 500 }
     )
   }

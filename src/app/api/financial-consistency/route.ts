@@ -34,7 +34,7 @@ export async function GET() {
   } catch (error: unknown) {
     console.error('Error validating financial consistency:', error)
     return NextResponse.json(
-      { error: 'Failed to validate consistency', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to validate consistency' },
       { status: 500 }
     )
   }

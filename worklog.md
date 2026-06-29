@@ -5468,3 +5468,72 @@ Stage Summary:
 - 13 اختبار فعلي curl نجح (400 للسيئ + 201 للصحيح)
 - كل فحوصات تكامل البيانات (40+) سليمة بعد الإصلاح
 - Commit: 960edd5 — تم الدفع إلى origin/main
+
+---
+Task ID: L5-ACCT-001
+Agent: Main Agent
+Task: Level 5 Accounting Audit — فحص محرك المحاسبة (guard R1-R12) + إصلاح الأدوار غير المربوطة
+
+Work Log:
+- تشغيل accountingHealthCheck() من guard.ts: 5/5 فحوصات R1-R12 سليمة
+  * كل القيود المرحّلة متوازنة
+  * لا يوجد بند له مدين ودائن معاً
+  * ميزان المراجعة: مدين=307,579.55 = دائن=307,579.55
+  * المعادلة المحاسبية: أصول = خصوم + حقوق ملكية (فرق=0.00)
+  * لا بنود يتيمة
+- اختبار فعلي لقواعد الحارس بـ 9 curl tests (كلها 400 للبيانات السيئة):
+  * G1: قيد غير متوازن → NOT_BALANCED
+  * G2: قيد ببند واحد → MIN_LINES
+  * G3: بند مدين ودائن → LINE_BOTH_SIDES
+  * G4: بند بقيم صفرية → LINE_ZERO
+  * G5: قيم سالبة → LINE_NEGATIVE
+  * G6: رقم قيد مكرر → DUPLICATE_ENTRY_NO
+  * G7: حساب غير موجود → ACCOUNT_NOT_FOUND
+  * G8: تاريخ غير صالح → INVALID_DATE
+  * G9: قيد صحيح متوازن → 201 (ثم عكسه للتنظيف)
+- فحص accounting-health: كشف عن 14 دور محاسبي بدون ربط (score 79/100)
+- تحليل ACCOUNT_ROLES definitions في account-roles.ts: استخراج defaultCodes لكل دور
+- فحص الحسابات الموجودة: 10 حسابات مناسبة بدون دور + 4 حسابات بتعارض + 4 مفقودة
+- تطبيق الإصلاحات:
+  * 14 حساب موجود تم تعيين دوره (ADMIN_EXPENSE×6, PROJECT_WIP, CONTRACT_ASSET, 
+    CONTRACT_LIABILITY, SUBCONTRACTOR_ADVANCE, SUBCONTRACTOR_RETENTION_PAYABLE,
+    LABOR_COST, RETAINED_EARNINGS, DELAY_PENALTY_REVENUE, FX_GAIN)
+  * 1130: CASH → PETTY_CASH (1110 يغطي CASH)
+  * 3 حسابات جديدة: 8640 (FX_LOSS), 6360 (UNBILLED_REVENUE), 3140 (VAT_SETTLEMENT)
+- إعادة فحص الصحة المحاسبية: 100/100 (7/7 فحوصات سليمة)
+
+Stage Summary:
+- محرك المحاسبة (guard R1-R12) سليم 100% ومُختبَر فعلياً
+- 14 دور محاسبي تم ربطها بحسابات (من 14 unmapped → 0 unmapped)
+- 3 حسابات محاسبية جديدة تم إنشاؤها (FX_LOSS, UNBILLED_REVENUE, VAT_SETTLEMENT)
+- درجة الصحة المحاسبية: 79 → 100/100
+- 9 اختبارات guard فعلية نجحت
+- Commit: 9322b3a — تم الدفع إلى origin/main
+
+---
+Task ID: L6-PERF-001
+Agent: Error Leak Fixer
+Task: Fix error.message leaks in 10 API routes (security)
+
+Work Log:
+- Fixed 10 files by removing `details: error.message` from error responses
+- Files:
+  1. src/app/api/activities/route.ts — line ~38: removed `details`, replaced English msg with Arabic `'فشل في تحميل النشاطات'`
+  2. src/app/api/client-payments/route.ts — lines ~63, ~192: removed `details` (GET + POST handlers)
+  3. src/app/api/subcontractor-payments/[id]/route.ts — lines ~41, ~85, ~148: removed `details` (GET + PUT + DELETE handlers)
+  4. src/app/api/subcontractor-payments/route.ts — lines ~37, ~166: removed `details` (GET + POST handlers)
+  5. src/app/api/reports/aging/route.ts — line ~156: removed `details`
+  6. src/app/api/project-controls/[projectId]/evm/route.ts — line ~80: removed `details`
+  7. src/app/api/project-controls/[projectId]/backfill/route.ts — line ~155: removed `details`
+  8. src/app/api/project-controls/[projectId]/summary/route.ts — line ~97: removed `details`
+  9. src/app/api/wbs/route.ts — lines ~43, ~84: removed `details` (GET + POST handlers)
+  10. src/app/api/journal-entries/route.ts — line ~84: removed `details` from GET handler. AccountingGuardError handler at line ~135 (with `error.message`, `error.code`, `error.details`) was PRESERVED per instructions — those are intentional user-friendly Arabic-coded messages.
+- Lint: CLEAN (0 errors, 0 warnings)
+
+Stage Summary:
+- 14 error message leaks fixed across 10 API route files
+- Prisma/DB internals no longer exposed to clients via the `details` field
+- Server-side console.error logging preserved on every catch block
+- Existing Arabic error messages preserved in `error` field
+- AccountingGuardError handlers untouched (intentional user-friendly messages)
+- Other domain-specific `error: error.message` patterns (e.g. journal-entries POST generic catch) left intact per task rules

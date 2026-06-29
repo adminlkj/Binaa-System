@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Subcontractor advances GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch subcontractor advances', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch subcontractor advances' },
       { status: 500 }
     )
   }
@@ -124,7 +124,7 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Subcontractor advances POST error:', error)
     return NextResponse.json(
-      { error: 'Failed to create subcontractor advance', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to create subcontractor advance' },
       { status: 500 }
     )
   }

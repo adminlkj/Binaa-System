@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Commitments GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch commitments', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch commitments' },
       { status: 500 }
     )
   }
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Commitments POST error:', error)
     return NextResponse.json(
-      { error: 'Failed to create commitment', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to create commitment' },
       { status: 500 }
     )
   }

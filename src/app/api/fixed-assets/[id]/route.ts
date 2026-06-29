@@ -112,7 +112,7 @@ export async function PUT(
   } catch (error: any) {
     console.error('Error updating asset:', error)
     return NextResponse.json(
-      { error: error.message || 'فشل في تحديث الأصل' },
+      { error: 'فشل في تحديث الأصل الثابت' },
       { status: 500 }
     )
   }
@@ -130,7 +130,7 @@ export async function DELETE(
   } catch (error: any) {
     console.error('Error deleting asset:', error)
     return NextResponse.json(
-      { error: error.message || 'فشل في حذف الأصل' },
+      { error: 'فشل في حذف الأصل الثابت' },
       { status: 500 }
     )
   }

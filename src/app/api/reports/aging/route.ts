@@ -153,7 +153,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Aging report GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to generate aging report', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to generate aging report' },
       { status: 500 }
     )
   }

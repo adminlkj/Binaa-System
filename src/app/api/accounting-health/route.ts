@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     }
   } catch (error: any) {
     console.error('Accounting health API error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'فشل في فحص الصحة المحاسبية' }, { status: 500 })
   }
 }
 
@@ -40,6 +40,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ report })
   } catch (error: any) {
     console.error('Accounting health check run error:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ error: 'فشل في فحص الصحة المحاسبية' }, { status: 500 })
   }
 }

@@ -81,7 +81,7 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('[API] Failed to fetch journal entries:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch journal entries', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch journal entries' },
       { status: 500 }
     )
   }

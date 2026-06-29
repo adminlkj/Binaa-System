@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ data: enriched, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('[API] Failed to fetch delivery orders:', error)
-    return NextResponse.json({ error: 'Failed to fetch delivery orders', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch delivery orders' }, { status: 500 })
   }
 }
 
@@ -158,7 +158,7 @@ export async function POST(request: Request) {
     return NextResponse.json(order, { status: 201 })
   } catch (error) {
     console.error('[API] Failed to create delivery order:', error)
-    return NextResponse.json({ error: 'Failed to create delivery order', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create delivery order' }, { status: 500 })
   }
 }
 
@@ -247,6 +247,6 @@ export async function PATCH(request: Request) {
     return NextResponse.json(order)
   } catch (error) {
     console.error('[API] Failed to update delivery order:', error)
-    return NextResponse.json({ error: 'Failed to update delivery order', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update delivery order' }, { status: 500 })
   }
 }

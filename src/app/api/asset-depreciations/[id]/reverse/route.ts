@@ -14,7 +14,7 @@ export async function POST(
   } catch (error: any) {
     console.error('Error reversing depreciation:', error)
     return NextResponse.json(
-      { error: error.message || 'فشل في عكس الإهلاك' },
+      { error: 'فشل في عكس الإهلاك' },
       { status: 500 }
     )
   }

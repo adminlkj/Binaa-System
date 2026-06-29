@@ -108,7 +108,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('[API] Failed to fetch sales invoices:', error)
-    return NextResponse.json({ error: 'Failed to fetch sales invoices', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch sales invoices' }, { status: 500 })
   }
 }
 
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
     return await createInvoiceManual(body)
   } catch (error) {
     console.error('[API] Failed to create sales invoice:', error)
-    return NextResponse.json({ error: 'Failed to create sales invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create sales invoice' }, { status: 500 })
   }
 }
 
@@ -783,6 +783,6 @@ export async function PUT(request: Request) {
     return NextResponse.json(updated)
   } catch (error) {
     console.error('[API] Failed to update sales invoice:', error)
-    return NextResponse.json({ error: 'Failed to update sales invoice', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update sales invoice' }, { status: 500 })
   }
 }

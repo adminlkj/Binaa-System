@@ -38,7 +38,7 @@ export async function GET(
   } catch (error) {
     console.error('[API] Failed to fetch purchase invoice:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch purchase invoice', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch purchase invoice' },
       { status: 500 }
     )
   }
@@ -87,7 +87,7 @@ export async function DELETE(
   } catch (error) {
     console.error('[API] Failed to delete purchase invoice:', error)
     return NextResponse.json(
-      { error: 'Failed to delete purchase invoice', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to delete purchase invoice' },
       { status: 500 }
     )
   }

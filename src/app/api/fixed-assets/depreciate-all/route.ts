@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Error running bulk depreciation:', error)
     return NextResponse.json(
-      { error: error.message || 'فشل في تنفيذ الإهلاك المجمع' },
+      { error: 'فشل في تنفيذ الإهلاك المجمع' },
       { status: 500 }
     )
   }

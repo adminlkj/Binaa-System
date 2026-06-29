@@ -56,7 +56,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('[API] Failed to fetch purchase orders:', error)
-    return NextResponse.json({ error: 'Failed to fetch purchase orders', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch purchase orders' }, { status: 500 })
   }
 }
 
@@ -144,6 +144,6 @@ export async function POST(request: Request) {
     return NextResponse.json(order, { status: 201 })
   } catch (error) {
     console.error('[API] Failed to create purchase order:', error)
-    return NextResponse.json({ error: 'Failed to create purchase order', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create purchase order' }, { status: 500 })
   }
 }

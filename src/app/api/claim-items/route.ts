@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Claim items GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch claim items', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch claim items' },
       { status: 500 }
     )
   }

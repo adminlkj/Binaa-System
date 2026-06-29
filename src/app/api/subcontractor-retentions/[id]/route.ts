@@ -39,7 +39,7 @@ export async function GET(
   } catch (error) {
     console.error('[API] Failed to fetch subcontractor retention:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch subcontractor retention', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to fetch subcontractor retention' },
       { status: 500 }
     )
   }
@@ -99,7 +99,7 @@ export async function PUT(
   } catch (error) {
     console.error('[API] Failed to update subcontractor retention:', error)
     return NextResponse.json(
-      { error: 'Failed to update subcontractor retention', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to update subcontractor retention' },
       { status: 500 }
     )
   }
@@ -145,7 +145,7 @@ export async function DELETE(
   } catch (error) {
     console.error('[API] Failed to cancel subcontractor retention:', error)
     return NextResponse.json(
-      { error: 'Failed to cancel subcontractor retention', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Failed to cancel subcontractor retention' },
       { status: 500 }
     )
   }

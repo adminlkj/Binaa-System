@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   } catch (error: unknown) {
     console.error('WBS GET error:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch WBS', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to fetch WBS' },
       { status: 500 }
     )
   }
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('WBS POST error:', error)
     return NextResponse.json(
-      { error: 'Failed to create WBS element', details: error instanceof Error ? error.message : 'Unknown' },
+      { error: 'Failed to create WBS element' },
       { status: 500 }
     )
   }

@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('[API] Failed to fetch expenses:', error)
-    return NextResponse.json({ error: 'Failed to fetch expenses', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch expenses' }, { status: 500 })
   }
 }
 
@@ -267,7 +267,7 @@ export async function POST(request: Request) {
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     console.error('[API] Failed to create expense:', error)
-    return NextResponse.json({ error: 'Failed to create expense', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create expense' }, { status: 500 })
   }
 }
 
@@ -368,6 +368,6 @@ export async function PUT(request: Request) {
     return NextResponse.json(updated)
   } catch (error) {
     console.error('[API] Failed to update expense:', error)
-    return NextResponse.json({ error: 'Failed to update expense', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update expense' }, { status: 500 })
   }
 }

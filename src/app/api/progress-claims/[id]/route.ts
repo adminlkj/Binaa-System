@@ -117,7 +117,7 @@ export async function PUT(
   } catch (error) {
     console.error('Error updating progress claim:', error)
     return NextResponse.json(
-      { error: 'فشل في تحديث المستخلص', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'فشل في تحديث المستخلص' },
       { status: 500 }
     )
   }

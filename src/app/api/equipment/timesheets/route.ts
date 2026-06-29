@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: enrichedTimesheets, total, page, pageSize, totalPages: Math.ceil(total / pageSize) })
   } catch (error) {
     console.error('[API] Failed to fetch timesheets:', error)
-    return NextResponse.json({ error: 'Failed to fetch timesheets', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to fetch timesheets' }, { status: 500 })
   }
 }
 
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
     return NextResponse.json(timesheet, { status: 201 })
   } catch (error) {
     console.error('[API] Failed to create timesheet:', error)
-    return NextResponse.json({ error: 'Failed to create timesheet', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to create timesheet' }, { status: 500 })
   }
 }
 
@@ -261,6 +261,6 @@ export async function PUT(request: Request) {
     return NextResponse.json(updated)
   } catch (error) {
     console.error('[API] Failed to update timesheet:', error)
-    return NextResponse.json({ error: 'Failed to update timesheet', details: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update timesheet' }, { status: 500 })
   }
 }
