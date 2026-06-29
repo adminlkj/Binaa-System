@@ -154,6 +154,20 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
     enabled: !!accountId,
   })
 
+  // === Chart of Accounts for dropdowns (GL + Account Statement) ===
+  // تم إصلاح خطأ اختفاء دليل الحسابات من القوائم المنسدلة:
+  // كان الكود السابق يعتمد على glData?.accounts / asData?.accounts التي لا تُرجع
+  // إلا بعد اختيار حساب (chicken-and-egg). الآن نجلب الدليل بشكل مستقل.
+  const { data: chartOfAccounts = [] } = useQuery<Array<{ id: string; code: string; name: string; nameAr: string | null; type: string }>>({
+    queryKey: ['chart-of-accounts-posting'],
+    queryFn: async () => {
+      const res = await fetch('/api/accounts/by-role?role=__ALL_POSTING__')
+      if (!res.ok) throw new Error()
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000, // cache 5 minutes
+  })
+
   // === Cost Center Report ===
   const { data: ccData, isLoading: ccLoading, refetch: refetchCC } = useQuery<CostCenterData>({
     queryKey: ['report-cost-center', dateFrom, dateTo],
@@ -435,7 +449,13 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
             <Label className="text-sm">{t('الحساب', 'Account', lang)}</Label>
             <Select value={glAccountId} onValueChange={setGlAccountId}>
               <SelectTrigger className="w-72"><SelectValue placeholder={t('اختر حساباً...', 'Select account...', lang)} /></SelectTrigger>
-              <SelectContent>{glData?.accounts?.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {acctName(a, lang)}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                {chartOfAccounts.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">{t('جاري تحميل الحسابات...', 'Loading accounts...')}</div>
+                ) : (
+                  chartOfAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {acctName(a, lang)}</SelectItem>)
+                )}
+              </SelectContent>
             </Select>
           </CardContent></Card>
           {!glAccountId ? <EmptyState icon={BookOpen} message={t('اختر حساباً لعرض دفتر الأستاذ', 'Select an account to view the ledger', lang)} />
@@ -471,7 +491,13 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
             <Label className="text-sm">{t('الحساب', 'Account', lang)}</Label>
             <Select value={accountId} onValueChange={setAccountId}>
               <SelectTrigger className="w-72"><SelectValue placeholder={t('اختر حساباً...', 'Select account...', lang)} /></SelectTrigger>
-              <SelectContent>{asData?.accounts?.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {acctName(a, lang)}</SelectItem>)}</SelectContent>
+              <SelectContent>
+                {chartOfAccounts.length === 0 ? (
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">{t('جاري تحميل الحسابات...', 'Loading accounts...')}</div>
+                ) : (
+                  chartOfAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {acctName(a, lang)}</SelectItem>)
+                )}
+              </SelectContent>
             </Select>
           </CardContent></Card>
           {!accountId ? <EmptyState icon={FileText} message={t('اختر حساباً لعرض كشف الحساب', 'Select an account to view its statement', lang)} />

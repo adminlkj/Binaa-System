@@ -11,6 +11,28 @@ export async function GET(request: Request) {
     const activityType = searchParams.get('activityType') || ''
 
     if (rolesParam) {
+      // Special case: return ALL posting accounts (used by dropdowns that need the
+      // full chart of accounts regardless of role — e.g. GL / Account Statement reports)
+      if (rolesParam === '__ALL_POSTING__') {
+        const accounts = await db.account.findMany({
+          where: {
+            isActive: true,
+            allowPosting: true,
+          },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            nameAr: true,
+            type: true,
+            accountRole: true,
+            activityType: true,
+          },
+          orderBy: { code: 'asc' },
+        })
+        return NextResponse.json(accounts)
+      }
+
       // Query by accountRole (comma-separated list for multiple roles)
       const roles = rolesParam.split(',').map(r => r.trim()).filter(Boolean)
       const where: any = {

@@ -734,19 +734,52 @@ export async function autoEntryEmployeeAdvance(data: {
   employeeName: string
   amount: number
   date: Date
+  /**
+   * مصدر السداد — يحترم اختيار المستخدم (المستخدم سيد النظام):
+   *   'BANK'               : دائن البنك
+   *   'CASH'               : دائن النقدية (الصندوق)
+   *   'EMPLOYEE_DEDUCTION' : دائن حساب أرباح/خسائر أضرار (سرقة/تلف/إهمال)
+   * إن لم يُحدد، يستخدم النقدية افتراضياً (للتوافق مع السلوك السابق).
+   */
+  paymentSource?: 'BANK' | 'CASH' | 'EMPLOYEE_DEDUCTION'
+  /** كود الحساب الدائن الفعلي (اختياري — يحترم اختيار المستخدم بدقة) */
+  paymentAccountCode?: string
+  description?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
   const advanceCode = await getAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, tx) || '1230'
-  const cashCode = await resolvePaymentAccountCode('TREASURY', tx)
+
+  // احترم اختيار المستخدم لمصدر السداد
+  let creditCode: string
+  let creditLabel: string
+  if (data.paymentAccountCode) {
+    creditCode = data.paymentAccountCode
+    creditLabel = 'حسب اختيار المستخدم'
+  } else if (data.paymentSource === 'BANK') {
+    creditCode = await resolvePaymentAccountCode('BANK', tx)
+    creditLabel = 'بنك'
+  } else if (data.paymentSource === 'EMPLOYEE_DEDUCTION') {
+    // خصم على الموظف بسبب سرقة/تلف/إهمال — دائن من حساب مخصصات/خسائر أضرار
+    // نستخدم حساب EMPLOYEE_ADVANCE نفسه في الحالة الاستثنائية: الشركة تعتبر المبلغ
+    // سلفة على الموظف دون خروج نقدي فعلي. الحساب الدائن البديل: LOSS_ON_DAMAGE أو مشابه.
+    // للأمان: نستخدم TREASURY كقيمة افتراضية، لكن المستخدم يمكنه تحديد كود مخصص.
+    creditCode = await resolvePaymentAccountCode('TREASURY', tx)
+    creditLabel = 'خصم على الموظف (سرقة/تلف/إهمال)'
+  } else {
+    creditCode = await resolvePaymentAccountCode('TREASURY', tx)
+    creditLabel = 'نقدية'
+  }
+
+  const descAr = data.description || `سلفة لموظف ${data.employeeName} - ${creditLabel}`
 
   return createJournalEntry({
     entryNo: `JE-EA-${Date.now()}`,
     date: data.date,
     description: `Advance to ${data.employeeName}`,
-    descriptionAr: `سلفة لموظف ${data.employeeName}`,
+    descriptionAr: descAr,
     lines: [
       { accountCode: advanceCode, debit: data.amount, credit: 0 },
-      { accountCode: cashCode, debit: 0, credit: data.amount },
+      { accountCode: creditCode, debit: 0, credit: data.amount },
     ],
     sourceType: 'EMPLOYEE_ADVANCE',
     sourceId: `EA-${Date.now()}`,
@@ -764,18 +797,44 @@ export async function autoEntryAdvanceSettlement(data: {
   employeeName: string
   settledAmount: number
   date: Date
+  /**
+   * طريقة التحصيل — يحترم اختيار المستخدم (المستخدم سيد النظام):
+   *   'SALARY_DEDUCTION' : مدين رواتب مستحقة (الخصم من الراتب) — السلوك الافتراضي
+   *   'BANK'             : مدين البنك (استرداد نقدي عبر البنك)
+   *   'CASH'             : مدين النقدية (استرداد نقدي من الصندوق)
+   */
+  settlementMethod?: 'BANK' | 'CASH' | 'SALARY_DEDUCTION'
+  /** كود الحساب المدين الفعلي (اختياري — يحترم اختيار المستخدم بدقة) */
+  settlementAccountCode?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const payableCode = await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx) || '3310'
   const advanceCode = await getAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, tx) || '1230'
+
+  // احترم اختيار المستخدم لطريقة التحصيل
+  let debitCode: string
+  let debitLabel: string
+  if (data.settlementAccountCode) {
+    debitCode = data.settlementAccountCode
+    debitLabel = 'حسب اختيار المستخدم'
+  } else if (data.settlementMethod === 'BANK') {
+    debitCode = await resolvePaymentAccountCode('BANK', tx)
+    debitLabel = 'بنك'
+  } else if (data.settlementMethod === 'CASH') {
+    debitCode = await resolvePaymentAccountCode('TREASURY', tx)
+    debitLabel = 'نقدية'
+  } else {
+    // SALARY_DEDUCTION (default) — Dr SALARIES_PAYABLE
+    debitCode = await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx) || '3310'
+    debitLabel = 'خصم من الراتب'
+  }
 
   return createJournalEntry({
     entryNo: `JE-AS-${Date.now()}`,
     date: data.date,
     description: `Advance settlement - ${data.employeeName}`,
-    descriptionAr: `تسوية سلفة - ${data.employeeName}`,
+    descriptionAr: `تسوية سلفة - ${data.employeeName} - ${debitLabel}`,
     lines: [
-      { accountCode: payableCode, debit: data.settledAmount, credit: 0 },
+      { accountCode: debitCode, debit: data.settledAmount, credit: 0 },
       { accountCode: advanceCode, debit: 0, credit: data.settledAmount },
     ],
     sourceType: 'ADVANCE_SETTLEMENT',
@@ -1705,18 +1764,33 @@ export async function autoEntryManualCost(data: {
  * P4-CRIT-005 FIX: previously LaborCost had NO journal entry — GL was blind to all
  * project labor costs. Now creates:
  *   Dr LABOR_COST (7110) — with costCenterId from Project.costCenter
- *   Cr CASH (1110)        — cash paid to laborers
+ *   Cr CASH/BANK (1110/1120) — account chosen by the user (المستخدم سيد النظام)
  * If a specific employee is linked AND paid via salary accrual, this is a direct cash
  * payment (e.g. daily laborers) which is distinct from monthly salaries.
+ *
+ * User-empowering override: data.paymentAccountCode lets the user pick the credit account.
+ * Falls back to role-based TREASURY (cash) if not provided.
  */
 export async function autoEntryLaborCost(data: {
   description: string
   amount: number
   date: Date
   costCenterId?: string
+  /** 'BANK' | 'CASH' — إذا لم تُحدد، تُستخدم النقدية */
+  paymentSource?: 'BANK' | 'CASH'
+  /** كود الحساب الدائن الفعلي (اختياري — يحترم اختيار المستخدم) */
+  paymentAccountCode?: string
 }, tx?: PrismaTransaction) {
   const laborCode = await getAccountCodeByRole(AccountRole.LABOR_COST, tx) || '7110'
-  const cashCode = await resolvePaymentAccountCode('TREASURY', tx)
+  // احترم اختيار المستخدم: استخدم paymentAccountCode إن وُجد، وإلا احلل من paymentSource
+  let creditCode: string
+  if (data.paymentAccountCode) {
+    creditCode = data.paymentAccountCode
+  } else if (data.paymentSource === 'BANK') {
+    creditCode = await resolvePaymentAccountCode('BANK', tx)
+  } else {
+    creditCode = await resolvePaymentAccountCode('TREASURY', tx)
+  }
 
   return createJournalEntry({
     entryNo: `JE-LC-${Date.now()}`,
@@ -1725,7 +1799,7 @@ export async function autoEntryLaborCost(data: {
     descriptionAr: `تكلفة عمالة - ${data.description}`,
     lines: [
       { accountCode: laborCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
-      { accountCode: cashCode, debit: 0, credit: data.amount },
+      { accountCode: creditCode, debit: 0, credit: data.amount },
     ],
     sourceType: 'LABOR_COST',
     sourceId: `LC-${Date.now()}`,

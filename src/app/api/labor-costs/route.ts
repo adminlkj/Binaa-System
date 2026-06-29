@@ -45,6 +45,8 @@ export async function POST(request: Request) {
 
     // P4-CRIT-005 FIX: atomic create + JE in $transaction.
     // Resolves costCenterId from Project.costCenter so the Dr line is tagged to the project.
+    // USER-EMPOWERING UPDATE: respects paymentSource + paymentAccountCode chosen by the user
+    // (المستخدم سيد النظام). Falls back to cash if not provided.
     const result = await db.$transaction(async (tx: PrismaTransaction) => {
       const project = await tx.project.findUnique({
         where: { id: projectId },
@@ -61,19 +63,24 @@ export async function POST(request: Request) {
           dailyRate: dailyRateNum,
           totalAmount,
           date: new Date(date),
+          // خصائص يختارها المستخدم (المستخدم سيد النظام)
+          paymentSource: body.paymentSource || null,
+          paymentAccountCode: body.paymentAccountCode || null,
         },
         include: {
           project: { select: { id: true, code: true, name: true } },
         },
       })
 
-      // P4-CRIT-005 FIX: create the missing JE (Dr LABOR_COST / Cr CASH) with costCenterId.
-      // R1 enforced — if the JE fails, the labor cost record is rolled back too.
+      // P4-CRIT-005 FIX: create the missing JE (Dr LABOR_COST / Cr CASH-or-BANK) with costCenterId.
+      // يحترم اختيار المستخدم لمصدر الدفع
       const journalEntry = await autoEntryLaborCost({
         description: laborCost.description,
         amount: laborCost.totalAmount,
         date: laborCost.date,
         costCenterId: project?.costCenterId || undefined,
+        paymentSource: body.paymentSource,
+        paymentAccountCode: body.paymentAccountCode,
       }, tx)
 
       if (journalEntry) {

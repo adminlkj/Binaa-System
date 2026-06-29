@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
+import { AccountSelector } from '@/components/shared/account-selector'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
 
@@ -31,6 +32,11 @@ interface Employee { id: string; code: string; name: string; position: string | 
 interface Advance {
   id: string; employeeId: string; amount: number; date: string
   settledAmount: number; status: string; description: string | null; journalEntryId: string | null
+  paymentSource: string | null
+  paymentAccountCode: string | null
+  settlementMethod: string | null
+  settlementAccountCode: string | null
+  settlementDate: string | null
   employee: Employee
 }
 
@@ -43,6 +49,20 @@ const statusConfig: Record<string, { label: { ar: string; en: string }; color: s
   PARTIALLY_SETTLED: { label: { ar: 'مسددة جزئياً', en: 'Partially Settled' }, color: 'text-blue-700', bg: 'bg-blue-100' },
   SETTLED: { label: { ar: 'مسددة', en: 'Settled' }, color: 'text-emerald-700', bg: 'bg-emerald-100' },
   CANCELLED: { label: { ar: 'ملغاة', en: 'Cancelled' }, color: 'text-gray-700', bg: 'bg-gray-100' },
+}
+
+// مصدر السداد
+const paymentSourceConfig: Record<string, { ar: string; en: string }> = {
+  CASH: { ar: 'نقدية', en: 'Cash' },
+  BANK: { ar: 'بنك', en: 'Bank' },
+  EMPLOYEE_DEDUCTION: { ar: 'خصم على الموظف (سرقة/تلف/إهمال)', en: 'Employee Deduction (theft/damage/negligence)' },
+}
+
+// طريقة التحصيل
+const settlementMethodConfig: Record<string, { ar: string; en: string }> = {
+  CASH: { ar: 'نقد', en: 'Cash' },
+  BANK: { ar: 'بنك', en: 'Bank' },
+  SALARY_DEDUCTION: { ar: 'خصم من الراتب', en: 'Salary Deduction' },
 }
 
 function AdvanceStatusBadge({ status, lang }: { status: string; lang: 'ar' | 'en' }) {
@@ -74,29 +94,53 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
   const [amount, setAmount] = useState('')
   const [date, setDate] = useState('')
   const [description, setDescription] = useState('')
+  // مصدر السداد (المستخدم سيد النظام)
+  const [paymentSource, setPaymentSource] = useState<'CASH' | 'BANK' | 'EMPLOYEE_DEDUCTION'>('CASH')
+  const [paymentAccountCode, setPaymentAccountCode] = useState<string | null>(null)
 
   React.useEffect(() => {
-    if (open) { setEmployeeId(''); setAmount(''); setDate(''); setDescription('') }
+    if (open) {
+      setEmployeeId('')
+      setAmount('')
+      setDate(new Date().toISOString().split('T')[0])
+      setDescription('')
+      setPaymentSource('CASH')
+      setPaymentAccountCode(null)
+    }
   }, [open])
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       fetch('/api/advances', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+        .then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'فشل') }); return r.json() }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['advances'] }); onOpenChange(false) },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    createMutation.mutate({ employeeId, amount, date, description: description || null })
+    createMutation.mutate({
+      employeeId,
+      amount,
+      date,
+      description: description || null,
+      paymentSource,
+      paymentAccountCode,
+    })
   }
+
+  // احسب الأدوار المطلوبة لمحدد الحساب حسب مصدر السداد
+  const accountRoles: string[] = paymentSource === 'BANK'
+    ? ['BANK']
+    : paymentSource === 'CASH'
+      ? ['CASH', 'TREASURY']
+      : ['EMPLOYEE_ADVANCE'] // EMPLOYEE_DEDUCTION — يختار المستخدم حساب الخصم
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t(lang, 'سلفة جديدة', 'New Advance')}</DialogTitle>
-          <DialogDescription>{t(lang, 'إضافة سلفة لموظف', 'Add employee advance')}</DialogDescription>
+          <DialogDescription>{t(lang, 'إضافة سلفة لموظف باحترام اختيارات المستخدم', 'Add employee advance — respects user choices')}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -114,14 +158,43 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
               <Input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} dir="ltr" required />
             </div>
             <div className="space-y-2">
-              <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
+              <Label>{t(lang, 'تاريخ تقديم السلفة *', 'Advance Date *')}</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+              <p className="text-xs text-muted-foreground">{t(lang, 'يمكن اختيار تاريخ في الماضي', 'Can select a past date')}</p>
             </div>
           </div>
+
+          {/* مصدر السداد — المستخدم سيد النظام */}
+          <div className="space-y-2">
+            <Label>{t(lang, 'مصدر السداد *', 'Payment Source *')}</Label>
+            <Select value={paymentSource} onValueChange={(v: 'CASH' | 'BANK' | 'EMPLOYEE_DEDUCTION') => { setPaymentSource(v); setPaymentAccountCode(null) }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="CASH">{t(lang, 'نقدية', 'Cash')}</SelectItem>
+                <SelectItem value="BANK">{t(lang, 'بنك', 'Bank')}</SelectItem>
+                <SelectItem value="EMPLOYEE_DEDUCTION">{t(lang, 'خصم على الموظف (سرقة/تلف/إهمال)', 'Employee Deduction (theft/damage/negligence)')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* محدد الحساب الدائن الفعلي */}
+          <AccountSelector
+            roles={accountRoles}
+            value={paymentAccountCode}
+            onValueChange={(_id, account) => setPaymentAccountCode(account.code)}
+            label={t(lang, 'الحساب الدائن (اختياري)', 'Credit Account (optional)')}
+            placeholder={t(lang, 'اختر الحساب...', 'Select account...')}
+          />
+
           <div className="space-y-2">
             <Label>{t(lang, 'الوصف', 'Description')}</Label>
             <Input value={description} onChange={e => setDescription(e.target.value)} placeholder={t(lang, 'وصف السلفة', 'Advance description')} />
           </div>
+
+          {createMutation.isError && (
+            <p className="text-sm text-rose-600">{(createMutation.error as Error)?.message || t(lang, 'حدث خطأ', 'Error')}</p>
+          )}
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
             <Button type="submit" disabled={createMutation.isPending || !employeeId || !amount || !date} className="bg-emerald-600 hover:bg-emerald-700">
@@ -141,17 +214,27 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
   const [settleAmount, setSettleAmount] = useState('')
+  // طريقة التحصيل + تاريخ التحصيل — المستخدم سيد النظام
+  const [settlementMethod, setSettlementMethod] = useState<'CASH' | 'BANK' | 'SALARY_DEDUCTION'>('SALARY_DEDUCTION')
+  const [settlementDate, setSettlementDate] = useState('')
+  const [settlementAccountCode, setSettlementAccountCode] = useState<string | null>(null)
 
   React.useEffect(() => {
     if (open && advance) {
       setSettleAmount(String(advance.amount - advance.settledAmount))
+      setSettlementMethod('SALARY_DEDUCTION')
+      setSettlementDate(new Date().toISOString().split('T')[0])
+      setSettlementAccountCode(null)
     }
   }, [open, advance])
 
   const settleMutation = useMutation({
-    mutationFn: (data: { id: string; settleAmount: string }) =>
-      fetch(`/api/advances/${data.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
-        .then(r => { if (!r.ok) throw new Error(); return r.json() }),
+    mutationFn: (data: { id: string; settleAmount: string; settlementMethod: string; settlementDate: string; settlementAccountCode?: string | null }) =>
+      fetch(`/api/advances/${data.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      }).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'فشل') }); return r.json() }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['advances'] }); onOpenChange(false) },
   })
 
@@ -161,12 +244,25 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    settleMutation.mutate({ id: advance.id, settleAmount })
+    settleMutation.mutate({
+      id: advance.id,
+      settleAmount,
+      settlementMethod,
+      settlementDate,
+      settlementAccountCode,
+    })
   }
+
+  // احسب الأدوار المطلوبة لمحدد الحساب حسب طريقة التحصيل
+  const accountRoles: string[] = settlementMethod === 'BANK'
+    ? ['BANK']
+    : settlementMethod === 'CASH'
+      ? ['CASH', 'TREASURY']
+      : ['SALARIES_PAYABLE']
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t(lang, 'تسوية السلفة', 'Settle Advance')}</DialogTitle>
           <DialogDescription>
@@ -188,9 +284,43 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
             <Label>{t(lang, 'مبلغ التسوية *', 'Settlement Amount *')}</Label>
             <Input type="number" min="0.01" max={remaining} step="0.01" value={settleAmount} onChange={e => setSettleAmount(e.target.value)} dir="ltr" required />
           </div>
+
+          {/* طريقة التحصيل — المستخدم سيد النظام */}
+          <div className="space-y-2">
+            <Label>{t(lang, 'طريقة التحصيل *', 'Collection Method *')}</Label>
+            <Select value={settlementMethod} onValueChange={(v: 'CASH' | 'BANK' | 'SALARY_DEDUCTION') => { setSettlementMethod(v); setSettlementAccountCode(null) }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SALARY_DEDUCTION">{t(lang, 'خصم من الراتب', 'Salary Deduction')}</SelectItem>
+                <SelectItem value="BANK">{t(lang, 'بنك', 'Bank')}</SelectItem>
+                <SelectItem value="CASH">{t(lang, 'نقد', 'Cash')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* تاريخ التحصيل */}
+          <div className="space-y-2">
+            <Label>{t(lang, 'تاريخ التحصيل *', 'Collection Date *')}</Label>
+            <Input type="date" value={settlementDate} onChange={e => setSettlementDate(e.target.value)} required />
+            <p className="text-xs text-muted-foreground">{t(lang, 'يمكن اختيار تاريخ في الماضي أو المستقبل', 'Can be past or future date')}</p>
+          </div>
+
+          {/* محدد الحساب المدين الفعلي */}
+          <AccountSelector
+            roles={accountRoles}
+            value={settlementAccountCode}
+            onValueChange={(_id, account) => setSettlementAccountCode(account.code)}
+            label={t(lang, 'الحساب المدين (اختياري)', 'Debit Account (optional)')}
+            placeholder={t(lang, 'اختر الحساب...', 'Select account...')}
+          />
+
+          {settleMutation.isError && (
+            <p className="text-sm text-rose-600">{(settleMutation.error as Error)?.message || t(lang, 'حدث خطأ', 'Error')}</p>
+          )}
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t(lang, 'إلغاء', 'Cancel')}</Button>
-            <Button type="submit" disabled={settleMutation.isPending || !settleAmount} className="bg-emerald-600 hover:bg-emerald-700">
+            <Button type="submit" disabled={settleMutation.isPending || !settleAmount || !settlementDate} className="bg-emerald-600 hover:bg-emerald-700">
               {settleMutation.isPending ? t(lang, 'جاري التسوية...', 'Settling...') : t(lang, 'تسوية', 'Settle')}
             </Button>
           </DialogFooter>
@@ -241,7 +371,7 @@ export function AdvancesModule() {
   return (
     <ModuleLayout
       title={{ ar: 'العهد والسلف', en: 'Advances' }}
-      subtitle={{ ar: 'إدارة سلف الموظفين', en: 'Manage employee advances' }}
+      subtitle={{ ar: 'إدارة سلف الموظفين باحترام اختيارات المستخدم لمصدر السداد وطريقة التحصيل', en: 'Manage employee advances — respects user choices for payment source and collection method' }}
       actions={
         <div className="flex items-center gap-2">
           <PrintButton type="advance-voucher" size="icon" />
@@ -339,10 +469,13 @@ export function AdvancesModule() {
                     <TableHead className="text-right">{t(lang, 'المبلغ', 'Amount')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'المسدد', 'Settled')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'المتبقي', 'Remaining')}</TableHead>
-                    <TableHead className="text-right">{t(lang, 'التاريخ', 'Date')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'تاريخ السلفة', 'Advance Date')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'مصدر السداد', 'Payment Source')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'طريقة التحصيل', 'Collection Method')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'تاريخ التحصيل', 'Collection Date')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الوصف', 'Description')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الحالة', 'Status')}</TableHead>
-                    <TableHead className="text-right">{t(lang, 'القيد المحاسبي', 'Accounting')}</TableHead>
+                    <TableHead className="text-right">{t(lang, 'القيد', 'Entry')}</TableHead>
                     <TableHead className="text-right">{t(lang, 'الإجراءات', 'Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -354,6 +487,17 @@ export function AdvancesModule() {
                       <TableCell><MoneyDisplay value={a.settledAmount} lang={lang} size="sm" className="text-emerald-700" /></TableCell>
                       <TableCell><MoneyDisplay value={a.amount - a.settledAmount} lang={lang} bold size="sm" className="text-rose-700" /></TableCell>
                       <TableCell>{formatDate(a.date, lang)}</TableCell>
+                      <TableCell className="text-xs">
+                        {a.paymentSource
+                          ? <Badge variant="outline" className="text-xs">{(paymentSourceConfig[a.paymentSource] || { ar: a.paymentSource, en: a.paymentSource })[lang]}</Badge>
+                          : <span className="text-muted-foreground">{t(lang, 'نقدية (افتراضي)', 'Cash (default)')}</span>}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {a.settlementMethod
+                          ? <Badge variant="outline" className="text-xs">{(settlementMethodConfig[a.settlementMethod] || { ar: a.settlementMethod, en: a.settlementMethod })[lang]}</Badge>
+                          : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell>{a.settlementDate ? formatDate(a.settlementDate, lang) : '—'}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">{a.description || '—'}</TableCell>
                       <TableCell><AdvanceStatusBadge status={a.status} lang={lang} /></TableCell>
                       <TableCell>

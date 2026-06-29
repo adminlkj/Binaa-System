@@ -1386,6 +1386,10 @@ model LaborCost {
   totalAmount     Decimal  @default(0)
   date            DateTime
   journalEntryId  String?  // JE link (P4-CRIT-005) — Dr PROJECT_COST (with costCenterId) / Cr CASH
+  // === تفاصيل يختارها المستخدم (المستخدم سيد النظام) ===
+  // مصدر الدفع: بنك / نقدية (يحترم اختيار المستخدم بدل الإجبار على النقدية)
+  paymentSource      String? // 'BANK' | 'CASH'
+  paymentAccountCode String? // كود الحساب الدائن الفعلي المستخدم في القيد
   deletedAt       DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -1728,6 +1732,19 @@ model EmployeeAdvance {
   status         AdvanceStatus @default(PENDING)
   description    String?
   journalEntryId String?
+
+  // === تفاصيل يختارها المستخدم (المستخدم سيد النظام) ===
+  // مصدر السداد عند إنشاء السلفة: بنك / نقدية / خصم على الموظف (سرقة/تلف/إهمال)
+  paymentSource      String? // 'BANK' | 'CASH' | 'EMPLOYEE_DEDUCTION'
+  // كود الحساب الدائن الفعلي المستخدم في القيد (يحترم اختيار المستخدم)
+  paymentAccountCode String?
+  // طريقة تحصيل السلفة عند التسوية: بنك / نقد / خصم من الراتب
+  settlementMethod   String? // 'BANK' | 'CASH' | 'SALARY_DEDUCTION'
+  // كود الحساب المدين الفعلي المستخدم في قيد التسوية
+  settlementAccountCode String?
+  // تاريخ التحصيل (قد يختلف عن تاريخ الإنشاء)
+  settlementDate     DateTime?
+
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?

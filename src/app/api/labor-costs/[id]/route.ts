@@ -39,6 +39,9 @@ export async function PUT(
     if (body.days !== undefined) data.days = parseFloat(body.days)
     if (body.dailyRate !== undefined) data.dailyRate = parseFloat(body.dailyRate)
     if (body.date !== undefined) data.date = new Date(body.date)
+    // خصائص يختارها المستخدم (المستخدم سيد النظام)
+    if (body.paymentSource !== undefined) data.paymentSource = body.paymentSource
+    if (body.paymentAccountCode !== undefined) data.paymentAccountCode = body.paymentAccountCode
 
     // Recalculate total if workers, days, or dailyRate changed
     if (body.workers !== undefined || body.days !== undefined || body.dailyRate !== undefined) {

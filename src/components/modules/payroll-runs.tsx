@@ -115,7 +115,7 @@ const statusConfig: Record<PayrollRunStatus, { label: { ar: string; en: string }
 }
 
 function StatusBadge({ status, lang }: { status: PayrollRunStatus; lang: 'ar' | 'en' }) {
-  const cfg = statusConfig[status]
+  const cfg = statusConfig[status] || { label: { ar: status, en: status }, color: 'text-gray-700', bg: 'bg-gray-100' }
   return <Badge className={`${cfg.bg} ${cfg.color} border-0`}>{cfg.label[lang]}</Badge>
 }
 
@@ -239,12 +239,12 @@ function CreatePayrollRunDialog({ open, onOpenChange }: {
               {t('فلترة نوع الراتب', 'Salary Type Filter', lang)}
             </h4>
             <Select
-              value={form.salaryTypeFilter}
-              onValueChange={(v: 'MONTHLY' | 'HOURLY') => setForm(f => ({ ...f, salaryTypeFilter: v }))}
+              value={form.salaryTypeFilter || 'ALL'}
+              onValueChange={(v: string) => setForm(f => ({ ...f, salaryTypeFilter: v === 'ALL' ? '' : v as 'MONTHLY' | 'HOURLY' }))}
             >
               <SelectTrigger><SelectValue placeholder={t('جميع الأنواع', 'All Types', lang)} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">{t('جميع الأنواع', 'All Types', lang)}</SelectItem>
+                <SelectItem value="ALL">{t('جميع الأنواع', 'All Types', lang)}</SelectItem>
                 <SelectItem value="MONTHLY">{t('شهري', 'Monthly', lang)}</SelectItem>
                 <SelectItem value="HOURLY">{t('بالساعة', 'Hourly', lang)}</SelectItem>
               </SelectContent>
@@ -375,18 +375,19 @@ function PayrollRunDetail({ payrollRun, onBack }: {
   const [bankAccountNameAr, setBankAccountNameAr] = useState('البنك')
 
   // ============ Column totals (15-column full breakdown) ============
-  const totalBasic = lines.reduce((sum, l) => sum + (l.salaryType === 'MONTHLY' ? (l.basicSalary || 0) : (l.hourlySalary || 0)), 0)
-  const totalHousing = lines.reduce((sum, l) => sum + (l.housingAllowance || 0), 0)
-  const totalTransport = lines.reduce((sum, l) => sum + (l.transportAllowance || 0), 0)
-  const totalOther = lines.reduce((sum, l) => sum + (l.otherAllowances || 0), 0)
-  const totalOvertime = lines.reduce((sum, l) => sum + (l.overtimeAmount || 0), 0)
-  const totalGosi = lines.reduce((sum, l) => sum + (l.gosiDeduction || 0), 0)
-  const totalDeductions = lines.reduce((sum, l) => sum + (l.deductions || 0), 0)
-  const totalHours = lines.reduce((sum, l) => sum + (l.workHours || 0), 0)
+  // الحقول تأتي من Prisma Decimal كنصوص — حوّلها لرقم دائماً
+  const totalBasic = lines.reduce((sum, l) => sum + Number(l.salaryType === 'MONTHLY' ? (l.basicSalary || 0) : (l.hourlySalary || 0)), 0)
+  const totalHousing = lines.reduce((sum, l) => sum + Number(l.housingAllowance || 0), 0)
+  const totalTransport = lines.reduce((sum, l) => sum + Number(l.transportAllowance || 0), 0)
+  const totalOther = lines.reduce((sum, l) => sum + Number(l.otherAllowances || 0), 0)
+  const totalOvertime = lines.reduce((sum, l) => sum + Number(l.overtimeAmount || 0), 0)
+  const totalGosi = lines.reduce((sum, l) => sum + Number(l.gosiDeduction || 0), 0)
+  const totalDeductions = lines.reduce((sum, l) => sum + Number(l.deductions || 0), 0)
+  const totalHours = lines.reduce((sum, l) => sum + Number(l.workHours || 0), 0)
 
   // JE preview lines for payroll payment (separate from accrual)
   const jeLines = useMemo<JePreviewLine[]>(() => {
-    const totalNet = payrollRun.totalNet
+    const totalNet = Number(payrollRun.totalNet)
     if (totalNet <= 0 || payrollRun.status !== 'APPROVED') return []
     return [
       { accountCode: '3310', accountNameAr: 'رواتب مستحقة', debit: totalNet, credit: 0 },
@@ -431,17 +432,17 @@ function PayrollRunDetail({ payrollRun, onBack }: {
       code: l.employee.code,
       name: l.employee.nameAr || l.employee.name,
       salaryType: l.salaryType === 'MONTHLY' ? (lang === 'ar' ? 'شهري' : 'Monthly') : (lang === 'ar' ? 'بالساعة' : 'Hourly'),
-      basic: (l.salaryType === 'MONTHLY' ? l.basicSalary : l.hourlySalary).toFixed(2),
-      hours: l.salaryType === 'HOURLY' ? l.workHours.toFixed(1) : '—',
-      hourlyRate: l.salaryType === 'HOURLY' ? l.hourlyRate.toFixed(2) : '—',
-      housing: l.housingAllowance.toFixed(2),
-      transport: l.transportAllowance.toFixed(2),
-      other: l.otherAllowances.toFixed(2),
-      overtime: l.overtimeAmount.toFixed(2),
-      totalEntitlement: l.totalEntitlement.toFixed(2),
-      deductions: l.deductions.toFixed(2),
-      gosi: l.gosiDeduction.toFixed(2),
-      netSalary: l.netSalary.toFixed(2),
+      basic: Number(l.salaryType === 'MONTHLY' ? l.basicSalary : l.hourlySalary).toFixed(2),
+      hours: l.salaryType === 'HOURLY' ? Number(l.workHours).toFixed(1) : '—',
+      hourlyRate: l.salaryType === 'HOURLY' ? Number(l.hourlyRate).toFixed(2) : '—',
+      housing: Number(l.housingAllowance).toFixed(2),
+      transport: Number(l.transportAllowance).toFixed(2),
+      other: Number(l.otherAllowances).toFixed(2),
+      overtime: Number(l.overtimeAmount).toFixed(2),
+      totalEntitlement: Number(l.totalEntitlement).toFixed(2),
+      deductions: Number(l.deductions).toFixed(2),
+      gosi: Number(l.gosiDeduction).toFixed(2),
+      netSalary: Number(l.netSalary).toFixed(2),
       project: l.project?.nameAr || l.project?.name || '—',
     })),
     totals: [
@@ -450,15 +451,15 @@ function PayrollRunDetail({ payrollRun, onBack }: {
       { label: lang === 'ar' ? 'إجمالي بدل النقل' : 'Total Transport', value: totalTransport },
       { label: lang === 'ar' ? 'إجمالي البدلات الأخرى' : 'Total Other Allowances', value: totalOther },
       { label: lang === 'ar' ? 'إجمالي الحوافز/العمل الإضافي' : 'Total Overtime', value: totalOvertime },
-      { label: lang === 'ar' ? 'إجمالي الاستحقاق' : 'Total Entitlement', value: payrollRun.totalAmount },
+      { label: lang === 'ar' ? 'إجمالي الاستحقاق' : 'Total Entitlement', value: Number(payrollRun.totalAmount) },
       { label: lang === 'ar' ? 'إجمالي الخصومات' : 'Total Deductions', value: totalDeductions },
       { label: lang === 'ar' ? 'إجمالي التأمينات' : 'Total GOSI', value: totalGosi },
-      { label: lang === 'ar' ? 'إجمالي الصافي' : 'Total Net', value: payrollRun.totalNet, isGrand: true },
+      { label: lang === 'ar' ? 'إجمالي الصافي' : 'Total Net', value: Number(payrollRun.totalNet), isGrand: true },
     ],
     infoItems: [
       { label: lang === 'ar' ? 'كود الكشف' : 'Statement Code', value: payrollRun.code },
       { label: lang === 'ar' ? 'الفترة' : 'Period', value: formatMonth(payrollRun.month, payrollRun.year, lang) },
-      { label: lang === 'ar' ? 'الحالة' : 'Status', value: statusConfig[payrollRun.status].label[lang] },
+      { label: lang === 'ar' ? 'الحالة' : 'Status', value: (statusConfig[payrollRun.status as PayrollRunStatus] || { label: { ar: payrollRun.status, en: payrollRun.status } }).label[lang] },
       { label: lang === 'ar' ? 'عدد الموظفين' : 'Employees', value: String(lines.length) },
     ],
   }
@@ -486,17 +487,17 @@ function PayrollRunDetail({ payrollRun, onBack }: {
       code: l.employee.code,
       name: l.employee.nameAr || l.employee.name,
       salaryType: l.salaryType === 'MONTHLY' ? 'Monthly' : 'Hourly',
-      basic: (l.salaryType === 'MONTHLY' ? l.basicSalary : l.hourlySalary).toFixed(2),
-      hours: l.salaryType === 'HOURLY' ? l.workHours.toFixed(1) : '—',
-      hourlyRate: l.salaryType === 'HOURLY' ? l.hourlyRate.toFixed(2) : '—',
-      housing: l.housingAllowance.toFixed(2),
-      transport: l.transportAllowance.toFixed(2),
-      other: l.otherAllowances.toFixed(2),
-      overtime: l.overtimeAmount.toFixed(2),
-      totalEntitlement: l.totalEntitlement.toFixed(2),
-      deductions: l.deductions.toFixed(2),
-      gosi: l.gosiDeduction.toFixed(2),
-      netSalary: l.netSalary.toFixed(2),
+      basic: Number(l.salaryType === 'MONTHLY' ? l.basicSalary : l.hourlySalary).toFixed(2),
+      hours: l.salaryType === 'HOURLY' ? Number(l.workHours).toFixed(1) : '—',
+      hourlyRate: l.salaryType === 'HOURLY' ? Number(l.hourlyRate).toFixed(2) : '—',
+      housing: Number(l.housingAllowance).toFixed(2),
+      transport: Number(l.transportAllowance).toFixed(2),
+      other: Number(l.otherAllowances).toFixed(2),
+      overtime: Number(l.overtimeAmount).toFixed(2),
+      totalEntitlement: Number(l.totalEntitlement).toFixed(2),
+      deductions: Number(l.deductions).toFixed(2),
+      gosi: Number(l.gosiDeduction).toFixed(2),
+      netSalary: Number(l.netSalary).toFixed(2),
       project: l.project?.nameAr || l.project?.name || '—',
     })), `payroll-statement-${payrollRun.code}`, columns)
   }
@@ -830,9 +831,10 @@ export function PayrollRunsModule() {
       code: run.code,
       period: formatMonth(run.month, run.year, lang),
       employees: String(run._count?.lines || 0),
-      totalAmount: run.totalAmount.toFixed(2),
-      totalNet: run.totalNet.toFixed(2),
-      status: statusConfig[run.status].label[lang],
+      // الحقول تأتي من Prisma Decimal كنصوص — حوّلها لرقم أولاً
+      totalAmount: Number(run.totalAmount || 0).toFixed(2),
+      totalNet: Number(run.totalNet || 0).toFixed(2),
+      status: statusConfig[run.status as PayrollRunStatus]?.label?.[lang] || run.status,
     })),
     infoItems: [
       { label: lang === 'ar' ? 'تاريخ الطباعة' : 'Print Date', value: new Date().toLocaleDateString() },
@@ -852,8 +854,8 @@ export function PayrollRunsModule() {
       code: run.code,
       period: formatMonth(run.month, run.year, 'en'),
       employees: String(run._count?.lines || 0),
-      totalAmount: run.totalAmount.toFixed(2),
-      totalNet: run.totalNet.toFixed(2),
+      totalAmount: Number(run.totalAmount || 0).toFixed(2),
+      totalNet: Number(run.totalNet || 0).toFixed(2),
       status: run.status,
     })), `payroll-statements-${new Date().toISOString().slice(0, 10)}`, columns)
   }

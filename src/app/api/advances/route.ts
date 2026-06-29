@@ -32,17 +32,23 @@ export async function POST(request: Request) {
           settledAmount: 0,
           status: 'PENDING',
           description: body.description || null,
+          // خصائص يختارها المستخدم (المستخدم سيد النظام)
+          paymentSource: body.paymentSource || null,
+          paymentAccountCode: body.paymentAccountCode || null,
         },
         include: {
           employee: { select: { id: true, code: true, name: true, profession: true } },
         },
       })
 
-      // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
+      // JE يحترم اختيار المستخدم لمصدر السداد
       const journalEntry = await autoEntryEmployeeAdvance({
         employeeName: advance.employee.name,
         amount: advance.amount,
         date: advance.date,
+        paymentSource: body.paymentSource,
+        paymentAccountCode: body.paymentAccountCode,
+        description: body.description || undefined,
       }, tx)
 
       if (journalEntry) {
@@ -99,19 +105,23 @@ export async function PUT(request: Request) {
         data: {
           settledAmount: newSettledAmount,
           status: newStatus,
+          // خصائص يختارها المستخدم للتسوية (المستخدم سيد النظام)
+          settlementMethod: body.settlementMethod || existing.settlementMethod,
+          settlementAccountCode: body.settlementAccountCode || existing.settlementAccountCode,
+          settlementDate: body.settlementDate ? new Date(body.settlementDate) : (existing.settlementDate ?? new Date()),
         },
         include: {
           employee: { select: { id: true, code: true, name: true, profession: true } },
         },
       })
 
-      // Note: initializeChartOfAccounts() removed — chart of accounts is seeded once.
-      // Settlement JE (Dr Payroll / Cr Employee Advance). R1 enforced — if this
-      // fails, the settlement update above is rolled back too.
+      // Settlement JE يحترم اختيار المستخدم لطريقة التحصيل وتاريخ التحصيل
       await autoEntryAdvanceSettlement({
         employeeName: updated.employee.name,
         settledAmount: parseFloat(String(settledAmount)),
-        date: new Date(),
+        date: body.settlementDate ? new Date(body.settlementDate) : new Date(),
+        settlementMethod: body.settlementMethod,
+        settlementAccountCode: body.settlementAccountCode,
       }, tx)
 
       return updated

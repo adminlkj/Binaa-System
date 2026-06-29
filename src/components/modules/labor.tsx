@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { PrintButton } from '@/components/shared/print-button'
+import { AccountSelector } from '@/components/shared/account-selector'
 import { useAppStore, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { toast } from 'sonner'
@@ -35,6 +36,8 @@ interface ProjectOption { id: string; code: string; name: string }
 interface LaborCost {
   id: string; projectId: string; description: string; workers: number
   days: number; dailyRate: number; totalAmount: number; date: string
+  paymentSource: string | null
+  paymentAccountCode: string | null
   project: { id: string; code: string; name: string }
 }
 
@@ -73,6 +76,9 @@ function LaborCostFormDialog({
   const [days, setDays] = useState('')
   const [dailyRate, setDailyRate] = useState('')
   const [date, setDate] = useState('')
+  // مصدر الدفع — المستخدم سيد النظام
+  const [paymentSource, setPaymentSource] = useState<'CASH' | 'BANK'>('CASH')
+  const [paymentAccountCode, setPaymentAccountCode] = useState<string | null>(null)
 
   React.useEffect(() => {
     if (open) {
@@ -83,9 +89,12 @@ function LaborCostFormDialog({
         setDays(String(editItem.days))
         setDailyRate(String(editItem.dailyRate))
         setDate(editItem.date ? new Date(editItem.date).toISOString().split('T')[0] : '')
+        setPaymentSource((editItem.paymentSource as 'CASH' | 'BANK') || 'CASH')
+        setPaymentAccountCode(editItem.paymentAccountCode || null)
       } else {
         setProjectId(''); setDescription(''); setWorkers('')
         setDays(''); setDailyRate(''); setDate('')
+        setPaymentSource('CASH'); setPaymentAccountCode(null)
       }
     }
   }, [open, editItem])
@@ -99,25 +108,25 @@ function LaborCostFormDialog({
 
   const saveMutation = useMutation({
     mutationFn: (data: Record<string, unknown> & { id?: string }) => {
-      const payload = { projectId, description, workers, days, dailyRate, date }
+      const payload = { projectId, description, workers, days, dailyRate, date, paymentSource, paymentAccountCode }
       if (data.id) {
-        return fetch(`/api/labor-costs/${data.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+        return fetch(`/api/labor-costs/${data.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'فشل') }); return r.json() })
       }
-      return fetch('/api/labor-costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) throw new Error(); return r.json() })
+      return fetch('/api/labor-costs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) return r.json().then(e => { throw new Error(e.error || 'فشل') }); return r.json() })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['labor-costs'] })
       toast(t(lang, isEdit ? 'تم تحديث تكلفة العمالة بنجاح' : 'تم إضافة تكلفة العمالة بنجاح', isEdit ? 'Labor cost updated successfully' : 'Labor cost added successfully'))
       onOpenChange(false)
     },
-    onError: () => {
-      toast.error(t(lang, 'فشل في حفظ تكلفة العمالة', 'Failed to save labor cost'))
+    onError: (err: Error) => {
+      toast.error(err.message || t(lang, 'فشل في حفظ تكلفة العمالة', 'Failed to save labor cost'))
     },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    saveMutation.mutate({ projectId, description, workers, days, dailyRate, date, id: editItem?.id })
+    saveMutation.mutate({ projectId, description, workers, days, dailyRate, date, paymentSource, paymentAccountCode, id: editItem?.id })
   }
 
   return (
@@ -157,6 +166,29 @@ function LaborCostFormDialog({
             <div className="space-y-2">
               <Label>{t(lang, 'التاريخ *', 'Date *')}</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+            </div>
+          </div>
+
+          {/* مصدر الدفع — المستخدم سيد النظام */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>{t(lang, 'مصدر الدفع *', 'Payment Source *')}</Label>
+              <Select value={paymentSource} onValueChange={(v: 'CASH' | 'BANK') => { setPaymentSource(v); setPaymentAccountCode(null) }}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">{t(lang, 'نقدية', 'Cash')}</SelectItem>
+                  <SelectItem value="BANK">{t(lang, 'بنك', 'Bank')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>{t(lang, 'الحساب الدائن (اختياري)', 'Credit Account (optional)')}</Label>
+              <AccountSelector
+                roles={paymentSource === 'BANK' ? ['BANK'] : ['CASH', 'TREASURY']}
+                value={paymentAccountCode}
+                onValueChange={(_id, account) => setPaymentAccountCode(account.code)}
+                placeholder={t(lang, 'اختر الحساب...', 'Select account...')}
+              />
             </div>
           </div>
 

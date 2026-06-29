@@ -5,6 +5,9 @@ import { NextResponse } from 'next/server'
 // P4-CRIT-006 FIX: was reading Employee.position (non-existent field — every settle from UI crashed with 500).
 // Now reads `profession` and reuses the bulk-PUT logic (advance update + autoEntryAdvanceSettlement JE in $transaction).
 // The settlement JE itself uses the corrected Dr SALARIES_PAYABLE / Cr EMPLOYEE_ADVANCE (see engine.ts P4-CRIT-010).
+//
+// USER-EMPOWERING UPDATE: now respects settlementMethod + settlementDate chosen by the user
+// (المستخدم سيد النظام). Falls back to salary deduction + today if not provided.
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -43,6 +46,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       newStatus = 'PARTIALLY_SETTLED'
     }
 
+    // تاريخ التحصيل: يحترم اختيار المستخدم، والا الافتراضي اليوم
+    const settlementDate = body.settlementDate ? new Date(body.settlementDate) : new Date()
+
     // P4-CRIT-006 FIX: wrap in $transaction with the settlement JE (R1 enforced).
     const advance = await db.$transaction(async (tx: PrismaTransaction) => {
       const updated = await tx.employeeAdvance.update({
@@ -50,17 +56,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         data: {
           settledAmount: newSettledAmount,
           status: newStatus,
+          // خصائص يختارها المستخدم للتسوية (المستخدم سيد النظام)
+          settlementMethod: body.settlementMethod || existing.settlementMethod,
+          settlementAccountCode: body.settlementAccountCode || existing.settlementAccountCode,
+          settlementDate,
         },
         include: {
           employee: { select: { id: true, code: true, name: true, profession: true } },
         },
       })
 
-      // Settlement JE: Dr SALARIES_PAYABLE / Cr EMPLOYEE_ADVANCE (P4-CRIT-010 fixed in engine.ts)
+      // Settlement JE يحترم اختيار المستخدم لطريقة التحصيل
       await autoEntryAdvanceSettlement({
         employeeName: updated.employee.name,
         settledAmount: settleAmount,
-        date: new Date(),
+        date: settlementDate,
+        settlementMethod: body.settlementMethod,
+        settlementAccountCode: body.settlementAccountCode,
       }, tx)
 
       return updated

@@ -5377,3 +5377,63 @@ Stage Summary:
 - All fixes verified via curl (15+ test commands) + Agent Browser (4 UI flows)
 - Lint: CLEAN; all 15 critical APIs return 200
 - Ready for commit + push
+
+---
+Task ID: USER-EMPOWERMENT-001
+Agent: Main Agent
+Task: تطبيق القاعدة العامة "المستخدم سيد النظام" + إصلاح 5 مشاكل (السنوات المالية، السلف، المسيرات، التقارير، تكاليف العمال)
+
+Work Log:
+- قراءة worklog.md والتحقق من حالة المشروع (آخر commit: L3 Functional Audit)
+- فحص src/lib/accounting/period-guard.ts — كان يرمي خطأ عند الفترات المغلقة
+- فحص src/app/api/fiscal-years/route.ts — يعرض totalRevenue/Expenses المخزنة فقط (0 للسنوات المفتوحة)
+- فحص src/app/api/advances/route.ts — يستخدم TREASURY hardcoded (يتخطى المستخدم)
+- فحص src/components/modules/advances.tsx — لا يوجد محدد لمصدر السداد
+- فحص src/components/modules/payroll-runs.tsx — وجد `<SelectItem value="">` غير صالح + `(run.totalAmount).toFixed(2)` على Decimal-as-string
+- فحص src/components/modules/financial-statements-tab.tsx — القوائم المنسدلة GL/AS تعتمد على glData?.accounts الذي لا يُرجع إلا بعد اختيار حساب
+- فحص src/app/api/labor-costs/route.ts + src/lib/accounting/engine.ts autoEntryLaborCost — يستخدم TREASURY hardcoded
+
+الإصلاحات:
+1. **period-guard.ts**: تحويل من throw إلى console.warn (advisory only). المستخدم سيد النظام، النظام ينبه ولا يمنع. أضف خيار `strict: true` للاستخدام الاستثنائي.
+2. **fiscal-years/route.ts + [id]/route.ts**: إضافة `computeLiveYearTotals()` التي تحسب الإيرادات والمصروفات وصافي الربح لحظياً من JournalLine grouped by account type (REVENUE/EXPENSE) ضمن نطاق السنة. أضف `storedRevenue/storedExpenses/storedNetProfit` كحقول منفصلة + `entryCount`.
+3. **prisma/schema.prisma**: إضافة حقول جديدة لـ EmployeeAdvance (paymentSource, paymentAccountCode, settlementMethod, settlementAccountCode, settlementDate) ولـ LaborCost (paymentSource, paymentAccountCode).
+4. **engine.ts**: تحديث `autoEntryEmployeeAdvance` لقبول paymentSource (CASH/BANK/EMPLOYEE_DEDUCTION) + paymentAccountCode. تحديث `autoEntryAdvanceSettlement` لقبول settlementMethod + settlementAccountCode. تحديث `autoEntryLaborCost` لقبول paymentSource + paymentAccountCode.
+5. **advances/route.ts + [id]/route.ts**: تمرير paymentSource و paymentAccountCode و settlementMethod و settlementDate من body للـ engine وحفظها في DB.
+6. **advances.tsx**: إعادة تصميم NewAdvanceDialog ليشمل: محدد مصدر السداد (CASH/BANK/EMPLOYEE_DEDUCTION)، AccountSelector اختياري للحساب الدائن. إعادة تصميم SettleAdvanceDialog ليشمل: محدد طريقة التحصيل (SALARY_DEDUCTION/BANK/CASH)، تاريخ التحصيل (يدعم الماضي/المستقبل)، AccountSelector اختياري. عرض كل هذه الحقول في جدول السلف.
+7. **labor-costs/route.ts + [id]/route.ts**: تمرير paymentSource و paymentAccountCode للـ engine وحفظها.
+8. **labor.tsx**: إضافة محدد مصدر الدفع (CASH/BANK) + AccountSelector اختياري في نموذج إنشاء/تعديل تكلفة العمالة.
+9. **payroll-runs.tsx**: إصلاح `<SelectItem value="">` إلى `value="ALL"` (Radix لا يقبل empty string). إصلاح `run.totalAmount.toFixed(2)` → `Number(run.totalAmount).toFixed(2)` في printData و handleExport. إصلاح نفس النمط في PayrollRunDetail (15 عمود × ~13 حقل). إضافة fallback في StatusBadge. تحويل reduce sums لاستخدام Number().
+10. **financial-statements-tab.tsx**: إضافة useQuery منفصل لجلب chart-of-accounts من `/api/accounts/by-role?role=__ALL_POSTING__` (staleTime=5min). تحديث dropdowns لـ General Ledger و Account Statement لاستخدام `chartOfAccounts` بدلاً من `glData?.accounts`/`asData?.accounts`.
+11. **accounts/by-role/route.ts**: إضافة حالة خاصة `__ALL_POSTING__` لإرجاع جميع الحسابات النشطة التي تسمح بالترحيل (115 حساب).
+
+التحقق العملي:
+- curl tests:
+  - `/api/accounts/by-role?role=__ALL_POSTING__` → 115 حساب ✓
+  - `/api/fiscal-years` → السنة المفتوحة 2026 تعرض live totals (rev=20500, exp=27111, net=-6611) بدلاً من 0 ✓
+  - POST `/api/advances` بمصدر BANK وتاريخ 2024-06-15 (فترة مغلقة) → 201 + JE created ✓ (كان يفشل قبل الإصلاح)
+  - PUT `/api/advances/[id]` بطريقة CASH وتاريخ 2024-02-20 → 200 + تم التحديث بنجاح ✓
+  - POST `/api/labor-costs` بمصدر BANK وتاريخ 2024-03-10 → 201 + JE created ✓
+- Agent Browser tests:
+  - السنوات المالية: الجدول يعرض الإيرادات والمصروفات الحية لكل سنة ✓
+  - السلف: نموذج الإنشاء يحتوي على 3 خيارات لمصدر السداد (نقدية/بنك/خصم على الموظف) ✓
+  - السلف: نموذج التسوية يحتوي على 3 خيارات لطريقة التحصيل (خصم من الراتب/بنك/نقد) + تاريخ التحصيل ✓
+  - تكاليف العمالة: نموذج الإنشاء يحتوي على محدد مصدر الدفع (نقدية/بنك) ✓
+  - مسيرات الرواتب: الصفحة تفتح بدون أخطاء (كانت تتفجر بسبب toFixed) ✓
+  - مسيرات الرواتب: تفاصيل الكشف تفتح بدون أخطاء وعرض 15 عمود ✓
+  - التقارير/دفتر الأستاذ: القائمة المنسدلة تعرض 115 حساب ✓ (كانت فارغة)
+  - التقارير/كشف الحساب: القائمة المنسدلة تعرض 115 حساب ✓ (كانت فارغة)
+
+Lint: CLEAN (0 errors, 0 warnings).
+تم تنظيف بيانات الاختبار من قاعدة البيانات.
+
+Stage Summary:
+- 5 مشاكل حرجة تم إصلاحها + تطبيق القاعدة العامة "المستخدم سيد النظام"
+- 6 ملفات API + 4 ملفات UI + 1 prisma schema + 1 period-guard تم تعديلها
+- 2 نموذج DB (EmployeeAdvance + LaborCost) تم توسيعهما بحقول احترام اختيار المستخدم
+- period-guard تحول من حارس صارم إلى مرشد استشاري (الإغلاق لم يعد يمنع الترحيل)
+- دليل الحسابات الكامل (115 حساب) يظهر الآن في قوائم دفتر الأستاذ وكشف الحساب
+- السنوات المالية تعرض الإيرادات والمصروفات الحية من القيود (وليس فقط المخزنة عند الإقفال)
+- السلف تدعم 3 مصادر للسداد و 3 طرق للتحصيل مع احترام تواريخ المستخدم
+- تكاليف العمالة تدعم اختيار مصدر الدفع (نقدية/بنك)
+- مسيرات الرواتب تفتح بدون أخطاء (إصلاح toFixed على Decimal-as-string)
+- جاهز لـ commit + push

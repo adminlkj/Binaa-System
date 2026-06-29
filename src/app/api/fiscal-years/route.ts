@@ -1,7 +1,55 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
+
+// ============ Helper: compute live revenue/expenses/netProfit for a fiscal year ============
+// يحسب الإيرادات والمصروفات وصافي الربح لحظياً من القيود اليومية المرحّلة
+// داخل نطاق تاريخ السنة المالية. هذا يضمن ظهور الحركات الفعلية للسنة في بطاقتها
+// حتى لو كانت السنة ما زالت مفتوحة (الحقول المخزنة totalRevenue/totalExpenses
+// لا تُملأ إلا عند الإقفال).
+async function computeLiveYearTotals(startDate: Date, endDate: Date) {
+  // اجلب جميع بنود القيود المرحّلة ضمن نطاق السنة
+  const grouped = await db.journalLine.groupBy({
+    by: ['accountId'],
+    _sum: { debit: true, credit: true },
+    where: {
+      deletedAt: null,
+      journalEntry: {
+        status: 'POSTED',
+        deletedAt: null,
+        date: { gte: startDate, lte: endDate },
+      },
+    },
+  })
+
+  // خريطة أنواع الحسابات
+  const accounts = await db.account.findMany({
+    select: { id: true, type: true },
+  })
+  const typeMap = new Map(accounts.map(a => [a.id, a.type]))
+
+  let totalRevenue = 0
+  let totalExpenses = 0
+  for (const g of grouped) {
+    const t = typeMap.get(g.accountId)
+    if (!t) continue
+    const debit = toNumber(g._sum?.debit)
+    const credit = toNumber(g._sum?.credit)
+    if (t === 'REVENUE') {
+      // الإيرادات دائنية بطبيعتها: الرصيد = دائن - مدين
+      totalRevenue += credit - debit
+    } else if (t === 'EXPENSE') {
+      // المصروفات مدينية بطبيعتها: الرصيد = مدين - دائن
+      totalExpenses += debit - credit
+    }
+  }
+
+  return {
+    totalRevenue,
+    totalExpenses,
+    netProfit: totalRevenue - totalExpenses,
+  }
+}
 
 // ============ GET: List all fiscal years ============
 export async function GET() {
@@ -14,14 +62,26 @@ export async function GET() {
       orderBy: { startDate: 'desc' },
     })
 
-    const enriched = years.map(y => ({
-      ...serializeDecimal(y),
-      totalRevenue: toNumber(y.totalRevenue),
-      totalExpenses: toNumber(y.totalExpenses),
-      netProfit: toNumber(y.netProfit),
-      periodsCount: y._count.periods,
-      closedPeriods: y.periods.filter(p => p.status === 'CLOSED').length,
-    }))
+    // اجمع الحسابات الحية لكل سنة (متوازية للأداء)
+    const enriched = await Promise.all(
+      years.map(async (y) => {
+        const liveTotals = await computeLiveYearTotals(y.startDate, y.endDate)
+        return {
+          ...serializeDecimal(y),
+          // القيم المخزنة (تُملأ عند الإقفال)
+          storedRevenue: toNumber(y.totalRevenue),
+          storedExpenses: toNumber(y.totalExpenses),
+          storedNetProfit: toNumber(y.netProfit),
+          // القيم الحية (محسوبة من القيود الآن)
+          totalRevenue: liveTotals.totalRevenue,
+          totalExpenses: liveTotals.totalExpenses,
+          netProfit: liveTotals.netProfit,
+          // عدد العمليات داخل هذه السنة
+          periodsCount: y._count.periods,
+          closedPeriods: y.periods.filter(p => p.status === 'CLOSED').length,
+        }
+      })
+    )
 
     const currentYear = enriched.find(y => y.status === 'OPEN')
     const lastClosed = enriched.find(y => y.status === 'CLOSED')
