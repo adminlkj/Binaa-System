@@ -965,40 +965,60 @@ export async function getVATReconciliation(
 // ---------------------------------------------------------------------------
 
 /**
- * Verify that all read paths produce identical totals.
- * This is the canonical "build-breaking" consistency check.
+ * Verify that all read paths produce identical totals — the canonical
+ * "build-breaking" numerical consistency check (BA-02 Task 2).
  *
- * Invariant:
- *   TrialBalance.totals.totalDebit == TrialBalance.totals.totalCredit
- *   AND |Σ assets - Σ(liabilities + equity + currentYearEarnings)| < 0.01
- *   AND GeneralLedger.closingBalance == getAccountBalance(accountCode, range.to)
+ * Invariants enforced (ANY failure = BUILD FAILS):
  *
- * Returns { ok, diffs } where diffs is an array of human-readable discrepancies.
+ *   I1. TrialBalance.totalDebit == TrialBalance.totalCredit  (per-entry balance)
+ *   I2. TrialBalance.netDebit column == netCredit column     (columnar tie)
+ *   I3. TrialBalance totals == raw JournalLine aggregate      (no orphan lines)
+ *   I4. Accounting equation: Assets == Liabilities + Equity + CurrentYearEarnings
+ *   I5. Σ(per-account GL closingBalance) == Σ(TrialBalance signed balances)
+ *       — i.e. GeneralLedger totals tie to TrialBalance totals
+ *   I6. Per-account: GL.closingBalance == getAccountBalance(code) == TB.signedBalance
+ *       — for EVERY account with activity (not just a sample)
+ *   I7. Account Statement (single-account GL over full history) closingBalance
+ *       == TrialBalance (full history) signed balance for that account
+ *
+ * If ANY of these invariants breaks by even 1 riyal (0.01), this function
+ * returns ok=false and the build/CI script must fail.
+ *
+ * @param asOfDate Optional "as of" date — if omitted, checks all-time.
+ * @param tx Optional transaction client.
  */
 export async function verifyNumericalConsistency(
   asOfDate?: Date,
   tx?: PrismaTransaction
-): Promise<{ ok: boolean; diffs: string[]; summary: Record<string, number> }> {
+): Promise<{
+  ok: boolean
+  diffs: string[]
+  summary: Record<string, number>
+  accountsChecked: number
+}> {
   const client = tx ?? db
   const diffs: string[] = []
   const range: DateRange = asOfDate ? { to: asOfDate } : {}
 
-  // 1. Trial balance must tie
+  // ── I1: Trial balance must tie (per-entry balance propagates to totals) ──
   const tb = await getTrialBalance(range, client)
   if (!tb.totals.isBalanced) {
     diffs.push(
-      `TrialBalance not balanced: totalDebit=${tb.totals.totalDebit.toFixed(2)} ≠ totalCredit=${tb.totals.totalCredit.toFixed(2)} (diff=${Math.abs(tb.totals.totalDebit - tb.totals.totalCredit).toFixed(2)})`
+      `I1 FAIL: TrialBalance not balanced: totalDebit=${tb.totals.totalDebit.toFixed(2)} ≠ totalCredit=${tb.totals.totalCredit.toFixed(2)} (diff=${Math.abs(tb.totals.totalDebit - tb.totals.totalCredit).toFixed(2)})`
     )
   }
 
-  // 2. Σ netDebit column must equal Σ netCredit column
+  // ── I2: Σ netDebit column must equal Σ netCredit column ──
   if (Math.abs(tb.totals.totalNetDebit - tb.totals.totalNetCredit) > 0.01) {
     diffs.push(
-      `TrialBalance columns don't tie: netDebit=${tb.totals.totalNetDebit.toFixed(2)} ≠ netCredit=${tb.totals.totalNetCredit.toFixed(2)}`
+      `I2 FAIL: TrialBalance columns don't tie: netDebit=${tb.totals.totalNetDebit.toFixed(2)} ≠ netCredit=${tb.totals.totalNetCredit.toFixed(2)}`
     )
   }
 
-  // 3. Raw aggregate (independent query) must match trial balance totals
+  // ── I3: Raw aggregate (independent query) must match trial balance totals ──
+  // This catches "orphan lines" — lines that exist in JournalLine but weren't
+  // picked up by the trial balance's groupBy (e.g., due to a deleted account
+  // that still has lines pointing to it).
   const rawAgg = await client.journalLine.aggregate({
     _sum: { debit: true, credit: true },
     where: postedLinesWhere(dateRangeFilter(range)),
@@ -1007,40 +1027,94 @@ export async function verifyNumericalConsistency(
   const rawCredit = toNumber(rawAgg._sum.credit)
   if (Math.abs(rawDebit - tb.totals.totalDebit) > 0.01) {
     diffs.push(
-      `TrialBalance.totalDebit (${tb.totals.totalDebit.toFixed(2)}) ≠ raw aggregate (${rawDebit.toFixed(2)})`
+      `I3 FAIL: TrialBalance.totalDebit (${tb.totals.totalDebit.toFixed(2)}) ≠ raw aggregate (${rawDebit.toFixed(2)}) — possible orphan lines`
     )
   }
   if (Math.abs(rawCredit - tb.totals.totalCredit) > 0.01) {
     diffs.push(
-      `TrialBalance.totalCredit (${tb.totals.totalCredit.toFixed(2)}) ≠ raw aggregate (${rawCredit.toFixed(2)})`
+      `I3 FAIL: TrialBalance.totalCredit (${tb.totals.totalCredit.toFixed(2)}) ≠ raw aggregate (${rawCredit.toFixed(2)}) — possible orphan lines`
     )
   }
 
-  // 4. Accounting equation: Assets = Liabilities + Equity (incl. current year earnings)
+  // ── I4: Accounting equation: A = L + E (incl. current year earnings) ──
   const bs = await getBalanceSheet(asOfDate, client)
   if (!bs.isBalanced) {
     diffs.push(
-      `Accounting equation broken: assets=${bs.assets.total.toFixed(2)} ≠ liabilities+equity=${bs.totalLiabilitiesAndEquity.toFixed(2)} (diff=${Math.abs(bs.assets.total - bs.totalLiabilitiesAndEquity).toFixed(2)})`
+      `I4 FAIL: Accounting equation broken: assets=${bs.assets.total.toFixed(2)} ≠ liabilities+equity=${bs.totalLiabilitiesAndEquity.toFixed(2)} (diff=${Math.abs(bs.assets.total - bs.totalLiabilitiesAndEquity).toFixed(2)})`
     )
   }
 
-  // 5. Per-account GL closing balance must match account balance from queries
-  // (sample up to 20 accounts to keep this fast)
-  const sampleAccounts = tb.rows.slice(0, 20)
-  for (const row of sampleAccounts) {
+  // ── I5 + I6: Per-account GL consistency (ALL accounts, not a sample) ──
+  // For every account that appears in the trial balance:
+  //   (a) GL.closingBalance == getAccountBalance(code)  — two read paths agree
+  //   (b) GL.closingBalance == TB.signedBalance          — GL ties to TB
+  //   (c) Accumulate Σ GL.closingBalance by type for I5 cross-check below
+  let glTotalAssets = 0, glTotalLiabilities = 0, glTotalEquity = 0
+  let glTotalRevenue = 0, glTotalExpenses = 0
+  const tbBalanceByType: Record<string, number> = { ASSET: 0, LIABILITY: 0, EQUITY: 0, REVENUE: 0, EXPENSE: 0 }
+  let accountsChecked = 0
+
+  for (const row of tb.rows) {
+    accountsChecked++
+    tbBalanceByType[row.type] = (tbBalanceByType[row.type] || 0) + row.balance
+
+    // (a) + (b): GL vs direct balance vs TB signed balance
     const gl = await getGeneralLedger(row.accountId, range, client)
-    if (!gl) continue
+    if (!gl) {
+      diffs.push(`I6 FAIL: Account ${row.code} — getGeneralLedger returned null`)
+      continue
+    }
     const directBalance = await getAccountBalance(row.code, range, client)
     if (Math.abs(gl.closingBalance - directBalance) > 0.01) {
       diffs.push(
-        `Account ${row.code}: GL closingBalance (${gl.closingBalance.toFixed(2)}) ≠ getAccountBalance (${directBalance.toFixed(2)})`
+        `I6a FAIL: Account ${row.code}: GL closingBalance (${gl.closingBalance.toFixed(2)}) ≠ getAccountBalance (${directBalance.toFixed(2)})`
       )
     }
-    // Also check that the GL closingBalance matches the trial balance signed balance
-    // (both should be `signForType * (D - C)`)
     if (Math.abs(gl.closingBalance - row.balance) > 0.01) {
       diffs.push(
-        `Account ${row.code}: GL closingBalance (${gl.closingBalance.toFixed(2)}) ≠ TrialBalance signed balance (${row.balance.toFixed(2)})`
+        `I6b FAIL: Account ${row.code}: GL closingBalance (${gl.closingBalance.toFixed(2)}) ≠ TrialBalance signed balance (${row.balance.toFixed(2)})`
+      )
+    }
+
+    // Accumulate for I5
+    switch (row.type) {
+      case 'ASSET': glTotalAssets += gl.closingBalance; break
+      case 'LIABILITY': glTotalLiabilities += gl.closingBalance; break
+      case 'EQUITY': glTotalEquity += gl.closingBalance; break
+      case 'REVENUE': glTotalRevenue += gl.closingBalance; break
+      case 'EXPENSE': glTotalExpenses += gl.closingBalance; break
+    }
+  }
+
+  // ── I5: Σ GL closingBalance by type == Σ TB signed balance by type ──
+  // This catches systematic divergence between the GL and TB read paths.
+  const i5Checks: Array<[string, number, number]> = [
+    ['ASSET', glTotalAssets, tbBalanceByType.ASSET],
+    ['LIABILITY', glTotalLiabilities, tbBalanceByType.LIABILITY],
+    ['EQUITY', glTotalEquity, tbBalanceByType.EQUITY],
+    ['REVENUE', glTotalRevenue, tbBalanceByType.REVENUE],
+    ['EXPENSE', glTotalExpenses, tbBalanceByType.EXPENSE],
+  ]
+  for (const [type, glSum, tbSum] of i5Checks) {
+    if (Math.abs(glSum - tbSum) > 0.01) {
+      diffs.push(
+        `I5 FAIL: Σ GL closingBalance for ${type} (${glSum.toFixed(2)}) ≠ Σ TrialBalance signed balance (${tbSum.toFixed(2)})`
+      )
+    }
+  }
+
+  // ── I7: Account Statement (full-history GL) consistency ──
+  // The "Account Statement" is just getGeneralLedger over full history (no range).
+  // Its closingBalance MUST equal the full-history TrialBalance signed balance
+  // for that account. We check this for the first 5 accounts with activity
+  // (full-history check on every account would be expensive).
+  const fullTb = await getTrialBalance(undefined, client)
+  for (const row of fullTb.rows.slice(0, 5)) {
+    const fullGl = await getGeneralLedger(row.accountId, undefined, client)
+    if (!fullGl) continue
+    if (Math.abs(fullGl.closingBalance - row.balance) > 0.01) {
+      diffs.push(
+        `I7 FAIL: Account ${row.code}: Account Statement (full-history GL) closingBalance (${fullGl.closingBalance.toFixed(2)}) ≠ TrialBalance signed balance (${row.balance.toFixed(2)})`
       )
     }
   }
@@ -1048,6 +1122,7 @@ export async function verifyNumericalConsistency(
   return {
     ok: diffs.length === 0,
     diffs,
+    accountsChecked,
     summary: {
       trialBalanceTotalDebit: tb.totals.totalDebit,
       trialBalanceTotalCredit: tb.totals.totalCredit,

@@ -6806,3 +6806,26 @@ Work Log:
 Stage Summary:
 - بدأ العمل على BA-02 Task 1 (محرك موحد)
 - تم وضع علامة ba-02-start في git
+
+Stage Summary:
+- ✅ تم توحيد engine.ts + report-engine.ts + financial-statements/* في queries.ts (SSOT)
+- ✅ ملفات جديدة: constants.ts, chart-of-accounts.ts, queries.ts
+- ✅ engine.ts أصبح WRITE-ONLY (1856→1573 سطر، حُذفت 3 دوال قراءة مكررة)
+- ✅ report-engine.ts أصبح re-export wrapper
+- ✅ verifyNumericalConsistency() دالة جديدة تتحقق من 5 قواعد سلامة
+- ✅ scripts/verify-engine-unification.ts: ALL CHECKS PASSED
+- ✅ HTTP endpoints تطابق: /api/trial-balance == /api/reports/trial-balance
+- ✅ HTTP endpoints تطابق: /api/financial-statements/balance-sheet == /api/reports/balance-sheet
+- ✅ 0 أخطاء TypeScript جديدة، 0 أخطاء ESLint في ملفات المحاسبة
+- ✅ commit 4577e9b مدفوع لـ origin/main
+
+---
+Task ID: BA-02-T2
+Agent: Main Agent
+Task: إلغاء تباين ميزان المراجعة - فرض TrialBalance A == TrialBalance B == GL Totals == Account Statement Totals
+
+Work Log:
+- بدء العمل على BA-02 Task 2
+
+Stage Summary:
+- (قيد التنفيذ)
