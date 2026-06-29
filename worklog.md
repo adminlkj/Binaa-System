@@ -6785,3 +6785,24 @@ Stage Summary:
 - 5 commits: d2bc875 → 03022ff → 9200769 → 8dbaa08 → c1ce87a
 - جميع ملتزمة ومدفوعة لـ origin/main
 - قائمة التسليم: 10/10 ✅
+
+---
+Task ID: BA-02-T1
+Agent: Main Agent
+Task: توحيد engine.ts و report-engine.ts في محرك محاسبة واحد (Single Source of Truth)
+
+Work Log:
+- قراءة كاملة لـ engine.ts (1856 سطر) و report-engine.ts (842 سطر)
+- اكتشاف 3 مسارات منفصلة تحسب الأرصدة (وليس 2):
+  1. engine.ts: getTrialBalance/getGeneralLedger/getAccountBalance (findMany، GL بدون رصيد افتتاحي)
+  2. report-engine.ts: نفس الدوال بمنطق مختلف (groupBy، GL برصيد افتتاحي صحيح)
+  3. /api/financial-statements/*: إعادة تنفيذ من الصفر بـ code prefix matching
+- وضع خطة التوحيد:
+  * constants.ts: NORMAL_BALANCE, AccountType, CHART_OF_ACCOUNTS_TEMPLATE (canonical)
+  * queries.ts: ALL read functions (single source of truth)
+  * engine.ts: WRITE-ONLY (createJournalEntry, reverseEntry, autoEntry*)
+  * report-engine.ts: re-export wrapper للتوافق الخلفي
+
+Stage Summary:
+- بدأ العمل على BA-02 Task 1 (محرك موحد)
+- تم وضع علامة ba-02-start في git

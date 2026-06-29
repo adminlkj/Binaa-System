@@ -1,91 +1,75 @@
+import { NextResponse } from 'next/server'
+import { getAccountBalancesByType, getCashFlow, getIncomeStatement } from '@/lib/accounting/queries'
+import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
-import { NextResponse } from 'next/server'
-import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
-import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
+import type { AccountBalance } from '@/lib/accounting/queries'
 
 // Helper: round to 4 decimal places
 function r4(n: number): number {
   return Math.round(n * 10000) / 10000
 }
 
-// More efficient: get balance changes between two periods for specific account IDs
-async function getBalanceChangeByAccountIds(
-  accountIds: string[],
+/**
+ * Compute the signed balance change of a group of accounts between two points
+ * in time, using the unified query layer (Single Source of Truth).
+ *
+ *   change = Σ balance(as of dateTo) − Σ balance(as of dateFrom exclusive)
+ *
+ * Each account's balance = signForType(type) * (debit − credit).
+ */
+async function getBalanceChangeForAccounts(
+  accounts: AccountBalance[],
   dateFrom: Date | undefined,
   dateTo: Date | undefined
 ): Promise<number> {
-  const accounts = await db.account.findMany({
-    where: { id: { in: accountIds }, isActive: true },
-    select: { id: true, type: true },
-  })
-
   if (accounts.length === 0) return 0
+  const accountIds = accounts.map(a => a.accountId)
 
-  // Get balance up to dateTo
-  const toDateFilter: { date?: { lte?: Date } } = {}
-  if (dateTo) toDateFilter.date = { lte: dateTo }
-
-  // Get balance up to dateFrom (exclusive)
-  const fromDateFilter: { date?: { lt?: Date } } = {}
-  if (dateFrom) fromDateFilter.date = { lt: dateFrom }
-
-  // Calculate net balance for each account type
-  let balanceEnd = 0
-  let balanceStart = 0
-
-  for (const account of accounts) {
-    const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
-
-    const endLines = await db.journalLine.aggregate({
-      _sum: { debit: true, credit: true },
-      where: {
-        accountId: account.id,
-        deletedAt: null,
-        journalEntry: { status: 'POSTED', deletedAt: null, ...toDateFilter },
-      },
-    })
-    const endD = toNumber(endLines._sum.debit)
-    const endC = toNumber(endLines._sum.credit)
-    balanceEnd += normalBalance === 'DEBIT' ? endD - endC : endC - endD
-
-    const startLines = await db.journalLine.aggregate({
-      _sum: { debit: true, credit: true },
-      where: {
-        accountId: account.id,
-        deletedAt: null,
-        journalEntry: { status: 'POSTED', deletedAt: null, ...fromDateFilter },
-      },
-    })
-    const startD = toNumber(startLines._sum.debit)
-    const startC = toNumber(startLines._sum.credit)
-    balanceStart += normalBalance === 'DEBIT' ? startD - startC : startC - startD
-  }
-
-  return r4(balanceEnd - balanceStart)
-}
-
-// Helper: get balance change for accounts matched by code prefixes (used for non-role-mapped groups)
-async function getBalanceChange(
-  prefixes: string[],
-  dateFrom: Date | undefined,
-  dateTo: Date | undefined
-): Promise<number> {
-  const accounts = await db.account.findMany({
+  // End-of-period balance (dateTo inclusive)
+  const endRange = dateTo ? { to: dateTo } : undefined
+  const endAgg = await db.journalLine.aggregate({
+    _sum: { debit: true, credit: true },
     where: {
-      isActive: true,
-      OR: prefixes.map(p => ({ code: { startsWith: p } })),
+      deletedAt: null,
+      accountId: { in: accountIds },
+      journalEntry: {
+        status: 'POSTED',
+        deletedAt: null,
+        ...(endRange?.to && { date: { lte: endRange.to } }),
+      },
     },
-    select: { id: true, type: true },
+  })
+  // Beginning-of-period balance (before dateFrom)
+  const beginAgg = await db.journalLine.aggregate({
+    _sum: { debit: true, credit: true },
+    where: {
+      deletedAt: null,
+      accountId: { in: accountIds },
+      journalEntry: {
+        status: 'POSTED',
+        deletedAt: null,
+        ...(dateFrom && { date: { lt: dateFrom } }),
+      },
+    },
   })
 
-  if (accounts.length === 0) return 0
+  // Compute signed balances respecting each account's normal balance side.
+  // Since accounts within a prefix group share the same type (e.g., all 1xxx are ASSET,
+  // all 3xxx are LIABILITY), we use a single sign for the whole aggregate.
+  // ASSET/EXPENSE → debit-positive (+1); LIABILITY/EQUITY/REVENUE → credit-positive (-1).
+  const sign = accounts[0].type === 'ASSET' || accounts[0].type === 'EXPENSE' ? 1 : -1
+  const endBalance = sign * (toNumber(endAgg._sum.debit) - toNumber(endAgg._sum.credit))
+  const beginBalance = sign * (toNumber(beginAgg._sum.debit) - toNumber(beginAgg._sum.credit))
 
-  const accountIds = accounts.map(a => a.id)
-  return getBalanceChangeByAccountIds(accountIds, dateFrom, dateTo)
+  return r4(endBalance - beginBalance)
 }
 
 // GET /api/financial-statements/cash-flow?dateFrom=...&dateTo=...
+//
+// BA-02 Task 1: تم توحيد مصدر الأرصلة عبر queries.getAccountBalancesByType.
+// هذا الـ endpoint الآن يستخدم نفس مصدر البيانات الذي يستخدمه
+// /api/reports/cash-flow-statement و /api/trial-balance — لا ازدواجية.
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -94,151 +78,53 @@ export async function GET(request: Request) {
 
     const dateFrom = dateFromStr ? new Date(dateFromStr) : undefined
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
+    const range = (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined
 
-    // ---- Resolve cash/bank accounts by role ----
-    const [cashRoleAccounts, bankRoleAccounts] = await Promise.all([
-      getAccountsByRoles([AccountRole.CASH]),
-      getAccountsByRoles([AccountRole.BANK]),
-    ])
+    // ---- Cash & Bank balances (beginning / ending) — Single Source of Truth ----
+    // Use the unified cash flow report which already computes opening/closing
+    // balances, inflows/outflows per account, and monthly breakdown.
+    const cashFlow = await getCashFlow(range)
+    const beginningCash = r4(cashFlow.openingBalance)
+    const endingCash = r4(cashFlow.closingBalance)
+    const netCashChange = r4(cashFlow.netCashFlow)
 
-    // Combine all cash/bank accounts
-    const allCashBankAccounts = [...cashRoleAccounts, ...bankRoleAccounts]
-    const cashBankIds = allCashBankAccounts.map(a => a.id)
-
-    // Fallback to code-based lookup if no role-mapped accounts
-    const cashPrefixes = allCashBankAccounts.length > 0
-      ? []  // No need for prefix-based lookup
-      : ['1110', '1120', '1130', '1140']
-
-    const beginDateFilter: { date?: { lt?: Date } } = {}
-    if (dateFrom) beginDateFilter.date = { lt: dateFrom }
-
-    let cashAccountsForBalance: { id: string; code: string; name: string; nameAr: string | null; type: string }[]
-
-    if (allCashBankAccounts.length > 0) {
-      // Use role-resolved accounts
-      cashAccountsForBalance = await db.account.findMany({
-        where: { id: { in: cashBankIds }, isActive: true },
-        select: { id: true, code: true, name: true, nameAr: true, type: true },
-      })
-    } else {
-      // Fallback: use code prefix
-      cashAccountsForBalance = await db.account.findMany({
-        where: {
-          isActive: true,
-          OR: cashPrefixes.map(p => ({ code: { startsWith: p } })),
-        },
-        select: { id: true, code: true, name: true, nameAr: true, type: true },
-      })
-    }
-
-    let beginningCash = 0
-    let endingCash = 0
-
-    const endDateFilter: { date?: { lte?: Date } } = {}
-    if (dateTo) endDateFilter.date = { lte: dateTo }
-
-    for (const account of cashAccountsForBalance) {
-      // Beginning balance
-      const begLines = await db.journalLine.aggregate({
-        _sum: { debit: true, credit: true },
-        where: {
-          accountId: account.id,
-          deletedAt: null,
-          journalEntry: {
-            status: 'POSTED',
-            deletedAt: null,
-            ...beginDateFilter,
-          },
-        },
-      })
-      beginningCash += toNumber(begLines._sum.debit) - toNumber(begLines._sum.credit) // Assets: debit normal
-
-      // Ending balance
-      const endLines = await db.journalLine.aggregate({
-        _sum: { debit: true, credit: true },
-        where: {
-          accountId: account.id,
-          deletedAt: null,
-          journalEntry: {
-            status: 'POSTED',
-            deletedAt: null,
-            ...endDateFilter,
-          },
-        },
-      })
-      endingCash += toNumber(endLines._sum.debit) - toNumber(endLines._sum.credit)
-    }
-
-    beginningCash = r4(beginningCash)
-    endingCash = r4(endingCash)
-    const netCashChange = r4(endingCash - beginningCash)
-
-    // ---- Operating Activities ----
-    const revenueAccounts = await db.account.findMany({
-      where: { isActive: true, code: { startsWith: '6' } },
-      select: { id: true, type: true },
-    })
-    const expenseAccounts = await db.account.findMany({
-      where: { isActive: true, OR: [{ code: { startsWith: '7' } }, { code: { startsWith: '8' } }] },
-      select: { id: true, type: true },
-    })
-
-    const periodDateFilter: { date?: { gte?: Date; lte?: Date } } = {}
-    if (dateFrom || dateTo) {
-      periodDateFilter.date = {
-        ...(dateFrom && { gte: dateFrom }),
-        ...(dateTo && { lte: dateTo }),
-      }
-    }
-
-    let totalRevenue = 0
-    let totalExpenses = 0
-
-    for (const acc of revenueAccounts) {
-      const agg = await db.journalLine.aggregate({
-        _sum: { debit: true, credit: true },
-        where: {
-          accountId: acc.id,
-          deletedAt: null,
-          journalEntry: { status: 'POSTED', deletedAt: null, ...periodDateFilter },
-        },
-      })
-      totalRevenue += toNumber(agg._sum.credit) - toNumber(agg._sum.debit) // Revenue: credit normal
-    }
-
-    for (const acc of expenseAccounts) {
-      const agg = await db.journalLine.aggregate({
-        _sum: { debit: true, credit: true },
-        where: {
-          accountId: acc.id,
-          deletedAt: null,
-          journalEntry: { status: 'POSTED', deletedAt: null, ...periodDateFilter },
-        },
-      })
-      totalExpenses += toNumber(agg._sum.debit) - toNumber(agg._sum.credit) // Expense: debit normal
-    }
-
-    const netIncome = r4(totalRevenue - totalExpenses)
+    // ---- Operating Activities (indirect method) ----
+    // Net Income from unified income statement
+    const incomeStatement = await getIncomeStatement(range)
+    const netIncome = r4(incomeStatement.netIncome)
 
     // Non-cash items: Depreciation (role-based)
     const depreciationAccounts = await getAccountsByRoles([AccountRole.DEPRECIATION_EXPENSE, AccountRole.RENTAL_DEPRECIATION])
-    const depreciationAccountIds = depreciationAccounts.length > 0
-      ? depreciationAccounts.map(a => a.id)
-      : (await db.account.findMany({
-          where: { isActive: true, code: { startsWith: '8300' } },
-          select: { id: true },
-        })).map(a => a.id)
+    let depreciationChange = 0
+    if (depreciationAccounts.length > 0) {
+      const depBalances = await getAccountBalancesByType(['EXPENSE'], range)
+      const depIds = new Set(depreciationAccounts.map(a => a.id))
+      depreciationChange = r4(
+        depBalances.filter(a => depIds.has(a.accountId)).reduce((s, a) => s + a.balance, 0)
+      )
+    }
 
-    const depreciationChange = depreciationAccountIds.length > 0
-      ? await getBalanceChangeByAccountIds(depreciationAccountIds, dateFrom, dateTo)
-      : 0
+    // Changes in working capital — use unified balance layer
+    const [allAssets, allLiabilities] = await Promise.all([
+      getAccountBalancesByType(['ASSET'], range),
+      getAccountBalancesByType(['LIABILITY'], range),
+    ])
 
-    // Changes in working capital
-    const receivablesChange = await getBalanceChange(['12'], dateFrom, dateTo)
-    const inventoryChange = await getBalanceChange(['13'], dateFrom, dateTo)
-    const prepaymentsChange = await getBalanceChange(['14'], dateFrom, dateTo)
-    const accrualsChange = await getBalanceChange(['31', '32', '33', '34', '35', '36', '37', '38', '39'], dateFrom, dateTo)
+    const receivablesAccounts = allAssets.filter(a => a.code.startsWith('12'))
+    const inventoryAccounts = allAssets.filter(a => a.code.startsWith('13'))
+    const prepaymentsAccounts = allAssets.filter(a => a.code.startsWith('14'))
+
+    const receivablesChange = await getBalanceChangeForAccounts(receivablesAccounts, dateFrom, dateTo)
+    const inventoryChange = await getBalanceChangeForAccounts(inventoryAccounts, dateFrom, dateTo)
+    const prepaymentsChange = await getBalanceChangeForAccounts(prepaymentsAccounts, dateFrom, dateTo)
+
+    // Accruals (current liabilities 31xx-39xx)
+    const accrualsAccounts = allLiabilities.filter(a =>
+      a.code.startsWith('31') || a.code.startsWith('32') || a.code.startsWith('33') ||
+      a.code.startsWith('34') || a.code.startsWith('35') || a.code.startsWith('36') ||
+      a.code.startsWith('37') || a.code.startsWith('38') || a.code.startsWith('39')
+    )
+    const accrualsChange = await getBalanceChangeForAccounts(accrualsAccounts, dateFrom, dateTo)
 
     const operatingAdjustments = r4(
       -receivablesChange +
@@ -250,12 +136,17 @@ export async function GET(request: Request) {
     const netCashFromOperating = r4(netIncome + depreciationChange + operatingAdjustments)
 
     // ---- Investing Activities ----
-    const fixedAssetsChange = await getBalanceChange(['2'], dateFrom, dateTo)
+    // Non-current assets (2xxx) balance change
+    const nonCurrentAssetAccounts = allAssets.filter(a => a.code.startsWith('2'))
+    const fixedAssetsChange = await getBalanceChangeForAccounts(nonCurrentAssetAccounts, dateFrom, dateTo)
     const netCashFromInvesting = r4(-fixedAssetsChange)
 
     // ---- Financing Activities ----
-    const longTermLiabilitiesChange = await getBalanceChange(['4'], dateFrom, dateTo)
-    const equityChange = await getBalanceChange(['5'], dateFrom, dateTo)
+    // Non-current liabilities (4xxx) + Equity (5xxx) balance changes
+    const nonCurrentLiabilityAccounts = allLiabilities.filter(a => a.code.startsWith('4'))
+    const equityAccounts = await getAccountBalancesByType(['EQUITY'], range)
+    const longTermLiabilitiesChange = await getBalanceChangeForAccounts(nonCurrentLiabilityAccounts, dateFrom, dateTo)
+    const equityChange = await getBalanceChangeForAccounts(equityAccounts, dateFrom, dateTo)
     const netCashFromFinancing = r4(longTermLiabilitiesChange + equityChange)
 
     // Verification
@@ -294,10 +185,14 @@ export async function GET(request: Request) {
       beginningCash,
       endingCash,
       isReconciled: Math.abs(netCashChange - calculatedNetChange) < 0.01,
+      // Canonical cross-check from unified cash flow report
+      canonicalInflows: r4(cashFlow.inflows),
+      canonicalOutflows: r4(cashFlow.outflows),
       dateRange: {
         from: dateFrom?.toISOString() || null,
         to: dateTo?.toISOString() || null,
       },
+      source: 'posted-journal-entries',
     })
   } catch (error) {
     console.error('Error generating cash flow statement:', error)

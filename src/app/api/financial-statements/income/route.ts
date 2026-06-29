@@ -1,96 +1,37 @@
-import { db } from '@/lib/db'
-import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
-import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
+import { getAccountBalancesByType, getIncomeStatement } from '@/lib/accounting/queries'
+import type { AccountBalance } from '@/lib/accounting/queries'
 
 // Helper: round to 4 decimal places
 function r4(n: number): number {
   return Math.round(n * 10000) / 10000
 }
 
-// Helper: get account balances within a date range by code prefix
-async function getAccountBalancesByPrefix(
-  prefix: string,
-  dateFrom: Date | undefined,
-  dateTo: Date | undefined
-): Promise<{ code: string; name: string; nameAr: string | null; balance: number }[]> {
-  const dateFilter: { date?: { gte?: Date; lte?: Date } } = {}
-  if (dateFrom || dateTo) {
-    dateFilter.date = {
-      ...(dateFrom && { gte: dateFrom }),
-      ...(dateTo && { lte: dateTo }),
-    }
-  }
-
-  // Get all accounts with the given prefix
-  const accounts = await db.account.findMany({
-    where: {
-      code: { startsWith: prefix },
-      isActive: true,
-    },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      nameAr: true,
-      type: true,
-    },
-    orderBy: { code: 'asc' },
-  })
-
-  if (accounts.length === 0) return []
-
-  const accountIds = accounts.map(a => a.id)
-
-  // Aggregate journal lines for these accounts
-  const lines = await db.journalLine.findMany({
-    where: {
-      accountId: { in: accountIds },
-      deletedAt: null,
-      journalEntry: {
-        status: 'POSTED',
-        deletedAt: null,
-        ...dateFilter,
-      },
-    },
-    select: {
-      accountId: true,
-      debit: true,
-      credit: true,
-    },
-  })
-
-  // Sum by account
-  const balanceMap = new Map<string, { totalDebit: number; totalCredit: number }>()
-  for (const line of lines) {
-    const existing = balanceMap.get(line.accountId) || { totalDebit: 0, totalCredit: 0 }
-    existing.totalDebit += toNumber(line.debit)
-    existing.totalCredit += toNumber(line.credit)
-    balanceMap.set(line.accountId, existing)
-  }
-
-  // Calculate balance per account
-  return accounts.map(account => {
-    const bal = balanceMap.get(account.id) || { totalDebit: 0, totalCredit: 0 }
-    const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
-    const balance = normalBalance === 'DEBIT'
-      ? bal.totalDebit - bal.totalCredit
-      : bal.totalCredit - bal.totalDebit
-    return {
-      code: account.code,
-      name: account.name,
-      nameAr: account.nameAr,
-      balance: r4(balance),
-    }
-  })
+// Filter an AccountBalance list by code prefix — preserves the legacy
+// "group by 2-digit prefix" response shape.
+function filterByPrefix(
+  accounts: AccountBalance[],
+  prefix: string
+): { code: string; name: string; nameAr: string | null; balance: number }[] {
+  return accounts
+    .filter(a => a.code.startsWith(prefix))
+    .map(a => ({
+      code: a.code,
+      name: a.name,
+      nameAr: a.nameAr,
+      balance: r4(a.balance),
+    }))
 }
 
-// Helper: sum balances from an array of account details
 function sumBalances(accounts: { balance: number }[]): number {
   return r4(accounts.reduce((sum, a) => sum + Number(a.balance || 0), 0))
 }
 
 // GET /api/financial-statements/income?dateFrom=...&dateTo=...
+//
+// BA-02 Task 1: تم توحيد مصدر الأرصدة عبر queries.getAccountBalancesByType.
+// هذا الـ endpoint الآن يستخدم نفس مصدر البيانات الذي يستخدمه
+// /api/reports/income-statement و /api/trial-balance — لا ازدواجية.
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -99,12 +40,19 @@ export async function GET(request: Request) {
 
     const dateFrom = dateFromStr ? new Date(dateFromStr) : undefined
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
+    const range = (dateFrom || dateTo) ? { from: dateFrom, to: dateTo } : undefined
 
-    // ---- Revenue Section ----
-    // Use 2-digit prefixes to match all child accounts (6100-series → '61', etc.)
-    const constructionRevenue = await getAccountBalancesByPrefix('61', dateFrom, dateTo)
-    const rentalRevenue = await getAccountBalancesByPrefix('62', dateFrom, dateTo)
-    const otherRevenue = await getAccountBalancesByPrefix('63', dateFrom, dateTo)
+    // Single source of truth: fetch all revenue and expense balances ONCE
+    const [revenueAccounts, expenseAccounts, incomeStatement] = await Promise.all([
+      getAccountBalancesByType(['REVENUE'], range),
+      getAccountBalancesByType(['EXPENSE'], range),
+      getIncomeStatement(range),
+    ])
+
+    // ---- Revenue Section (2-digit prefix grouping on top of unified balances) ----
+    const constructionRevenue = filterByPrefix(revenueAccounts, '61')
+    const rentalRevenue = filterByPrefix(revenueAccounts, '62')
+    const otherRevenue = filterByPrefix(revenueAccounts, '63')
 
     const totalConstructionRevenue = sumBalances(constructionRevenue)
     const totalRentalRevenue = sumBalances(rentalRevenue)
@@ -112,9 +60,9 @@ export async function GET(request: Request) {
     const totalRevenue = r4(totalConstructionRevenue + totalRentalRevenue + totalOtherRevenue)
 
     // ---- Direct Costs Section ----
-    const contractCosts = await getAccountBalancesByPrefix('71', dateFrom, dateTo)
-    const equipmentCosts = await getAccountBalancesByPrefix('72', dateFrom, dateTo)
-    const projectExpenses = await getAccountBalancesByPrefix('75', dateFrom, dateTo)
+    const contractCosts = filterByPrefix(expenseAccounts, '71')
+    const equipmentCosts = filterByPrefix(expenseAccounts, '72')
+    const projectExpenses = filterByPrefix(expenseAccounts, '75')
 
     const totalContractCosts = sumBalances(contractCosts)
     const totalEquipmentCosts = sumBalances(equipmentCosts)
@@ -125,12 +73,12 @@ export async function GET(request: Request) {
     const grossProfit = r4(totalRevenue - totalDirectCosts)
 
     // ---- Indirect Costs Section ----
-    const administrativeCosts = await getAccountBalancesByPrefix('81', dateFrom, dateTo)
-    const hrCosts = await getAccountBalancesByPrefix('82', dateFrom, dateTo)
-    const depreciationCosts = await getAccountBalancesByPrefix('83', dateFrom, dateTo)
-    const financialCosts = await getAccountBalancesByPrefix('84', dateFrom, dateTo)
-    const taxCosts = await getAccountBalancesByPrefix('85', dateFrom, dateTo)
-    const otherCosts = await getAccountBalancesByPrefix('86', dateFrom, dateTo)
+    const administrativeCosts = filterByPrefix(expenseAccounts, '81')
+    const hrCosts = filterByPrefix(expenseAccounts, '82')
+    const depreciationCosts = filterByPrefix(expenseAccounts, '83')
+    const financialCosts = filterByPrefix(expenseAccounts, '84')
+    const taxCosts = filterByPrefix(expenseAccounts, '85')
+    const otherCosts = filterByPrefix(expenseAccounts, '86')
 
     const totalAdministrativeCosts = sumBalances(administrativeCosts)
     const totalHrCosts = sumBalances(hrCosts)
@@ -143,8 +91,19 @@ export async function GET(request: Request) {
       totalFinancialCosts + totalTaxCosts + totalOtherCosts
     )
 
-    // ---- Net Profit ----
+    // ---- Net Profit (cross-check against unified income statement) ----
     const netProfit = r4(grossProfit - totalIndirectCosts)
+    // Sanity check: netProfit should match incomeStatement.netIncome
+    // (if it doesn't, there's a discrepancy in prefix grouping vs. canonical totals)
+    const canonicalNetIncome = r4(incomeStatement.netIncome)
+    const netProfitDiff = Math.abs(netProfit - canonicalNetIncome)
+    if (netProfitDiff > 0.01) {
+      console.warn(
+        `[financial-statements/income] WARNING: netProfit (${netProfit}) ≠ canonical netIncome (${canonicalNetIncome}), diff=${netProfitDiff}. ` +
+        `This indicates the 2-digit prefix grouping excludes some accounts. ` +
+        `Prefer /api/reports/income-statement for canonical totals.`
+      )
+    }
 
     return NextResponse.json({
       revenue: {
@@ -240,10 +199,14 @@ export async function GET(request: Request) {
       netProfit,
       netProfitLabel: 'صافي الربح',
       netProfitLabelEn: 'Net Profit',
+      // Canonical cross-check totals (BA-02 Task 2: numerical consistency)
+      canonicalNetIncome,
+      canonicalGrossProfit: r4(incomeStatement.grossProfit),
       dateRange: {
         from: dateFrom?.toISOString() || null,
         to: dateTo?.toISOString() || null,
       },
+      source: 'posted-journal-entries',
     })
   } catch (error) {
     console.error('Error generating income statement:', error)
