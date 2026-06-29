@@ -6417,3 +6417,234 @@ Stage Summary:
 **الملفات المُعدّلة:**
 - `/home/z/my-project/prisma/schema.prisma` — تعديلات فقط (إضافة @@index, @@unique, onDelete)، لا حذف models أو حقول
 
+
+---
+Task ID: AUDIT-ENV-PROD
+Agent: Environment + Production Auditor
+Task: Phase 7 + 10 — البيئة والإنتاج
+
+Work Log:
+
+**1. قراءة worklog.md (6419 سطر):**
+- تم فهم السياق العام للمشروع (Next.js 16 ERP، Prisma + SQLite، 94 model، 181 API route)
+- المراحل السابقة شملت: بناء الموديولات، محاسبة، Prisma schema audit (Phase 5)
+
+---
+
+**Phase 7: Environment Audit**
+
+**7.1 — .env.example:**
+- ✓ مُوجود مسبقاً (`/home/z/my-project/.env.example`، 42 سطر)
+- تم تحديثه: تغيير `DATABASE_URL` الافتراضي من المسار المطلق `file:/home/z/my-project/db/custom.db` إلى المسار النسبي المحمول `file:./db/custom.db` (حسب المتطلبات)، مع إبقاء المسار المطلق كخيار بديل في التعليقات
+- جرد متغيرات `process.env.*` المستخدمة فعلياً في الكود:
+  - `process.env.NODE_ENV` — مغطى في .env.example (سطر 35، معلّق)
+  - `process.env.PRISMA_LOG` — مغطى في .env.example (سطر 27، معلّق)
+  - `DATABASE_URL` — مغطى في .env.example (سطر 20، فعّال) — يُقرأ ضمنياً بواسطة Prisma (`prisma/schema.prisma:11`)
+- ✓ كل المتغيرات المطلوبة مغطاة، لا حاجة لإضافة أي متغير جديد
+
+**7.2 — Secrets في الكود:**
+- ✓ بحث شامل: `grep -rnE "(password|secret|api_key|apikey|token)\s*=\s*['\"][^'\"]{4,}['\"]"` في `src/` مع استبعاد `process.env|test|mock|example|placeholder|fake|dummy`
+- النتيجة: **0 secrets مشبوهة** — الكود نظيف
+- جميع الاتصالات بقاعدة البيانات تتم عبر `env("DATABASE_URL")` في Prisma (لا credentials hardcoded)
+
+**7.3 — .gitignore:**
+- ✓ `.env*` مُدرج في `.gitignore` (السطر 34) — يطابق `.env`، `.env.local`, إلخ
+- ⚠️ **CRITICAL FINDING**: ملف `.env` الفعلي مُتتبَّع (tracked) في git (`git ls-files .env` يُرجِع `.env`) — تم تتبعه منذ الـ Initial commit وحتى HEAD
+  - السبب: git يتجاهل قواعد `.gitignore` للملفات المُتتبَّعة مسبقاً
+  - **التأثير الحالي**: محتوى `.env` هو `DATABASE_URL=file:/home/z/my-project/db/custom.db` فقط (مسار SQLite محلي، لا secret فعلي)
+  - **الخطر**: إذا احتوى `.env` لاحقاً على PostgreSQL URL بكلمة مرور أو API keys، ستُحتَفظ في git history
+  - **الإجراء الموصى به (لم يُنفَّذ احتراماً لقاعدة "no git commit"):**
+    ```bash
+    git rm --cached .env
+    git commit -m "chore: untrack .env file (already gitignored)"
+    ```
+- ✓ لم تُعدّل `.gitignore` (صحيح كما هو)
+
+---
+
+**Phase 10: Production Readiness**
+
+**10.1 — console.log في API routes:**
+- ✓ النتيجة: **0 console.log خارج seed route**
+  - `grep -rn "console\.log" src/app/api/ --include="*.ts" | grep -v seed | wc -l` → 0
+- الـ console.log الـ 2 الموجودة في `src/app/api/seed/route.ts` (الأسطر 161، 165) — **محفوظة** حسب القاعدة "لا تحذف seed route"
+- لا حاجة لأي حذف
+
+**10.2 — console.log في components و lib:**
+- ✓ النتيجة: **0 console.log**
+  - `grep -rn "console\.log" src/components/ src/lib/ --include="*.ts" --include="*.tsx" | wc -l` → 0
+- الكود نظيف تماماً من console.log في طبقات العرض والمكتبات
+
+**10.3 — debugger statements:**
+- ✓ النتيجة: **0 debugger**
+  - `grep -rn "debugger" src/ --include="*.ts" --include="*.tsx" | wc -l` → 0
+- لا حاجة لأي حذف
+
+**10.4 — بيانات تجريبية (test/dummy/mock):**
+- ✓ بحث: `grep -rnEi "test@|example@|dummy|mock.*data|placeholder.*data"` مع استبعاد `node_modules|.test.|test-data-page|test-data-export`
+- النتيجة: **0 بيانات تجريبية فعلية**
+- المطابقات الموجودة كلها شرعية:
+  - `src/components/ui/select.tsx:40` — CSS class `data-[placeholder]:text-muted-foreground` (UI styling)
+  - `src/contexts/company-context.tsx:82` — TanStack Query `placeholderData: defaultCompanySettings` (initial state pattern)
+- لا `dummy`، لا `lorem ipsum`، لا test email addresses في الكود
+
+**10.5 — Routes مخفية/تجريبية:**
+- ✓ بحث: `grep -rln "hello world\|placeholder\|TODO.*endpoint"` في `src/app/api/`
+- النتيجة: **0 routes تجريبية**
+- جرد كامل: **181 API route** — كلها موديولات ERP شرعية (accounting, projects, inventory, payroll, VAT, reports, etc.)
+- مطابقات `PR-XXX`, `SI-XXX`, `GR-XXX`, `EMP-XXX`, `TM-XXX`, `PO-XXX` هي **أنماط توليد أرقام تلقائية** (مثل `PR-00001`)، وليست TODOs
+- مطابقات `05XXXXXXXX` في `rental-contracts.tsx` هي **placeholder لرقم هاتف سعودي** (UI)
+
+---
+
+**Verification:**
+
+```
+1. bun run lint                          → exit 0 ✓ (clean)
+2. npx tsc --noEmit | grep -c "^src/"    → 0 errors ✓
+3. console.log in src/app/api (excl seed) → 0 ✓
+4. console.log in src/components + src/lib → 0 ✓
+5. debugger in src/                      → 0 ✓
+6. console.error preserved               → 359 ✓ (محفوظة في catch blocks)
+7. console.warn (شرعية، محفوظة)          → 4:
+   - src/lib/accounting/depreciation-engine.ts:922
+   - src/lib/accounting/period-guard.ts:55
+   - src/printing/print-service.ts:85
+   (+ 1 تعليق في period-guard.ts::10)
+8. eslint-disable comments               → 2 (مع تعليقات تبرير مشروعة)
+9. TODO/FIXME comments                   → 0 فعلي (8 مطابقات كلها placeholders لأنماط الأرقام)
+10. test files (*.test.* / *.spec.*)     → 0 in src/
+```
+
+---
+
+**الملفات المُعدّلة:**
+- `/home/z/my-project/.env.example` — تحديث وحيد: تغيير قيمة `DATABASE_URL` الافتراضية من المسار المطلق إلى المسار النسبي المحمول `file:./db/custom.db`، مع إبقاء المسار المطلق كخيار موثّق في التعليقات
+
+**ملفات لم تُعدَّل:**
+- `.gitignore` — صحيح كما هو
+- `src/app/api/seed/route.ts` — محفوظ (console.log الـ 2 شرعية)
+- `src/` — لا console.log ولا debugger ولا test data لحذفها
+- `.env` — لم يُمسس (يحوي مسار SQLite محلي فقط)
+
+Stage Summary:
+Phase 7:
+- .env.example: exists ✓ (updated DATABASE_URL to portable relative path `file:./db/custom.db`)
+- Secrets: 0 ✓ (clean — no hardcoded credentials in src/)
+- .gitignore: OK ✓ (`.env*` at line 34 covers `.env`, `.env.local`, etc.)
+  - ⚠️ CRITICAL: `.env` is currently TRACKED in git (committed in 4 commits since Initial commit). `.gitignore` rule doesn't apply to already-tracked files. Recommend: `git rm --cached .env && git commit` (NOT executed per "no git commit" rule). Current `.env` content has no real secrets (only SQLite local path), but the pattern is unsafe for production.
+
+Phase 10:
+- console.log removed: 0 (codebase was already clean — only 2 in seed route, preserved per rules)
+- debugger removed: 0 (none existed)
+- Test data: 0 (no dummy/mock/test@example.com/lorem in src/)
+- Hidden routes: 0 (181 API routes, all legitimate ERP modules — no "hello world" / placeholder / TODO endpoints)
+- console.error preserved: 359 ✓ (in catch blocks across API routes and lib)
+- console.warn preserved: 4 ✓ (legitimate runtime warnings — depreciation reversal, period guard, print template fallback)
+- Lint: PASS ✓ (exit 0)
+- TSC: 0 errors ✓
+- Codebase production-ready: YES ✓ (no changes required to source code)
+
+---
+Task ID: AUDIT-API
+Agent: API Auditor
+Task: Phase 4 — تدقيق مسارات API (إعادة المحاولة)
+
+Work Log:
+
+**النطاق:** تم تدقيق 181 ملف route.ts في `src/app/api/` (أكثر من 80+ المتوقعة) — شمل ذلك 131 ملفًا يحتوي على معالجات تعديل (POST/PUT/PATCH/DELETE) و50+ ملف GET-only.
+
+**1) تدقيق تسريب internals في error messages (حرج):**
+- بحث شامل بـ regex عن الأنماط: `details: error`، `error: error.message`، `details:.*error`، `error: String(error)`، `JSON.stringify(error)`، `error.stack`، `error.cause`، `message: error.message`.
+- النتيجة: **تسريب واحد جديد** مُصلح:
+  - `src/app/api/seed/route.ts:618` — كان `error: String(error)` → استُبدل بإزالة الحقل (أُبقيت `message: 'حدث خطأ أثناء تهيئة البيانات'` + `console.error('Seed error:', error)` للتسجيل الداخلي).
+- الحالات المتبقية المُتحقّق من سلامتها:
+  - `journal-entries/route.ts:135` (`error: error.message, code: error.code, details: error.details`) → داخل كتلة `instanceof AccountingGuardError` — هذا استثناء مقصود: AccountingGuardError يرمي رسائل عربية صديقة للمستخدم وبيانات منظمة (rule code, violating fields) — ليست internals.
+  - 30+ ملف تستخدم نمط `const message = error instanceof Error ? error.message : 'fallback'` ثم `error: message`. هذا نمط خطر برمجيًا (قد يسرّب رسائل Prisma الداخلية مثل أسماء الجداول/الأعمدة) لكنه:
+    1) لا يطابق grep patterns الصريحة في التعليمات
+    2) تغييره broadly قد يكسر frontend الذي يعرض `error` رسائل للمستخدم (مخالفة القاعدة #1: لا تكسر الـ frontend)
+    → **مُسجّل كتوصية للمراجعة المستقبلية** دون إصلاح.
+
+**2) تدقيق عدم وجود try/catch (حرج):**
+- استخدمت سكربت Python لتحليل بنية الـ AST لكل دالة POST/PUT/PATCH/DELETE مع تتبّع صحيح للأقواس (depth tracking) والـ template literals والـ strings والتعليقات.
+- النتيجة: **0 معالج تعديل يفتقد try/catch** — جميع الـ 131 ملفًا (92 معالج POST + PUT + PATCH + DELETE عبر ملفات متعددة) تحتوي على try/catch.
+- تم التحقق من النتيجة بالـ bash one-liner المقترح في التعليمات: نفس النتيجة (131 file، 0 missing).
+- ملاحظة: سكربت bash البسيط المقترح أعطى إيجابيات كاذبة (false positives) لأنه لا يفهم template literals (مثل `${validRoles.join(', ')}`) — تم تطوير سكربت Python أكثر دقة.
+
+**3) تدقيق HTTP codes (عالي):**
+- توزيع الأكواد عبر 181 route: 500 (×334)، 400 (×320)، 404 (×178)، 201 (×67)، 403 (×7)، 409 (×3)، 200 (×2 صريح).
+- تحليل POST handlers: 21 ترجع 201 (Create)، 11 ترجع 200. فحصت كل حالة من الـ 11:
+  - 8 منها POST actions (ليست create): reverse, depreciate, auto-calculate, financial-mapping resolve/validate/update, account-impact deactivate, accounting-health run — صحيحة.
+  - **3 منها POST create خاطئة (200 بدل 201) — مُصلحة:**
+    1. `src/app/api/bank-accounts/route.ts:71` — إنشاء حساب بنكي → 201
+    2. `src/app/api/bank-reconciliation/route.ts:184` — حفظ المطابقة المكتملة → 201
+    3. `src/app/api/bank-reconciliation/route.ts:204` — حفظ مسودة المطابقة → 201
+- التحقق من عدم وجود frontend checks على `response.status === 200/201` قبل التغيير: **لا يوجد أي تفحص صريح للكود** (الـ frontend يستخدم `response.ok` الذي يشمل 200-299). آمن على الـ frontend.
+- DELETE → 200 (×36)، PUT → 200 (×34)، PATCH → 200 (×9) — كلها صحيحة (تحديث/حذف يرجع 200 OK).
+- 7 حالة 403 و3 حالات 409 — جميعها مبررة (Forbidden: عمليات ممنوعة على قيود مرحّلة؛ Conflict: تكرار فترة محاسبية).
+
+**4) تدقيق Transactions للعمليات متعددة الجداول (عالي):**
+- بحث شامل عن ملفات بـ 3+ عمليات `await db.` بدون `$transaction`.
+- ملفات حرجة فحصتها يدويًا للتأكد من طبيعة العمليات:
+  - `journal-entries/route.ts` POST — يستدعي `postJournalEntry()` من guard.ts → single nested Prisma create (entry + lines) atomic ✓
+  - `journal-entries/[id]/route.ts` PUT — قراءات للتحقق + update واحد ✓ (لا يحتاج tx)
+  - `payroll-runs/route.ts` POST — `payrollRun.create` مع nested `lines.create` (atomic) ✓
+  - `progress-claims/[id]/route.ts` PUT/DELETE — read + update واحد لكل handler ✓
+  - `fixed-assets/[id]/route.ts` PUT/DELETE — يفوّض إلى `updateAssetAndRecalculate` و`deleteAsset` في depreciation-engine.ts وكلاهما يلفّ بـ `db.$transaction` داخليًا ✓
+  - `fiscal-years/[id]/closing-preview/route.ts` — GET-only (preview) ✓
+- **3 مشاكل حرجة وُجدت وأُصلحت:**
+  1. **`src/app/api/purchase-orders/[id]/route.ts` PUT (status → APPROVED)** — كان يحدّث `purchaseRequest` ثم `purchaseOrder` كعمليتين منفصلتين. لو فشلت الثانية، يبقى PR محوّل (CONVERTED_TO_PO) بينما PO لم يُعتمد. **أُضيف `db.$transaction(async (tx) => {...})`** يلف العمليتين + re-fetch PO داخل نفس الـ tx لضمان تناسق الـ response.
+  2. **`src/app/api/purchase-orders/[id]/route.ts` DELETE** — كان `purchaseOrderItem.deleteMany` ثم `purchaseOrder.delete`. لو فُتح goods receipt جديد بينهما أو فشل حذف الـ PO، يبقى PO بدون items. **أُضيف `db.$transaction(async (tx) => {...})`** يلف العمليتين atomically.
+  3. **`src/app/api/fiscal-years/[id]/route.ts` PUT (status → OPEN)** — كان يحدّث `fiscalYear` ثم `fiscalPeriod.updateMany` (إعادة فتح كل الفترات). لو فشل الثاني، السنة OPEN لكن فتراتها CLOSED. **أُضيف `db.$transaction(async (tx) => {...})`** يلف العمليتين + re-fetch للسنة مع فتراتها لتعكس الحالة الجديدة.
+- التحقق من الـ schema: `FiscalPeriod.fiscalYear` لها `onDelete: Cascade` → DELETE للسنة يحذف الفترات atomicًا على مستوى DB (لا يحتاج tx صريح).
+- ملاحظة على `project-controls/[projectId]/backfill/route.ts` POST (12 db. operations, no tx): العمليات مقسّمة على 4 أقسام (expenses/labor/subcontractor/equipment) كلٌّ في try/catch مستقل بنمط "best-effort partial success". هذا قرار تصميمي مقصود لتجنّب فشل كامل للـ backfill بسبب قسم واحد. **مُسجّل كتوصية** دون تغيير (الـ frontend قد يعتمد على نمط النجاح الجزئي).
+
+**5) تدقيق Validation ناقص (متوسط — تسجيل فقط):**
+- 37 POST/PUT/PATCH handler يفكّكون JSON بدون فحص صريح للحقول الإلزامية. منهم:
+  - 8 POST create handlers (الأكثر خطرًا): `advances`, `currencies`, `equipment/expenses`, `financial-mapping`, `petty-cash`, `resource-distribution`, `salaries/auto-calculate`, `sales-invoices`.
+  - 29 PUT/PATCH handlers — معظمها partial-update pattern (الحقول المفقودة لا تُحدّث) وهو نمط REST صحيح ولا يحتم validation إلزامي.
+- **لم تُجرَ أي إصلاحات** (حسب القاعدة #5: سجل فقط لتفادي كسر الـ frontend).
+
+**6) Dead/Duplicate endpoints (منخفض — تسجيل فقط):**
+- 181 route إجمالاً، 321 frontend file ممسوح.
+- **Dead endpoints (لا مرجع في frontend):**
+  - `/api/timesheets` (root) — DEAD (الـ frontend يستخدم `/api/equipment/timesheets` فقط)
+  - `/api/financial-statements/balance-sheet` — DEAD (الـ frontend يستخدم `/api/reports/balance-sheet`)
+  - `/api/financial-statements/income` — DEAD (الـ frontend يستخدم `/api/reports/income-statement`)
+  - `/api/financial-statements/cash-flow` — DEAD (الـ frontend يستخدم `/api/reports/cash-flow-statement`)
+  - `/api/account-statement` (+ sub-routes customer/project/supplier) — مرجع داخلي فقط من route آخر
+  - `/api/bank-accounts`, `/api/bank-reconciliation`, `/api/business-flow/validate`, `/api/currencies`, `/api/financial-consistency`, `/api/financial-reports`, `/api/financial-summary`, `/api/gl-financial-summary`, `/api/period-closing`, `/api/provisions` — لا مرجع في frontend
+- **Duplicate endpoint pairs (نفس المنطق، paths مختلفة، كلاهما مستخدم):**
+  - `/api/trial-balance` (يستخدمه `reports.tsx`) ↔ `/api/reports/trial-balance` (يستخدمه `financial-statements-tab.tsx`)
+  - `/api/general-ledger` (يستخدمه `print-button.tsx`) ↔ `/api/reports/general-ledger` (يستخدمه `financial-statements-tab.tsx`)
+  - `/api/accounts/statement` (يستخدمه `accounting.tsx`) — مختلف عن `/api/account-statement` (route مختلف)
+- **لم تُجرَ أي حذف/دمج** (حسب القاعدة: سجل فقط).
+
+**التحقق النهائي:**
+- `npx tsc --noEmit` → **exit code 0** (0 أخطاء TypeScript في src/)
+- `bun run lint` → **exit code 0** (0 أخطاء ESLint)
+- لم يُعاد تشغيل dev server
+- لم يُعمل git commit
+
+**الملفات المُعدّلة (4 ملفات فقط):**
+1. `src/app/api/seed/route.ts` — إزالة `error: String(error)` من response (إصلاح تسريب internals)
+2. `src/app/api/bank-accounts/route.ts` — إضافة `, { status: 201 }` لـ POST create
+3. `src/app/api/bank-reconciliation/route.ts` — إضافة `, { status: 201 }` لـ POST create (مكانين: COMPLETED + DRAFT)
+4. `src/app/api/purchase-orders/[id]/route.ts` — إضافة `db.$transaction` لـ PUT (status→APPROVED مع تحديث PR) ولـ DELETE (items + order)
+5. `src/app/api/fiscal-years/[id]/route.ts` — إضافة `db.$transaction` لـ PUT (status→OPEN مع تحديث الفترات)
+
+Stage Summary:
+- **Endpoints مدققة:** 181/181 route.ts (تجاوز الـ 80+ المتوقعة — النطاق الفعلي أكبر)
+- **تسريبات مُصلحة:** 1 (seed/route.ts) + 1 استثناء مقصود (AccountingGuardError في journal-entries) متروك عن قصد
+- **try/catch مضافة:** 0 (جميع الـ 131 ملف بمعالجات تعديل تحتوي بالفعل على try/catch — النتيجة 0 missing بعد سكربت Python دقيق)
+- **HTTP codes مُصححة:** 3 (bank-accounts + bank-reconciliation ×2: 200 → 201 لـ POST create)
+- **transactions مضافة:** 3 (purchase-orders PUT, purchase-orders DELETE, fiscal-years PUT) عبر ملفين
+- **Validation ناقص:** 37 handler مُسجّل (8 POST create + 29 PUT/PATCH) — دون إصلاح
+- **Dead endpoints:** ~14 مُسجّل — دون حذف
+- **Duplicate endpoints:** 2-3 أزواج مُسجّلة — دون دمج
+- **توصيات:**
+  1. راجع 30+ ملف تستخدم `error instanceof Error ? error.message : 'fallback'` — استبدلها برسائل عربية ثابتة لتجنّب تسريب رسائل Prisma الداخلية (يحتاج إلى test frontend للتأكد من عدم اعتماده على الرسائل التقنية).
+  2. أضف validation إلزامي للـ 8 POST create handlers المُسجّلة (advances, currencies, equipment/expenses, financial-mapping, petty-cash, resource-distribution, salaries/auto-calculate, sales-invoices).
+  3. احذف أو سجّل dead endpoints: `/api/timesheets`, `/api/financial-statements/{balance-sheet,income,cash-flow}`, `/api/account-statement` (مستبدلة بـ `/api/reports/*`).
+  4. وثّق duplicate endpoints أو ادمجها (e.g., `/api/trial-balance` vs `/api/reports/trial-balance`).
+  5. أضف `db.$transaction` لـ `project-controls/[projectId]/backfill` إذا كانت تتطلب all-or-nothing semantics (حاليًا partial-success per-category).

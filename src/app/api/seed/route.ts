@@ -615,7 +615,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Seed error:', error)
     return NextResponse.json(
-      { success: false, message: 'حدث خطأ أثناء تهيئة البيانات', error: String(error) },
+      { success: false, message: 'حدث خطأ أثناء تهيئة البيانات' },
       { status: 500 }
     )
   }

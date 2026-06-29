@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         data: reconciliation,
         message: 'Bank reconciliation completed successfully',
-      })
+      }, { status: 201 })
     }
 
     // Default: create/save as draft
@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       data: reconciliation,
       message: 'Bank reconciliation saved as draft',
-    })
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating bank reconciliation:', error)
     return NextResponse.json({ error: 'Failed to create bank reconciliation' }, { status: 500 })

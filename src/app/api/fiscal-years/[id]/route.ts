@@ -129,17 +129,33 @@ export async function PUT(
       }
     }
 
-    const updated = await db.fiscalYear.update({
-      where: { id },
-      data: updateData,
-      include: { periods: true },
-    })
-
-    // If status changed to OPEN, reopen all periods too
+    // Atomically update the year and (optionally) reopen all periods.
+    // If the period updateMany fails after the year has been reopened, the
+    // year would be OPEN while its periods remain CLOSED — wrap both writes.
+    let updated: Awaited<ReturnType<typeof db.fiscalYear.update>>
     if (body.status === 'OPEN' && existing.status !== 'OPEN') {
-      await db.fiscalPeriod.updateMany({
-        where: { fiscalYearId: id },
-        data: { status: 'OPEN' },
+      updated = await db.$transaction(async (tx) => {
+        const yr = await tx.fiscalYear.update({
+          where: { id },
+          data: updateData,
+          include: { periods: true },
+        })
+        await tx.fiscalPeriod.updateMany({
+          where: { fiscalYearId: id },
+          data: { status: 'OPEN' },
+        })
+        // Re-fetch periods so the response reflects their new OPEN status.
+        const refreshed = await tx.fiscalYear.findUnique({
+          where: { id },
+          include: { periods: true },
+        })
+        return refreshed ?? yr
+      })
+    } else {
+      updated = await db.fiscalYear.update({
+        where: { id },
+        data: updateData,
+        include: { periods: true },
       })
     }
 

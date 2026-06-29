@@ -85,16 +85,39 @@ export async function PUT(
       }
 
       // If changing to APPROVED, update the linked PR status to CONVERTED_TO_PO
+      // Wrap PR + PO status updates in a single transaction so a partial failure
+      // (e.g. PO update throws after PR has been updated) cannot leave the PR
+      // marked as converted while the PO is still PENDING_APPROVAL.
       if (body.status === 'APPROVED' && existing.purchaseRequestId) {
-        const pr = await db.purchaseRequest.findUnique({
-          where: { id: existing.purchaseRequestId },
-        })
-        if (pr && pr.status === 'APPROVED') {
-          await db.purchaseRequest.update({
-            where: { id: existing.purchaseRequestId },
-            data: { status: 'CONVERTED_TO_PO' },
+        const updated = await db.$transaction(async (tx) => {
+          const pr = await tx.purchaseRequest.findUnique({
+            where: { id: existing.purchaseRequestId! },
           })
-        }
+          if (pr && pr.status === 'APPROVED') {
+            await tx.purchaseRequest.update({
+              where: { id: existing.purchaseRequestId! },
+              data: { status: 'CONVERTED_TO_PO' },
+            })
+          }
+          return tx.purchaseOrder.update({
+            where: { id },
+            data: { status: body.status },
+            include: {
+              supplier: { select: { id: true, name: true, code: true } },
+              project: { select: { id: true, name: true, code: true } },
+              purchaseRequest: { select: { id: true, requestNo: true, status: true } },
+              items: true,
+              goodsReceipts: {
+                select: { id: true, receiptNo: true, status: true, date: true },
+              },
+              invoices: {
+                select: { id: true, invoiceNo: true, status: true, totalAmount: true, paidAmount: true },
+              },
+            },
+          })
+        })
+
+        return NextResponse.json(updated)
       }
 
       const updated = await db.purchaseOrder.update({
@@ -215,9 +238,13 @@ export async function DELETE(
       )
     }
 
-    // Delete items first then the order
-    await db.purchaseOrderItem.deleteMany({ where: { orderId: id } })
-    await db.purchaseOrder.delete({ where: { id } })
+    // Delete items and order atomically — if the order delete fails (e.g. new
+    // goods receipt linked between the two calls), we must not leave the order
+    // without its items.
+    await db.$transaction(async (tx) => {
+      await tx.purchaseOrderItem.deleteMany({ where: { orderId: id } })
+      await tx.purchaseOrder.delete({ where: { id } })
+    })
 
     return NextResponse.json({ message: 'تم حذف أمر الشراء بنجاح' })
   } catch (error) {
