@@ -5612,3 +5612,46 @@ Stage Summary:
 - Level 7 Code: 10 catch blocks + browser E2E ✓
 - User Empowerment: 5 critical bugs + general rule ✓
 - جميع التغييرات ملتزمة وممدودة إلى GitHub (8 commits)
+
+---
+Task ID: EXPENSES-CATEGORIES-002
+Agent: Main Agent
+Task: توسيع تصنيفات شاشة المصروفات العامة لتغطية كل البنود العامة والإدارية
+
+Work Log:
+- تحليل قائمة البنود التي قدمها المستخدم (10 مجموعات، ~60 بند)
+- تحديث prisma/schema.prisma: إضافة 60+ قيمة جديدة لـ ExpenseCategory enum
+  * المرافق والخدمات: SEWAGE, TELECOM, POSTAL, CLOUD_HOSTING (+ RENT, ELECTRICITY, WATER, INTERNET الموجودة)
+  * المركبات العامة: ADMIN_VEHICLES_FUEL, ADMIN_VEHICLES_MAINT, VEHICLE_WASH, TIRES, OILS_FILTERS, ROAD_PARKING_FEES
+  * المباني والمكاتب: BUILDING_MAINT, CLEANING, SECURITY, FURNITURE, OFFICE_EQUIPMENT, STATIONERY (+ HOSPITALITY الموجود)
+  * المصروفات الحكومية: GOV_FEES, FINES, VIOLATIONS, MUNICIPAL_FEES, CHAMBER_FEES, HR_MINISTRY_FEES, GOSI_FEES, PASSPORT_FEES, RESIDENCY_FEES, VISA_FEES, LICENSE_FEES
+  * التأمين: MEDICAL_INSURANCE, VEHICLE_INSURANCE, EQUIPMENT_INSURANCE, FIRE_INSURANCE, PROPERTY_INSURANCE
+  * الاشتراكات: SOFTWARE_SUBSCRIPTIONS, SYSTEM_SUBSCRIPTIONS, WEBSITE_SUBSCRIPTIONS, NEWSPAPERS, PROFESSIONAL_MEMBERSHIPS
+  * المالية: BANK_FEES, BANK_COMMISSIONS, TRANSFER_DIFFERENCES, POS_FEES, PAYMENT_GATEWAY_FEES
+  * الموارد البشرية العامة: EMPLOYEE_TRAINING, RECRUITMENT, JOB_ADVERTISEMENTS, NON_PAYROLL_BONUSES, ADMIN_ALLOWANCES
+  * السفر: TRAVEL_TICKETS, HOTELS, DEPUTATIONS, TRAVEL_ALLOWANCE, EXTERNAL_HOSPITALITY
+  * متنوعة: DONATIONS, MINOR_LOSSES, CASH_DIFFERENCES, MATERIAL_DAMAGE (+ OTHER الموجود)
+- تنفيذ bun run db:push + prisma generate بنجاح
+- إعادة بناء src/components/modules/expenses.tsx:
+  * استبدال NEW_CATEGORY_OPTIONS (8 فئات مسطحة) بـ CATEGORY_GROUPS (10 مجموعات، 60+ فئة)
+  * استخدام SelectGroup + SelectLabel لقائمة منسدلة مجمّعة
+  * تحديث CATEGORY_LABELS بكل التصنيفات الجديدة (عربي/إنجليزي)
+  * إضافة GROUP_COLORS + CATEGORY_TO_GROUP + getCategoryColor() للألوان حسب المجموعة
+  * تحديث فلتر الفئات في الجدول ليكون مجمّعاً أيضاً (جديد + تاريخي متخصص + تاريخي عام)
+  * إزالة MANAGEMENT_CARS من SPECIALIZED_CATEGORIES (أصبحت عامة، لها بدائل أدق)
+  * توثيق صريح: ADVANCES ليست نوع مصروف (أصل متداول — ذمم الموظفين)
+- مشكلة واجهتها: سكربت restore-from-safety.sh (predev hook) رجع الملفات لآخر commit
+  * الحل: عمل commit فوري بعد كل تغيير قبل إعادة تشغيل dev server
+- الاختبار الفعلي (Agent Browser):
+  * dropdown الفئات يعرض 10 مجموعات بكل الفئات الـ60+ ✓
+  * إنشاء مصروف "رسوم بنكية" (350 + 52.50 ضريبة = 402.50) → POST 201 ✓
+  * المصروف يظهر في الجدول مع قيد محاسبي ✓
+- الصحة المحاسبية: 100/100 (7/7 فحوصات) ✓
+- Lint: نظيف
+
+Stage Summary:
+- شاشة المصروفات العامة الآن تغطي كل البنود العامة والإدارية (10 مجموعات، 60+ فئة)
+- كل مصروف له دورة عمل متخصصة (وقود/صيانة/رواتب/مقاولين/تشغيل/تأجير/عمالة/سلف/موردون) يُسجَّل من شاشته
+- ADVANCES ليست نوع مصروف (أصل متداول)
+- ADMIN_VEHICLES_FUEL منفصل عن FUEL (الأول للمركبات الإدارية، الثاني للمعدات)
+- Commit: d1cb158 — تم الدفع إلى origin/main
