@@ -475,7 +475,7 @@ model FiscalPeriod {
   periodNo   Int      // 1-12
   startDate  DateTime
   endDate    DateTime
-  status     String   @default("OPEN") // OPEN, CLOSED
+  status     String   @default("OPEN") // OPEN, LOCKED, CLOSED (BA-02 Task 3: unified accounting calendar)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

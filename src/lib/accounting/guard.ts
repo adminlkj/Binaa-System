@@ -233,7 +233,9 @@ export async function assertJournalEntryValid(
     )
   }
 
-  // R6: date in open period
+  // R6: date in open period (BA-02 Task 3: enforced via unified accounting calendar)
+  // The calendar is the Single Source of Truth for period state. No API can bypass it.
+  // skipPeriodGuard=true is reserved for system entries (reversals, closing entries themselves).
   const date = typeof input.date === 'string' ? new Date(input.date) : input.date
   if (isNaN(date.getTime())) {
     throw new AccountingGuardError(
@@ -243,7 +245,19 @@ export async function assertJournalEntryValid(
     )
   }
   if (!input.skipPeriodGuard) {
-    await assertPeriodOpen(date, client)
+    try {
+      await assertPeriodOpen(date, client)
+    } catch (e: any) {
+      // Translate AccountingCalendarError → AccountingGuardError for consistent error handling
+      if (e?.name === 'AccountingCalendarError' || e?.code === 'PERIOD_CLOSED' || e?.code === 'PERIOD_LOCKED') {
+        throw new AccountingGuardError(
+          e.code || 'PERIOD_CLOSED',
+          e.message,
+          { date: date.toISOString(), ...e.details }
+        )
+      }
+      throw e
+    }
   }
 
   // R7: entryNo unique
