@@ -5437,3 +5437,34 @@ Stage Summary:
 - تكاليف العمالة تدعم اختيار مصدر الدفع (نقدية/بنك)
 - مسيرات الرواتب تفتح بدون أخطاء (إصلاح toFixed على Decimal-as-string)
 - جاهز لـ commit + push
+
+---
+Task ID: L4-DATA-001
+Agent: Main Agent
+Task: Level 4 Data Audit — فحص تكامل البيانات الشامل + إصلاح ثغرات التحقق + تنظيف البيانات السيئة
+
+Work Log:
+- كتابة scripts/data-audit.ts: سكريبت فحص بيانات شامل (8 فئات، 40+ فحصة) باستخدام SQL مباشر
+- تشغيل الفحص الأولي: كشف عن 6 مشاكل حقيقية + 1 false positive (employeeNumber column)
+- فحص جذور المشاكل بـ scripts/investigate.ts: حدد البيانات السيئة بالضبط
+- تطبيق 6 إصلاحات تحقق (L4-DATA-001..006):
+  * employees POST/PUT: رفض الاسم الفارغ
+  * clients POST/PUT: رفض الاسم الفارغ
+  * suppliers POST/PUT: رفض الاسم الفارغ
+  * boq POST/PUT: رفض الكمية/السعر السالب
+  * employee-contracts POST/PUT: رفض endDate < startDate + required employeeId/startDate
+  * projects POST/PUT: رفض الاسم الفارغ + رفض endDate < startDate
+- كتابة scripts/cleanup-bad-data.ts: تنظيف البيانات السيئة الموجودة
+- تنظيف: 3 BOQ سالب، 1 عقد بتواريخ معكوسة، 1 مشروع soft-delete، 1 موظف soft-delete
+- اختبار فعلي بـ 13 curl test: كلها 400 للبيانات السيئة + 3 اختبارات بيانات صحيحة 201
+- إعادة تشغيل الفحص: كل الفحوصات OK (0 انتهاكات)
+- Lint: نظيف
+
+Stage Summary:
+- 12 ملف API تم تعديلها (6 routes × POST + PUT)
+- 4 سكريبتات فحص/تنظيف جديدة
+- 6 ثغرات تحقق حرجة تم سدها
+- 6 سجلات سيئة تم تنظيفها (3 hard-delete + 3 soft-delete)
+- 13 اختبار فعلي curl نجح (400 للسيئ + 201 للصحيح)
+- كل فحوصات تكامل البيانات (40+) سليمة بعد الإصلاح
+- Commit: 960edd5 — تم الدفع إلى origin/main
