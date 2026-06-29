@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+*.log
+db/*.db
+db/*.db-journal
+.env
+.env.local
+.env.*.local
+scripts/
+examples/
+skills/
+mini-services/
+docs/
+README.md
