@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -99,7 +100,7 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
     ...filteredInvoices.map((i) => ({
       date: new Date(i.date),
       description: `Invoice ${i.invoiceNo}`,
-      debit: i.totalAmount,
+      debit: toNumber(i.totalAmount),
       credit: 0,
       category: 'invoice',
     })),
@@ -107,7 +108,7 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
       date: new Date(p.date),
       description: p.notes || `Payment${p.reference ? ` - ${p.reference}` : ''}`,
       debit: 0,
-      credit: p.amount,
+      credit: toNumber(p.amount),
       category: 'payment',
     })),
   ]
@@ -142,11 +143,12 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
 
   let bookBalance = 0
   if (arAccounts.length > 0) {
-    const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
+    const jeWhere: Prisma.JournalEntryWhereInput = { status: 'POSTED', deletedAt: null }
     if (dateFrom || dateTo) {
-      jeWhere.date = {}
-      if (dateFrom) jeWhere.date.gte = new Date(dateFrom)
-      if (dateTo) jeWhere.date.lte = new Date(dateTo)
+      const dateFilter: Prisma.DateTimeFilter = {}
+      if (dateFrom) dateFilter.gte = new Date(dateFrom)
+      if (dateTo) dateFilter.lte = new Date(dateTo)
+      jeWhere.date = dateFilter
     }
 
     const arAgg = await db.journalLine.aggregate({
@@ -243,13 +245,13 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
       date: new Date(i.date),
       description: `Invoice ${i.invoiceNo}`,
       debit: 0,
-      credit: i.totalAmount,
+      credit: toNumber(i.totalAmount),
       category: 'invoice',
     })),
     ...filteredPayments.map((p) => ({
       date: new Date(p.date),
       description: p.notes || `Payment${p.reference ? ` - ${p.reference}` : ''}`,
-      debit: p.amount,
+      debit: toNumber(p.amount),
       credit: 0,
       category: 'payment',
     })),
@@ -283,11 +285,12 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
 
   let bookBalance = 0
   if (apAccounts.length > 0) {
-    const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
+    const jeWhere: Prisma.JournalEntryWhereInput = { status: 'POSTED', deletedAt: null }
     if (dateFrom || dateTo) {
-      jeWhere.date = {}
-      if (dateFrom) jeWhere.date.gte = new Date(dateFrom)
-      if (dateTo) jeWhere.date.lte = new Date(dateTo)
+      const dateFilter: Prisma.DateTimeFilter = {}
+      if (dateFrom) dateFilter.gte = new Date(dateFrom)
+      if (dateTo) dateFilter.lte = new Date(dateTo)
+      jeWhere.date = dateFilter
     }
 
     const apAgg = await db.journalLine.aggregate({
@@ -509,7 +512,7 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
 
   // Revenue entries
   for (const rental of rentals) {
-    const amount = rental.totalAmount || rental.monthlyRate
+    const amount = toNumber(rental.totalAmount) || toNumber(rental.monthlyRate)
     runningBalance += amount
     lines.push({
       date: new Date(rental.startDate).toISOString().split('T')[0],
@@ -523,12 +526,13 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
 
   // Expense entries
   for (const exp of expenses) {
-    runningBalance -= exp.amount
+    const amount = toNumber(exp.amount)
+    runningBalance -= amount
     lines.push({
       date: new Date(exp.date).toISOString().split('T')[0],
       description: `${exp.category}: ${exp.description}`,
       debit: 0,
-      credit: exp.amount,
+      credit: amount,
       balance: runningBalance,
       category: 'cost',
     })
@@ -536,12 +540,13 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
 
   // Fuel entries
   for (const fuel of fuelLogs) {
-    runningBalance -= fuel.totalCost
+    const amount = toNumber(fuel.totalCost)
+    runningBalance -= amount
     lines.push({
       date: new Date(fuel.date).toISOString().split('T')[0],
       description: `Fuel - ${fuel.liters} liters`,
       debit: 0,
-      credit: fuel.totalCost,
+      credit: amount,
       balance: runningBalance,
       category: 'cost',
     })
@@ -549,12 +554,13 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
 
   // Maintenance entries
   for (const maint of maintenance) {
-    runningBalance -= maint.cost
+    const amount = toNumber(maint.cost)
+    runningBalance -= amount
     lines.push({
       date: new Date(maint.date).toISOString().split('T')[0],
       description: `Maintenance: ${maint.description}`,
       debit: 0,
-      credit: maint.cost,
+      credit: amount,
       balance: runningBalance,
       category: 'cost',
     })
@@ -571,11 +577,11 @@ async function getEquipmentStatement(entityId: string, dateFrom: string | null, 
   }
 
   // Operational totals (descriptive)
-  const operationalTotalRevenues = rentals.reduce((s, r) => s + (Number(r.totalAmount || 0) || Number(r.monthlyRate || 0)), 0)
+  const operationalTotalRevenues = rentals.reduce((s, r) => s + (toNumber(r.totalAmount) || toNumber(r.monthlyRate)), 0)
   const operationalTotalCosts =
-    expenses.reduce((s, e) => s + Number(e.amount || 0), 0) +
-    fuelLogs.reduce((s, f) => s + f.totalCost, 0) +
-    maintenance.reduce((s, m) => s + Number(m.cost || 0), 0)
+    expenses.reduce((s, e) => s + toNumber(e.amount), 0) +
+    fuelLogs.reduce((s, f) => s + toNumber(f.totalCost), 0) +
+    maintenance.reduce((s, m) => s + toNumber(m.cost), 0)
 
   const profit = operationalTotalRevenues - operationalTotalCosts
 

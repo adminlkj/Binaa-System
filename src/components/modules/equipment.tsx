@@ -369,6 +369,19 @@ function NewEquipmentDialog({ open, onOpenChange, suppliers, clients }: {
           {/* Asset Account Selection */}
           <div className="space-y-2">
             <h4 className="font-semibold text-sm text-emerald-700 border-b border-emerald-200 pb-1">{t('حساب الأصل الثابت', 'Fixed Asset Account')}</h4>
+            {/*
+             * PROPERTY-SYSTEM DECISION (SC-3):
+             * KEEP roles={['FIXED_ASSET']} — no `usableInAssets` property exists
+             * in the schema. This dropdown selects the FIXED ASSET account itself
+             * (the account that will be DEBITED when registering the equipment
+             * as a capital asset). The 22 properties cover expense/usage screens
+             * (usableInExpenses, usableInFuel, usableInMaintenance, ...) but
+             * there is no equivalent "usableInAssets" / "showInAssetRegister".
+             * Therefore `roles` is the accurate and correct filter here.
+             * The full account object is still captured in onValueChange so any
+             * future property-driven behavior (e.g. showing `requiresProject`)
+             * can be added without changing the data source.
+             */}
             <AccountSelector
               roles={['FIXED_ASSET']}
               value={assetAccountId}

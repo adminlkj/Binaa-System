@@ -28,6 +28,8 @@ export interface CompanySettingsData {
   headerHeight?: number
   footerHeight?: number
   invoiceTerms?: string | null
+  useThousandSeparatorsSystem?: boolean
+  useThousandSeparatorsOfficial?: boolean
 }
 
 const defaultCompanySettings: CompanySettingsData = {

@@ -18,7 +18,8 @@
 // ============================================================================
 
 import { db } from '@/lib/db'
-import { AccountRole, ACCOUNT_ROLES, type AccountRoleKey } from '@/lib/account-roles'
+import { AccountRole, ACCOUNT_ROLES, type AccountRoleInfo, type AccountRoleKey } from '@/lib/account-roles'
+import type { Account } from '@prisma/client'
 
 // ---------------------------------------------------------------------------
 // Operation Type Definitions
@@ -392,7 +393,11 @@ export async function resolveOperationAccounts(operationType: string) {
     throw new Error(`لا يوجد ربط محاسبي لنوع العملية "${operationType}". يرجى تعريفه من شاشة محرك الربط المحاسبي.`)
   }
 
-  const debitAccounts = []
+  const debitAccounts: {
+    role: AccountRoleKey
+    roleInfo: AccountRoleInfo | null
+    accounts: Account[]
+  }[] = []
   for (const role of mapping.debitRoles) {
     const accounts = await resolveRoleToAccounts(role)
     debitAccounts.push({
@@ -402,7 +407,11 @@ export async function resolveOperationAccounts(operationType: string) {
     })
   }
 
-  const creditAccounts = []
+  const creditAccounts: {
+    role: AccountRoleKey
+    roleInfo: AccountRoleInfo | null
+    accounts: Account[]
+  }[] = []
   for (const role of mapping.creditRoles) {
     const accounts = await resolveRoleToAccounts(role)
     creditAccounts.push({
@@ -444,7 +453,7 @@ export async function resolveRoleToAccounts(role: AccountRoleKey) {
   const postingAccounts = roleAccounts.filter(a => a.allowPosting)
   const parentAccounts = roleAccounts.filter(a => !a.allowPosting)
 
-  const result = []
+  const result: Account[] = []
 
   // Add all posting accounts directly
   result.push(...postingAccounts)
@@ -616,7 +625,35 @@ export async function getOperationsUsingRole(role: AccountRoleKey) {
  */
 export async function getRoleMappingOverview() {
   const roles = Object.values(AccountRole) as AccountRoleKey[]
-  const overview = []
+  const overview: {
+    role: AccountRoleKey
+    labelAr: string
+    labelEn: string
+    description: string
+    defaultCodes: string[]
+    isMapped: boolean
+    totalAccounts: number
+    activeAccounts: number
+    postingAccounts: number
+    childAccounts: number
+    accounts: {
+      id: string
+      code: string
+      nameAr: string | null
+      name: string
+      isActive: boolean
+      allowPosting: boolean
+      parentCode: string | null
+    }[]
+    childAccountList: {
+      id: string
+      code: string
+      nameAr: string | null
+      name: string
+      parentCode: string | null
+    }[]
+    operations: Awaited<ReturnType<typeof getOperationsUsingRole>>
+  }[] = []
 
   for (const role of roles) {
     const roleInfo = ACCOUNT_ROLES[role]
@@ -633,7 +670,7 @@ export async function getRoleMappingOverview() {
 
     // Get children for parent accounts
     const parentAccounts = accounts.filter(a => !a.allowPosting)
-    let childAccounts: any[] = []
+    const childAccounts: Account[] = []
     for (const parent of parentAccounts) {
       const children = await db.account.findMany({
         where: {

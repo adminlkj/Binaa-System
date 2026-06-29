@@ -146,6 +146,15 @@ function AddPaymentDialog({
   const [receivingAccountId, setReceivingAccountId] = useState<string | null>(null)
   const [receivingAccountCode, setReceivingAccountCode] = useState('')
   const [receivingAccountName, setReceivingAccountName] = useState('')
+  // خصائص الحساب المختار — للعرض الديناميكي (badges) وسلوك مستقبلي
+  // Single-dropdown case: نُبقي roles=['CASH', 'BANK'] (انظر التعليق تحت AccountSelector)
+  const [receivingAccountProps, setReceivingAccountProps] = useState<{
+    showInCash?: boolean
+    showInBank?: boolean
+    allowsClient?: boolean
+    allowsCostCenter?: boolean
+    accountRole?: string | null
+  } | null>(null)
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -198,6 +207,7 @@ function AddPaymentDialog({
       setReceivingAccountId(null)
       setReceivingAccountCode('')
       setReceivingAccountName('')
+      setReceivingAccountProps(null)
       setReference('')
       setNotes('')
     }
@@ -339,6 +349,10 @@ function AddPaymentDialog({
               <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
             </div>
+            {/* AccountSelector: Single-dropdown case (no cash/bank toggle).
+                Per property-system rules: نُبقي roles=['CASH','BANK'] بدل filterByProperty
+                لأن الـ dropdown يعرض النقدية والبنوك معاً ولا يوجد toggle صريح بينهما.
+                Props المختارة تُخزَّن لعرض badges شفافة للسلوك. */}
             <AccountSelector
               roles={['CASH', 'BANK']}
               value={receivingAccountId}
@@ -348,11 +362,38 @@ function AddPaymentDialog({
                 setReceivingAccountName(account.nameAr || account.name)
                 // Backward compatibility: map account role to old receivedIn field
                 setReceivedIn(account.accountRole === 'BANK' ? 'BANK' : 'TREASURY')
+                // Property-based info for dynamic UI / badges
+                setReceivingAccountProps({
+                  showInCash: account.showInCash,
+                  showInBank: account.showInBank,
+                  allowsClient: account.allowsClient,
+                  allowsCostCenter: account.allowsCostCenter,
+                  accountRole: account.accountRole,
+                })
               }}
               label={tt(labels.receivedIn.ar, labels.receivedIn.en)}
               placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...')}
             />
           </div>
+
+          {/* Property badges — عرض شفاف لخصائص الحساب المختار */}
+          {receivingAccountId && receivingAccountProps && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+              <span className="text-xs text-emerald-700 font-medium">{tt('الخصائص:', 'Properties:')}</span>
+              {receivingAccountProps.showInCash && (
+                <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{tt('نقدية', 'cash')}</Badge>
+              )}
+              {receivingAccountProps.showInBank && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{tt('بنك', 'bank')}</Badge>
+              )}
+              {receivingAccountProps.allowsClient && (
+                <Badge variant="outline" className="text-[9px] text-violet-700 border-violet-200 bg-violet-50">{tt('يسمح بعميل', 'allows client')}</Badge>
+              )}
+              {receivingAccountProps.allowsCostCenter && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{tt('يسمح بمركز تكلفة', 'allows cost center')}</Badge>
+              )}
+            </div>
+          )}
 
           {/* Reference */}
           <div className="space-y-2">
@@ -425,6 +466,15 @@ function EditPaymentDialog({
   const [receivingAccountId, setReceivingAccountId] = useState<string | null>(null)
   const [receivingAccountCode, setReceivingAccountCode] = useState('')
   const [receivingAccountName, setReceivingAccountName] = useState('')
+  // خصائص الحساب المختار — للعرض الديناميكي (badges) وسلوك مستقبلي
+  // Single-dropdown case: نُبقي roles=['CASH', 'BANK']
+  const [receivingAccountProps, setReceivingAccountProps] = useState<{
+    showInCash?: boolean
+    showInBank?: boolean
+    allowsClient?: boolean
+    allowsCostCenter?: boolean
+    accountRole?: string | null
+  } | null>(null)
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -437,6 +487,7 @@ function EditPaymentDialog({
       setReceivingAccountId(null)
       setReceivingAccountCode('')
       setReceivingAccountName('')
+      setReceivingAccountProps(null)
       setReference(payment.reference || '')
       setNotes(payment.notes || '')
     }
@@ -514,6 +565,9 @@ function EditPaymentDialog({
               <Label>{tt(labels.date.ar, labels.date.en)} *</Label>
               <Input type="date" value={date} onChange={e => setDate(e.target.value)} required disabled={isPosted} />
             </div>
+            {/* AccountSelector: Single-dropdown case (no cash/bank toggle).
+                نُبقي roles=['CASH','BANK'] بدل filterByProperty لأن الـ dropdown
+                يعرض النقدية والبنوك معاً ولا toggle صريح بينهما. */}
             <AccountSelector
               roles={['CASH', 'BANK']}
               value={receivingAccountId}
@@ -522,11 +576,37 @@ function EditPaymentDialog({
                 setReceivingAccountCode(account.code)
                 setReceivingAccountName(account.nameAr || account.name)
                 setReceivedIn(account.accountRole === 'BANK' ? 'BANK' : 'TREASURY')
+                setReceivingAccountProps({
+                  showInCash: account.showInCash,
+                  showInBank: account.showInBank,
+                  allowsClient: account.allowsClient,
+                  allowsCostCenter: account.allowsCostCenter,
+                  accountRole: account.accountRole,
+                })
               }}
               label={tt(labels.receivedIn.ar, labels.receivedIn.en)}
               placeholder={tt('اختر حساب التحصيل...', 'Select receiving account...')}
             />
           </div>
+
+          {/* Property badges — عرض شفاف لخصائص الحساب المختار */}
+          {receivingAccountId && receivingAccountProps && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+              <span className="text-xs text-emerald-700 font-medium">{tt('الخصائص:', 'Properties:')}</span>
+              {receivingAccountProps.showInCash && (
+                <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{tt('نقدية', 'cash')}</Badge>
+              )}
+              {receivingAccountProps.showInBank && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{tt('بنك', 'bank')}</Badge>
+              )}
+              {receivingAccountProps.allowsClient && (
+                <Badge variant="outline" className="text-[9px] text-violet-700 border-violet-200 bg-violet-50">{tt('يسمح بعميل', 'allows client')}</Badge>
+              )}
+              {receivingAccountProps.allowsCostCenter && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{tt('يسمح بمركز تكلفة', 'allows cost center')}</Badge>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>{tt(labels.reference.ar, labels.reference.en)}</Label>

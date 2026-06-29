@@ -67,7 +67,7 @@ export async function PUT(
           }
           // Decrement inventory for each INVENTORY-destination item
           for (const item of existing.items) {
-            if (item.destination === 'INVENTORY' && item.quantityReceived > 0) {
+            if (item.destination === 'INVENTORY' && Number(item.quantityReceived) > 0) {
               // Find by name (the GR POST may have created a new item or updated existing)
               const inv = await tx.inventoryItem.findFirst({ where: { name: item.description } })
               if (inv) {
@@ -221,9 +221,9 @@ export async function DELETE(
 
       // 2. Decrement inventory for each INVENTORY-destination item + delete StockMovements
       for (const item of existing.items) {
-        if (item.destination === 'INVENTORY' && item.quantityReceived > 0) {
+        if (item.destination === 'INVENTORY' && Number(item.quantityReceived) > 0) {
           // Find the inventory item (by explicit link or by name)
-          let inv = null
+          let inv: { id: string } | null = null
           if (item.inventoryItemId) {
             inv = await tx.inventoryItem.findUnique({ where: { id: item.inventoryItemId } })
           }

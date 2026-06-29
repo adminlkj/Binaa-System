@@ -22,13 +22,12 @@ export async function GET(
     }
 
     // Fetch linked journal entry if any
-    let journalEntry = null
-    if (retention.journalEntryId) {
-      journalEntry = await db.journalEntry.findUnique({
-        where: { id: retention.journalEntryId },
-        include: { lines: { include: { account: { select: { code: true, name: true, nameAr: true } } } } },
-      })
-    }
+    const journalEntry = retention.journalEntryId
+      ? await db.journalEntry.findUnique({
+          where: { id: retention.journalEntryId },
+          include: { lines: { include: { account: { select: { code: true, name: true, nameAr: true } } } } },
+        })
+      : null
 
     return NextResponse.json({
       ...retention,

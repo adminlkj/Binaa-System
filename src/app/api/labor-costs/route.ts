@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       // يحترم اختيار المستخدم لمصدر الدفع
       const journalEntry = await autoEntryLaborCost({
         description: laborCost.description,
-        amount: laborCost.totalAmount,
+        amount: Number(laborCost.totalAmount),
         date: laborCost.date,
         costCenterId: project?.costCenterId || undefined,
         paymentSource: body.paymentSource,

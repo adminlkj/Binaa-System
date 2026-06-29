@@ -96,7 +96,20 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
   const [description, setDescription] = useState('')
   // مصدر السداد (المستخدم سيد النظام)
   const [paymentSource, setPaymentSource] = useState<'CASH' | 'BANK' | 'EMPLOYEE_DEDUCTION'>('CASH')
+  const [paymentAccountId, setPaymentAccountId] = useState<string | null>(null)
   const [paymentAccountCode, setPaymentAccountCode] = useState<string | null>(null)
+  // خصائص الحساب المختار — للعرض الديناميكي (badges + سلوك مستقبلي)
+  const [paymentAccountProps, setPaymentAccountProps] = useState<{
+    allowsEmployee?: boolean
+    allowsCostCenter?: boolean
+    allowsProject?: boolean
+    requiresEmployee?: boolean
+    allowsVat?: boolean
+    showInCash?: boolean
+    showInBank?: boolean
+    usableInAdvances?: boolean
+    accountRole?: string | null
+  } | null>(null)
 
   React.useEffect(() => {
     if (open) {
@@ -105,7 +118,9 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
       setDate(new Date().toISOString().split('T')[0])
       setDescription('')
       setPaymentSource('CASH')
+      setPaymentAccountId(null)
       setPaymentAccountCode(null)
+      setPaymentAccountProps(null)
     }
   }, [open])
 
@@ -128,12 +143,17 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
     })
   }
 
-  // احسب الأدوار المطلوبة لمحدد الحساب حسب مصدر السداد
-  const accountRoles: string[] = paymentSource === 'BANK'
-    ? ['BANK']
+  // احسب خصائص الفلتر لمحدد الحساب حسب مصدر السداد.
+  // هذا هو "نظام الخصائص": بدل الأدوار الثابتة، نستخدم الخصائص الوظيفية.
+  //   CASH            → showInCash=true  (حسابات النقدية/الخزينة)
+  //   BANK            → showInBank=true  (حسابات البنوك)
+  //   EMPLOYEE_DEDUCTION → usableInAdvances=true  (حسابات السلف نفسها — هذا هو "حساب السلفة")
+  // ملاحظة: API يتوقع paymentAccountCode (كود الحساب) لذا نحتفظ بالكود في الـ state.
+  const accountFilterByProperty: Record<string, boolean> | undefined = paymentSource === 'BANK'
+    ? { showInBank: true }
     : paymentSource === 'CASH'
-      ? ['CASH', 'TREASURY']
-      : ['EMPLOYEE_ADVANCE'] // EMPLOYEE_DEDUCTION — يختار المستخدم حساب الخصم
+      ? { showInCash: true }
+      : { usableInAdvances: true } // EMPLOYEE_DEDUCTION — الحساب هو نفسه حساب السلفة (أصل)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -167,7 +187,12 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
           {/* مصدر السداد — المستخدم سيد النظام */}
           <div className="space-y-2">
             <Label>{t(lang, 'مصدر السداد *', 'Payment Source *')}</Label>
-            <Select value={paymentSource} onValueChange={(v: 'CASH' | 'BANK' | 'EMPLOYEE_DEDUCTION') => { setPaymentSource(v); setPaymentAccountCode(null) }}>
+            <Select value={paymentSource} onValueChange={(v: 'CASH' | 'BANK' | 'EMPLOYEE_DEDUCTION') => {
+              setPaymentSource(v)
+              setPaymentAccountId(null)
+              setPaymentAccountCode(null)
+              setPaymentAccountProps(null)
+            }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="CASH">{t(lang, 'نقدية', 'Cash')}</SelectItem>
@@ -177,14 +202,53 @@ function NewAdvanceDialog({ open, onOpenChange, employees }: {
             </Select>
           </div>
 
-          {/* محدد الحساب الدائن الفعلي */}
+          {/* محدد الحساب الدائن الفعلي — محرك الخصائص */}
           <AccountSelector
-            roles={accountRoles}
-            value={paymentAccountCode}
-            onValueChange={(_id, account) => setPaymentAccountCode(account.code)}
+            filterByProperty={accountFilterByProperty}
+            value={paymentAccountId}
+            onValueChange={(id, account) => {
+              setPaymentAccountId(id)
+              setPaymentAccountCode(account.code)
+              setPaymentAccountProps({
+                allowsEmployee: account.allowsEmployee,
+                allowsCostCenter: account.allowsCostCenter,
+                allowsProject: account.allowsProject,
+                requiresEmployee: account.requiresEmployee,
+                allowsVat: account.allowsVat,
+                showInCash: account.showInCash,
+                showInBank: account.showInBank,
+                usableInAdvances: account.usableInAdvances,
+                accountRole: account.accountRole,
+              })
+            }}
             label={t(lang, 'الحساب الدائن (اختياري)', 'Credit Account (optional)')}
             placeholder={t(lang, 'اختر الحساب...', 'Select account...')}
           />
+
+          {/* خصائص الحساب المختار — عرض شفاف للسلوك */}
+          {paymentAccountId && paymentAccountProps && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2">
+              <span className="text-xs text-emerald-700 font-medium">{t(lang, 'الخصائص:', 'Properties:')}</span>
+              {paymentAccountProps.showInCash && (
+                <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{t(lang, 'نقدية', 'cash')}</Badge>
+              )}
+              {paymentAccountProps.showInBank && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t(lang, 'بنك', 'bank')}</Badge>
+              )}
+              {paymentAccountProps.usableInAdvances && (
+                <Badge variant="outline" className="text-[9px] text-violet-700 border-violet-200 bg-violet-50">{t(lang, 'حساب سلف', 'advance account')}</Badge>
+              )}
+              {paymentAccountProps.requiresEmployee && (
+                <Badge variant="outline" className="text-[9px] text-rose-700 border-rose-200 bg-rose-50">{t(lang, 'يتطلب موظف', 'requires employee')}</Badge>
+              )}
+              {paymentAccountProps.allowsEmployee && !paymentAccountProps.requiresEmployee && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t(lang, 'يسمح بموظف', 'allows employee')}</Badge>
+              )}
+              {paymentAccountProps.allowsVat === false && (
+                <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{t(lang, 'بدون ضريبة', 'no VAT')}</Badge>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>{t(lang, 'الوصف', 'Description')}</Label>
@@ -217,14 +281,26 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
   // طريقة التحصيل + تاريخ التحصيل — المستخدم سيد النظام
   const [settlementMethod, setSettlementMethod] = useState<'CASH' | 'BANK' | 'SALARY_DEDUCTION'>('SALARY_DEDUCTION')
   const [settlementDate, setSettlementDate] = useState('')
+  const [settlementAccountId, setSettlementAccountId] = useState<string | null>(null)
   const [settlementAccountCode, setSettlementAccountCode] = useState<string | null>(null)
+  // خصائص الحساب المختار — للعرض الديناميكي
+  const [settlementAccountProps, setSettlementAccountProps] = useState<{
+    allowsEmployee?: boolean
+    requiresEmployee?: boolean
+    allowsVat?: boolean
+    showInCash?: boolean
+    showInBank?: boolean
+    accountRole?: string | null
+  } | null>(null)
 
   React.useEffect(() => {
     if (open && advance) {
       setSettleAmount(String(advance.amount - advance.settledAmount))
       setSettlementMethod('SALARY_DEDUCTION')
       setSettlementDate(new Date().toISOString().split('T')[0])
+      setSettlementAccountId(null)
       setSettlementAccountCode(null)
+      setSettlementAccountProps(null)
     }
   }, [open, advance])
 
@@ -253,12 +329,17 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
     })
   }
 
-  // احسب الأدوار المطلوبة لمحدد الحساب حسب طريقة التحصيل
-  const accountRoles: string[] = settlementMethod === 'BANK'
-    ? ['BANK']
+  // احسب فلتر الخصائص لمحدد الحساب حسب طريقة التحصيل.
+  //   CASH             → showInCash=true  (نقدية/خزينة)
+  //   BANK             → showInBank=true  (بنك)
+  //   SALARY_DEDUCTION → لا توجد خاصية محددة لخصم الرواتب، نُبقي roles (استثناء)
+  const accountFilterByProperty: Record<string, boolean> | undefined = settlementMethod === 'BANK'
+    ? { showInBank: true }
     : settlementMethod === 'CASH'
-      ? ['CASH', 'TREASURY']
-      : ['SALARIES_PAYABLE']
+      ? { showInCash: true }
+      : undefined // SALARY_DEDUCTION — نستخدم roles أدناه
+  // للأدوار الخاصة (SALARIES_PAYABLE) التي لا تملك خاصية محددة نُبقي mode القديم
+  const accountRoles: string[] = settlementMethod === 'SALARY_DEDUCTION' ? ['SALARIES_PAYABLE'] : []
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -288,7 +369,12 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
           {/* طريقة التحصيل — المستخدم سيد النظام */}
           <div className="space-y-2">
             <Label>{t(lang, 'طريقة التحصيل *', 'Collection Method *')}</Label>
-            <Select value={settlementMethod} onValueChange={(v: 'CASH' | 'BANK' | 'SALARY_DEDUCTION') => { setSettlementMethod(v); setSettlementAccountCode(null) }}>
+            <Select value={settlementMethod} onValueChange={(v: 'CASH' | 'BANK' | 'SALARY_DEDUCTION') => {
+              setSettlementMethod(v)
+              setSettlementAccountId(null)
+              setSettlementAccountCode(null)
+              setSettlementAccountProps(null)
+            }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="SALARY_DEDUCTION">{t(lang, 'خصم من الراتب', 'Salary Deduction')}</SelectItem>
@@ -305,14 +391,45 @@ function SettleAdvanceDialog({ open, onOpenChange, advance }: {
             <p className="text-xs text-muted-foreground">{t(lang, 'يمكن اختيار تاريخ في الماضي أو المستقبل', 'Can be past or future date')}</p>
           </div>
 
-          {/* محدد الحساب المدين الفعلي */}
+          {/* محدد الحساب المدين الفعلي — محرك الخصائص (مع roles للأدوات الخاصة) */}
           <AccountSelector
+            filterByProperty={accountFilterByProperty}
             roles={accountRoles}
-            value={settlementAccountCode}
-            onValueChange={(_id, account) => setSettlementAccountCode(account.code)}
+            value={settlementAccountId}
+            onValueChange={(id, account) => {
+              setSettlementAccountId(id)
+              setSettlementAccountCode(account.code)
+              setSettlementAccountProps({
+                allowsEmployee: account.allowsEmployee,
+                requiresEmployee: account.requiresEmployee,
+                allowsVat: account.allowsVat,
+                showInCash: account.showInCash,
+                showInBank: account.showInBank,
+                accountRole: account.accountRole,
+              })
+            }}
             label={t(lang, 'الحساب المدين (اختياري)', 'Debit Account (optional)')}
             placeholder={t(lang, 'اختر الحساب...', 'Select account...')}
           />
+
+          {/* خصائص الحساب المختار — عرض شفاف للسلوك */}
+          {settlementAccountId && settlementAccountProps && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
+              <span className="text-xs text-blue-700 font-medium">{t(lang, 'الخصائص:', 'Properties:')}</span>
+              {settlementAccountProps.showInCash && (
+                <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{t(lang, 'نقدية', 'cash')}</Badge>
+              )}
+              {settlementAccountProps.showInBank && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t(lang, 'بنك', 'bank')}</Badge>
+              )}
+              {settlementAccountProps.requiresEmployee && (
+                <Badge variant="outline" className="text-[9px] text-rose-700 border-rose-200 bg-rose-50">{t(lang, 'يتطلب موظف', 'requires employee')}</Badge>
+              )}
+              {settlementAccountProps.allowsEmployee && !settlementAccountProps.requiresEmployee && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t(lang, 'يسمح بموظف', 'allows employee')}</Badge>
+              )}
+            </div>
+          )}
 
           {settleMutation.isError && (
             <p className="text-sm text-rose-600">{(settleMutation.error as Error)?.message || t(lang, 'حدث خطأ', 'Error')}</p>

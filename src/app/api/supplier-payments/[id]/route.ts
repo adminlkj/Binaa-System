@@ -206,12 +206,13 @@ export async function DELETE(
         where: { id: existing.invoiceId },
       })
       if (invoice) {
-        const newPaidAmount = Math.max(0, invoice.paidAmount - existing.amount)
+        // toNumber() unwraps Prisma.Decimal so the subtraction/comparison stay numeric.
+        const newPaidAmount = Math.max(0, toNumber(invoice.paidAmount) - toNumber(existing.amount))
         let newStatus = invoice.status
 
         if (newPaidAmount <= 0) {
           newStatus = 'DRAFT'
-        } else if (newPaidAmount < invoice.totalAmount) {
+        } else if (newPaidAmount < toNumber(invoice.totalAmount)) {
           newStatus = 'PARTIALLY_PAID'
         }
 

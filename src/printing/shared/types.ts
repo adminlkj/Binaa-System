@@ -11,11 +11,14 @@ export type PrintDocumentType =
   | 'supplier-invoice'
   // مشاريع
   | 'progress-claim'
+  | 'extract' // backward-compatibility alias for progress-claim
   // مشتريات
   | 'purchase-order'
   | 'delivery-order'
   // عمليات
   | 'timesheet'
+  | 'timesheet-report' // backward-compatibility alias for timesheet
+  | 'labor-report'
   // محاسبة
   | 'trial-balance'
   | 'general-ledger'
@@ -23,6 +26,7 @@ export type PrintDocumentType =
   | 'balance-sheet'
   // ضريبي
   | 'vat-return'
+  | 'tax-declaration' // backward-compatibility alias for vat-return
   // مالي
   | 'client-payment'
   | 'supplier-payment'
@@ -31,6 +35,7 @@ export type PrintDocumentType =
   | 'advance-voucher'
   | 'petty-cash-voucher'
   | 'salary-slip'
+  | 'salary-payment'
   | 'rental-contract'
   // تقارير
   | 'equipment-report'

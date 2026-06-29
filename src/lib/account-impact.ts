@@ -87,7 +87,7 @@ export async function getAccountImpact(accountId: string): Promise<AccountImpact
   if (!account) return null
 
   // Get parent account
-  let parentAccount = null
+  let parentAccount: AccountImpactInfo['parentAccount'] = null
   if (account.parentCode) {
     parentAccount = await db.account.findFirst({
       where: { code: account.parentCode },
@@ -103,7 +103,7 @@ export async function getAccountImpact(accountId: string): Promise<AccountImpact
   })
 
   // Get role info
-  let role = null
+  let role: AccountImpactInfo['role'] = null
   if (account.accountRole) {
     const roleInfo = ACCOUNT_ROLES[account.accountRole as AccountRoleKey]
     if (roleInfo) {
@@ -333,7 +333,20 @@ export async function getAccountImpactSummary() {
     },
   })
 
-  const summary = []
+  const summary: {
+    id: string
+    code: string
+    name: string
+    type: string
+    accountRole: string | null
+    roleLabel: string | null
+    parentCode: string | null
+    allowPosting: boolean
+    level: number
+    childCount: number
+    journalLineCount: number
+    hasUsage: boolean
+  }[] = []
 
   for (const account of accounts) {
     // Quick usage count

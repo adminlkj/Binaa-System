@@ -735,11 +735,12 @@ export async function runDepreciationForAsset(
       journalEntryNo = je?.entryNo || null
     } catch (err: unknown) {
       console.error(`[depreciation-engine] JE failed for ${asset.assetCode}:`, err)
+      const errMsg = err instanceof Error ? err.message : String(err)
       return {
         assetId, assetCode: asset.assetCode, assetName, period,
         depreciationAmount, beginningNBV, endingNBV: beginningNBV - depreciationAmount,
         journalEntryId: null, journalEntryNo: null, fullyDepreciated: false,
-        skipped: true, skipReason: `فشل إنشاء القيد: ${err.message || ''}`,
+        skipped: true, skipReason: `فشل إنشاء القيد: ${errMsg}`,
       }
     }
 

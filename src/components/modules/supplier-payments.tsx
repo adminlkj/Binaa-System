@@ -49,12 +49,21 @@ interface PaymentFormData {
   supplierId: string; invoiceId: string; amount: string; date: string
   paidFrom: string; bankAccount: string; paymentMethod: string; reference: string; notes: string
   payingAccountId: string; payingAccountCode: string; payingAccountName: string
+  // خصائص الحساب المختار — للعرض الديناميكي (badges) وسلوك مستقبلي
+  payingAccountProps?: {
+    showInCash?: boolean
+    showInBank?: boolean
+    allowsSupplier?: boolean
+    allowsCostCenter?: boolean
+    accountRole?: string | null
+  } | null
 }
 
 const defaultForm: PaymentFormData = {
   supplierId: '', invoiceId: '', amount: '', date: new Date().toISOString().split('T')[0],
   paidFrom: 'TREASURY', bankAccount: '', paymentMethod: 'CASH', reference: '', notes: '',
   payingAccountId: '', payingAccountCode: '', payingAccountName: '',
+  payingAccountProps: null,
 }
 
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
@@ -205,6 +214,10 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
+            {/* AccountSelector: Single-dropdown case (no cash/bank toggle).
+                نُبقي roles=['CASH','BANK'] بدل filterByProperty لأن الـ dropdown
+                يعرض النقدية والبنوك معاً ولا toggle صريح بينهما.
+                Props المختارة تُخزَّن في form.payingAccountProps لعرض badges شفافة. */}
             <AccountSelector
               roles={['CASH', 'BANK']}
               value={form.payingAccountId || null}
@@ -216,6 +229,14 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
                   payingAccountName: account.nameAr || account.name,
                   // Backward compatibility: map account role to old paidFrom field
                   paidFrom: account.accountRole === 'BANK' ? 'BANK' : 'TREASURY',
+                  // Property-based info for dynamic UI / badges
+                  payingAccountProps: {
+                    showInCash: account.showInCash,
+                    showInBank: account.showInBank,
+                    allowsSupplier: account.allowsSupplier,
+                    allowsCostCenter: account.allowsCostCenter,
+                    accountRole: account.accountRole,
+                  },
                 }))
               }}
               label={t('السداد من', 'Paid From', lang)}
@@ -233,6 +254,25 @@ function PaymentFormDialog({ open, onOpenChange, suppliers }: {
               </Select>
             </div>
           </div>
+
+          {/* Property badges — عرض شفاف لخصائص الحساب المختار */}
+          {form.payingAccountId && form.payingAccountProps && (
+            <div className="flex flex-wrap items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-1.5">
+              <span className="text-xs text-emerald-700 font-medium">{t('الخصائص:', 'Properties:', lang)}</span>
+              {form.payingAccountProps.showInCash && (
+                <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{t('نقدية', 'cash', lang)}</Badge>
+              )}
+              {form.payingAccountProps.showInBank && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t('بنك', 'bank', lang)}</Badge>
+              )}
+              {form.payingAccountProps.allowsSupplier && (
+                <Badge variant="outline" className="text-[9px] text-violet-700 border-violet-200 bg-violet-50">{t('يسمح بمورد', 'allows supplier', lang)}</Badge>
+              )}
+              {form.payingAccountProps.allowsCostCenter && (
+                <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t('يسمح بمركز تكلفة', 'allows cost center', lang)}</Badge>
+              )}
+            </div>
+          )}
 
           {form.paidFrom === 'BANK' && (
             <div className="space-y-2">

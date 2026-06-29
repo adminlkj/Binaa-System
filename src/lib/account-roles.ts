@@ -12,6 +12,7 @@
 // ============================================================================
 
 import { db } from '@/lib/db'
+import type { Account } from '@prisma/client'
 
 // ---------------------------------------------------------------------------
 // Role key constants
@@ -724,7 +725,15 @@ export async function resolvePaymentAccountCode(
  */
 export async function getRoleAccountMapping() {
   const allRoles = Object.values(AccountRole) as string[]
-  const mappings = []
+  const mappings: {
+    role: string
+    labelAr: string
+    labelEn: string
+    description: string
+    defaultCodes: string[]
+    accounts: { id: string; code: string; nameAr: string | null; name: string }[]
+    primaryAccount: Account | null
+  }[] = []
 
   for (const role of allRoles) {
     const roleInfo = ACCOUNT_ROLES[role as AccountRoleKey]

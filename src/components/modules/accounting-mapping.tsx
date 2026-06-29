@@ -761,6 +761,35 @@ export function AccountingMappingModule() {
               </div>
 
               {/* Account Selector */}
+              {/*
+               * PROPERTY-SYSTEM DECISION (SC-3):
+               * KEEP roles={[editOperation.role]}. This screen IS the role-mapping
+               * configuration screen itself — its whole purpose is to let the
+               * accountant pick which account PLAYS a given role for each
+               * business operation (Customers → CUSTOMER_AR, Bank → BANK,
+               * Input VAT → VAT_INPUT, Fixed Assets → FIXED_ASSET, etc.).
+               *
+               * Converting to `filterByProperty` would be semantically wrong
+               * because:
+               *   1. The role is dynamic (depends on the operation being edited)
+               *      and includes 30+ distinct values.
+               *   2. Many roles have NO corresponding property:
+               *        VAT_OUTPUT, VAT_INPUT, VAT_DUE, VAT_* — no `usableInVat`
+               *        ACCUM_DEPRECIATION          — no `usableInAccumDepreciation`
+               *        RETENTION_RECEIVABLE        — no `usableInRetention`
+               *        CUSTOMER_ADVANCE            — no `usableInCustomerAdvance`
+               *        ZAKAT_PAYABLE, GOSI_PAYABLE  — no `usableInZakat/GosiPayable`
+               *        SALARIES_PAYABLE            — usableInPayroll covers it,
+               *                                        but ALSO matches PAYROLL_EXPENSE
+               *                                        and EOS_PROVISION → ambiguous
+               *   3. The semantic is "assign this role to an account", not
+               *      "find an account suitable for this screen" — properties
+               *      drive the latter, roles drive the former.
+               * The full account object is still received via onValueChange so
+               * future property-aware features (e.g. warning when assigning a
+               * role to an account whose properties contradict it) can be added
+               * without changing the filter.
+               */}
               <AccountSelector
                 roles={[editOperation.role]}
                 value={selectedAccountId}

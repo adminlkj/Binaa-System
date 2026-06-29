@@ -134,7 +134,9 @@ export async function POST(request: NextRequest) {
         // Transition status: DRAFT → PARTIALLY_PAID → PAID
         const paid = Number(updated.paidAmount)
         const total = Number(updated.totalAmount)
-        let newStatus: string | null = null
+        // Narrow the literal union so `data: { status: newStatus }` accepts it
+        // (InvoiceStatus enum, not arbitrary string).
+        let newStatus: 'PAID' | 'PARTIALLY_PAID' | null = null
         if (paid >= total - 0.01) {
           newStatus = 'PAID'
         } else if (paid > 0) {

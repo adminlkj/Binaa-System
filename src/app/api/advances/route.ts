@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       // JE يحترم اختيار المستخدم لمصدر السداد
       const journalEntry = await autoEntryEmployeeAdvance({
         employeeName: advance.employee.name,
-        amount: advance.amount,
+        amount: Number(advance.amount),
         date: advance.date,
         paymentSource: body.paymentSource,
         paymentAccountCode: body.paymentAccountCode,
@@ -94,8 +94,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'السلفة غير موجودة' }, { status: 404 })
     }
 
-    const newSettledAmount = existing.settledAmount + parseFloat(String(settledAmount))
-    const newStatus = status || (newSettledAmount >= existing.amount ? 'SETTLED' : 'PARTIALLY_SETTLED')
+    const newSettledAmount = Number(existing.settledAmount) + parseFloat(String(settledAmount))
+    const newStatus = status || (newSettledAmount >= Number(existing.amount) ? 'SETTLED' : 'PARTIALLY_SETTLED')
 
     // Atomic: advance update + settlement JE in one transaction.
     // R1 enforced — if the JE fails, the settlement update is rolled back too.

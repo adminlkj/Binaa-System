@@ -83,7 +83,7 @@ function BOQFormDialog({
     if (open) {
       if (editItem) {
         setForm({
-          projectId: editItem.projectId || editItem.project?.id || '',
+          projectId: editItem.project?.id || '',
           code: editItem.code,
           description: editItem.description,
           unit: editItem.unit,

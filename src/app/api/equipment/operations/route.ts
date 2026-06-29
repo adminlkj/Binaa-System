@@ -82,7 +82,7 @@ export async function POST(request: Request) {
 
       // Create EquipmentCost entry for project when projectId is provided
       if (body.projectId && equipment?.hourlyRate) {
-        const costAmount = hours * equipment.hourlyRate
+        const costAmount = hours * Number(equipment.hourlyRate)
         if (costAmount > 0) {
           await tx.equipmentCost.create({
             data: {
@@ -96,8 +96,8 @@ export async function POST(request: Request) {
       }
 
       // Auto accounting entry. R1 enforced — no try/catch swallowing.
-      if (equipment && equipment.hourlyRate > 0) {
-        const costAmount = hours * equipment.hourlyRate
+      if (equipment && Number(equipment.hourlyRate) > 0) {
+        const costAmount = hours * Number(equipment.hourlyRate)
         if (costAmount > 0) {
           await autoEntryEquipmentCost({
             equipmentName: equipment.name,

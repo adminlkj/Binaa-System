@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       }
       // Also check cumulative claimed qty across previous claim items for this BOQ item.
       const previousClaims = await db.claimItem.findMany({
-        where: { boqItemId, claim: { status: { in: ['SUBMITTED', 'APPROVED', 'CERTIFIED', 'INVOICED'] } } },
+        where: { boqItemId, claim: { status: { in: ['SUBMITTED', 'APPROVED', 'PARTIALLY_PAID', 'PAID'] } } },
         select: { currentQuantity: true },
       })
       const previouslyClaimed = previousClaims.reduce((sum, c) => sum + Number(c.currentQuantity), 0)

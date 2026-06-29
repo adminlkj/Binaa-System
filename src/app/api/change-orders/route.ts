@@ -66,7 +66,7 @@ export async function POST(request: Request) {
     const origVal = parseFloat(originalValue) || 0
     const chgVal = parseFloat(changeValue) || 0
     const newVal = origVal + chgVal
-    const vatRate = contract.vatRate || 0.15
+    const vatRate = Number(contract.vatRate) || 0.15
     const vatAmount = Math.round(chgVal * vatRate * 100) / 100
     const totalChangeValue = Math.round((chgVal + vatAmount) * 100) / 100
 

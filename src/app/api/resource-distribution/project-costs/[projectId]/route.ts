@@ -28,7 +28,7 @@ export async function GET(
         goodsReceipt: { select: { receiptNo: true, date: true } },
       },
     })
-    const materialCosts = goodsReceiptItems.reduce((sum, item) => sum + item.totalPrice, 0)
+    const materialCosts = goodsReceiptItems.reduce((sum, item) => sum + Number(item.totalPrice), 0)
 
     // 2. Equipment costs (from EquipmentCost table)
     const equipmentCosts = await db.equipmentCost.findMany({ where: { projectId } })
@@ -41,13 +41,13 @@ export async function GET(
     })
     const equipmentOperationCosts = equipmentOperations.map(op => ({
       ...op,
-      calculatedCost: op.hours * (op.equipment.hourlyRate || 0),
+      calculatedCost: Number(op.hours) * (Number(op.equipment.hourlyRate) || 0),
     }))
     const equipmentOperationTotal = equipmentOperationCosts.reduce((sum, op) => sum + op.calculatedCost, 0)
 
     // 4. Equipment fuel (from EquipmentFuelLog linked to project)
     const fuelLogs = await db.equipmentFuelLog.findMany({ where: { projectId } })
-    const fuelCostTotal = fuelLogs.reduce((sum, f) => sum + f.totalCost, 0)
+    const fuelCostTotal = fuelLogs.reduce((sum, f) => sum + Number(f.totalCost), 0)
 
     // 5. Equipment maintenance (where equipment has allocation to project)
     const equipmentAllocations = await db.resourceAllocation.findMany({
@@ -88,7 +88,7 @@ export async function GET(
           include: { employee: { select: { name: true } } },
         })
       : []
-    const salaryCostTotal = salaryCosts.reduce((sum, s) => sum + s.netSalary, 0)
+    const salaryCostTotal = salaryCosts.reduce((sum, s) => sum + Number(s.netSalary), 0)
 
     // 9. Project expenses (from Expense linked to project)
     const expenses = await db.expense.findMany({ where: { projectId } })
@@ -98,7 +98,7 @@ export async function GET(
     const totalCost = materialCosts + equipmentCostTotal + equipmentOperationTotal + fuelCostTotal + maintenanceCostTotal + subcontractorCostTotal + laborCostTotal + salaryCostTotal + expenseTotal
 
     // Contract value and profit margin
-    const contractValue = project.contractValue || 0
+    const contractValue = Number(project.contractValue) || 0
     const profitLoss = contractValue - totalCost
     const profitMargin = contractValue > 0 ? ((profitLoss / contractValue) * 100) : 0
 

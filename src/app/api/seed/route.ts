@@ -443,7 +443,7 @@ export async function POST(request: Request) {
       { invoiceNo: 'INV-2024-004', projectId: projects[0].id, contractId: contracts[0].id, clientId: clients[0].id, date: new Date('2024-09-15'), dueDate: new Date('2024-10-15'), subtotal: 900000, discountRate: 0, discountAmount: 0, netAmount: 900000, vatRate: 0.15, vatAmount: 135000, totalAmount: 1035000, paidAmount: 500000, status: 'PARTIALLY_PAID' as const, invoiceType: 'TAX_INVOICE', paymentTerms: '30 days', notes: 'فاتورة المستخلص الثالث - مجمع الملقا' },
     ]
 
-    const salesInvoices = []
+    const salesInvoices: Awaited<ReturnType<typeof db.salesInvoice.create>>[] = []
     for (const invData of salesInvoicesData) {
       const invoice = await db.salesInvoice.create({
         data: {
@@ -556,10 +556,10 @@ export async function POST(request: Request) {
       select: { id: true, amount: true, vatAmount: true },
     })
 
-    const vatOutputVat = vatSalesInvoices.reduce((sum, inv) => sum + (inv.vatAmount || 0), 0)
-    const vatInputVat = vatPurchaseInvoices.reduce((sum, inv) => sum + (inv.vatAmount || 0), 0) + vatExpenses.reduce((sum, exp) => sum + (exp.vatAmount || 0), 0)
-    const vatTotalSales = vatSalesInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0)
-    const vatTotalPurchases = vatPurchaseInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0) + vatExpenses.reduce((sum, exp) => sum + (exp.amount || 0), 0)
+    const vatOutputVat = vatSalesInvoices.reduce((sum, inv) => sum + Number(inv.vatAmount || 0), 0)
+    const vatInputVat = vatPurchaseInvoices.reduce((sum, inv) => sum + Number(inv.vatAmount || 0), 0) + vatExpenses.reduce((sum, exp) => sum + Number(exp.vatAmount || 0), 0)
+    const vatTotalSales = vatSalesInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0)
+    const vatTotalPurchases = vatPurchaseInvoices.reduce((sum, inv) => sum + Number(inv.totalAmount || 0), 0) + vatExpenses.reduce((sum, exp) => sum + Number(exp.amount || 0), 0)
 
     await db.vATReturn.create({
       data: {

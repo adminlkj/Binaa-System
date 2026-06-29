@@ -88,6 +88,24 @@ function EmployeeFormDialog({ open, onOpenChange, editingEmployee, branches }: {
   const [form, setForm] = useState<EmployeeFormData>(defaultForm)
   const { lang } = useAppStore()
 
+  // Active properties of the currently-selected salary expense account.
+  // Captured from AccountSelector's onValueChange(account) so the form can
+  // surface the account's behavior (requiresEmployee, allowsProject, ...)
+  // as badges — the property-driven design made visible at the point of
+  // selection, even though the roles-based filter is kept (see comment
+  // next to the AccountSelector below for the OR-logic rationale).
+  const [expenseAccountProps, setExpenseAccountProps] = useState<{
+    code: string
+    nameAr: string
+    requiresEmployee?: boolean
+    requiresProject?: boolean
+    requiresEquipment?: boolean
+    allowsEmployee?: boolean
+    allowsProject?: boolean
+    allowsCostCenter?: boolean
+    allowsVat?: boolean
+  } | null>(null)
+
   React.useEffect(() => {
     if (open) {
       if (editingEmployee) {
@@ -102,7 +120,13 @@ function EmployeeFormDialog({ open, onOpenChange, editingEmployee, branches }: {
           phone: editingEmployee.phone || '', email: editingEmployee.email || '',
           expenseAccountId: editingEmployee.expenseAccountId || null,
         })
-      } else { setForm(defaultForm) }
+        // Editing existing employee: we don't have the account's properties in
+        // the employee record, so clear badges until the user re-selects.
+        setExpenseAccountProps(null)
+      } else {
+        setForm(defaultForm)
+        setExpenseAccountProps(null)
+      }
     }
   }, [open, editingEmployee])
 
@@ -194,18 +218,74 @@ function EmployeeFormDialog({ open, onOpenChange, editingEmployee, branches }: {
           {/* Salary Expense Account */}
           <div className="space-y-2">
             <h4 className="font-semibold text-sm text-cyan-700 border-b border-cyan-200 pb-1">
-              {t('حساب مصروف الراتب', 'Salary Expense Account')}
+              {t('حساب مصروف الراتب', 'Salary Expense Account', lang)}
             </h4>
+            {/*
+             * PROPERTY-SYSTEM DECISION (SC-3):
+             * KEEP roles (OR-logic across 4 expense types). The employee salary
+             * account can belong to ANY of these role categories — each maps to
+             * a different posting destination:
+             *   - PAYROLL_EXPENSE → usableInPayroll: true   (office/admin staff)
+             *   - PROJECT_COST    → usableInProjects: true  (project labor)
+             *   - DRIVER_EXPENSE  → usableInPayroll:true AND usableInProjects:true
+             *   - ADMIN_EXPENSE   → usableInExpenses: true  (admin/management)
+             * `filterByProperty` only supports AND-conjunction, so no single
+             * property can reproduce this 4-way OR. Restricting to one property
+             * would prevent assigning a project-cost account to a project worker,
+             * a driver account to a driver, etc. Therefore `roles` is the
+             * accurate filter here. We STILL capture the full account object on
+             * selection and surface its key properties as badges below, so the
+             * property-driven design is visible and usable downstream (the
+             * salaries/payroll screen reads `requiresEmployee` etc.).
+             */}
             <AccountSelector
               roles={['PAYROLL_EXPENSE', 'PROJECT_COST', 'DRIVER_EXPENSE', 'ADMIN_EXPENSE']}
               value={form.expenseAccountId}
-              onValueChange={(id, _account) => {
+              onValueChange={(id, account) => {
                 setForm(prev => ({ ...prev, expenseAccountId: id }))
+                setExpenseAccountProps({
+                  code: account.code,
+                  nameAr: account.nameAr || account.name,
+                  requiresEmployee: account.requiresEmployee,
+                  requiresProject: account.requiresProject,
+                  requiresEquipment: account.requiresEquipment,
+                  allowsEmployee: account.allowsEmployee,
+                  allowsProject: account.allowsProject,
+                  allowsCostCenter: account.allowsCostCenter,
+                  allowsVat: account.allowsVat,
+                })
               }}
-              label={t('حساب مصروف الراتب', 'Salary Expense Account')}
-              placeholder={t('اختر حساب المصروف...', 'Select expense account...')}
+              label={t('حساب مصروف الراتب', 'Salary Expense Account', lang)}
+              placeholder={t('اختر حساب المصروف...', 'Select expense account...', lang)}
             />
-            <p className="text-xs text-muted-foreground">{t('اختر حساب المصروف الذي ستُقيد فيه رواتب هذا الموظف', 'Select the expense account where this employee\'s salary will be posted')}</p>
+            <p className="text-xs text-muted-foreground">{t('اختر حساب المصروف الذي ستُقيد فيه رواتب هذا الموظف', "Select the expense account where this employee's salary will be posted", lang)}</p>
+            {/* Active-property badges — make the account's behavior visible */}
+            {form.expenseAccountId && expenseAccountProps && (
+              <div className="flex flex-wrap items-center gap-1 rounded-lg bg-cyan-50 border border-cyan-200 px-3 py-2">
+                <span className="font-mono text-xs bg-white text-gray-700 px-1.5 py-0.5 rounded border">{expenseAccountProps.code}</span>
+                <span className="text-sm text-cyan-700">{expenseAccountProps.nameAr}</span>
+                <div className="flex flex-wrap gap-1 ml-auto">
+                  {expenseAccountProps.requiresEmployee && (
+                    <Badge variant="outline" className="text-[9px] text-rose-700 border-rose-200 bg-rose-50">{t('يتطلب موظف', 'requires employee', lang)}</Badge>
+                  )}
+                  {expenseAccountProps.requiresProject && (
+                    <Badge variant="outline" className="text-[9px] text-rose-700 border-rose-200 bg-rose-50">{t('يتطلب مشروع', 'requires project', lang)}</Badge>
+                  )}
+                  {expenseAccountProps.allowsProject && !expenseAccountProps.requiresProject && (
+                    <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t('يسمح بمشروع', 'allows project', lang)}</Badge>
+                  )}
+                  {expenseAccountProps.allowsCostCenter && (
+                    <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t('يسمح بمركز تكلفة', 'allows cost center', lang)}</Badge>
+                  )}
+                  {expenseAccountProps.allowsEmployee && !expenseAccountProps.requiresEmployee && (
+                    <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t('يسمح بموظف', 'allows employee', lang)}</Badge>
+                  )}
+                  {expenseAccountProps.allowsVat === false && (
+                    <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{t('بدون ضريبة', 'no VAT', lang)}</Badge>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <DialogFooter>

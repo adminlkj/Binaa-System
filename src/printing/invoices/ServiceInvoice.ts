@@ -6,7 +6,7 @@
 import type { DocumentTemplate, PrintSettings } from '../shared/types'
 import { fmtMoney, formatDate, formatMoneyPrint, getCurrencySymbol, encodeZATCATLV } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
-import { bankInfoSection, signaturesSection, amountInWordsSection, termsSection, totalsSection, qrCodeSection, qrCodeScript } from '../shared/sections'
+import { bankInfoSection, signaturesSection, amountInWordsSection, termsSection, totalsSection, qrCodeSection, qrCodeScript, type TotalRow } from '../shared/sections'
 
 // ============ Template Implementation ============
 
@@ -135,7 +135,7 @@ export const ServiceInvoiceTemplate: DocumentTemplate = {
     `
 
     // ─── Totals ───
-    const totalRows = [
+    const totalRows: TotalRow[] = [
       { label: lang === 'ar' ? `المجموع الفرعي / Subtotal` : 'Subtotal', value: subtotal },
       { label: lang === 'ar' ? `ضريبة القيمة المضافة ${vatRate * 100}% / VAT ${vatRate * 100}%` : `VAT ${vatRate * 100}%`, value: vatAmount },
     ]

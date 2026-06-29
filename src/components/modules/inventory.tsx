@@ -597,7 +597,7 @@ export function InventoryModule() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('حذف الصنف', 'Delete Item', lang)}</AlertDialogTitle>
-            <AlertDialogDescription>{t('هل أنت متأكد من حذف هذا الصنف من المخزون؟', 'Are you sure you want to delete this inventory item?')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('هل أنت متأكد من حذف هذا الصنف من المخزون؟', 'Are you sure you want to delete this inventory item?', lang)}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{commonText.cancel[lang]}</AlertDialogCancel>

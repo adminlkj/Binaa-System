@@ -150,7 +150,7 @@ export async function POST(request: Request) {
       })
 
       // Create 12 monthly periods
-      const periods = []
+      const periods: { fiscalYearId: string; periodNo: number; startDate: Date; endDate: Date; status: string }[] = []
       for (let i = 0; i < 12; i++) {
         const periodStart = new Date(startDate.getFullYear(), startDate.getMonth() + i, 1)
         const periodEnd = new Date(startDate.getFullYear(), startDate.getMonth() + i + 1, 0) // last day of month

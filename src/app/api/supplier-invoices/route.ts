@@ -210,8 +210,13 @@ export async function POST(request: Request) {
           totalAmount: toNumber(result.totalAmount),
           vatAmount: toNumber(result.vatAmount),
         }, {
-          sellerName: company.nameEn || company.nameAr,
-          vatNumber: company.taxNumber || '',
+          // generateZatcaQRForInvoice expects { nameAr, nameEn, taxNumber } — the previous
+          // call used { sellerName, vatNumber } which never reached the function's logic
+          // (it returned null because taxNumber was undefined). Passing the real field names
+          // fixes both the TS error and the silent runtime no-op.
+          nameAr: company.nameAr,
+          nameEn: company.nameEn,
+          taxNumber: company.taxNumber || '',
         })
         if (zatcaQr) {
           await db.purchaseInvoice.update({

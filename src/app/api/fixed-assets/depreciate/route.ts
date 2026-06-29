@@ -41,14 +41,20 @@ export async function POST(request: NextRequest) {
           continue
         }
 
+        // Convert Decimal fields to numbers for arithmetic
+        const acquisitionCost = Number(asset.acquisitionCost)
+        const residualValue = Number(asset.residualValue)
+        const accumulatedDepreciation = Number(asset.accumulatedDepreciation)
+        const usefulLifeMonths = asset.usefulLifeMonths
+
         // Calculate monthly depreciation
-        const monthlyDepreciation = (asset.acquisitionCost - asset.residualValue) / asset.usefulLifeMonths
+        const monthlyDepreciation = (acquisitionCost - residualValue) / usefulLifeMonths
 
         // Check if asset is fully depreciated
-        const newAccumDep = asset.accumulatedDepreciation + monthlyDepreciation
-        if (newAccumDep > asset.acquisitionCost - asset.residualValue) {
+        const newAccumDep = accumulatedDepreciation + monthlyDepreciation
+        if (newAccumDep > acquisitionCost - residualValue) {
           // Skip if fully depreciated
-          if (asset.accumulatedDepreciation >= asset.acquisitionCost - asset.residualValue) {
+          if (accumulatedDepreciation >= acquisitionCost - residualValue) {
             await tx.fixedAsset.update({
               where: { id: asset.id },
               data: { status: 'FULLY_DEPRECIATED' },
@@ -96,15 +102,15 @@ export async function POST(request: NextRequest) {
         })
 
         // Update FixedAsset accumulatedDepreciation and netBookValue
-        const finalAccumDep = Math.min(asset.accumulatedDepreciation + monthlyDepreciation, asset.acquisitionCost - asset.residualValue)
-        const netBookValue = asset.acquisitionCost - finalAccumDep
+        const finalAccumDep = Math.min(accumulatedDepreciation + monthlyDepreciation, acquisitionCost - residualValue)
+        const netBookValue = acquisitionCost - finalAccumDep
 
         await tx.fixedAsset.update({
           where: { id: asset.id },
           data: {
             accumulatedDepreciation: finalAccumDep,
-            netBookValue: Math.max(netBookValue, asset.residualValue),
-            status: netBookValue <= asset.residualValue ? 'FULLY_DEPRECIATED' : 'ACTIVE',
+            netBookValue: Math.max(netBookValue, residualValue),
+            status: netBookValue <= residualValue ? 'FULLY_DEPRECIATED' : 'ACTIVE',
           },
         })
 

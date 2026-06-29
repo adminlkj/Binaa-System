@@ -622,6 +622,17 @@ function PayrollRunDetail({ payrollRun, onBack }: {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* ─── Payment Account selector ──────────────────────────── */}
+            {/* Single dropdown shows BOTH cash and bank accounts so the user
+                can pick any payment method in one place.
+                We keep `roles` mode here because:
+                  - filterByProperty uses AND (not OR), so
+                    { showInCash: true, showInBank: true } would return only
+                    accounts flagged for BOTH — wrong.
+                  - The role-based query (?role=BANK,CASH) returns the union.
+                The accountant can still control which accounts appear by
+                setting showInCash / showInBank properties, but the default
+                query here uses roles to get the union reliably. */}
             <AccountSelector
               roles={['BANK', 'CASH']}
               value={bankAccountId}

@@ -22,13 +22,12 @@ export async function GET(
     })
 
     // If there's a linked journal entry, fetch it separately (PurchaseInvoice has journalEntryId but no relation)
-    let journalEntry = null
-    if (invoice?.journalEntryId) {
-      journalEntry = await db.journalEntry.findUnique({
-        where: { id: invoice.journalEntryId },
-        include: { lines: { include: { account: { select: { code: true, name: true } } } } },
-      })
-    }
+    const journalEntry = invoice?.journalEntryId
+      ? await db.journalEntry.findUnique({
+          where: { id: invoice.journalEntryId },
+          include: { lines: { include: { account: { select: { code: true, name: true } } } } },
+        })
+      : null
 
     if (!invoice) {
       return NextResponse.json({ error: 'Purchase invoice not found' }, { status: 404 })

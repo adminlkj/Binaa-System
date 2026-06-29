@@ -1144,12 +1144,12 @@ export async function calculateProjectProfitability(projectId: string): Promise<
   // From progress claims (approved or paid)
   const claimRevenue = project.progressClaims
     .filter((c) => ['APPROVED', 'PARTIALLY_PAID', 'PAID'].includes(c.status))
-    .reduce((sum, c) => sum + c.amount, 0)
+    .reduce((sum, c) => sum + Number(c.amount), 0)
 
   // From sales invoices
   const invoiceRevenue = project.salesInvoices
     .filter((i) => i.status !== 'CANCELLED')
-    .reduce((sum, i) => sum + i.subtotal, 0)
+    .reduce((sum, i) => sum + Number(i.subtotal), 0)
 
   // Use the larger of the two (avoid double counting since invoices come from claims)
   const revenue = round2(Math.max(claimRevenue, invoiceRevenue))
@@ -1158,52 +1158,52 @@ export async function calculateProjectProfitability(projectId: string): Promise<
   const materials = round2(
     project.purchaseInvoices
       .filter((pi) => pi.status !== 'CANCELLED')
-      .reduce((sum, pi) => sum + pi.subtotal, 0)
+      .reduce((sum, pi) => sum + Number(pi.subtotal), 0)
   )
 
   const labor = round2(
-    project.laborCosts.reduce((sum, lc) => sum + lc.totalAmount, 0) +
-    project.equipmentCosts.reduce((sum, ec) => sum + ec.amount, 0)
+    project.laborCosts.reduce((sum, lc) => sum + Number(lc.totalAmount), 0) +
+    project.equipmentCosts.reduce((sum, ec) => sum + Number(ec.amount), 0)
   )
 
   const subcontractors = round2(
     project.subcontractorInvoices
       .filter((si) => si.status !== 'CANCELLED')
-      .reduce((sum, si) => sum + si.amount, 0)
+      .reduce((sum, si) => sum + Number(si.amount), 0)
   )
 
   const equipment = round2(
-    project.equipmentUsages.reduce((sum, eu) => sum + eu.cost, 0) +
+    project.equipmentUsages.reduce((sum, eu) => sum + Number(eu.cost), 0) +
     project.equipmentOperations.reduce((sum, eo) => sum + 0, 0) // operations logged but cost via usage
   )
 
   const fuel = round2(
-    project.fuelLogs.reduce((sum, fl) => sum + fl.totalCost, 0)
+    project.fuelLogs.reduce((sum, fl) => sum + Number(fl.totalCost), 0)
   )
 
   // Maintenance costs (from expenses categorized as MAINTENANCE and linked to this project)
   const maintenance = round2(
     project.expenses
       .filter((e) => e.category === 'MAINTENANCE')
-      .reduce((sum, e) => sum + e.amount, 0)
+      .reduce((sum, e) => sum + Number(e.amount), 0)
   )
 
   const expenses = round2(
     project.expenses
       .filter((e) => e.expenseType === 'PROJECT')
-      .reduce((sum, e) => sum + e.amount, 0)
+      .reduce((sum, e) => sum + Number(e.amount), 0)
   )
 
   const purchases = round2(
     project.purchaseInvoices
       .filter((pi) => pi.status !== 'CANCELLED')
-      .reduce((sum, pi) => sum + pi.subtotal, 0)
+      .reduce((sum, pi) => sum + Number(pi.subtotal), 0)
   )
 
   const other = round2(
     project.expenses
       .filter((e) => e.expenseType === 'INTERNAL')
-      .reduce((sum, e) => sum + e.amount, 0)
+      .reduce((sum, e) => sum + Number(e.amount), 0)
   )
 
   const totalCosts = round2(materials + labor + subcontractors + equipment + fuel + expenses + other)
@@ -1274,7 +1274,7 @@ export async function calculateEquipmentProfitability(equipmentId: string): Prom
     invoicedTimesheets.reduce((sum, ts) => {
       const rental = equipment.rentals.find((r) => r.id === ts.rentalId)
       if (rental) {
-        return sum + (ts.operatingHours * rental.rate) + rental.deliveryFees
+        return sum + (Number(ts.operatingHours) * Number(rental.hourlyRate)) + Number(rental.deliveryFees)
       }
       return sum
     }, 0)
@@ -1282,22 +1282,22 @@ export async function calculateEquipmentProfitability(equipmentId: string): Prom
 
   // === COSTS ===
   const fuel = round2(
-    equipment.fuelLogs.reduce((sum, fl) => sum + fl.totalCost, 0)
+    equipment.fuelLogs.reduce((sum, fl) => sum + Number(fl.totalCost), 0)
   )
 
   const maintenance = round2(
-    equipment.maintenance.reduce((sum, m) => sum + m.cost, 0)
+    equipment.maintenance.reduce((sum, m) => sum + Number(m.cost), 0)
   )
 
   const operations = round2(
-    equipment.operatorLogs.reduce((sum, op) => sum + op.hours, 0) * (equipment.hourlyRate || 0) // estimated operator cost
+    equipment.operatorLogs.reduce((sum, op) => sum + Number(op.hours), 0) * (Number(equipment.hourlyRate) || 0) // estimated operator cost
   )
 
   // Simple depreciation estimate (purchasePrice / useful life years * months active)
-  const depreciation = round2(equipment.purchasePrice > 0 ? equipment.purchasePrice / 60 : 0) // 5-year life, monthly
+  const depreciation = round2(Number(equipment.purchasePrice) > 0 ? Number(equipment.purchasePrice) / 60 : 0) // 5-year life, monthly
 
   const other = round2(
-    equipment.usages.reduce((sum, u) => sum + u.cost, 0)
+    equipment.usages.reduce((sum, u) => sum + Number(u.cost), 0)
   )
 
   const totalCosts = round2(fuel + maintenance + operations + depreciation + other)
@@ -1305,8 +1305,8 @@ export async function calculateEquipmentProfitability(equipmentId: string): Prom
   const margin = revenue > 0 ? round2((profit / revenue) * 100) : 0
 
   const totalOperatingHours = round2(
-    equipment.timesheets.reduce((sum, ts) => sum + ts.operatingHours, 0) +
-    equipment.operatorLogs.reduce((sum, op) => sum + op.hours, 0)
+    equipment.timesheets.reduce((sum, ts) => sum + Number(ts.operatingHours), 0) +
+    equipment.operatorLogs.reduce((sum, op) => sum + Number(op.hours), 0)
   )
 
   const hourlyProfit = totalOperatingHours > 0 ? round2(profit / totalOperatingHours) : 0
@@ -1561,7 +1561,7 @@ export async function getPurchaseWorkflowProgress(purchaseRequestId: string): Pr
       case 'PAYMENT': {
         const invoices = pr?.purchaseOrders.flatMap((po) => po.invoices) ?? []
         completed = invoices.some(
-          (inv) => inv.paidAmount > 0 && inv.status !== 'CANCELLED'
+          (inv) => Number(inv.paidAmount) > 0 && inv.status !== 'CANCELLED'
         )
         break
       }

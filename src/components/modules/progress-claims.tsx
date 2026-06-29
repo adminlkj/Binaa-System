@@ -471,7 +471,7 @@ export function ProgressClaimsModule() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-emerald-700">{t(labels.notInvoiced.ar, labels.notInvoiced.en)}</p>
-                  <p className="text-xs text-muted-foreground">{t('يمكنك إنشاء فاتورة مبيعات من هذا المستخلص', 'You can create a sales invoice from this claim', lang)}</p>
+                  <p className="text-xs text-muted-foreground">{t('يمكنك إنشاء فاتورة مبيعات من هذا المستخلص', 'You can create a sales invoice from this claim')}</p>
                 </div>
                 <Button
                   className="gap-2 bg-emerald-600 hover:bg-emerald-700"
@@ -498,7 +498,7 @@ export function ProgressClaimsModule() {
                 <CreditCard className="size-4" />
                 <span className="text-sm font-semibold">{t(labels.accountingEntry.ar, labels.accountingEntry.en)}</span>
               </div>
-              <p className="text-xs text-muted-foreground">{t('تم إنشاء قيد محاسبي تلقائي', 'Auto journal entry created', lang)}</p>
+              <p className="text-xs text-muted-foreground">{t('تم إنشاء قيد محاسبي تلقائي', 'Auto journal entry created')}</p>
               <p className="text-xs font-mono mt-0.5">{claim.journalEntryId}</p>
             </CardContent>
           </Card>
@@ -563,7 +563,7 @@ export function ProgressClaimsModule() {
       {/* Invoice Status Summary */}
       <div className="grid grid-cols-2 gap-3">
         <Card className="border-sky-200 bg-sky-50/30"><CardContent className="p-3 flex items-center gap-3"><FileText className="size-5 text-sky-500" /><div><p className="text-xs text-muted-foreground">{t(labels.invoiced.ar, labels.invoiced.en)}</p><p className="text-lg font-bold text-sky-700">{invoicedCount}</p></div></CardContent></Card>
-        <Card className="border-amber-200 bg-amber-50/30"><CardContent className="p-3 flex items-center gap-3"><TrendingUp className="size-5 text-amber-500" /><div><p className="text-xs text-muted-foreground">{t('معتمد غير مفوتر', 'Approved Uninvoiced', lang)}</p><p className="text-lg font-bold text-amber-700">{uninvoicedApprovedCount}</p></div></CardContent></Card>
+        <Card className="border-amber-200 bg-amber-50/30"><CardContent className="p-3 flex items-center gap-3"><TrendingUp className="size-5 text-amber-500" /><div><p className="text-xs text-muted-foreground">{t('معتمد غير مفوتر', 'Approved Uninvoiced')}</p><p className="text-lg font-bold text-amber-700">{uninvoicedApprovedCount}</p></div></CardContent></Card>
       </div>
 
       {/* Contract Running Totals */}
@@ -657,7 +657,7 @@ export function ProgressClaimsModule() {
                     <TableHead className="text-right">{t(labels.amount.ar, labels.amount.en)}</TableHead>
                     <TableHead className="text-right">{t(labels.total.ar, labels.total.en)}</TableHead>
                     <TableHead className="text-right">{t(labels.status.ar, labels.status.en)}</TableHead>
-                    <TableHead className="text-right">{t('مفوتر؟', 'Invoiced?', lang)}</TableHead>
+                    <TableHead className="text-right">{t('مفوتر؟', 'Invoiced?')}</TableHead>
                     <TableHead className="text-right">{t(labels.actions.ar, labels.actions.en)}</TableHead>
                   </TableRow>
                 </TableHeader>

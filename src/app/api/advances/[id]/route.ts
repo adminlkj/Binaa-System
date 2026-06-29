@@ -39,7 +39,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }, { status: 400 })
     }
 
-    let newStatus: string = existing.status
+    // Infer AdvanceStatus from existing.status so the literal assignments below
+    // stay within the enum (also fixes the cascade that stripped `employee` from
+    // the update() return type when `status: string` was used).
+    let newStatus = existing.status
     if (newSettledAmount >= totalAmount) {
       newStatus = 'SETTLED'
     } else if (newSettledAmount > 0) {

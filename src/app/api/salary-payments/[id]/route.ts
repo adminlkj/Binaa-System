@@ -50,7 +50,8 @@ export async function DELETE(
 
     const existing = await db.salaryPayment.findUnique({
       where: { id },
-      include: { payrollRun: { select: { id: true, code: true, status: true } } },
+      // month/year are read below when reverting the linked Salary row, so they must be selected.
+      include: { payrollRun: { select: { id: true, code: true, month: true, year: true, status: true } } },
     })
 
     if (!existing) {

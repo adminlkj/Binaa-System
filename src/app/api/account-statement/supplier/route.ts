@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 
 // Helper: round to 4 decimal places
 function r4(n: number): number {
@@ -49,19 +51,19 @@ export async function GET(request: Request) {
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
 
     // Get all purchase invoices for this supplier (not cancelled)
-    const invoiceWhere: Record<string, unknown> = {
+    const invoiceWhere: Prisma.PurchaseInvoiceWhereInput = {
       supplierId,
       status: { not: 'CANCELLED' },
     }
     if (dateFrom || dateTo) {
-      const dateFilter: Record<string, unknown> = {}
+      const dateFilter: Prisma.DateTimeFilter = {}
       if (dateFrom) dateFilter.gte = dateFrom
       if (dateTo) dateFilter.lte = dateTo
       invoiceWhere.date = dateFilter
     }
 
     const invoices = await db.purchaseInvoice.findMany({
-      where: invoiceWhere as Parameters<typeof db.purchaseInvoice.findMany>[0]['where'],
+      where: invoiceWhere,
       select: {
         id: true,
         invoiceNo: true,
@@ -76,18 +78,18 @@ export async function GET(request: Request) {
     })
 
     // Get all supplier payments for this supplier
-    const paymentWhere: Record<string, unknown> = {
+    const paymentWhere: Prisma.SupplierPaymentWhereInput = {
       supplierId,
     }
     if (dateFrom || dateTo) {
-      const dateFilter: Record<string, unknown> = {}
+      const dateFilter: Prisma.DateTimeFilter = {}
       if (dateFrom) dateFilter.gte = dateFrom
       if (dateTo) dateFilter.lte = dateTo
       paymentWhere.date = dateFilter
     }
 
     const payments = await db.supplierPayment.findMany({
-      where: paymentWhere as Parameters<typeof db.supplierPayment.findMany>[0]['where'],
+      where: paymentWhere,
       select: {
         id: true,
         amount: true,
@@ -110,7 +112,7 @@ export async function GET(request: Request) {
         reference: inv.invoiceNo,
         description: inv.notes || `فاتورة مشتريات - ${inv.invoiceNo}`,
         debit: 0,
-        credit: r4(inv.totalAmount),
+        credit: r4(toNumber(inv.totalAmount)),
         balance: 0,
         type: 'INVOICE',
         sourceId: inv.id,
@@ -123,7 +125,7 @@ export async function GET(request: Request) {
         date: new Date(pay.date).toISOString(),
         reference: pay.reference || '',
         description: pay.notes || 'دفع للمورد',
-        debit: r4(pay.amount),
+        debit: r4(toNumber(pay.amount)),
         credit: 0,
         balance: 0,
         type: 'PAYMENT',

@@ -85,7 +85,7 @@ interface ContractItem {
     amount: number
     totalAmount: number
     status: string
-  }
+  }[]
   changeOrders?: {
     id: string
     contractId: string
@@ -213,9 +213,7 @@ const labels = {
   paymentTerms: { ar: 'شروط السداد', en: 'Payment Terms' },
   notes: { ar: 'ملاحظات', en: 'Notes' },
   salesOrderNo: { ar: 'رقم طلب البيع', en: 'Sales Order No.' },
-  deliveryFees: { ar: 'رسوم النقل', en: 'Delivery Fees' },
   deliveryFeesTaxable: { ar: 'رسوم النقل خاضعة للضريبة', en: 'Delivery Fees Taxable' },
-  hourlyRate: { ar: 'سعر الساعة', en: 'Hourly Rate' },
   sendForReview: { ar: 'إرسال للمراجعة', en: 'Send for Review' },
   activateContract: { ar: 'تفعيل العقد', en: 'Activate Contract' },
   expireContract: { ar: 'إنهاء العقد', en: 'Expire Contract' },

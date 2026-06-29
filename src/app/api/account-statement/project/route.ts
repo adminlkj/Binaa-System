@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 
 // Helper: round to 4 decimal places
 function r4(n: number): number {
@@ -47,7 +49,7 @@ export async function GET(request: Request) {
     const dateFrom = dateFromStr ? new Date(dateFromStr) : undefined
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
 
-    const dateFilter: Record<string, unknown> = {}
+    const dateFilter: Prisma.DateTimeFilter = {}
     if (dateFrom || dateTo) {
       if (dateFrom) dateFilter.gte = dateFrom
       if (dateTo) dateFilter.lte = dateTo
@@ -56,7 +58,7 @@ export async function GET(request: Request) {
     // ---- REVENUE ----
 
     // Sales Invoices for this project
-    const invoiceWhere: Record<string, unknown> = {
+    const invoiceWhere: Prisma.SalesInvoiceWhereInput = {
       projectId,
       status: { not: 'CANCELLED' },
     }
@@ -65,7 +67,7 @@ export async function GET(request: Request) {
     }
 
     const salesInvoices = await db.salesInvoice.findMany({
-      where: invoiceWhere as Parameters<typeof db.salesInvoice.findMany>[0]['where'],
+      where: invoiceWhere,
       select: {
         id: true,
         invoiceNo: true,
@@ -81,7 +83,7 @@ export async function GET(request: Request) {
     })
 
     // Progress Claims for this project
-    const claimWhere: Record<string, unknown> = {
+    const claimWhere: Prisma.ProgressClaimWhereInput = {
       projectId,
     }
     if (Object.keys(dateFilter).length > 0) {
@@ -89,7 +91,7 @@ export async function GET(request: Request) {
     }
 
     const progressClaims = await db.progressClaim.findMany({
-      where: claimWhere as Parameters<typeof db.progressClaim.findMany>[0]['where'],
+      where: claimWhere,
       select: {
         id: true,
         claimNo: true,
@@ -126,7 +128,7 @@ export async function GET(request: Request) {
     // ---- COSTS ----
 
     // Purchase Invoices for this project
-    const piWhere: Record<string, unknown> = {
+    const piWhere: Prisma.PurchaseInvoiceWhereInput = {
       projectId,
       status: { not: 'CANCELLED' },
     }
@@ -135,7 +137,7 @@ export async function GET(request: Request) {
     }
 
     const purchaseInvoices = await db.purchaseInvoice.findMany({
-      where: piWhere as Parameters<typeof db.purchaseInvoice.findMany>[0]['where'],
+      where: piWhere,
       select: {
         id: true,
         invoiceNo: true,
@@ -148,7 +150,7 @@ export async function GET(request: Request) {
     })
 
     // Expenses for this project
-    const expenseWhere: Record<string, unknown> = {
+    const expenseWhere: Prisma.ExpenseWhereInput = {
       projectId,
     }
     if (Object.keys(dateFilter).length > 0) {
@@ -156,7 +158,7 @@ export async function GET(request: Request) {
     }
 
     const expenses = await db.expense.findMany({
-      where: expenseWhere as Parameters<typeof db.expense.findMany>[0]['where'],
+      where: expenseWhere,
       select: {
         id: true,
         date: true,
@@ -170,7 +172,7 @@ export async function GET(request: Request) {
     })
 
     // Subcontractor Invoices for this project
-    const sciWhere: Record<string, unknown> = {
+    const sciWhere: Prisma.SubcontractorInvoiceWhereInput = {
       projectId,
       status: { not: 'CANCELLED' },
     }
@@ -179,7 +181,7 @@ export async function GET(request: Request) {
     }
 
     const subcontractorInvoices = await db.subcontractorInvoice.findMany({
-      where: sciWhere as Parameters<typeof db.subcontractorInvoice.findMany>[0]['where'],
+      where: sciWhere,
       select: {
         id: true,
         invoiceNo: true,
@@ -191,7 +193,7 @@ export async function GET(request: Request) {
     })
 
     // Equipment Costs for this project
-    const eqCostWhere: Record<string, unknown> = {
+    const eqCostWhere: Prisma.EquipmentCostWhereInput = {
       projectId,
     }
     if (Object.keys(dateFilter).length > 0) {
@@ -199,7 +201,7 @@ export async function GET(request: Request) {
     }
 
     const equipmentCosts = await db.equipmentCost.findMany({
-      where: eqCostWhere as Parameters<typeof db.equipmentCost.findMany>[0]['where'],
+      where: eqCostWhere,
       select: {
         id: true,
         date: true,
@@ -210,7 +212,7 @@ export async function GET(request: Request) {
     })
 
     // Labor Costs for this project
-    const laborWhere: Record<string, unknown> = {
+    const laborWhere: Prisma.LaborCostWhereInput = {
       projectId,
     }
     if (Object.keys(dateFilter).length > 0) {
@@ -218,7 +220,7 @@ export async function GET(request: Request) {
     }
 
     const laborCosts = await db.laborCost.findMany({
-      where: laborWhere as Parameters<typeof db.laborCost.findMany>[0]['where'],
+      where: laborWhere,
       select: {
         id: true,
         date: true,
@@ -229,25 +231,28 @@ export async function GET(request: Request) {
     })
 
     // Salaries for this project
-    const salaryWhere: Record<string, unknown> = {
+    const salaryWhere: Prisma.SalaryWhereInput = {
       projectId,
       status: { not: 'DRAFT' },
     }
 
     const salaries = await db.salary.findMany({
-      where: salaryWhere as Parameters<typeof db.salary.findMany>[0]['where'],
+      where: salaryWhere,
       select: {
         id: true,
         month: true,
         year: true,
+        basicSalary: true,
+        housingAllowance: true,
+        transportAllowance: true,
+        otherAllowances: true,
+        overtimeAmount: true,
         netSalary: true,
-        totalEarnings: true,
-        totalDeductions: true,
       },
     })
 
     // Fuel logs for this project
-    const fuelWhere: Record<string, unknown> = {
+    const fuelWhere: Prisma.EquipmentFuelLogWhereInput = {
       projectId,
     }
     if (Object.keys(dateFilter).length > 0) {
@@ -255,7 +260,7 @@ export async function GET(request: Request) {
     }
 
     const fuelLogs = await db.equipmentFuelLog.findMany({
-      where: fuelWhere as Parameters<typeof db.equipmentFuelLog.findMany>[0]['where'],
+      where: fuelWhere,
       select: {
         id: true,
         date: true,
@@ -281,9 +286,9 @@ export async function GET(request: Request) {
 
     const laborCostTotal = r4(laborCosts.reduce((s, l) => s + Number(l.totalAmount || 0), 0))
 
-    const salariesCost = r4(salaries.reduce((s, sal) => s + sal.netSalary, 0))
+    const salariesCost = r4(salaries.reduce((s, sal) => s + toNumber(sal.netSalary), 0))
 
-    const fuelCost = r4(fuelLogs.reduce((s, f) => s + f.totalCost, 0))
+    const fuelCost = r4(fuelLogs.reduce((s, f) => s + toNumber(f.totalCost), 0))
 
     const maintenanceCost = r4(expenses
       .filter(e => e.category === 'MAINTENANCE')
@@ -317,10 +322,10 @@ export async function GET(request: Request) {
           id: i.id,
           invoiceNo: i.invoiceNo,
           date: new Date(i.date).toISOString(),
-          totalAmount: r4(i.totalAmount),
-          netAmount: r4(i.netAmount),
-          vatAmount: r4(i.vatAmount),
-          paidAmount: r4(i.paidAmount),
+          totalAmount: r4(toNumber(i.totalAmount)),
+          netAmount: r4(toNumber(i.netAmount)),
+          vatAmount: r4(toNumber(i.vatAmount)),
+          paidAmount: r4(toNumber(i.paidAmount)),
           status: i.status,
           type: i.invoiceType,
         })),
@@ -328,9 +333,9 @@ export async function GET(request: Request) {
           id: c.id,
           claimNo: c.claimNo,
           date: new Date(c.date).toISOString(),
-          totalAmount: r4(c.totalAmount),
-          amount: r4(c.amount),
-          vatAmount: r4(c.vatAmount),
+          totalAmount: r4(toNumber(c.totalAmount)),
+          amount: r4(toNumber(c.amount)),
+          vatAmount: r4(toNumber(c.vatAmount)),
           percentage: c.percentage,
           status: c.status,
         })),
@@ -347,7 +352,7 @@ export async function GET(request: Request) {
               id: pi.id,
               invoiceNo: pi.invoiceNo,
               date: new Date(pi.date).toISOString(),
-              totalAmount: r4(pi.totalAmount),
+              totalAmount: r4(toNumber(pi.totalAmount)),
               category: pi.expenseCategory,
             })),
           label: 'مواد ومستلزمات',
@@ -358,7 +363,7 @@ export async function GET(request: Request) {
           items: equipmentCosts.map(e => ({
             id: e.id,
             date: new Date(e.date).toISOString(),
-            amount: r4(e.amount),
+            amount: r4(toNumber(e.amount)),
             description: e.description,
           })),
           label: 'تكاليف المعدات',
@@ -370,7 +375,7 @@ export async function GET(request: Request) {
             id: si.id,
             invoiceNo: si.invoiceNo,
             date: new Date(si.date).toISOString(),
-            totalAmount: r4(si.totalAmount),
+            totalAmount: r4(toNumber(si.totalAmount)),
           })),
           label: 'المقاولون من الباطن',
           labelEn: 'Subcontractors',
@@ -380,7 +385,7 @@ export async function GET(request: Request) {
           items: laborCosts.map(l => ({
             id: l.id,
             date: new Date(l.date).toISOString(),
-            amount: r4(l.totalAmount),
+            amount: r4(toNumber(l.totalAmount)),
             description: l.description,
           })),
           label: 'تكاليف العمالة',
@@ -392,8 +397,14 @@ export async function GET(request: Request) {
             id: s.id,
             month: s.month,
             year: s.year,
-            netSalary: r4(s.netSalary),
-            totalEarnings: r4(s.totalEarnings),
+            netSalary: r4(toNumber(s.netSalary)),
+            totalEarnings: r4(
+              toNumber(s.basicSalary) +
+              toNumber(s.housingAllowance) +
+              toNumber(s.transportAllowance) +
+              toNumber(s.otherAllowances) +
+              toNumber(s.overtimeAmount)
+            ),
           })),
           label: 'الرواتب',
           labelEn: 'Salaries',
@@ -415,7 +426,7 @@ export async function GET(request: Request) {
             .map(e => ({
               id: e.id,
               date: new Date(e.date).toISOString(),
-              amount: r4(e.totalAmount),
+              amount: r4(toNumber(e.totalAmount)),
               category: e.category,
               description: e.description,
             })),

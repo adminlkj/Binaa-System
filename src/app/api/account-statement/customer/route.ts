@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
+import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 
 // Helper: round to 4 decimal places
 function r4(n: number): number {
@@ -49,19 +51,19 @@ export async function GET(request: Request) {
     const dateTo = dateToStr ? new Date(dateToStr) : undefined
 
     // Get all sales invoices for this client (not cancelled)
-    const invoiceWhere: Record<string, unknown> = {
+    const invoiceWhere: Prisma.SalesInvoiceWhereInput = {
       clientId,
       status: { not: 'CANCELLED' },
     }
     if (dateFrom || dateTo) {
-      const dateFilter: Record<string, unknown> = {}
+      const dateFilter: Prisma.DateTimeFilter = {}
       if (dateFrom) dateFilter.gte = dateFrom
       if (dateTo) dateFilter.lte = dateTo
       invoiceWhere.date = dateFilter
     }
 
     const invoices = await db.salesInvoice.findMany({
-      where: invoiceWhere as Parameters<typeof db.salesInvoice.findMany>[0]['where'],
+      where: invoiceWhere,
       select: {
         id: true,
         invoiceNo: true,
@@ -76,18 +78,18 @@ export async function GET(request: Request) {
     })
 
     // Get all client payments for this client
-    const paymentWhere: Record<string, unknown> = {
+    const paymentWhere: Prisma.ClientPaymentWhereInput = {
       clientId,
     }
     if (dateFrom || dateTo) {
-      const dateFilter: Record<string, unknown> = {}
+      const dateFilter: Prisma.DateTimeFilter = {}
       if (dateFrom) dateFilter.gte = dateFrom
       if (dateTo) dateFilter.lte = dateTo
       paymentWhere.date = dateFilter
     }
 
     const payments = await db.clientPayment.findMany({
-      where: paymentWhere as Parameters<typeof db.clientPayment.findMany>[0]['where'],
+      where: paymentWhere,
       select: {
         id: true,
         amount: true,
@@ -108,7 +110,7 @@ export async function GET(request: Request) {
         date: new Date(inv.date).toISOString(),
         reference: inv.invoiceNo,
         description: inv.notes || `فاتورة مبيعات - ${inv.invoiceNo}`,
-        debit: r4(inv.totalAmount),
+        debit: r4(toNumber(inv.totalAmount)),
         credit: 0,
         balance: 0, // will be calculated
         type: 'INVOICE',
@@ -123,7 +125,7 @@ export async function GET(request: Request) {
         reference: pay.reference || '',
         description: pay.notes || 'تحصيل من العميل',
         debit: 0,
-        credit: r4(pay.amount),
+        credit: r4(toNumber(pay.amount)),
         balance: 0, // will be calculated
         type: 'PAYMENT',
         sourceId: pay.id,

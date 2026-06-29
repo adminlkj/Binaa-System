@@ -113,7 +113,10 @@ export async function GET(request: Request) {
         description: a.description,
         descriptionAr: a.descriptionAr,
         parent: a.parent ? { id: a.parent.id, code: a.parent.code, name: a.parent.name, nameAr: a.parent.nameAr } : null,
-        children: a.children.map(c => ({ id: c.id, code: c.code, name: c.name, nameAr: c.nameAr, type: c.type, isActive: c.isActive, balance: c.balance, normalBalance: c.normalBalance, entryCount: c.entryCount })),
+        // Note: balance/normalBalance/entryCount are computed only for the top-level accounts
+        // (enrichedAccounts). The nested `children` come from the raw Prisma select and do not
+        // carry these computed indicators, so we omit them here.
+        children: a.children.map(c => ({ id: c.id, code: c.code, name: c.name, nameAr: c.nameAr, type: c.type, isActive: c.isActive })),
         _count: a._count,
         balance: a.balance,
         normalBalance: a.normalBalance,

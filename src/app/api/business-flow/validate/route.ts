@@ -30,6 +30,10 @@ import {
   calculateEquipmentProfitability,
   getActivityTypeForEntity,
   type ValidationResult,
+  type WorkflowProgress,
+  type CostRoutingResult,
+  type ProfitabilityResult,
+  type EquipmentProfitabilityResult,
 } from '@/lib/business-flow/engine'
 
 export async function POST(request: NextRequest) {
@@ -37,7 +41,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { action } = body
 
-    let result: ValidationResult | Record<string, unknown>
+    let result: ValidationResult | WorkflowProgress | CostRoutingResult | ProfitabilityResult | EquipmentProfitabilityResult | Record<string, unknown>
 
     switch (action) {
       // ============ WORKFLOW VALIDATION ============

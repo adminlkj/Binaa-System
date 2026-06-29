@@ -183,8 +183,16 @@ function LaborCostFormDialog({
             </div>
             <div className="space-y-2">
               <Label>{t(lang, 'الحساب الدائن (اختياري)', 'Credit Account (optional)')}</Label>
+              {/* ─── PROPERTY-BASED account selector ──────────────────── */}
+              {/* The dropdown adapts to the user's payment source choice:
+                  - BANK → accounts flagged showInBank=true
+                  - CASH → accounts flagged showInCash=true
+                  (Previously used roles=['BANK'] / ['CASH','TREASURY'].
+                   The property system lets the accountant control which
+                   accounts appear in each mode by toggling showInCash /
+                   showInBank on the account itself.) */}
               <AccountSelector
-                roles={paymentSource === 'BANK' ? ['BANK'] : ['CASH', 'TREASURY']}
+                filterByProperty={paymentSource === 'BANK' ? { showInBank: true } : { showInCash: true }}
                 value={paymentAccountCode}
                 onValueChange={(_id, account) => setPaymentAccountCode(account.code)}
                 placeholder={t(lang, 'اختر الحساب...', 'Select account...')}

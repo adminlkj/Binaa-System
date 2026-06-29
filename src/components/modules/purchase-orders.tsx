@@ -721,7 +721,7 @@ export function PurchaseOrdersModule() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <span className="font-mono font-medium">{po.orderNo}</span>
-                          {hasPR && <Link2 className="size-3 text-blue-500" title={t('مرتبط بطلب شراء', 'Linked to PR', lang)} />}
+                          {hasPR && <span title={t('مرتبط بطلب شراء', 'Linked to PR', lang)}><Link2 className="size-3 text-blue-500" /></span>}
                         </div>
                       </TableCell>
                       <TableCell>{po.supplier.name}</TableCell>

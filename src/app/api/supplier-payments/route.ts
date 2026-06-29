@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { createSupplierPaymentJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
 import { toNumber } from '@/lib/decimal'
+import { Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -85,7 +86,8 @@ export async function POST(request: Request) {
     // Previously the POST allowed paying DRAFT / PAID / CANCELLED invoices and
     // had no overpayment check — a direct API call could un-CANCEL an invoice,
     // double-pay a PAID invoice, or pay a DRAFT invoice.
-    let linkedInvoice: { id: string; status: string; totalAmount: bigint; paidAmount: bigint; purchaseOrderId: string | null } | null = null
+    // The annotation mirrors the select() return shape (Decimal — not bigint).
+    let linkedInvoice: { id: string; status: string; totalAmount: Prisma.Decimal; paidAmount: Prisma.Decimal; purchaseOrderId: string | null } | null = null
     if (invoiceId) {
       const invoice = await db.purchaseInvoice.findUnique({
         where: { id: invoiceId },

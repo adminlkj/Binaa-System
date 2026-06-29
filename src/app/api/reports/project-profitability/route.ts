@@ -160,7 +160,7 @@ export async function GET(request: Request) {
 
     const progressClaims = await db.progressClaim.findMany({
       where: { projectId, status: { not: 'REJECTED' } },
-      select: { amount: true, totalAmount: true, retentionAmount: true, advanceDeduction: true, netPayment: true },
+      select: { amount: true, totalAmount: true, retentionAmount: true, advanceDeduction: true },
     })
     const totalClaimed = progressClaims.reduce((s, c) => s + toNumber(c.amount), 0)
     const totalRetention = progressClaims.reduce((s, c) => s + toNumber(c.retentionAmount), 0)

@@ -47,19 +47,20 @@ export async function POST(request: Request) {
 
     // 3. Calculate total overtime hours from attendance
     const totalOvertimeHours = attendanceRecords.reduce(
-      (sum, a) => sum + (a.overtimeHours || 0),
+      (sum, a) => sum + Number(a.overtimeHours || 0),
       0
     )
 
     // 4. Calculate total work hours
     const totalWorkHours = attendanceRecords.reduce(
-      (sum, a) => sum + (a.workHours || 0),
+      (sum, a) => sum + Number(a.workHours || 0),
       0
     )
 
     // 5. Calculate overtime amount
     // hourly rate = basicSalary / 30 / 8 (daily rate / 8 hours)
-    const dailyRate = contract.basicSalary / 30
+    const basicSalary = Number(contract.basicSalary)
+    const dailyRate = basicSalary / 30
     const hourlyRate = dailyRate / 8
     const overtimeAmount = Math.round(totalOvertimeHours * hourlyRate * 100) / 100
 
@@ -72,15 +73,14 @@ export async function POST(request: Request) {
       },
     })
     const deductions = pendingAdvances.reduce(
-      (sum, a) => sum + a.amount,
+      (sum, a) => sum + Number(a.amount),
       0
     )
 
     // 7. Calculate net salary
-    const basicSalary = contract.basicSalary
-    const housingAllowance = contract.housingAllowance
-    const transportAllowance = contract.transportAllowance
-    const otherAllowances = contract.otherAllowances
+    const housingAllowance = Number(contract.housingAllowance)
+    const transportAllowance = Number(contract.transportAllowance)
+    const otherAllowances = Number(contract.otherAllowances)
     const netSalary = basicSalary + housingAllowance + transportAllowance + otherAllowances + overtimeAmount - deductions
 
     return NextResponse.json({

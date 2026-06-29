@@ -196,7 +196,7 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
       { key: 'type', label: t('النوع', 'Type', lang) },
       { key: 'balance', label: t('الرصيد', 'Balance', lang), format: v => (Number(v) || 0).toFixed(2) },
     ]
-    exportToCSV(rows as Record<string, unknown>[], 'income-statement', cols)
+    exportToCSV(rows as unknown as Record<string, unknown>[], 'income-statement', cols)
     toast.success(t('تم التصدير', 'Exported', lang))
   }, [isData, lang])
 
@@ -209,7 +209,7 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
       { key: 'type', label: t('النوع', 'Type', lang) },
       { key: 'balance', label: t('الرصيد', 'Balance', lang), format: v => (Number(v) || 0).toFixed(2) },
     ]
-    exportToCSV(rows as Record<string, unknown>[], 'balance-sheet', cols)
+    exportToCSV(rows as unknown as Record<string, unknown>[], 'balance-sheet', cols)
     toast.success(t('تم التصدير', 'Exported', lang))
   }, [bsData, lang])
 
@@ -221,7 +221,7 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
       { key: 'netDebit', label: t('مدين', 'Debit', lang), format: v => (Number(v) || 0).toFixed(2) },
       { key: 'netCredit', label: t('دائن', 'Credit', lang), format: v => (Number(v) || 0).toFixed(2) },
     ]
-    exportToCSV(tbData.rows as Record<string, unknown>[], 'trial-balance', cols)
+    exportToCSV(tbData.rows as unknown as Record<string, unknown>[], 'trial-balance', cols)
   }, [tbData, lang])
 
   const exportCC = useCallback(() => {
@@ -247,7 +247,7 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
       { key: 'netWip', label: t('صافي WIP', 'Net WIP', lang), format: v => (Number(v) || 0).toFixed(2) },
       { key: 'completionPercent', label: t('نسبة الإنجاز %', 'Completion %', lang), format: v => (Number(v) || 0).toFixed(1) },
     ]
-    exportToCSV(wipData.rows as Record<string, unknown>[], 'project-wip', cols)
+    exportToCSV(wipData.rows as unknown as Record<string, unknown>[], 'project-wip', cols)
   }, [wipData, lang])
 
   const exportVAT = useCallback(() => {
@@ -451,7 +451,7 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
               <SelectTrigger className="w-72"><SelectValue placeholder={t('اختر حساباً...', 'Select account...', lang)} /></SelectTrigger>
               <SelectContent>
                 {chartOfAccounts.length === 0 ? (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">{t('جاري تحميل الحسابات...', 'Loading accounts...')}</div>
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">{t('جاري تحميل الحسابات...', 'Loading accounts...', lang)}</div>
                 ) : (
                   chartOfAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {acctName(a, lang)}</SelectItem>)
                 )}
@@ -493,7 +493,7 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
               <SelectTrigger className="w-72"><SelectValue placeholder={t('اختر حساباً...', 'Select account...', lang)} /></SelectTrigger>
               <SelectContent>
                 {chartOfAccounts.length === 0 ? (
-                  <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">{t('جاري تحميل الحسابات...', 'Loading accounts...')}</div>
+                  <div className="px-2 py-1.5 text-xs text-muted-foreground text-center">{t('جاري تحميل الحسابات...', 'Loading accounts...', lang)}</div>
                 ) : (
                   chartOfAccounts.map(a => <SelectItem key={a.id} value={a.id}>{a.code} - {acctName(a, lang)}</SelectItem>)
                 )}

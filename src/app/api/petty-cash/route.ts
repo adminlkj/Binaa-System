@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       // fails, the entire transaction rolls back — no petty cash record without a JE.
       const journalEntry = await autoEntryPettyCash({
         description: pettyCash.description,
-        amount: pettyCash.amount,
+        amount: Number(pettyCash.amount),
         category: pettyCash.category || 'OTHER',
         date: pettyCash.date,
         transactionType,

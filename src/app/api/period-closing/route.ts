@@ -79,13 +79,13 @@ async function closePeriod(year: number, month: number, type: string) {
 
       for (const line of lines) {
         if (line.account.type === 'REVENUE') {
-          const amount = line.credit - line.debit
+          const amount = Number(line.credit) - Number(line.debit)
           if (!revenueByAccount[line.account.id]) {
             revenueByAccount[line.account.id] = { id: line.account.id, code: line.account.code, name: line.account.name, balance: 0 }
           }
           revenueByAccount[line.account.id].balance += amount
         } else if (line.account.type === 'EXPENSE') {
-          const amount = line.debit - line.credit
+          const amount = Number(line.debit) - Number(line.credit)
           if (!expenseByAccount[line.account.id]) {
             expenseByAccount[line.account.id] = { id: line.account.id, code: line.account.code, name: line.account.name, balance: 0 }
           }

@@ -234,7 +234,7 @@ export function CreateAccountDialog({
     if (form.allowPosting && !form.parentId) {
       toast({
         title: t('تنبيه', 'Notice', lang),
-        description: t('حساب الترحيل يجب أن يكون له حساب أب — اختر الحساب الأب أو عطّل خيار "قبول الترحيل"', 'Posting account must have a parent — pick a parent or disable "Allow Posting"'),
+        description: t('حساب الترحيل يجب أن يكون له حساب أب — اختر الحساب الأب أو عطّل خيار "قبول الترحيل"', 'Posting account must have a parent — pick a parent or disable "Allow Posting"', lang),
         variant: 'destructive',
       })
       return
@@ -293,7 +293,7 @@ export function CreateAccountDialog({
     } catch (err) {
       toast({
         title: t('خطأ', 'Error', lang),
-        description: err instanceof Error ? err.message : t('فشل الحفظ', 'Failed to save'),
+        description: err instanceof Error ? err.message : t('فشل الحفظ', 'Failed to save', lang),
         variant: 'destructive',
       })
     } finally {
@@ -325,7 +325,8 @@ export function CreateAccountDialog({
             <p className="text-xs text-sky-800 leading-relaxed">
               {t(
                 'عند تخصيص "دور الحساب" (مثل: البنوك، النقدية، ذمم العملاء...) سيظهر هذا الحساب تلقائياً في كل شاشات العمليات المرتبطة بهذا الدور (الدفع، التحصيل، السداد، الفواتير...) دون الحاجة لأي إعداد إضافي.',
-                'When you assign an "Account Role" (e.g. BANK, CASH, CUSTOMER_AR...), this account will automatically appear in all operation screens linked to that role (payments, collections, invoices...) with no extra setup.'
+                'When you assign an "Account Role" (e.g. BANK, CASH, CUSTOMER_AR...), this account will automatically appear in all operation screens linked to that role (payments, collections, invoices...) with no extra setup.',
+                lang
               )}
             </p>
           </div>

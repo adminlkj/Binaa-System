@@ -97,7 +97,7 @@ export async function PATCH(
         if (pricingType === 'HOURLY') {
           const referenceHours = body.referenceHours !== undefined
             ? parseFloat(body.referenceHours) || 0
-            : existing.referenceHours
+            : Number(existing.referenceHours)
           updateData.hourlyRate = referenceHours > 0 ? referenceRate / referenceHours : 0
         }
       }
@@ -108,7 +108,7 @@ export async function PATCH(
         if (pricingType === 'HOURLY') {
           const referenceRate = body.referenceRate !== undefined
             ? parseFloat(body.referenceRate) || 0
-            : existing.referenceRate
+            : Number(existing.referenceRate)
           updateData.hourlyRate = referenceHours > 0 ? referenceRate / referenceHours : 0
         }
       }

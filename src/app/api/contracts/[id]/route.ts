@@ -51,9 +51,11 @@ export async function PUT(
       return NextResponse.json({ error: 'العقد غير موجود' }, { status: 404 })
     }
 
-    // Parse financial values and recalculate
-    const value = parseFloat(body.value) || existing.value
-    const vatRate = body.vatRate != null ? parseFloat(body.vatRate) : existing.vatRate
+    // Parse financial values and recalculate.
+    // `Number(existing.*)` keeps the fallback numeric so the arithmetic below stays `number`
+    // (Prisma Decimal is not valid as an arithmetic operand).
+    const value = parseFloat(body.value) || Number(existing.value)
+    const vatRate = body.vatRate != null ? parseFloat(body.vatRate) : Number(existing.vatRate)
     const vatAmount = Math.round(value * vatRate * 100) / 100
     const totalValue = Math.round((value + vatAmount) * 100) / 100
 

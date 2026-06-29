@@ -162,7 +162,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
         data: {
           isActive: false,
           deletedAt: new Date(),
-          status: 'RETIRED',
+          // 'RETIRED' is not a valid EquipmentStatus enum value; OUT_OF_SERVICE is the
+          // closest semantic match for a decommissioned piece of equipment.
+          status: 'OUT_OF_SERVICE',
         },
       })
     })

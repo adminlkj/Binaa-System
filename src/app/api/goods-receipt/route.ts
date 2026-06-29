@@ -124,9 +124,9 @@ export async function POST(request: Request) {
         include: { items: true },
       })
 
-      const totalOrdered = po.items.reduce((sum, item) => sum + item.quantity, 0)
+      const totalOrdered = po.items.reduce((sum, item) => sum + Number(item.quantity), 0)
       const totalReceived = allReceipts.reduce((sum, gr) =>
-        sum + gr.items.reduce((s, item) => s + item.quantityReceived, 0), 0
+        sum + gr.items.reduce((s, item) => s + Number(item.quantityReceived), 0), 0
       )
 
       let newPoStatus: string
@@ -166,7 +166,7 @@ export async function POST(request: Request) {
           const itemCost = item.quantityReceived * item.unitPrice
           inventoryTotal += itemCost
           // P5-CRIT-013 FIX: match by inventoryItemId (preferred) or name; if no match, CREATE a new InventoryItem.
-          let inventoryItem = null
+          let inventoryItem: { id: string } | null = null
           if (item.inventoryItemId) {
             inventoryItem = await tx.inventoryItem.findUnique({ where: { id: item.inventoryItemId } })
           }
@@ -193,15 +193,17 @@ export async function POST(request: Request) {
               },
             })
           }
+          // Type narrow: inventoryItem is guaranteed non-null here (findUnique, findFirst, or create succeeded)
+          const foundItem = inventoryItem as { id: string }
           await tx.inventoryItem.update({
-            where: { id: inventoryItem.id },
+            where: { id: foundItem.id },
             data: {
               quantity: { increment: item.quantityReceived },
               purchasePrice: item.unitPrice,
             },
           })
           inventoryItemUpdates.push({
-            inventoryItemId: inventoryItem.id,
+            inventoryItemId: foundItem.id,
             quantity: item.quantityReceived,
             unitPrice: item.unitPrice,
             description: item.description,

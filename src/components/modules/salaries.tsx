@@ -471,8 +471,8 @@ export function SalariesModule() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <SalaryStatusBadge status={s.status} lang={lang} />
-                          {s.journalEntryId && <BookOpen className="size-3 text-purple-600" title={t('قييد محاسبي', 'Accounting Entry', lang)} />}
-                          {s.projectCostCreated && <Eye className="size-3 text-emerald-600" title={t('تكلفة مشروع', 'Project Cost', lang)} />}
+                          {s.journalEntryId && <span title={t('قييد محاسبي', 'Accounting Entry', lang)}><BookOpen className="size-3 text-purple-600" /></span>}
+                          {s.projectCostCreated && <span title={t('تكلفة مشروع', 'Project Cost', lang)}><Eye className="size-3 text-emerald-600" /></span>}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -534,7 +534,7 @@ export function SalariesModule() {
         return (
           <JePreview
             lines={jeLines}
-            title={t('توزيع الرواتب على حسابات المصروفات', 'Salary Distribution by Expense Account')}
+            title={t('توزيع الرواتب على حسابات المصروفات', 'Salary Distribution by Expense Account', lang)}
           />
         )
       })()}

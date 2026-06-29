@@ -54,7 +54,7 @@ async function getGLBalance(
     accountWhere.activityType = { in: [options.activityType, 'BOTH'] }
   }
 
-  const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
+  const jeWhere: { status: 'POSTED'; deletedAt: null; date?: { gte?: Date; lt?: Date } } = { status: 'POSTED', deletedAt: null }
   if (options?.startDate || options?.endDate) {
     jeWhere.date = {}
     if (options.startDate) jeWhere.date.gte = options.startDate
@@ -269,7 +269,7 @@ export async function GET() {
     }
 
     const projectProfitability = projects.map(p => {
-      const contractValue = p.contractValue || p.contracts.reduce((s, c) => s + Number(c.totalValue || 0), 0)
+      const contractValue = Number(p.contractValue || p.contracts.reduce((s, c) => s + Number(c.totalValue || 0), 0))
       const glData = projectGLMap.get(p.code) || { revenue: 0, costs: 0 }
       const totalRevenue = glData.revenue
       const totalCosts = glData.costs
@@ -345,7 +345,7 @@ export async function GET() {
       select: { totalAmount: true, paidAmount: true },
     })
     const overdueReceivables = overdueReceivablesInvoices.reduce(
-      (s, i) => s + (i.totalAmount - i.paidAmount), 0
+      (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
     )
 
     // Overdue Payables (still from operational tables - GL has no due-date concept)
@@ -357,7 +357,7 @@ export async function GET() {
       select: { totalAmount: true, paidAmount: true },
     })
     const overduePayables = overduePayablesInvoices.reduce(
-      (s, i) => s + (i.totalAmount - i.paidAmount), 0
+      (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
     )
 
     // ===== 9. Recent Transactions (last 10 journal entries) =====
@@ -526,7 +526,7 @@ export async function GET() {
       select: { totalAmount: true, paidAmount: true },
     })
     const outstandingConstructionCollections = constructionReceivablesInvoices.reduce(
-      (s, i) => s + (i.totalAmount - i.paidAmount), 0
+      (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
     )
 
     // Outstanding rental collections (unpaid rental invoices)
@@ -541,7 +541,7 @@ export async function GET() {
       select: { totalAmount: true, paidAmount: true },
     })
     const outstandingRentalCollections = rentalReceivablesInvoices.reduce(
-      (s, i) => s + (i.totalAmount - i.paidAmount), 0
+      (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
     )
 
     // Construction contract value (sum of all active construction project contracts)

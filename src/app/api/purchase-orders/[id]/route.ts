@@ -69,12 +69,15 @@ export async function PUT(
       if (!allowedTransitions.includes(body.status)) {
         return NextResponse.json(
           {
-            error: existing.status === 'APPROVED' || existing.status === 'PARTIALLY_RECEIVED' || existing.status === 'RECEIVED'
+            // Check 'RECEIVED' first so we can return its specific message — checking it
+            // after the APPROVED/PARTIALLY_RECEIVED branch would be unreachable because
+            // TypeScript narrows `existing.status` after each successful `===` comparison.
+            error: existing.status === 'RECEIVED'
+              ? 'أمر الشراء مستلم بالكامل ولا يمكن تغيير حالته'
+              : existing.status === 'APPROVED' || existing.status === 'PARTIALLY_RECEIVED'
               ? 'لا يمكن الرجوع بعد الاعتماد - أمر الشراء معتمد ولا يمكن تحويله إلى مسودة'
               : existing.status === 'CANCELLED'
               ? 'لا يمكن تعديل أمر شراء ملغي'
-              : existing.status === 'RECEIVED'
-              ? 'أمر الشراء مستلم بالكامل ولا يمكن تغيير حالته'
               : `لا يمكن التحويل من ${existing.status} إلى ${body.status}`,
           },
           { status: 400 }

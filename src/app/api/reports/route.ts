@@ -110,7 +110,7 @@ async function getGLBalanceByType(
     accountWhere.activityType = { in: [options.activityType, 'BOTH'] }
   }
 
-  const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
+  const jeWhere: { status: 'POSTED'; deletedAt: null; date?: { gte?: Date; lte?: Date } } = { status: 'POSTED', deletedAt: null }
   if (options?.dateFrom || options?.dateTo) {
     jeWhere.date = {}
     if (options.dateFrom) jeWhere.date.gte = options.dateFrom
@@ -144,7 +144,7 @@ async function getGLBalanceForCodes(
   })
   if (accounts.length === 0) return 0
 
-  const jeWhere: Record<string, unknown> = { status: 'POSTED', deletedAt: null }
+  const jeWhere: { status: 'POSTED'; deletedAt: null; date?: { gte?: Date; lte?: Date } } = { status: 'POSTED', deletedAt: null }
   if (dateFrom || dateTo) {
     jeWhere.date = {}
     if (dateFrom) jeWhere.date.gte = dateFrom

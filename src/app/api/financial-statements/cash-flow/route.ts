@@ -160,7 +160,7 @@ export async function GET(request: Request) {
     const beginDateFilter: { date?: { lt?: Date } } = {}
     if (dateFrom) beginDateFilter.date = { lt: dateFrom }
 
-    let cashAccountsForBalance: { id: true; code: true; name: true; nameAr: true; type: true }[]
+    let cashAccountsForBalance: { id: string; code: string; name: string; nameAr: string | null; type: string }[]
 
     if (allCashBankAccounts.length > 0) {
       // Use role-resolved accounts

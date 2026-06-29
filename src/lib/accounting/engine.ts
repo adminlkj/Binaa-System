@@ -499,7 +499,7 @@ export async function autoEntrySalesInvoice(data: {
   const revenueAccount = await requireAccountByRole(revenueRole, 'فاتورة مبيعات', tx)
   const revenueCode = revenueAccount.code
 
-  const lines = [
+  const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: arCode, debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId },
     { accountCode: revenueCode, debit: 0, credit: data.subtotal, costCenterId: data.costCenterId },
   ]
@@ -644,7 +644,7 @@ export async function autoEntryExpense(data: {
 
   const totalCashOut = data.amount + (data.vatAmount || 0)
 
-  const lines = [
+  const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: expenseAccountCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
   ]
 
@@ -863,7 +863,7 @@ export async function autoEntrySubcontractorInvoice(data: {
   const vatInputCode = await getAccountCodeByRole(AccountRole.VAT_INPUT, tx) || '3120'
   const apCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, tx) || '3220'
 
-  const lines = [
+  const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: costCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
   ]
 
@@ -975,7 +975,7 @@ export async function autoEntryRentalInvoice(data: {
   const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR, tx) || '1210'
   const revenueCode = await getAccountCodeByRole(AccountRole.RENTAL_REVENUE, tx) || '6210'
 
-  const lines = [
+  const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: arCode, debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId },
     { accountCode: revenueCode, debit: 0, credit: data.subtotal, costCenterId: data.costCenterId },
   ]
@@ -1093,7 +1093,7 @@ export async function autoEntrySalary(data: {
   const gosiPayableCode = await getAccountCodeByRole(AccountRole.GOSI_PAYABLE, tx) || '3830'
   const netCashPaid = data.grossSalary - data.gosiEmployeeDeduction
 
-  const lines = [
+  const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: payrollCode, debit: data.grossSalary, credit: 0, costCenterId: data.costCenterId },
     { accountCode: gosiExpenseCode, debit: data.gosiEmployerContribution, credit: 0, costCenterId: data.costCenterId },
   ]
@@ -1229,7 +1229,7 @@ export async function autoEntryDeliveryFees(data: {
   const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR, tx) || '1210'
   const revenueCode = await getAccountCodeByRole(AccountRole.RENTAL_REVENUE, tx) || '6220'
 
-  const lines = [
+  const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: arCode, debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId },
     { accountCode: revenueCode, debit: 0, credit: data.amount, costCenterId: data.costCenterId },
   ]

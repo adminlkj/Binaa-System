@@ -6,7 +6,7 @@
 import type { DocumentTemplate, PrintSettings } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, getMonthName, getCurrencySymbol } from '../shared/utils'
-import { bankInfoSection, signaturesSection, amountInWordsSection, totalsSection } from '../shared/sections'
+import { bankInfoSection, signaturesSection, amountInWordsSection, totalsSection, type TotalRow } from '../shared/sections'
 
 export const template: DocumentTemplate = {
   category: 'operation',
@@ -104,7 +104,7 @@ export const template: DocumentTemplate = {
     `
 
     // ─── Totals ───
-    const totalRows = [
+    const totalRows: TotalRow[] = [
       { label: lang === 'ar' ? `المجموع الفرعي / Subtotal (${operatingHours} ${lang === 'ar' ? 'ساعة' : 'hrs'} × ${fmtMoney(hourlyRate, settings, lang)})` : `Subtotal (${operatingHours} hrs × ${fmtMoney(hourlyRate, settings, lang)})`, value: subtotal },
       { label: lang === 'ar' ? `ضريبة القيمة المضافة ${vatRate * 100}% / VAT ${vatRate * 100}%` : `VAT ${vatRate * 100}%`, value: vatAmount },
     ]
