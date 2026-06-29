@@ -5655,3 +5655,55 @@ Stage Summary:
 - ADVANCES ليست نوع مصروف (أصل متداول)
 - ADMIN_VEHICLES_FUEL منفصل عن FUEL (الأول للمركبات الإدارية، الثاني للمعدات)
 - Commit: d1cb158 — تم الدفع إلى origin/main
+
+---
+Task ID: ACCOUNT-PROPERTIES-003
+Agent: Main Agent
+Task: تحويل دليل الحسابات إلى محرك خصائص يوجّه سلوك النظام
+
+Work Log:
+- تحليل الفكرة: بدل الاعتماد على أسماء/أرقام الحسابات، نعتمد على خصائص وظيفية
+- تحديث prisma/schema.prisma: إضافة 22 حقل Boolean + documentType لـ Account model
+  * خصائص الاستخدام (11): usableInExpenses, usableInProjects, usableInRental, usableInPayroll, usableInAdvances, usableInMaintenance, usableInFuel, usableInPurchases, usableInRevenue, showInCash, showInBank
+  * خصائص الاختيار (6): allowsProject, allowsCostCenter, allowsEmployee, allowsEquipment, allowsSupplier, allowsClient
+  * سلوك الحساب (5): requiresEmployee, requiresProject, requiresEquipment, requiresContract, allowsVat, documentType
+  * فهارس جديدة على الخصائص الرئيسية
+- تنفيذ bun run db:push بنجاح
+- إنشاء scripts/migrate-account-properties.ts: سكربت migration يضبط الخصائص الافتراضية حسب accountRole الموجود
+  * 34 حساب تم تحديث خصائصها (من أصل 62 حساباً)
+  * أمثلة: FUEL_EXPENSE → usableInFuel+requiresEquipment+allowsProject
+            ADMIN_EXPENSE → usableInExpenses+allowsCostCenter
+            PAYROLL_EXPENSE → usableInPayroll+requiresEmployee
+            PROJECT_COST → usableInProjects+requiresProject
+- تحديث src/app/api/accounts/by-role/route.ts:
+  * دعم property-based querying: ?usableInExpenses=true&...
+  * خصائص متعددة تُجمَع بـ AND
+  * كل الاستجابات تشمل مجموعة الخصائص الكاملة
+- تحديث src/components/shared/account-selector.tsx:
+  * إضافة prop جديد: filterByProperty={{ usableInExpenses: true }}
+  * property mode له أولوية على role mode
+  * onValueChange يمرر الـ account object كامل (بكل الخصائص)
+- تحديث src/components/modules/expenses.tsx:
+  * تبديل من roles=['ADMIN_EXPENSE'] إلى filterByProperty={usableInExpenses:true}
+  * النموذج الديناميكي: يبني نفسه حسب خصائص الحساب المختار:
+    - link type options تظهر/تختفي حسب allowsProject/allowsCostCenter/allowsEmployee/allowsEquipment
+    - الحقول الإلزامية تُفرض (requiresProject → PROJECT link)
+    - VAT toggle يُعطّل تلقائياً عند allowsVat=false
+    - badges توضح الخصائص النشطة تحت اسم الحساب
+  * إضافة EMPLOYEE و EQUIPMENT conditional selectors
+  * إضافة employees + equipment data fetching في الـ parent module
+- الاختبار الفعلي (Agent Browser):
+  * dropdown الحسابات يعرض 11 حساب (فقط usableInExpenses=true) ✓
+  * اختيار 3710 (EOS_PROVISION): يظهر فقط "خاص بالشركة" + "موظف" (يتطلب موظف) ✓
+  * اختيار 8120 (Office Rent): يظهر "شركة" + "مشروع" + "مركز تكلفة" (يسمح بها) ✓
+  * VAT معطّل تلقائياً لحساب 3710 (allowsVat=false) ✓
+  * إنشاء مصروف إيجار مكتب (8000 + 1200 VAT = 9200) → POST 201 ✓
+- الصحة المحاسبية: 100/100 (7/7 فحوصات) ✓
+- Lint: نظيف
+
+Stage Summary:
+- دليل الحسابات أصبح "محرك خصائص" يتحكم في سلوك النظام
+- كل شاشة تستخدم filterByProperty لجلب الحسابات المناسبة (لا أسماء/أرقام)
+- النماذج تُبنى ديناميكياً حسب خصائص الحساب المختار
+- المحاسب يمكنه إضافة حساب جديد وضبط خصائصه فيظهر تلقائياً في الشاشات المناسبة
+- Commit: 9c4e12e — تم الدفع إلى origin/main
