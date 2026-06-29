@@ -107,6 +107,11 @@ enum ExpenseType {
 }
 
 enum ExpenseCategory {
+  // === Legacy categories (kept for backward compatibility with historical records) ===
+  // These are redirected to specialized screens for NEW entries:
+  //   FUEL, MAINTENANCE, DRIVERS, TRANSPORT, DELIVERY, CONSUMABLES, SERVICES,
+  //   SALARIES, PERMITS → specialized screens
+  // MANAGEMENT_CARS → kept as legacy general (use ADMIN_VEHICLES_* for new entries)
   RENT
   MAINTENANCE
   TRANSPORT
@@ -125,6 +130,83 @@ enum ExpenseCategory {
   WATER
   MANAGEMENT_CARS
   DRIVERS
+
+  // === NEW: General & Administrative expense categories ===
+  // المرافق والخدمات (Utilities & Services)
+  SEWAGE
+  TELECOM
+  POSTAL
+  CLOUD_HOSTING
+
+  // المركبات العامة للشركة (Administrative Vehicles — NOT project/rental equipment)
+  ADMIN_VEHICLES_FUEL
+  ADMIN_VEHICLES_MAINT
+  VEHICLE_WASH
+  TIRES
+  OILS_FILTERS
+  ROAD_PARKING_FEES
+
+  // المباني والمكاتب (Buildings & Offices)
+  BUILDING_MAINT
+  CLEANING
+  SECURITY
+  FURNITURE
+  OFFICE_EQUIPMENT
+  STATIONERY
+
+  // المصروفات الحكومية (Government Fees)
+  GOV_FEES
+  FINES
+  VIOLATIONS
+  MUNICIPAL_FEES
+  CHAMBER_FEES
+  HR_MINISTRY_FEES
+  GOSI_FEES
+  PASSPORT_FEES
+  RESIDENCY_FEES
+  VISA_FEES
+  LICENSE_FEES
+
+  // التأمين (Insurance — non-payroll)
+  MEDICAL_INSURANCE
+  VEHICLE_INSURANCE
+  EQUIPMENT_INSURANCE
+  FIRE_INSURANCE
+  PROPERTY_INSURANCE
+
+  // الاشتراكات والخدمات (Subscriptions & Services)
+  SOFTWARE_SUBSCRIPTIONS
+  SYSTEM_SUBSCRIPTIONS
+  WEBSITE_SUBSCRIPTIONS
+  NEWSPAPERS
+  PROFESSIONAL_MEMBERSHIPS
+
+  // المصروفات المالية (Financial Expenses)
+  BANK_FEES
+  BANK_COMMISSIONS
+  TRANSFER_DIFFERENCES
+  POS_FEES
+  PAYMENT_GATEWAY_FEES
+
+  // الموارد البشرية العامة (General HR — NOT salaries/payroll/advances)
+  EMPLOYEE_TRAINING
+  RECRUITMENT
+  JOB_ADVERTISEMENTS
+  NON_PAYROLL_BONUSES
+  ADMIN_ALLOWANCES
+
+  // السفر والانتداب (Travel & Deputation)
+  TRAVEL_TICKETS
+  HOTELS
+  DEPUTATIONS
+  TRAVEL_ALLOWANCE
+  EXTERNAL_HOSPITALITY
+
+  // مصروفات متنوعة (Miscellaneous)
+  DONATIONS
+  MINOR_LOSSES
+  CASH_DIFFERENCES
+  MATERIAL_DAMAGE
 }
 
 enum TimesheetStatus {

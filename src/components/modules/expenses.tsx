@@ -52,7 +52,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
@@ -96,24 +96,158 @@ interface Expense {
 // ============ Bilingual Helper ============
 const t = (lang: 'ar' | 'en', ar: string, en: string) => lang === 'ar' ? ar : en
 
-// ============ Categories — RESTRICTED to general/admin expenses ONLY ============
-// NOTE: FUEL, MAINTENANCE, DRIVERS, TRANSPORT, DELIVERY, CONSUMABLES, SERVICES,
-// SALARIES, PERMITS, MANAGEMENT_CARS are intentionally EXCLUDED — they belong
-// to their own specialized screens (see header comment).
-const NEW_CATEGORY_OPTIONS: Array<{
-  value: string
+// ============ Category Groups — General & Administrative Expenses ONLY ============
+// NOTE: The following legacy categories are intentionally EXCLUDED from the
+// NEW-entry form because they belong to their own specialized screens:
+//   FUEL, MAINTENANCE, DRIVERS, TRANSPORT, DELIVERY, CONSUMABLES, SERVICES,
+//   SALARIES, PERMITS → specialized screens
+// ADVANCES is NOT an expense category at all — it is a current asset
+// (employee receivables) and is handled exclusively in the Advances screen.
+
+interface CategoryGroup {
+  groupId: string
   labelAr: string
   labelEn: string
-}> = [
-  { value: 'INTERNET',      labelAr: 'اشتراك إنترنت',     labelEn: 'Internet Subscription' },
-  { value: 'ELECTRICITY',   labelAr: 'كهرباء المكتب',     labelEn: 'Office Electricity' },
-  { value: 'WATER',         labelAr: 'مياه المكتب',       labelEn: 'Office Water' },
-  { value: 'RENT',          labelAr: 'إيجارات إدارية',    labelEn: 'Administrative Rent' },
-  { value: 'OFFICE',        labelAr: 'قرطاسية ومستلزمات', labelEn: 'Stationery & Supplies' },
-  { value: 'HOSPITALITY',   labelAr: 'ضيافة',             labelEn: 'Hospitality' },
-  { value: 'INSURANCE',     labelAr: 'تأمين (غير رواتب)', labelEn: 'Insurance (non-payroll)' },
-  { value: 'OTHER',         labelAr: 'مصروفات متنوعة',    labelEn: 'Miscellaneous' },
+  categories: Array<{ value: string; labelAr: string; labelEn: string }>
+}
+
+const CATEGORY_GROUPS: CategoryGroup[] = [
+  {
+    groupId: 'utilities',
+    labelAr: 'المرافق والخدمات',
+    labelEn: 'Utilities & Services',
+    categories: [
+      { value: 'RENT',          labelAr: 'إيجار المكاتب',          labelEn: 'Office Rent' },
+      { value: 'ELECTRICITY',   labelAr: 'الكهرباء',               labelEn: 'Electricity' },
+      { value: 'WATER',         labelAr: 'المياه',                 labelEn: 'Water' },
+      { value: 'SEWAGE',        labelAr: 'الصرف الصحي',            labelEn: 'Sewage' },
+      { value: 'TELECOM',       labelAr: 'الاتصالات',              labelEn: 'Telecommunications' },
+      { value: 'INTERNET',      labelAr: 'الإنترنت',               labelEn: 'Internet' },
+      { value: 'POSTAL',        labelAr: 'البريد',                 labelEn: 'Postal' },
+      { value: 'CLOUD_HOSTING', labelAr: 'الاستضافة السحابية',     labelEn: 'Cloud Hosting' },
+    ],
+  },
+  {
+    groupId: 'admin-vehicles',
+    labelAr: 'المركبات العامة للشركة',
+    labelEn: 'Administrative Vehicles',
+    categories: [
+      { value: 'ADMIN_VEHICLES_FUEL',  labelAr: 'وقود المركبات الإدارية', labelEn: 'Admin Vehicles Fuel' },
+      { value: 'ADMIN_VEHICLES_MAINT', labelAr: 'صيانة المركبات الإدارية', labelEn: 'Admin Vehicles Maintenance' },
+      { value: 'VEHICLE_WASH',         labelAr: 'غسيل المركبات',         labelEn: 'Vehicle Wash' },
+      { value: 'TIRES',                labelAr: 'إطارات',                labelEn: 'Tires' },
+      { value: 'OILS_FILTERS',         labelAr: 'زيوت وفلاتر',           labelEn: 'Oils & Filters' },
+      { value: 'ROAD_PARKING_FEES',    labelAr: 'رسوم الطرق والمواقف',   labelEn: 'Road & Parking Fees' },
+    ],
+  },
+  {
+    groupId: 'buildings-offices',
+    labelAr: 'المباني والمكاتب',
+    labelEn: 'Buildings & Offices',
+    categories: [
+      { value: 'BUILDING_MAINT',    labelAr: 'صيانة المبنى',              labelEn: 'Building Maintenance' },
+      { value: 'CLEANING',          labelAr: 'النظافة',                   labelEn: 'Cleaning' },
+      { value: 'HOSPITALITY',       labelAr: 'الضيافة',                   labelEn: 'Hospitality' },
+      { value: 'SECURITY',          labelAr: 'الأمن والحراسة',            labelEn: 'Security' },
+      { value: 'FURNITURE',         labelAr: 'الأثاث',                    labelEn: 'Furniture' },
+      { value: 'OFFICE_EQUIPMENT',  labelAr: 'الأجهزة المكتبية',          labelEn: 'Office Equipment' },
+      { value: 'STATIONERY',        labelAr: 'الأدوات المكتبية والقرطاسية', labelEn: 'Stationery & Office Supplies' },
+    ],
+  },
+  {
+    groupId: 'government',
+    labelAr: 'المصروفات الحكومية',
+    labelEn: 'Government Fees',
+    categories: [
+      { value: 'GOV_FEES',          labelAr: 'رسوم حكومية',           labelEn: 'Government Fees' },
+      { value: 'FINES',             labelAr: 'غرامات',                labelEn: 'Fines' },
+      { value: 'VIOLATIONS',        labelAr: 'مخالفات',               labelEn: 'Violations' },
+      { value: 'MUNICIPAL_FEES',    labelAr: 'رسوم بلدية',            labelEn: 'Municipal Fees' },
+      { value: 'CHAMBER_FEES',      labelAr: 'رسوم الغرف التجارية',   labelEn: 'Chamber of Commerce Fees' },
+      { value: 'HR_MINISTRY_FEES',  labelAr: 'رسوم وزارة الموارد البشرية', labelEn: 'HR Ministry Fees' },
+      { value: 'GOSI_FEES',         labelAr: 'رسوم التأمينات',        labelEn: 'GOSI Fees' },
+      { value: 'PASSPORT_FEES',     labelAr: 'رسوم الجوازات',         labelEn: 'Passport Fees' },
+      { value: 'RESIDENCY_FEES',    labelAr: 'رسوم الإقامة',          labelEn: 'Residency Fees' },
+      { value: 'VISA_FEES',         labelAr: 'رسوم التأشيرات',        labelEn: 'Visa Fees' },
+      { value: 'LICENSE_FEES',      labelAr: 'رسوم الرخص',            labelEn: 'License Fees' },
+    ],
+  },
+  {
+    groupId: 'insurance',
+    labelAr: 'التأمين',
+    labelEn: 'Insurance',
+    categories: [
+      { value: 'MEDICAL_INSURANCE',   labelAr: 'تأمين طبي',           labelEn: 'Medical Insurance' },
+      { value: 'VEHICLE_INSURANCE',   labelAr: 'تأمين المركبات',      labelEn: 'Vehicle Insurance' },
+      { value: 'EQUIPMENT_INSURANCE', labelAr: 'تأمين المعدات العامة', labelEn: 'General Equipment Insurance' },
+      { value: 'FIRE_INSURANCE',      labelAr: 'التأمين ضد الحريق',   labelEn: 'Fire Insurance' },
+      { value: 'PROPERTY_INSURANCE',  labelAr: 'التأمين على الممتلكات', labelEn: 'Property Insurance' },
+    ],
+  },
+  {
+    groupId: 'subscriptions',
+    labelAr: 'الاشتراكات والخدمات',
+    labelEn: 'Subscriptions & Services',
+    categories: [
+      { value: 'SOFTWARE_SUBSCRIPTIONS',    labelAr: 'اشتراكات البرامج',  labelEn: 'Software Subscriptions' },
+      { value: 'SYSTEM_SUBSCRIPTIONS',      labelAr: 'اشتراكات الأنظمة',  labelEn: 'System Subscriptions' },
+      { value: 'WEBSITE_SUBSCRIPTIONS',     labelAr: 'اشتراكات المواقع',  labelEn: 'Website Subscriptions' },
+      { value: 'NEWSPAPERS',                labelAr: 'الصحف والمجلات',    labelEn: 'Newspapers & Magazines' },
+      { value: 'PROFESSIONAL_MEMBERSHIPS',  labelAr: 'عضويات مهنية',      labelEn: 'Professional Memberships' },
+    ],
+  },
+  {
+    groupId: 'financial',
+    labelAr: 'المصروفات المالية',
+    labelEn: 'Financial Expenses',
+    categories: [
+      { value: 'BANK_FEES',             labelAr: 'رسوم بنكية',       labelEn: 'Bank Fees' },
+      { value: 'BANK_COMMISSIONS',      labelAr: 'عمولات بنكية',     labelEn: 'Bank Commissions' },
+      { value: 'TRANSFER_DIFFERENCES',  labelAr: 'فروقات تحويل',     labelEn: 'Transfer Differences' },
+      { value: 'POS_FEES',              labelAr: 'رسوم نقاط البيع',  labelEn: 'POS Fees' },
+      { value: 'PAYMENT_GATEWAY_FEES',  labelAr: 'رسوم بوابات الدفع', labelEn: 'Payment Gateway Fees' },
+    ],
+  },
+  {
+    groupId: 'general-hr',
+    labelAr: 'الموارد البشرية العامة',
+    labelEn: 'General HR',
+    categories: [
+      { value: 'EMPLOYEE_TRAINING',     labelAr: 'تدريب الموظفين',           labelEn: 'Employee Training' },
+      { value: 'RECRUITMENT',           labelAr: 'استقطاب الموظفين',         labelEn: 'Recruitment' },
+      { value: 'JOB_ADVERTISEMENTS',    labelAr: 'إعلانات التوظيف',          labelEn: 'Job Advertisements' },
+      { value: 'NON_PAYROLL_BONUSES',   labelAr: 'مكافآت غير مرتبطة بالرواتب', labelEn: 'Non-payroll Bonuses' },
+      { value: 'ADMIN_ALLOWANCES',      labelAr: 'بدلات إدارية',             labelEn: 'Administrative Allowances' },
+    ],
+  },
+  {
+    groupId: 'travel',
+    labelAr: 'السفر والانتداب',
+    labelEn: 'Travel & Deputation',
+    categories: [
+      { value: 'TRAVEL_TICKETS',        labelAr: 'تذاكر السفر',     labelEn: 'Travel Tickets' },
+      { value: 'HOTELS',                labelAr: 'الفنادق',         labelEn: 'Hotels' },
+      { value: 'DEPUTATIONS',           labelAr: 'الانتدابات',      labelEn: 'Deputations' },
+      { value: 'TRAVEL_ALLOWANCE',      labelAr: 'بدل السفر',       labelEn: 'Travel Allowance' },
+      { value: 'EXTERNAL_HOSPITALITY',  labelAr: 'الضيافة الخارجية', labelEn: 'External Hospitality' },
+    ],
+  },
+  {
+    groupId: 'misc',
+    labelAr: 'مصروفات متنوعة',
+    labelEn: 'Miscellaneous',
+    categories: [
+      { value: 'DONATIONS',         labelAr: 'تبرعات',           labelEn: 'Donations' },
+      { value: 'MINOR_LOSSES',      labelAr: 'خسائر بسيطة',      labelEn: 'Minor Losses' },
+      { value: 'CASH_DIFFERENCES',  labelAr: 'فروقات نقدية',     labelEn: 'Cash Differences' },
+      { value: 'MATERIAL_DAMAGE',   labelAr: 'إتلاف مواد',       labelEn: 'Material Damage' },
+      { value: 'OTHER',             labelAr: 'مصروفات متنوعة',   labelEn: 'Miscellaneous' },
+    ],
+  },
 ]
+
+// Flatten all new categories (for lookups)
+const ALL_NEW_CATEGORIES = CATEGORY_GROUPS.flatMap(g => g.categories)
 
 // Default category when opening the form
 const DEFAULT_NEW_CATEGORY = 'OTHER'
@@ -125,6 +259,7 @@ const EXPENSE_ACCOUNT_ROLES = ['ADMIN_EXPENSE']
 // Old records (with FUEL, MAINTENANCE, DRIVERS, etc.) still render correctly
 // in the table — they're shown for read-only audit history.
 const CATEGORY_LABELS: Record<string, { ar: string; en: string }> = {
+  // Legacy
   RENT: { ar: 'إيجارات', en: 'Rent' },
   MAINTENANCE: { ar: 'صيانة', en: 'Maintenance' },
   TRANSPORT: { ar: 'نقل', en: 'Transport' },
@@ -143,14 +278,82 @@ const CATEGORY_LABELS: Record<string, { ar: string; en: string }> = {
   WATER: { ar: 'مياه', en: 'Water' },
   MANAGEMENT_CARS: { ar: 'سيارات الإدارة', en: 'Management Cars' },
   DRIVERS: { ar: 'سائقين', en: 'Drivers' },
+  // New — Utilities & Services
+  SEWAGE: { ar: 'الصرف الصحي', en: 'Sewage' },
+  TELECOM: { ar: 'الاتصالات', en: 'Telecommunications' },
+  POSTAL: { ar: 'البريد', en: 'Postal' },
+  CLOUD_HOSTING: { ar: 'الاستضافة السحابية', en: 'Cloud Hosting' },
+  // New — Administrative Vehicles
+  ADMIN_VEHICLES_FUEL: { ar: 'وقود المركبات الإدارية', en: 'Admin Vehicles Fuel' },
+  ADMIN_VEHICLES_MAINT: { ar: 'صيانة المركبات الإدارية', en: 'Admin Vehicles Maintenance' },
+  VEHICLE_WASH: { ar: 'غسيل المركبات', en: 'Vehicle Wash' },
+  TIRES: { ar: 'إطارات', en: 'Tires' },
+  OILS_FILTERS: { ar: 'زيوت وفلاتر', en: 'Oils & Filters' },
+  ROAD_PARKING_FEES: { ar: 'رسوم الطرق والمواقف', en: 'Road & Parking Fees' },
+  // New — Buildings & Offices
+  BUILDING_MAINT: { ar: 'صيانة المبنى', en: 'Building Maintenance' },
+  CLEANING: { ar: 'النظافة', en: 'Cleaning' },
+  SECURITY: { ar: 'الأمن والحراسة', en: 'Security' },
+  FURNITURE: { ar: 'الأثاث', en: 'Furniture' },
+  OFFICE_EQUIPMENT: { ar: 'الأجهزة المكتبية', en: 'Office Equipment' },
+  STATIONERY: { ar: 'الأدوات المكتبية والقرطاسية', en: 'Stationery & Office Supplies' },
+  // New — Government Fees
+  GOV_FEES: { ar: 'رسوم حكومية', en: 'Government Fees' },
+  FINES: { ar: 'غرامات', en: 'Fines' },
+  VIOLATIONS: { ar: 'مخالفات', en: 'Violations' },
+  MUNICIPAL_FEES: { ar: 'رسوم بلدية', en: 'Municipal Fees' },
+  CHAMBER_FEES: { ar: 'رسوم الغرف التجارية', en: 'Chamber of Commerce Fees' },
+  HR_MINISTRY_FEES: { ar: 'رسوم وزارة الموارد البشرية', en: 'HR Ministry Fees' },
+  GOSI_FEES: { ar: 'رسوم التأمينات', en: 'GOSI Fees' },
+  PASSPORT_FEES: { ar: 'رسوم الجوازات', en: 'Passport Fees' },
+  RESIDENCY_FEES: { ar: 'رسوم الإقامة', en: 'Residency Fees' },
+  VISA_FEES: { ar: 'رسوم التأشيرات', en: 'Visa Fees' },
+  LICENSE_FEES: { ar: 'رسوم الرخص', en: 'License Fees' },
+  // New — Insurance
+  MEDICAL_INSURANCE: { ar: 'تأمين طبي', en: 'Medical Insurance' },
+  VEHICLE_INSURANCE: { ar: 'تأمين المركبات', en: 'Vehicle Insurance' },
+  EQUIPMENT_INSURANCE: { ar: 'تأمين المعدات العامة', en: 'General Equipment Insurance' },
+  FIRE_INSURANCE: { ar: 'التأمين ضد الحريق', en: 'Fire Insurance' },
+  PROPERTY_INSURANCE: { ar: 'التأمين على الممتلكات', en: 'Property Insurance' },
+  // New — Subscriptions
+  SOFTWARE_SUBSCRIPTIONS: { ar: 'اشتراكات البرامج', en: 'Software Subscriptions' },
+  SYSTEM_SUBSCRIPTIONS: { ar: 'اشتراكات الأنظمة', en: 'System Subscriptions' },
+  WEBSITE_SUBSCRIPTIONS: { ar: 'اشتراكات المواقع', en: 'Website Subscriptions' },
+  NEWSPAPERS: { ar: 'الصحف والمجلات', en: 'Newspapers & Magazines' },
+  PROFESSIONAL_MEMBERSHIPS: { ar: 'عضويات مهنية', en: 'Professional Memberships' },
+  // New — Financial
+  BANK_FEES: { ar: 'رسوم بنكية', en: 'Bank Fees' },
+  BANK_COMMISSIONS: { ar: 'عمولات بنكية', en: 'Bank Commissions' },
+  TRANSFER_DIFFERENCES: { ar: 'فروقات تحويل', en: 'Transfer Differences' },
+  POS_FEES: { ar: 'رسوم نقاط البيع', en: 'POS Fees' },
+  PAYMENT_GATEWAY_FEES: { ar: 'رسوم بوابات الدفع', en: 'Payment Gateway Fees' },
+  // New — General HR
+  EMPLOYEE_TRAINING: { ar: 'تدريب الموظفين', en: 'Employee Training' },
+  RECRUITMENT: { ar: 'استقطاب الموظفين', en: 'Recruitment' },
+  JOB_ADVERTISEMENTS: { ar: 'إعلانات التوظيف', en: 'Job Advertisements' },
+  NON_PAYROLL_BONUSES: { ar: 'مكافآت غير مرتبطة بالرواتب', en: 'Non-payroll Bonuses' },
+  ADMIN_ALLOWANCES: { ar: 'بدلات إدارية', en: 'Administrative Allowances' },
+  // New — Travel
+  TRAVEL_TICKETS: { ar: 'تذاكر السفر', en: 'Travel Tickets' },
+  HOTELS: { ar: 'الفنادق', en: 'Hotels' },
+  DEPUTATIONS: { ar: 'الانتدابات', en: 'Deputations' },
+  TRAVEL_ALLOWANCE: { ar: 'بدل السفر', en: 'Travel Allowance' },
+  EXTERNAL_HOSPITALITY: { ar: 'الضيافة الخارجية', en: 'External Hospitality' },
+  // New — Miscellaneous
+  DONATIONS: { ar: 'تبرعات', en: 'Donations' },
+  MINOR_LOSSES: { ar: 'خسائر بسيطة', en: 'Minor Losses' },
+  CASH_DIFFERENCES: { ar: 'فروقات نقدية', en: 'Cash Differences' },
+  MATERIAL_DAMAGE: { ar: 'إتلاف مواد', en: 'Material Damage' },
 }
 
 // Categories that were ONCE allowed here but now belong to specialized screens.
 // Records with these categories are flagged with a "redirect" badge in the table
 // to help users understand where to enter them going forward.
+// NOTE: ADVANCES is intentionally NOT in this list — it is NOT an expense category
+// at all (it is a current asset / employee receivable), handled in the Advances screen.
 const SPECIALIZED_CATEGORIES = new Set([
   'FUEL', 'MAINTENANCE', 'DRIVERS', 'TRANSPORT', 'DELIVERY',
-  'CONSUMABLES', 'SERVICES', 'SALARIES', 'PERMITS', 'MANAGEMENT_CARS',
+  'CONSUMABLES', 'SERVICES', 'SALARIES', 'PERMITS',
 ])
 
 // Map specialized category → suggested screen name (for the redirect badge)
@@ -164,11 +367,36 @@ const SPECIALIZED_SCREEN: Record<string, { ar: string; en: string }> = {
   SERVICES: { ar: '← شاشة مقاولي الباطن', en: '← Subcontractors screen' },
   SALARIES: { ar: '← شاشة الرواتب', en: '← Salaries screen' },
   PERMITS: { ar: '← شاشة المشاريع', en: '← Projects screen' },
-  MANAGEMENT_CARS: { ar: '← شاشة المعدات', en: '← Equipment screen' },
 }
+
+// Color helper for category badges (by group)
+const GROUP_COLORS: Record<string, string> = {
+  'utilities':        'bg-sky-100 text-sky-700',
+  'admin-vehicles':   'bg-rose-100 text-rose-700',
+  'buildings-offices':'bg-amber-100 text-amber-700',
+  'government':       'bg-emerald-100 text-emerald-700',
+  'insurance':        'bg-green-100 text-green-700',
+  'subscriptions':    'bg-violet-100 text-violet-700',
+  'financial':        'bg-cyan-100 text-cyan-700',
+  'general-hr':       'bg-indigo-100 text-indigo-700',
+  'travel':           'bg-teal-100 text-teal-700',
+  'misc':             'bg-gray-100 text-gray-600',
+}
+
+// Map category value → group id (for color lookup)
+const CATEGORY_TO_GROUP: Record<string, string> = (() => {
+  const map: Record<string, string> = {}
+  for (const g of CATEGORY_GROUPS) {
+    for (const c of g.categories) {
+      map[c.value] = g.groupId
+    }
+  }
+  return map
+})()
 
 // Color helper for category badges
 const CATEGORY_COLORS: Record<string, string> = {
+  // Legacy
   RENT: 'bg-blue-100 text-blue-700',
   MAINTENANCE: 'bg-orange-100 text-orange-700',
   TRANSPORT: 'bg-teal-100 text-teal-700',
@@ -187,6 +415,14 @@ const CATEGORY_COLORS: Record<string, string> = {
   ELECTRICITY: 'bg-yellow-100 text-yellow-700',
   WATER: 'bg-blue-100 text-blue-700',
   MANAGEMENT_CARS: 'bg-violet-100 text-violet-700',
+}
+
+// Helper: get color class for any category (new categories use group color)
+function getCategoryColor(category: string): string {
+  if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category]
+  const groupId = CATEGORY_TO_GROUP[category]
+  if (groupId && GROUP_COLORS[groupId]) return GROUP_COLORS[groupId]
+  return 'bg-gray-100 text-gray-600'
 }
 
 // Payment-method labels
@@ -395,7 +631,7 @@ function ExpenseFormDialog({
             </p>
           </div>
 
-          {/* ─── 1. Category selector ─────────────────────────────────── */}
+          {/* ─── 1. Category selector (grouped) ────────────────────────── */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">
               {t(lang, 'نوع المصروف *', 'Expense Category *')}
@@ -404,11 +640,18 @@ function ExpenseFormDialog({
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={t(lang, 'اختر نوع المصروف', 'Select category')} />
               </SelectTrigger>
-              <SelectContent>
-                {NEW_CATEGORY_OPTIONS.map(opt => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {t(lang, opt.labelAr, opt.labelEn)}
-                  </SelectItem>
+              <SelectContent className="max-h-[400px]">
+                {CATEGORY_GROUPS.map(group => (
+                  <SelectGroup key={group.groupId}>
+                    <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1.5">
+                      {t(lang, group.labelAr, group.labelEn)}
+                    </SelectLabel>
+                    {group.categories.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {t(lang, opt.labelAr, opt.labelEn)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 ))}
               </SelectContent>
             </Select>
@@ -928,19 +1171,47 @@ export function ExpensesModule() {
               />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full sm:w-48">
+              <SelectTrigger className="w-full sm:w-56">
                 <SelectValue placeholder={t(lang, 'كل الفئات', 'All Categories')} />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[400px]">
                 <SelectItem value="all">{t(lang, 'كل الفئات', 'All Categories')}</SelectItem>
-                {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
-                  <SelectItem key={key} value={key}>
-                    {label[lang]}
-                    {SPECIALIZED_CATEGORIES.has(key) && (
-                      <span className="text-amber-600 text-[10px] mr-1">★</span>
-                    )}
-                  </SelectItem>
+                {/* New general categories — grouped */}
+                {CATEGORY_GROUPS.map(group => (
+                  <SelectGroup key={group.groupId}>
+                    <SelectLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-2 py-1.5">
+                      {t(lang, group.labelAr, group.labelEn)}
+                    </SelectLabel>
+                    {group.categories.map(opt => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {t(lang, opt.labelAr, opt.labelEn)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
                 ))}
+                {/* Legacy specialized categories (for filtering old records) */}
+                {[...SPECIALIZED_CATEGORIES].length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel className="text-xs font-semibold text-amber-700 uppercase tracking-wide px-2 py-1.5">
+                      {t(lang, 'فئات تاريخية متخصصة', 'Legacy Specialized')}
+                    </SelectLabel>
+                    {[...SPECIALIZED_CATEGORIES].map(key => (
+                      <SelectItem key={key} value={key}>
+                        {CATEGORY_LABELS[key]?.[lang] || key}
+                        <span className="text-amber-600 text-[10px] mr-1">★</span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {/* Other legacy categories that are neither new nor specialized */}
+                {Object.entries(CATEGORY_LABELS)
+                  .filter(([key]) => !CATEGORY_TO_GROUP[key] && !SPECIALIZED_CATEGORIES.has(key))
+                  .map(([key, label]) => (
+                    <SelectItem key={key} value={key}>
+                      {label[lang]}
+                    </SelectItem>
+                  ))
+                }
               </SelectContent>
             </Select>
             <Select value={projectFilter} onValueChange={setProjectFilter}>
@@ -1016,7 +1287,7 @@ export function ExpensesModule() {
                       <TableRow key={exp.id}>
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            <Badge className={`${CATEGORY_COLORS[exp.category] || 'bg-gray-100 text-gray-700'} border-0`}>
+                            <Badge className={`${getCategoryColor(exp.category)} border-0`}>
                               {CATEGORY_LABELS[exp.category]?.[lang] || exp.category}
                             </Badge>
                             {isSpecialized && redirectScreen && (
