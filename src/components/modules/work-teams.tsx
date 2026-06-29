@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Users2, Plus, Search, Pencil, Trash2, RefreshCw,
-  Download, UserPlus, Banknote,
+  Download, Banknote,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,7 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
-import { useAppStore, formatDate } from '@/stores/app-store'
+import { useAppStore } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============

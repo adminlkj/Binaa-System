@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
+import { postJournalEntry, getNextEntryNo } from '@/lib/accounting/guard'
 
 // Type-to-account mapping for provisions
 const PROVISION_TYPE_ACCOUNT_MAP: Record<string, { expenseCode: string; provisionCode: string; name: string }> = {

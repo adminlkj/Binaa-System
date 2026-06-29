@@ -17,7 +17,7 @@
 
 import { db } from '@/lib/db'
 import { AccountRole, ACCOUNT_ROLES, type AccountRoleKey } from '@/lib/account-roles'
-import { getAllFinancialMappings, FINANCIAL_MAPPING_TEMPLATES } from '@/lib/financial-mapping-engine'
+import { FINANCIAL_MAPPING_TEMPLATES } from '@/lib/financial-mapping-engine'
 
 // ---------------------------------------------------------------------------
 // Health Check Result Types

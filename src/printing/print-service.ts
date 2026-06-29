@@ -6,7 +6,7 @@
 // No more shared template that tries to be everything.
 // ============================================================================
 
-import type { PrintDocumentType, PrintOptions, DocumentTemplate, PrintSettings } from './shared/types'
+import type { PrintDocumentType, PrintOptions, DocumentTemplate } from './shared/types'
 import { getDocumentTitle } from './shared/utils'
 import { printActionsBar } from './shared/sections'
 import { generateDefaultHeader, generateDefaultFooter } from './shared/headers-footers'
@@ -234,4 +234,4 @@ export function generatePrintHTML(options: PrintOptions): string {
 }
 
 // Re-export types for backward compatibility
-export type { PrintDocumentType, PrintOptions, PrintSettings } from './shared/types'
+export type { PrintDocumentType, PrintOptions } from './shared/types'

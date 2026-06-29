@@ -7,7 +7,7 @@ import {
   FileText, ClipboardList, TrendingUp, Clock, CreditCard,
   Fuel as FuelIcon, UsersRound, CalendarDays, Banknote,
   PackageCheck, FilePlus, ReceiptText, Cog, Network,
-  Receipt, ArrowRightLeft, Hammer, ListChecks, HardHat,
+  Receipt, ArrowRightLeft, ListChecks, HardHat,
   DollarSign, Warehouse, Link2, Wallet, Circle,
   TrendingDown, CalendarRange, HandCoins, Coins, FileSignature,
 } from 'lucide-react'

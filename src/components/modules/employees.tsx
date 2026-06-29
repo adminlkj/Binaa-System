@@ -23,7 +23,7 @@ import { Label } from '@/components/ui/label'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { AccountSelector } from '@/components/shared/account-selector'
-import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
+import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { PrintButton } from '@/components/shared/print-button'
 

@@ -24,7 +24,7 @@ import { PrintButton } from '@/components/shared/print-button'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { AccountSelector } from '@/components/shared/account-selector'
 import { MoneyDisplay } from '@/components/ui/money-display'
-import { useAppStore, formatDate, formatSAR } from '@/stores/app-store'
+import { useAppStore, formatDate } from '@/stores/app-store'
 
 // ============ Types ============
 interface Employee { id: string; code: string; name: string; position: string | null }

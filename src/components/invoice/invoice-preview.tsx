@@ -198,21 +198,6 @@ function getCurrencySymbolAr(company: CompanySettings): string {
   return company.currencySymbolAr || company.currencySymbol || '\uFDFC'
 }
 
-/** Get the currency symbol for English display */
-function getCurrencySymbolEn(company: CompanySettings): string {
-  return company.currencySymbolEn || 'SAR'
-}
-
-/** Format amount with currency symbol for inline display (Arabic side) */
-function fmtAr(num: number, company: CompanySettings): string {
-  return `${fmt(num)} ${getCurrencySymbolAr(company)}`
-}
-
-/** Format amount with currency symbol for inline display (English side) */
-function fmtEn(num: number, company: CompanySettings): string {
-  return `${getCurrencySymbolEn(company)} ${fmt(num)}`
-}
-
 // ============ Invoice Currency Symbol (image-aware) ============
 /**
  * Renders the approved currency symbol image (with background removed)
@@ -310,8 +295,6 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
     company.invoiceFontFamily === 'default' || !company.invoiceFontFamily
       ? "'Cairo', 'Amiri', 'Noto Sans Arabic', sans-serif"
       : `'${company.invoiceFontFamily}', 'Cairo', sans-serif`
-  const template = company.invoiceTemplate || 'classic'
-  const showBankDetails = company.invoiceShowBankDetails ?? true
   const showSignature = company.invoiceShowSignature ?? true
   const showStamp = company.invoiceShowStamp ?? false
   // Stamp placement & size — full control
@@ -324,7 +307,6 @@ export function InvoicePreview({ invoice, company, onClose }: InvoicePreviewProp
   const stampRotation = company.stampRotation ?? 0
 
   // Derived values
-  const symbolAr = getCurrencySymbolAr(company)
   const netAmount = invoice.netAmount || (invoice.subtotal - invoice.discountAmount)
   const deliveryAmt = invoice.includeDelivery ? (invoice.deliveryAmount || 0) : 0
   const effectiveVatAmount = invoice.includeVat !== false ? invoice.vatAmount : 0

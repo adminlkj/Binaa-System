@@ -5,7 +5,7 @@
 //          expense-report, advance-voucher, petty-cash-voucher
 // ============================================================================
 
-import type { DocumentTemplate, PrintSettings } from '../shared/types'
+import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, formatDateShort, getCurrencySymbol } from '../shared/utils'
 import { bankInfoSection, signaturesSection, amountInWordsSection } from '../shared/sections'
@@ -31,9 +31,6 @@ export const template: DocumentTemplate = {
     const currency = getCurrencySymbol(settings, lang)
 
     // Determine document type label
-    const isExpense = data.documentType === 'expense-report'
-    const isAdvance = data.documentType === 'advance-voucher'
-    const isPettyCash = data.documentType === 'petty-cash-voucher'
 
     const partyLabel = isClient
       ? (lang === 'ar' ? 'العميل / Client' : 'Client')

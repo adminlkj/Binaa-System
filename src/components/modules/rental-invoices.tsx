@@ -174,7 +174,6 @@ function CreateRentalInvoicePage({
   const deliveryFeesTaxable = rental?.deliveryFeesTaxable ?? contract?.deliveryFeesTaxable ?? true
   const clientId = rental?.clientId || contract?.clientId || ''
   const clientName = selectedTimesheet?.clientName || selectedTimesheet?.clientNameAr || ''
-  const projectId = selectedTimesheet?.projectId || ''
   const projectName = selectedTimesheet?.project?.name || ''
   const equipmentName = selectedTimesheet?.equipment?.nameAr || selectedTimesheet?.equipment?.name || ''
   const contractNo = contract?.contractNo || ''

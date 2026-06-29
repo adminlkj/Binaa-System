@@ -54,23 +54,9 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
   let totalRevenue = 0
 
   for (const line of revenueLines) {
-    const code = line.account.code
     // Revenue: credit normal balance, so credits - debits
     const amount = toNumber(line.credit) - toNumber(line.debit)
     if (amount === 0) continue
-
-    // Categorize by account role first, then by code prefix
-    const role = line.account.accountRole
-    let category: string
-    if (role === 'PROJECT_REVENUE' || code.startsWith('61')) {
-      category = 'Construction Revenue'
-    } else if (role === 'RENTAL_REVENUE' || code.startsWith('62')) {
-      category = 'Rental Revenue'
-    } else if (role === 'SERVICE_REVENUE' || code.startsWith('63')) {
-      category = 'Other Revenue'
-    } else {
-      category = 'Other Revenue'
-    }
 
     // Sub-categorize by account name
     const subCategory = line.account.name
@@ -80,15 +66,13 @@ async function getIncomeStatement(dateFrom: string | null, dateTo: string | null
   }
 
   // Resolve account roles for cost categorization
-  const [projectCostAccounts, rentalDepAccounts, depExpenseAccounts] = await Promise.all([
+  const [projectCostAccounts, rentalDepAccounts] = await Promise.all([
     getAccountsByRoles([AccountRole.PROJECT_COST, AccountRole.SUBCONTRACTOR_COST]),
     getAccountsByRoles([AccountRole.RENTAL_DEPRECIATION, AccountRole.FUEL_EXPENSE, AccountRole.MAINTENANCE_EXPENSE, AccountRole.DRIVER_EXPENSE, AccountRole.TRANSPORT_EXPENSE]),
-    getAccountsByRoles([AccountRole.DEPRECIATION_EXPENSE]),
   ])
 
   const projectCostCodes = new Set(projectCostAccounts.map(a => a.code))
   const rentalCostCodes = new Set(rentalDepAccounts.map(a => a.code))
-  const depExpenseCodes = new Set(depExpenseAccounts.map(a => a.code))
 
   // Project Costs: accounts with project cost roles or starting with '71'
   const projectCostLines = lines.filter((l) =>

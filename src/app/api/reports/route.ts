@@ -8,11 +8,6 @@ import {
   type DateRange,
 } from '@/lib/report-engine'
 
-// Normal balance mapping by account type
-const NORMAL_BALANCE: Record<string, 'DEBIT' | 'CREDIT'> = {
-  ASSET: 'DEBIT', LIABILITY: 'CREDIT', EQUITY: 'CREDIT', REVENUE: 'CREDIT', EXPENSE: 'DEBIT',
-}
-
 /**
  * Build a map of project code → cost center ID for GL-based project queries.
  */
@@ -544,7 +539,7 @@ export async function GET(request: Request) {
         const costCenterIds = [...ccMap.values()]
 
         // Get expense journal lines grouped by cost center and account role for breakdown
-        let projectExpenseBreakdown = new Map<string, Map<string, number>>()  // projectId → (role → amount)
+        const projectExpenseBreakdown = new Map<string, Map<string, number>>()  // projectId → (role → amount)
         if (costCenterIds.length > 0) {
           const expenseLines = await db.journalLine.findMany({
             where: {
@@ -630,17 +625,6 @@ export async function GET(request: Request) {
           },
           orderBy: { code: 'asc' },
         })
-
-        // GL-based: get expense account totals filtered by equipment-related cost centers
-        // Since equipment doesn't directly have cost centers, we use the operational data
-        // supplemented with GL-based cost verification
-        const [fuelAccts, maintAccts, driverAccts, transportAccts, rentalDepAccts] = await Promise.all([
-          getAccountsByRoles([AccountRole.FUEL_EXPENSE]),
-          getAccountsByRoles([AccountRole.MAINTENANCE_EXPENSE]),
-          getAccountsByRoles([AccountRole.DRIVER_EXPENSE]),
-          getAccountsByRoles([AccountRole.TRANSPORT_EXPENSE]),
-          getAccountsByRoles([AccountRole.RENTAL_DEPRECIATION]),
-        ])
 
         const equipmentUtilization = equipment.map(eq => {
           const totalHoursRented = eq.operatorLogs.reduce((s, o) => s + toNumber(o.hours), 0)
@@ -816,8 +800,8 @@ export async function GET(request: Request) {
         })
 
         const expenseAccountIds = expenseAccounts.map(a => a.id)
-        let directByCategory: Record<string, number> = {}
-        let indirectByCategory: Record<string, number> = {}
+        const directByCategory: Record<string, number> = {}
+        const indirectByCategory: Record<string, number> = {}
         let totalDirect = 0
         let totalIndirect = 0
 
@@ -860,7 +844,6 @@ export async function GET(request: Request) {
       case 'cash-flow-summary': {
         // GL-based cash flow summary
         const cashAndBankAccounts = await getAccountsByRoles([AccountRole.CASH, AccountRole.BANK])
-        const cashBankCodes = cashAndBankAccounts.map(a => a.code)
         const cashBankIds = cashAndBankAccounts.map(a => a.id)
 
         // Cash inflows: credits to cash/bank accounts (money coming in)

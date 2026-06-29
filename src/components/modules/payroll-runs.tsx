@@ -15,8 +15,8 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, Trash2, RefreshCw, Download,
-  Eye, ArrowRight, Wallet, Clock, Shield, Users,
-  ChevronRight, ChevronLeft, Send, CheckCircle2, Filter, X,
+  Eye, Wallet, Clock, Shield, Users,
+  ChevronRight, ChevronLeft, Send, CheckCircle2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,7 +38,7 @@ import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
 import { AccountSelector } from '@/components/shared/account-selector'
-import { useAppStore, formatSAR, formatDate } from '@/stores/app-store'
+import { useAppStore, formatSAR } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { PrintButton } from '@/components/shared/print-button'
 

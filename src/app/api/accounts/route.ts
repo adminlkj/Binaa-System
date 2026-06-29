@@ -3,10 +3,8 @@ import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NORMAL_BALANCE, AccountTypeValue } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-
     const accounts = await db.account.findMany({
       where: { isActive: true },
       include: {
@@ -61,39 +59,6 @@ export async function GET(request: Request) {
         normalBalance,
       }
     })
-
-    // Build hierarchical tree structure
-    const rootAccounts = enrichedAccounts.filter((a) => !a.parentId)
-    const childMap = new Map<string, typeof enrichedAccounts>()
-
-    for (const account of enrichedAccounts) {
-      if (account.parentId) {
-        const children = childMap.get(account.parentId) || []
-        children.push(account)
-        childMap.set(account.parentId, children)
-      }
-    }
-
-    // Recursive function to build tree with computed totals
-    function buildTree(account: typeof enrichedAccounts[number]) {
-      const children = childMap.get(account.id) || []
-      const childTrees = children.map(buildTree)
-
-      // Sum child balances for parent accounts
-      const childBalanceTotal = childTrees.reduce(
-        (sum, child) => sum + (child.childBalanceTotal || child.balance),
-        0
-      )
-
-      return {
-        ...account,
-        children: childTrees,
-        childBalanceTotal,
-        totalBalance: account.balance + (account.childrenCount > 0 ? childBalanceTotal : 0),
-      }
-    }
-
-    const tree = rootAccounts.map(buildTree)
 
     return NextResponse.json(serializeDecimal({
       accounts: enrichedAccounts.map(a => ({

@@ -4,8 +4,8 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Truck, Plus, Search, RefreshCw, Wrench, Fuel, Clock,
-  ArrowRight, DollarSign, Calendar, Shield, FileText, Receipt,
-  Download, ChevronLeft, ChevronRight, Eye,
+  ArrowRight, DollarSign, Shield, FileText, Receipt,
+  Download, ChevronLeft, Eye,
   TrendingUp, TrendingDown, BarChart3, Link2, Users,
   ArrowLeftRight, CheckCircle2, Circle, AlertCircle,
 } from 'lucide-react'
@@ -27,9 +27,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
-import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
+import { JePreview } from '@/components/shared/je-preview'
 import { AccountSelector } from '@/components/shared/account-selector'
-import { useAppStore, formatSAR, formatNumber, formatDate, RENTAL_WORKFLOW } from '@/stores/app-store'
+import { useAppStore, formatNumber, formatDate, RENTAL_WORKFLOW } from '@/stores/app-store'
 import type { NavItem } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { PrintButton } from '@/components/shared/print-button'
@@ -733,7 +733,7 @@ function RentalWorkflowChain({ activeRentals, lang, onNavigate }: { activeRental
       {/* Visual Chain */}
       <div className="overflow-x-auto pb-2">
         <div className="flex items-center gap-1 min-w-max">
-          {workflowSteps.map((step, idx) => (
+          {workflowSteps.map((step) => (
             <React.Fragment key={step.step}>
               <button
                 onClick={() => onNavigate(step.navItem)}

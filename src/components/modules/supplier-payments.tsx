@@ -3,11 +3,11 @@
 import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  CreditCard, Plus, Search, Trash2, RefreshCw, ArrowRight, BookOpen,
-  Download, AlertCircle, Link2, DollarSign, Calendar,
+  CreditCard, Plus, Search, Trash2, RefreshCw, BookOpen,
+  Download, Link2, DollarSign, Calendar,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -27,7 +27,7 @@ import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { AccountSelector } from '@/components/shared/account-selector'
 import { JePreview } from '@/components/shared/je-preview'
-import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+import { useAppStore, formatDate } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 
 // ============ Types ============

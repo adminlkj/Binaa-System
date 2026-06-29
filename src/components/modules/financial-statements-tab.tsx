@@ -1,9 +1,9 @@
 'use client'
 
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  BookOpen, FileText, Wallet, TrendingUp, TrendingDown, Scale,
+  BookOpen, FileText, TrendingUp, Scale,
   Building2, Layers, Percent, RefreshCw, Download, Banknote,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,7 +18,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAppStore, formatNumber, formatDate } from '@/stores/app-store'
+import { formatNumber, formatDate } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { PrintButton } from '@/components/shared/print-button'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
@@ -113,7 +113,6 @@ export function FinancialStatementsTab({ lang }: { lang: 'ar' | 'en' }) {
   const [accountId, setAccountId] = useState('')
   const [glAccountId, setGlAccountId] = useState('')
 
-  const range = { from: dateFrom || undefined, to: dateTo || undefined }
   const qs = `dateFrom=${dateFrom}&dateTo=${dateTo}`
 
   // === Income Statement ===

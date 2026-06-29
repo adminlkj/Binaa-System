@@ -135,10 +135,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     }
 
     // Count financial records that block deletion
-    const [activeRentals, timesheetCount, invoiceCount, maintenanceWithJE, fuelWithJE, expenseWithJE] = await Promise.all([
+    const [activeRentals, timesheetCount, maintenanceWithJE, fuelWithJE, expenseWithJE] = await Promise.all([
       db.equipmentRental.count({ where: { equipmentId: id, status: { in: ['ACTIVE', 'UNDER_REVIEW'] } } }),
       db.timesheet.count({ where: { equipmentId: id } }),
-      db.salesInvoice.count({ where: { invoiceType: 'RENTAL', project: { /* no direct link */ } } }).catch(() => 0),
       db.equipmentMaintenance.count({ where: { equipmentId: id, journalEntryId: { not: null } } }),
       db.equipmentFuelLog.count({ where: { equipmentId: id, journalEntryId: { not: null } } }),
       db.equipmentExpense.count({ where: { equipmentId: id, journalEntryId: { not: null } } }),

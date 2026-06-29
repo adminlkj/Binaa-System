@@ -1,6 +1,6 @@
 'use client'
 
-import React, { Suspense, useEffect } from 'react'
+import React, { useEffect } from "react"
 import dynamic from 'next/dynamic'
 import { Providers } from '@/components/layout/providers'
 import { AppShell } from '@/components/layout/app-shell'

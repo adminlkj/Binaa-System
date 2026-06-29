@@ -175,7 +175,7 @@ export async function POST(request: Request) {
       let lineHourlyRate = 0
       let lineHourlySalary = 0
       let lineOvertimeAmount = 0
-      let lineDeductions = 0
+      const lineDeductions = 0
       let lineBasicSalary = 0
       let lineHousingAllowance = 0
       let lineTransportAllowance = 0

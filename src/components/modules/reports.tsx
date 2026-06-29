@@ -3,11 +3,10 @@
 import React, { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  BarChart3, FileText, Receipt, TrendingUp, ShoppingCart,
+  Receipt, TrendingUp, ShoppingCart,
   PieChart, Truck, Download, CreditCard, Users, Percent,
-  RefreshCw, Building2, ArrowLeft, CheckCircle2,
-  Clock, Send, Wallet, BookOpen, Activity, Wrench,
-  DollarSign, Fuel, Settings2, CalendarDays,
+  RefreshCw, Building2, CheckCircle2,
+  Clock, Send, Wallet, BookOpen, Wrench,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,7 +24,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { useAppStore, formatNumber, formatDate } from '@/stores/app-store'
+import { useAppStore, formatNumber } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { FinancialStatementsTab } from '@/components/modules/financial-statements-tab'
@@ -1065,7 +1064,6 @@ function TaxReportsTab({ lang }: { lang: 'ar' | 'en' }) {
 
   const declaration = vatCalcData?.declaration
   const autoCalc = vatCalcData?.autoCalc
-  const breakdown = vatCalcData?.breakdown
 
   return (
     <div className="space-y-4">

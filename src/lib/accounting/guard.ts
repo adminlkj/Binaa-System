@@ -24,7 +24,7 @@
 // ============================================================================
 
 import { db } from '@/lib/db'
-import { PrismaClient, Prisma } from '@prisma/client'
+import { PrismaClient } from '@prisma/client'
 import { assertPeriodOpen } from '@/lib/accounting/period-guard'
 
 export type PrismaTransaction = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0]

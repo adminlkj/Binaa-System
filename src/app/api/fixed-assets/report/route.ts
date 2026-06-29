@@ -7,7 +7,6 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const year = searchParams.get('year')
-    const month = searchParams.get('month')
 
     const assets = await db.fixedAsset.findMany({
       include: {

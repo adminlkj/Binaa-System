@@ -6,7 +6,7 @@
 import type { DocumentTemplate, PrintSettings } from '../shared/types'
 import { fmtMoney, formatDate, getCurrencySymbol } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
-import { bankInfoSection, signaturesSection, amountInWordsSection, termsSection } from '../shared/sections'
+import { bankInfoSection, signaturesSection, amountInWordsSection } from '../shared/sections'
 
 export const template: DocumentTemplate = {
   category: 'project',

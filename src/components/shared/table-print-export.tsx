@@ -23,7 +23,7 @@
  */
 
 import React from 'react'
-import { Download, Printer } from 'lucide-react'
+import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PrintButton } from '@/components/shared/print-button'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'

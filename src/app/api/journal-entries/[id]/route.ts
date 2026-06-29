@@ -1,5 +1,4 @@
 import { db } from '@/lib/db'
-import { reverseEntry } from '@/lib/accounting/engine'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 

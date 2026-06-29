@@ -35,10 +35,6 @@ export async function POST(request: Request) {
     const sharp = (await import('sharp')).default
     const buffer = await fs.readFile(resolvedPath)
 
-    // Get image metadata to determine the dominant background color
-    const metadata = await sharp(buffer).metadata()
-    const { width = 0, height = 0 } = metadata
-
     // Sample corner pixels to determine background color
     const cornerSamples = await sharp(buffer)
       .ensureAlpha()

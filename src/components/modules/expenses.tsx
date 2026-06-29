@@ -36,7 +36,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Receipt, Plus, Search, RefreshCw, TrendingUp,
-  Building2, Briefcase, Download, Landmark, Wallet, Banknote,
+  Building2, Download, Landmark, Wallet, Banknote,
   Target, Building, User as UserIcon, Cog,
   AlertCircle, Info, ArrowLeft, FileText,
 } from 'lucide-react'
@@ -246,14 +246,8 @@ const CATEGORY_GROUPS: CategoryGroup[] = [
   },
 ]
 
-// Flatten all new categories (for lookups)
-const ALL_NEW_CATEGORIES = CATEGORY_GROUPS.flatMap(g => g.categories)
-
 // Default category when opening the form
 const DEFAULT_NEW_CATEGORY = 'OTHER'
-
-// Role for the expense-account dropdown (single role — admin expense catch-all)
-const EXPENSE_ACCOUNT_ROLES = ['ADMIN_EXPENSE']
 
 // ============ Backwards-compatible labels for DISPLAY ============
 // Old records (with FUEL, MAINTENANCE, DRIVERS, etc.) still render correctly

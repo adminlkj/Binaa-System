@@ -230,7 +230,7 @@ export async function POST(
         where: { id },
         data: { status: 'OPEN' },
       })
-    } catch {}
+    } catch { /* expected */ }
     const message = error instanceof Error ? error.message : 'فشل في إقفال السنة المالية'
     return NextResponse.json({ error: message }, { status: 500 })
   }

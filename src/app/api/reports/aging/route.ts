@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
       })
 
       const byClient = new Map<string, any>()
-      let totals = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '90+': 0, total: 0 }
+      const totals = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '90+': 0, total: 0 }
 
       for (const inv of invoices) {
         const paid = Number(inv.paidAmount || 0)
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
       ])
 
       const bySupplier = new Map<string, any>()
-      let totals = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '90+': 0, total: 0 }
+      const totals = { current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '90+': 0, total: 0 }
 
       for (const inv of purchaseInvoices as any[]) {
         const paid = Number(inv.paidAmount || 0)

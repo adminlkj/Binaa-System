@@ -3,11 +3,11 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Building2, Plus, Search, Eye, Pencil, Trash2, ArrowRight,
+  Building2, Plus, Search, Pencil, Trash2, ArrowRight,
   FileText, ClipboardList, TrendingUp, Calculator, RefreshCw,
-  Truck, Users, Clock, Fuel, Wrench, Package, Receipt,
-  DollarSign, AlertTriangle, ChevronLeft, ChevronDown,
-  CircleDot, ArrowDown, User, HardHat, Cog, CreditCard,
+  Truck, Users, Clock, Fuel, Package, Receipt,
+  DollarSign, AlertTriangle, ChevronLeft,
+  CircleDot, User, HardHat, Cog, CreditCard,
   BookOpen, BarChart3, Link2, Shield,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,10 +26,8 @@ import {
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber, CONSTRUCTION_WORKFLOW } from '@/stores/app-store'
+import { useAppStore, formatDate as storeFormatDate, formatNumber, CONSTRUCTION_WORKFLOW } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { PrintButton } from '@/components/shared/print-button'
 import { ModuleLayout } from '@/components/shared/module-layout'
@@ -167,10 +165,6 @@ interface ProjectDetail extends Omit<ProjectListItem, 'contracts' | '_count'> {
 }
 
 // ============ Format Helpers ============
-function formatSAR(value: number, lang: 'ar' | 'en' = 'ar'): string {
-  return storeFormatSAR(value, lang)
-}
-
 function formatDate(dateStr: string | null, lang: 'ar' | 'en' = 'ar'): string {
   if (!dateStr) return '—'
   return storeFormatDate(dateStr, lang)
@@ -186,16 +180,6 @@ const statusColors: Record<string, string> = {
   ON_HOLD: 'bg-orange-100 text-orange-700 border-orange-200',
   COMPLETED: 'bg-teal-100 text-teal-700 border-teal-200',
   CANCELLED: 'bg-rose-100 text-rose-700 border-rose-200',
-}
-
-const contractStatusLabels: Record<string, string> = {
-  DRAFT: 'مسودة', ACTIVE: 'نشط', EXPIRED: 'منتهي', TERMINATED: 'ملغي',
-}
-const contractStatusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700 border-gray-200',
-  ACTIVE: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  EXPIRED: 'bg-amber-100 text-amber-700 border-amber-200',
-  TERMINATED: 'bg-rose-100 text-rose-700 border-rose-200',
 }
 
 const claimStatusLabels: Record<string, string> = {
@@ -233,21 +217,6 @@ const expenseCategoryLabels: Record<string, string> = {
 }
 
 // ============ Skeleton ============
-function TableSkeleton({ rows = 5 }: { rows?: number }) {
-  return (
-    <div className="space-y-3">
-      {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex gap-4 p-3">
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-5 w-40" />
-          <Skeleton className="h-5 w-28" />
-          <Skeleton className="h-5 w-20" />
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function DetailSkeleton() {
   return (
     <div className="space-y-6 p-6">

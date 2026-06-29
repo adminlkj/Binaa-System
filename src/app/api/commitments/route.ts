@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { projectId, commitmentType, vendorId, description, committedAmount, commitmentDate, lines } = body
+    const { projectId, commitmentType, description, committedAmount, commitmentDate, lines } = body
 
     if (!projectId || !commitmentType || !committedAmount) {
       return NextResponse.json({ error: 'projectId, commitmentType, committedAmount are required' }, { status: 400 })

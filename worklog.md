@@ -6648,3 +6648,60 @@ Stage Summary:
   3. احذف أو سجّل dead endpoints: `/api/timesheets`, `/api/financial-statements/{balance-sheet,income,cash-flow}`, `/api/account-statement` (مستبدلة بـ `/api/reports/*`).
   4. وثّق duplicate endpoints أو ادمجها (e.g., `/api/trial-balance` vs `/api/reports/trial-balance`).
   5. أضف `db.$transaction` لـ `project-controls/[projectId]/backfill` إذا كانت تتطلب all-or-nothing semantics (حاليًا partial-success per-category).
+
+---
+Task ID: LINT-API
+Agent: ESLint Fixer — API routes
+Task: إصلاح unused-vars في src/app/api/
+
+Work Log:
+
+**1. قراءة worklog.md (آخر الأقسام) + جرد الأخطاء:**
+- `bunx eslint src/app/api/ | grep -c no-unused-vars` → **40 خطأ** عبر **24 ملف** (ملف `fiscal-years/[id]/close/route.ts` ظهر كـ header بدون أخطاء خاصة به).
+
+**2. تصنيف الأخطاء حسب النمط والإصلاح:**
+
+- **Imports غير مستخدمة (حذف):** 9 حالات
+  - `accounts/initialize`: حذف `serializeDecimal`
+  - `fixed-assets/depreciate`: حذف `AccountingGuardError` من import
+  - `journal-entries/[id]`: حذف سطر `reverseEntry` كاملاً
+  - `labor-costs`: حذف `reverseEntry` من import (أُبقي `autoEntryLaborCost`, `PrismaTransaction`)
+  - `period-closing`, `provisions`: حذف `AccountingGuardError` من import
+  - `purchase-invoices/[id]`: حذف `createPurchaseInvoiceJournalEntry` + `createJournalEntry` + `toNumber` (3 imports) — أُبقي `PrismaTransaction` و`reverseEntry` المستخدمان
+  - `fixed-assets/route`: حذف `generateDepreciationSchedule` و`calculateDepreciation` من import (الأخير نتيجة حذف `preview`)
+
+- **معاملات دوال غير مستخدمة (سبقها `_`):** 1 حالة
+  - `accounting-health` POST: `request` → `_request`
+
+- **متغيرات محلية/destructuring غير مستخدمة (حذف):** 30 حالة
+  - `account-statement/project`: حذف `equipmentIds` + `equipmentUsages` (الاستعلام `findMany` قراءة فقط بدون side effect)
+  - `account-statement`: حذف `arCodes` و`apCodes` (`arAccounts`/`apAccounts` لا يزالان مستخدمين)
+  - `accounts/route`: حذف `searchParams` + تحويل `GET(request: Request)` → `GET()` + حذف كتلة الشجرة الميتة (`rootAccounts`/`childMap`/`buildTree`/`tree` — كلها كانت تغذي `tree` غير المستخدم؛ الـ response يستخدم `enrichedAccounts` مباشرة)
+  - `commitments`: حذف `vendorId` من destructure (غير مستخدم في `db.commitment.create`)
+  - `dashboard`: حذف `costCenterMap` (Map نقية) + `availableEquipment` (يُعاد حسابه في response) + `constructionCostCenterIds` (كتلة كاملة من استعلامات `findMany` للقراءة فقط من نهج GL مهجور)
+  - `equipment/[id]`: حذف `invoiceCount` من destructure + استعلام `db.salesInvoice.count` الميت من `Promise.all` (مع comment `/* no direct link */`)
+  - `equipment/maintenance/[id]`: `const updated = await tx.equipmentMaintenance.update(...)` → `await tx.equipmentMaintenance.update(...)` (التحديث له side effect — أُبقي الاستدعاء، حُذف المتغير فقط)
+  - `financial-reports`: حذف كتلة `category`/`role`/`code` الميتة في حلقة الإيرادات (النتيجة `subCategory` تُستخدم بدلاً منها) + حذف `depExpenseCodes` و`depExpenseAccounts` (من destructure و`Promise.all`)
+  - `financial-statements/cash-flow`: حذف دالة `getBalancesByAccountIds` المعرفة غير المستخدمة كاملة (46 سطر)
+  - `fiscal-years/[id]`: حذف `const entryIds = new Set<string>()` (لا side effect)
+  - `fixed-assets/report`: حذف `const month = searchParams.get('month')` (`searchParams` و`year` لا يزالان مستخدمين)
+  - `fixed-assets/route`: حذف `netBookValue` (مُسلسل عبر `serializeDecimal(a)` أصلاً) + كتلة `preview = calculateDepreciation(...)` (دالة نقية، comment "معاينة قبل الإنشاء" لكن النتيجة غير مستخدمة)
+  - `remove-bg`: حذف `metadata` + `width`/`height` destructure (استعلام `sharp(buffer).metadata()` قراءة فقط؛ الـ response يستخدم `info.width` من raw buffer منفصل)
+  - `reports`: حذف `NORMAL_BALANCE` (module-level const) + كتلة `Promise.all` كاملة (5 حسابات: `fuelAccts`/`maintAccts`/`driverAccts`/`transportAccts`/`rentalDepAccts` — كلها من نهج GL مهجور لاستخدام المعدات) + `cashBankCodes` (`cashAndBankAccounts`/`cashBankIds` لا يزالان مستخدمين)
+  - `subcontractor-invoices`: حذف `vatRate = 0.15` من destructure (الكود يستخدم `body.vatRate || 0.15` مباشرة)
+  - `work-teams/[id]`: `const team = await db.workTeam.update(...)` → `await db.workTeam.update(...)` (التحديث له side effect — أُبقي الاستدعاء، حُذف المتغير؛ الـ response يستخدم `updatedTeam` المعاد جلبه)
+
+**3. قواعد الالتزام:**
+- لم يُضف أي `// eslint-disable` — إصلاح جذري.
+- لم يُغيّر سلوك runtime: كل ما حُذف إما قراءة DB ميتة (findMany/count/metadata) أو حسابات نقية نتائجها مهملة. كل الاستدعاءات ذات side effects (update/create) أُبقي استدعاؤها مع حذف المتغير فقط.
+- لم يُعاد تشغيل dev server، لم يُعمل git commit.
+
+**4. التحقق النهائي:**
+- `bunx eslint src/app/api/ | grep -c no-unused-vars` → **0** ✓
+- `bunx eslint src/app/api/` → 0 errors (تحذير `no-empty` واحد مُسبق في `fiscal-years/[id]/close/route.ts:233` غير مرتبط بهذه المهمة ولم يُمَس)
+- `npx tsc --noEmit | grep -c "^src/"` → **0** ✓ (لا أخطاء TypeScript جديدة)
+
+Stage Summary:
+- **أخطاء مُصلحة:** 40 (من 40)
+- **ملفات مُعدلة:** 24
+- **تبقى:** 0 unused-vars في `src/app/api/` ✓

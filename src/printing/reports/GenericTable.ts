@@ -7,7 +7,7 @@
 //          journal-entry, trial-balance (fallback), account-statement
 // ============================================================================
 
-import type { DocumentTemplate, PrintSettings } from '../shared/types'
+import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, getCurrencySymbol } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'

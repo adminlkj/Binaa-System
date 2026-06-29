@@ -170,7 +170,6 @@ function WorkflowChain({ steps, theme, lang, onNavigate }: {
   const activeColor = theme === 'emerald'
     ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
     : 'bg-cyan-100 text-cyan-700 border-cyan-300'
-  const pendingColor = 'bg-gray-50 text-gray-400 border-gray-200'
   const arrowColor = theme === 'emerald' ? 'text-emerald-400' : 'text-cyan-400'
 
   return (

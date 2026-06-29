@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
-import { createAssetWithAcquisition, calculateDepreciation, generateDepreciationSchedule } from '@/lib/accounting/depreciation-engine'
+import { createAssetWithAcquisition } from '@/lib/accounting/depreciation-engine'
 import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 
@@ -38,7 +38,6 @@ export async function GET(request: Request) {
       const acquisitionCost = toNumber(a.acquisitionCost)
       const residualValue = toNumber(a.residualValue)
       const accumulatedDepreciation = toNumber(a.accumulatedDepreciation)
-      const netBookValue = toNumber(a.netBookValue)
       const monthlyDepreciation = toNumber(a.monthlyDepreciation)
       const annualDepreciation = toNumber(a.annualDepreciation)
       const totalDepreciable = acquisitionCost - residualValue
@@ -111,13 +110,6 @@ export async function POST(request: Request) {
         { status: 400 }
       )
     }
-
-    // معاينة الحساب قبل الإنشاء
-    const preview = calculateDepreciation({
-      acquisitionCost: Number(body.acquisitionCost),
-      usefulLifeYears: Number(body.usefulLifeYears),
-      depreciationRate: Number(body.depreciationRate),
-    })
 
     const result = await createAssetWithAcquisition({
       name: body.name,

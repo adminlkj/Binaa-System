@@ -18,7 +18,7 @@
 // ============================================================================
 
 import type { DocumentTemplate, PrintSettings } from '../shared/types'
-import { fmtMoney, formatDate, formatMoneyPrint, getCurrencySymbol, encodeZATCATLV, getAmountInWords } from '../shared/utils'
+import { fmtMoney, formatDate, formatMoneyPrint, getCurrencySymbol, encodeZATCATLV } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
 import { bankInfoSection, signaturesSection, amountInWordsSection, termsSection, totalsSection, qrCodeSection, qrCodeScript } from '../shared/sections'
 
@@ -96,7 +96,6 @@ export const template: DocumentTemplate = {
     const date = data.date as string | undefined
     const projectName = (data.projectName as string) || ''
     const contractNo = (data.contractNo as string) || ''
-    const contractValue = (data.contractValue as number) || 0
     const percentage = Number(data.percentage) || 0
     const previousPercentage = Number(data.previousPercentage) || 0
     const cumulativePercentage = Number(data.cumulativePercentage) || percentage

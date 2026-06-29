@@ -234,8 +234,6 @@ export async function GET() {
       where: { code: { in: projectCodes } },
       select: { id: true, code: true },
     })
-    const costCenterMap = new Map(costCenters.map(cc => [cc.code, cc.id]))
-
     // Single GL query for all project-related journal lines
     const projectCostCenterIds = costCenters.map(cc => cc.id)
 
@@ -386,7 +384,6 @@ export async function GET() {
     }))
 
     // ===== 10. Equipment Utilization Rate =====
-    const availableEquipment = equipmentStatusMap['AVAILABLE'] || 0
     const equipmentUtilizationRate = totalEquipment > 0
       ? ((inUseEquipment + rentedEquipment) / totalEquipment) * 100
       : 0
@@ -509,15 +506,6 @@ export async function GET() {
 
     // Total client invoices count
     const totalClientInvoices = await db.salesInvoice.count()
-
-    // Outstanding construction collections (GL-based: AR balance for construction projects)
-    // Use GL: get the AR balance for cost centers of construction projects
-    const constructionCostCenterIds = constructionProjectIds.length > 0
-      ? (await db.costCenter.findMany({
-          where: { code: { in: (await db.project.findMany({ where: { id: { in: constructionProjectIds } }, select: { code: true } })).map(p => p.code) } },
-          select: { id: true },
-        })).map(cc => cc.id)
-      : []
 
     // For outstanding collections, use operational data (GL doesn't track paid vs unpaid per invoice)
     const constructionReceivablesInvoices = await db.salesInvoice.findMany({

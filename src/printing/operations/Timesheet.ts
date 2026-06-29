@@ -3,7 +3,7 @@
 // نظام بِنَاء ERP - Binaa Construction ERP
 // ============================================================================
 
-import type { DocumentTemplate, PrintSettings } from '../shared/types'
+import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, getMonthName, getCurrencySymbol } from '../shared/utils'
 import { bankInfoSection, signaturesSection, amountInWordsSection, totalsSection, type TotalRow } from '../shared/sections'

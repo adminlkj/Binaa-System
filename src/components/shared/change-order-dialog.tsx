@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { MoneyDisplay } from '@/components/ui/money-display'
-import { useAppStore, formatDate, commonText, type Lang } from '@/stores/app-store'
+import { useAppStore, commonText } from '@/stores/app-store'
 import { useToast } from '@/hooks/use-toast'
 
 // ============ Types ============

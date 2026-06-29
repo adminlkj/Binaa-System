@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   FileText, Plus, Search, RefreshCw, Eye, ArrowRight,
   Send, CheckCircle, Trash2, ArrowLeft, Building2, HardHat,
-  ChevronLeft, ChevronRight, Clock,
+  Clock,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -22,13 +22,12 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
-import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+import { useAppStore, formatDate, formatNumber, commonText } from '@/stores/app-store'
 import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
@@ -74,15 +73,6 @@ interface SalesInvoice {
   deliveryMonth?: string | null
   contractPeriodStart?: string | null
   contractPeriodEnd?: string | null
-}
-
-// ============ Arabic/English Month Names ============
-const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
-const englishMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-
-function formatMonthYear(month: number, year: number, lang: 'ar' | 'en'): string {
-  if (lang === 'ar') return `${arabicMonths[month - 1]} ${year}`
-  return `${englishMonths[month - 1]} ${year}`
 }
 
 // ============ Labels ============
@@ -264,7 +254,6 @@ function CreateInvoiceFlow({
   const tsTotalVat = tsRentalVat + tsDeliveryVat
   const tsTotalAmount = tsSubtotal + tsDeliveryFees + tsTotalVat
 
-  const currentSubtotal = sourceType === 'EXTRACT' ? extractSubtotal : tsSubtotal
   const currentVat = sourceType === 'EXTRACT' ? extractVat : tsTotalVat
   const currentTotal = sourceType === 'EXTRACT' ? extractTotal : tsTotalAmount
 

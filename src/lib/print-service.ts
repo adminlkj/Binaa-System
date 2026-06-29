@@ -137,7 +137,7 @@ function getCurrencySymbol(settings: PrintOptions['settings'], lang: 'ar' | 'en'
   return settings.currencySymbolEn || settings.currencySymbol || 'SAR'
 }
 
-function getCurrencyName(lang: 'ar' | 'en'): string {
+export function getCurrencyName(lang: 'ar' | 'en'): string {
   return lang === 'ar' ? 'ريال سعودي' : 'Saudi Riyal'
 }
 
@@ -158,9 +158,9 @@ function numberToArabicWords(amount: number): string {
   function convert(n: number): string {
     if (n === 0) return ''
     if (n < 1000) return below1000(n)
-    if (n < 1000000) { const th = Math.floor(n / 1000); const r = n % 1000; let w = th === 1 ? 'ألف' : th === 2 ? 'ألفان' : th <= 10 ? below1000(th) + ' آلاف' : below1000(th) + ' ألفاً'; return r === 0 ? w : w + ' و' + below1000(r) }
-    if (n < 1000000000) { const m = Math.floor(n / 1000000); const r = n % 1000000; let w = m === 1 ? 'مليون' : m === 2 ? 'مليونان' : m <= 10 ? below1000(m) + ' ملايين' : below1000(m) + ' مليوناً'; return r === 0 ? w : w + ' و' + convert(r) }
-    const b = Math.floor(n / 1000000000); const r = n % 1000000000; let w = b === 1 ? 'مليار' : b === 2 ? 'ملياران' : below1000(b) + ' ملياراً'; return r === 0 ? w : w + ' و' + convert(r)
+    if (n < 1000000) { const th = Math.floor(n / 1000); const r = n % 1000; const w = th === 1 ? 'ألف' : th === 2 ? 'ألفان' : th <= 10 ? below1000(th) + ' آلاف' : below1000(th) + ' ألفاً'; return r === 0 ? w : w + ' و' + below1000(r) }
+    if (n < 1000000000) { const m = Math.floor(n / 1000000); const r = n % 1000000; const w = m === 1 ? 'مليون' : m === 2 ? 'مليونان' : m <= 10 ? below1000(m) + ' ملايين' : below1000(m) + ' مليوناً'; return r === 0 ? w : w + ' و' + convert(r) }
+    const b = Math.floor(n / 1000000000); const r = n % 1000000000; const w = b === 1 ? 'مليار' : b === 2 ? 'ملياران' : below1000(b) + ' ملياراً'; return r === 0 ? w : w + ' و' + convert(r)
   }
   let result = ''
   if (riyals > 0) result = convert(riyals) + ' ريالاً سعودياً'
@@ -193,7 +193,7 @@ function numberToEnglishWords(amount: number): string {
   return result + ' only'
 }
 
-function getAmountInWords(amount: number, lang: 'ar' | 'en'): string {
+export function getAmountInWords(amount: number, lang: 'ar' | 'en'): string {
   return lang === 'ar' ? numberToArabicWords(amount) : numberToEnglishWords(amount)
 }
 
@@ -2485,7 +2485,6 @@ function generateTimesheetBody(data: Record<string, unknown>, settings: PrintOpt
 // ============ Delivery Order Body ============
 function generateDeliveryOrderBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
   const items = (data.items as Array<Record<string, unknown>>) || []
-  const currency = getCurrencySymbol(settings, lang)
 
   // Fallback to generic table if structured data not available
   if (!items.length && data.columns) {
@@ -2851,7 +2850,6 @@ function generateAttendanceReportBody(data: Record<string, unknown>, settings: P
 // ============ Rental Contract Body ============
 function generateRentalContractBody(data: Record<string, unknown>, settings: PrintOptions['settings'], lang: 'ar' | 'en'): string {
   const items = (data.items as Array<Record<string, unknown>>) || []
-  const currency = getCurrencySymbol(settings, lang)
 
   return `
     <div class="parties-section">
@@ -3757,7 +3755,6 @@ function generateDocumentBody(
 export function generatePrintHTML(options: PrintOptions): string {
   const { type, data, settings, lang = 'ar' } = options
   const { title, subtitle } = getDocumentTitle(type, lang)
-  const fontFamily = "'Cairo', 'Noto Sans Arabic', 'Inter', sans-serif"
 
   // Check if this is a rental invoice - use specialized template
   const isRentalInvoice = type === 'rental-invoice'

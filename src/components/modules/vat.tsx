@@ -6,9 +6,9 @@ import {
   Percent, RefreshCw, FileText, CheckCircle2, CalendarDays,
   Download, Eye, PlusCircle, Clock, Trash2, Undo2, FileSpreadsheet,
   Send, Receipt, ShoppingBag, FileCheck, AlertTriangle, Wallet,
-  ShieldCheck, ShieldAlert, XCircle, RotateCcw, Printer,
+  ShieldCheck, ShieldAlert, XCircle, RotateCcw,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -213,7 +213,7 @@ function VATSummaryTab({ vatReturns }: { vatReturns: VATDeclaration[] }) {
 }
 
 // ============ Tax Declaration Tab ============
-function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, onView, isCreating }: {
+function TaxDeclarationTab({ vatReturns, isLoading, selectedYear, onSelectYear, onView, isCreating: _isCreating }: {
   vatReturns: VATDeclaration[]; isLoading: boolean
   selectedYear: number; onSelectYear: (y: number) => void
   onView: (declaration: VATDeclaration) => void

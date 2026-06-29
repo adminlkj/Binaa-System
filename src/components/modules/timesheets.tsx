@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Clock, Plus, Search, RefreshCw, ArrowRight, Eye, Trash2,
@@ -26,7 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
-import { useAppStore, formatSAR, formatDate, formatNumber, commonText } from '@/stores/app-store'
+import { useAppStore, formatNumber, commonText } from '@/stores/app-store'
 
 // ============ Arabic/English Month Names ============
 const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']

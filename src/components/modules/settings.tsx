@@ -1,12 +1,12 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Settings, Plus, RefreshCw, Building2, Warehouse, Target, Coins,
   Save, Eye, Globe, Phone, Mail, FileText, CreditCard, Stamp, ImageIcon,
-  Upload, X, Loader2, Info, Palette, Move, RotateCw,
+  Upload, X, Loader2, Info, Move, RotateCw,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -275,7 +275,7 @@ function CompanySettingsTab() {
     },
   })
 
-  const settingsData = settings ? {
+  const settingsData = React.useMemo(() => settings ? {
     nameAr: settings.nameAr || '',
     nameEn: settings.nameEn || '',
     taxNumber: settings.taxNumber || '',
@@ -294,7 +294,7 @@ function CompanySettingsTab() {
     stamp: settings.stamp || '',
     headerImage: settings.headerImage || '',
     footerImage: settings.footerImage || '',
-  } : null
+  } : null, [settings])
 
   // Sync form when settings load (only once)
   const settingsLoadedRef = React.useRef(false)

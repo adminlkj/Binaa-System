@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import type { PrismaTransaction } from '@/lib/accounting/engine'
-import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
+import { postJournalEntry, getNextEntryNo } from '@/lib/accounting/guard'
 
 export async function GET() {
   try {

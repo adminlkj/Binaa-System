@@ -9,53 +9,6 @@ function r4(n: number): number {
   return Math.round(n * 10000) / 10000
 }
 
-// Get account balances up to a specific date, filtered by account IDs
-async function getBalancesByAccountIds(
-  accountIds: string[],
-  dateFrom: Date | undefined,
-  dateTo: Date | undefined
-): Promise<number> {
-  if (accountIds.length === 0) return 0
-
-  const accounts = await db.account.findMany({
-    where: { id: { in: accountIds }, isActive: true },
-    select: { id: true, code: true, type: true },
-  })
-
-  if (accounts.length === 0) return 0
-
-  const dateFilter: { date?: { gte?: Date; lte?: Date } } = {}
-  if (dateFrom || dateTo) {
-    dateFilter.date = {
-      ...(dateFrom && { gte: dateFrom }),
-      ...(dateTo && { lte: dateTo }),
-    }
-  }
-
-  // Calculate per account type for correct normal balance
-  let balance = 0
-  for (const account of accounts) {
-    const lines = await db.journalLine.aggregate({
-      _sum: { debit: true, credit: true },
-      where: {
-        accountId: account.id,
-        deletedAt: null,
-        journalEntry: {
-          status: 'POSTED',
-          deletedAt: null,
-          ...dateFilter,
-        },
-      },
-    })
-    const d = toNumber(lines._sum.debit)
-    const c = toNumber(lines._sum.credit)
-    const normalBalance = NORMAL_BALANCE[account.type as AccountTypeValue] || 'DEBIT'
-    balance += normalBalance === 'DEBIT' ? d - c : c - d
-  }
-
-  return r4(balance)
-}
-
 // More efficient: get balance changes between two periods for specific account IDs
 async function getBalanceChangeByAccountIds(
   accountIds: string[],

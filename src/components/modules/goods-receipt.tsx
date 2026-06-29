@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Package, Plus, Search, Trash2, RefreshCw, Eye, ArrowRight,
-  Download, CheckCircle, AlertCircle, Link2, BookOpen, FileText,
+  Download, CheckCircle, Link2, FileText,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'

@@ -3,16 +3,13 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  BookOpen, RefreshCw, FileText, ChevronLeft, Eye, TreePine,
+  BookOpen, RefreshCw, FileText, ChevronLeft, TreePine,
   ArrowUpDown, Calculator, Scale, Database, PlusCircle,
-  Lock, Shield, ChevronDown, ChevronRight, X, Info,
-  TrendingUp, BarChart3, PieChart, Building2, Truck,
-  CreditCard, Users, Package, Clock, AlertTriangle,
-  Wallet, Landmark, FileSpreadsheet, CircleDollarSign,
-  CalendarCheck, Wrench, Banknote, FolderClosed, CheckCircle2,
-  Printer, Download, Search, Link2, Pencil, FileSearch, ArrowRightLeft,
-  Settings, List, Heart, Activity, Zap, ChevronUp, Trash2,
-  XCircle, AlertCircle, InfoIcon, ShieldCheck, Stethoscope,
+  Lock, Shield, ChevronDown, ChevronRight, Info,
+  TrendingUp, AlertTriangle, CheckCircle2,
+  Search, Link2, Pencil, FileSearch, ArrowRightLeft,
+  List, Activity, Zap, Trash2,
+  XCircle, InfoIcon, ShieldCheck, Stethoscope,
   Undo2, Send,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -37,7 +34,7 @@ import { toast } from 'sonner'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
-import { TablePrintExportButtons, type PrintColumn, type PrintInfoItem, type PrintTotalItem } from '@/components/shared/table-print-export'
+import { TablePrintExportButtons } from '@/components/shared/table-print-export'
 import { CreateAccountDialog, type AccountFormData } from '@/components/shared/create-account-dialog'
 
 // ============ Types ============
@@ -73,24 +70,9 @@ interface JournalEntry {
   totalDebit: number; totalCredit: number
 }
 
-interface StatementLine {
-  id: string; entryNo: string; date: string; description: string | null
-  lineDescription: string | null; debit: number; credit: number; balance: number; status: string
-}
-
 interface TrialBalanceItem {
   account: { id: string; code: string; name: string; nameAr: string | null; type: string }
   totalDebit: number; totalCredit: number; netDebit: number; netCredit: number
-}
-
-interface RoleMappingItem {
-  role: string
-  labelAr: string
-  labelEn: string
-  description: string
-  defaultCodes: string[]
-  accounts: { id: string; code: string; name: string; nameAr: string | null }[]
-  primaryAccount: { id: string; code: string; name: string; nameAr: string | null } | null
 }
 
 interface AccountStatementData {
@@ -386,6 +368,7 @@ function AccountStatementDialog({ account, open, onClose }: {
 
   React.useEffect(() => {
     if (account) { setDateFrom(''); setDateTo('') }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only reset filters when account id changes, not on every prop change
   }, [account?.id])
 
   if (!account) return null
@@ -1274,7 +1257,7 @@ function RoleMappingTab({ accounts }: { accounts: Account[] }) {
     },
   })
 
-  const overview = overviewData?.overview || []
+  const overview = useMemo(() => overviewData?.overview || [], [overviewData])
 
   const postingAccounts = useMemo(
     () => accounts.filter(a => a.allowPosting && a.isActive).sort((a, b) => a.code.localeCompare(b.code)),
@@ -1952,7 +1935,7 @@ function AccountImpactTab() {
   const [searchTerm, setSearchTerm] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('all')
 
-  const { data: summaryData, isLoading: summaryLoading, isError: summaryError, refetch: refetchSummary } = useQuery<{ summary: AccountImpactSummaryItem[] }>({
+  const { data: summaryData, isLoading: summaryLoading, isError: summaryError } = useQuery<{ summary: AccountImpactSummaryItem[] }>({
     queryKey: ['account-impact-summary'],
     queryFn: async () => {
       const res = await fetch('/api/account-impact?action=summary')
@@ -1972,7 +1955,7 @@ function AccountImpactTab() {
     enabled: !!selectedAccountId,
   })
 
-  const summary = summaryData?.summary || []
+  const summary = useMemo(() => summaryData?.summary || [], [summaryData])
   const impact = detailData?.impact || null
 
   const deactivateMutation = useMutation({
@@ -2284,7 +2267,7 @@ function HealthCheckTab() {
     },
   })
 
-  const { data: reportData, isLoading: reportLoading, refetch: refetchReport } = useQuery<{ report: HealthCheckReport | null }>({
+  const { data: reportData, isLoading: reportLoading } = useQuery<{ report: HealthCheckReport | null }>({
     queryKey: ['accounting-health-latest'],
     queryFn: async () => {
       const res = await fetch('/api/accounting-health?action=latest')
@@ -2467,7 +2450,7 @@ function HealthCheckTab() {
               {t('سجل الفحوصات', 'Check History', lang)}
             </h4>
             <div className="flex items-end gap-2 h-24">
-              {history.slice(0, 10).reverse().map((item, idx) => {
+              {history.slice(0, 10).reverse().map((item) => {
                 const sc = scoreColor(item.overallScore)
                 const height = Math.max(item.overallScore, 10)
                 return (

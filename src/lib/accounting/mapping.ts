@@ -10,7 +10,6 @@
 // Golden Rule: No operation without accounting impact
 // ============================================================================
 
-import { CHART_OF_ACCOUNTS_TEMPLATE } from './engine'
 
 // ============ OPERATION TYPE DEFINITIONS ============
 
@@ -577,7 +576,7 @@ export function getExpenseAccounts(): Array<{ code: string; nameAr: string; name
 export function generateEntryPreview(
   operationType: OperationType,
   amounts: Record<string, number>,
-  options?: {
+  _options?: {
     activityType?: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL'
     paymentMethod?: string
   }

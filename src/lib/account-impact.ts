@@ -11,7 +11,7 @@
 // ============================================================================
 
 import { db } from '@/lib/db'
-import { getOperationsUsingRole, getAllFinancialMappings } from '@/lib/financial-mapping-engine'
+import { getOperationsUsingRole } from '@/lib/financial-mapping-engine'
 import { ACCOUNT_ROLES, type AccountRoleKey } from '@/lib/account-roles'
 
 // ---------------------------------------------------------------------------

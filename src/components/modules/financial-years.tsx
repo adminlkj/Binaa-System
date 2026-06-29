@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useMemo } from 'react'
+import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CalendarRange, Plus, RefreshCw, Lock, Eye, Trash2, Pencil,
-  CheckCircle2, AlertCircle, Wallet, TrendingUp, TrendingDown,
-  Calendar, FileText, ChevronLeft, ChevronRight, X, Unlock, KeyRound,
+  CheckCircle2, AlertCircle, Wallet, TrendingUp,
+  Calendar, FileText, Unlock,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,10 +20,6 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { useAppStore, formatDate } from '@/stores/app-store'
@@ -1015,7 +1011,6 @@ export function FinancialYearsModule() {
                     const cfg = statusConfig[y.status] || statusConfig.OPEN
                     const Icon = cfg.icon
                     const isClosed = y.status === 'CLOSED'
-                    const isClosing = y.status === 'CLOSING'
                     return (
                       <TableRow key={y.id} className={y.status === 'OPEN' ? 'bg-emerald-50/30' : isClosed ? 'bg-gray-50/40' : ''}>
                         <TableCell className="font-mono font-semibold">{y.name}</TableCell>

@@ -191,7 +191,6 @@ type ViewMode = 'list' | 'create' | 'edit' | 'detail'
 
 export function RentalContractsModule() {
   const { lang } = useAppStore()
-  const queryClient = useQueryClient()
   const [viewMode, setViewMode] = useState<ViewMode>('list')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1282,7 +1281,7 @@ function ContractDetailView({
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
 
-  const { data: contract, isLoading, refetch } = useQuery<RentalContract>({
+  const { data: contract, isLoading } = useQuery<RentalContract>({
     queryKey: ['rental-contract', contractId],
     queryFn: async () => {
       const r = await fetch(`/api/equipment/rental-contracts/${contractId}`)

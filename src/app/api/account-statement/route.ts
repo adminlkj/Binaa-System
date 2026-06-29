@@ -134,7 +134,6 @@ async function getCustomerStatement(entityId: string, dateFrom: string | null, d
   // ===== GL-based book balance (رصيد دفتري) =====
   // Get AR account balance from GL filtered by this client's cost center
   const arAccounts = await getAccountsByRoles([AccountRole.CUSTOMER_AR])
-  const arCodes = arAccounts.length > 0 ? arAccounts.map(a => a.code) : ['1210']
 
   // Find cost center for this client
   const clientCostCenter = await db.costCenter.findFirst({
@@ -276,7 +275,6 @@ async function getVendorStatement(entityId: string, dateFrom: string | null, dat
 
   // ===== GL-based book balance (رصيد دفتري) =====
   const apAccounts = await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])
-  const apCodes = apAccounts.length > 0 ? apAccounts.map(a => a.code) : ['3210']
 
   // Find cost center for this supplier
   const supplierCostCenter = await db.costCenter.findFirst({

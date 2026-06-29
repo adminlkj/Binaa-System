@@ -37,7 +37,7 @@ export async function PUT(
         newJournalEntryId = null
       }
 
-      const updated = await tx.equipmentMaintenance.update({
+      await tx.equipmentMaintenance.update({
         where: { id },
         data: {
           ...(body.description !== undefined && { description: body.description }),

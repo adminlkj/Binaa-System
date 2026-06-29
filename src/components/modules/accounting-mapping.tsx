@@ -4,9 +4,9 @@ import React, { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, ChevronDown, ChevronRight, AlertTriangle,
-  CheckCircle2, Link2, Pencil, Shield, TrendingUp,
-  BarChart3, Building2, Truck, CreditCard, Users,
-  Wallet, Landmark, Banknote, Wrench, Package,
+  CheckCircle2, Pencil, Shield, TrendingUp,
+  BarChart3, Building2, CreditCard, Users,
+  Wallet, Landmark, Wrench,
   CircleDollarSign, FileSearch, ArrowRightLeft,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -22,7 +22,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { useAppStore, formatNumber } from '@/stores/app-store'
+import { useAppStore } from '@/stores/app-store'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { AccountSelector } from '@/components/shared/account-selector'
 
@@ -256,7 +256,7 @@ export function AccountingMappingModule() {
     },
   })
 
-  const mappings = mappingData?.mappings || []
+  const mappings = useMemo(() => mappingData?.mappings || [], [mappingData])
 
   // Build a quick lookup: role -> RoleMappingItem
   const mappingByRole = useMemo(() => {

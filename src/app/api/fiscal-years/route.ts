@@ -115,7 +115,7 @@ export async function POST(request: Request) {
     }
 
     // Auto-generate name from year if not provided
-    let name = body.name || String(startDate.getFullYear())
+    const name = body.name || String(startDate.getFullYear())
 
     // Check for duplicate name
     const existingName = await db.fiscalYear.findUnique({ where: { name } })

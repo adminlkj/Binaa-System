@@ -268,13 +268,6 @@ export async function GET(request: Request) {
       },
     })
 
-    // Equipment Maintenance (linked via equipment used in project)
-    const equipmentUsages = await db.equipmentUsage.findMany({
-      where: { projectId },
-      select: { equipmentId: true },
-    })
-    const equipmentIds = [...new Set(equipmentUsages.map(e => e.equipmentId))]
-
     // Categorize costs
     const materialsCost = r4(purchaseInvoices
       .filter(pi => !pi.expenseCategory || ['CONSUMABLES', 'SERVICES'].includes(pi.expenseCategory))

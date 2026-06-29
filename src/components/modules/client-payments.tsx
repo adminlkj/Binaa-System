@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CreditCard, Plus, Search, RefreshCw, Eye, Trash2, Download,
-  Landmark, Building2, FileText, Pencil,
+  Building2, FileText, Pencil,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { MoneyDisplay } from '@/components/ui/money-display'
-import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
+import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { AccountSelector } from '@/components/shared/account-selector'
 import { JePreview } from '@/components/shared/je-preview'

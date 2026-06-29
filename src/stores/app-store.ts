@@ -282,7 +282,7 @@ interface AppState {
   setThousandSeparatorSettings: (system: boolean, official: boolean) => void
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>((set, _get) => ({
   activeItem: 'dashboard',
   sidebarOpen: false,
   sidebarCollapsed: false,
@@ -315,14 +315,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedProjectId: projectId, activeItem: 'projects' })
     if (typeof window !== 'undefined') {
       const hash = projectId ? `/#projects?projectId=${projectId}` : '/#projects'
-      try { window.history.pushState({ activeItem: 'projects', selectedProjectId: projectId }, '', hash) } catch {}
+      try { window.history.pushState({ activeItem: "projects", selectedProjectId: projectId }, "", hash) } catch { /* history API may fail */ }
     }
   },
   selectEquipment: (equipmentId) => {
     set({ selectedEquipmentId: equipmentId, activeItem: 'equipment' })
     if (typeof window !== 'undefined') {
       const hash = equipmentId ? `/#equipment?equipmentId=${equipmentId}` : '/#equipment'
-      try { window.history.pushState({ activeItem: 'equipment', selectedEquipmentId: equipmentId }, '', hash) } catch {}
+      try { window.history.pushState({ activeItem: "equipment", selectedEquipmentId: equipmentId }, "", hash) } catch { /* history API may fail */ }
     }
   },
   setPrefillProgressClaimId: (id) => set({ prefillProgressClaimId: id }),

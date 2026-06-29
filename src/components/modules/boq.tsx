@@ -26,7 +26,7 @@ import { Label } from '@/components/ui/label'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
 import { MoneyDisplay } from '@/components/ui/money-display'
-import { useAppStore, formatNumber, formatDate, commonText, type Lang } from '@/stores/app-store'
+import { useAppStore, formatNumber, commonText, type Lang } from '@/stores/app-store'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { toast } from 'sonner'
 

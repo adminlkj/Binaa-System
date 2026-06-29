@@ -3,10 +3,10 @@
 // نظام بِنَاء ERP - Binaa Construction ERP
 // ============================================================================
 
-import type { DocumentTemplate, PrintSettings } from '../shared/types'
+import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, formatDate, getMonthName, getCurrencySymbol } from '../shared/utils'
-import { bankInfoSection, signaturesSection, amountInWordsSection, termsSection } from '../shared/sections'
+import { bankInfoSection, signaturesSection, amountInWordsSection } from '../shared/sections'
 
 export const template: DocumentTemplate = {
   category: 'financial',

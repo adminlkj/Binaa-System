@@ -1,6 +1,6 @@
 'use client'
 
-import { useCompany, formatAmountWithSymbol, type CompanySettingsData } from '@/contexts/company-context'
+import { useCompany, formatAmountWithSymbol } from '@/contexts/company-context'
 
 /**
  * Hook that provides currency formatting utilities using company settings.

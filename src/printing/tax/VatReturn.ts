@@ -326,7 +326,6 @@ export const template: DocumentTemplate = {
   getBody(data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en'): string {
     const year = (data.year as number) || new Date().getFullYear()
     const quarter = (data.quarter as number) || 1
-    const period = (data.period as string) || `${year}-Q${quarter}`
 
     // الإجماليات
     const totalSales = (data.totalSales as number) || 0
@@ -371,7 +370,6 @@ export const template: DocumentTemplate = {
     // نستخدم اللون الأساسي المُختار من شاشة الإعدادات → قوالب الفاتورة
     // ليكون الإقرار متناسقاً بصرياً مع باقي مستندات النظام.
     const primaryColor = settings.invoicePrimaryColor || '#0f766e'
-    const accentColor = settings.invoiceAccentColor || '#34d399'
     const primaryDark = darkenHex(primaryColor, 0.18)
     const primaryLight = hexToRgba(primaryColor, 0.08)
     const primaryLighter = hexToRgba(primaryColor, 0.04)

@@ -25,7 +25,6 @@ async function computeLiveYearTotals(startDate: Date, endDate: Date) {
   let totalRevenue = 0
   let totalExpenses = 0
   let entryCount = 0
-  const entryIds = new Set<string>()
 
   // اجلب عدد القيود الفريدة داخل نطاق السنة
   const entries = await db.journalEntry.findMany({

@@ -4,7 +4,7 @@
 // ============================================================================
 
 import type { PrintSettings } from './types'
-import { getCurrencySymbol, numberToArabicWords, numberToEnglishWords } from './utils'
+import { numberToArabicWords, numberToEnglishWords } from './utils'
 
 // ============ Bank Info Section ============
 

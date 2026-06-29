@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { autoEntryLaborCost, reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
+import { autoEntryLaborCost, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {

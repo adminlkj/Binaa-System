@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Package, Plus, Search, RefreshCw, AlertTriangle, Tag, Wrench, Pencil, Trash2, Download,
-  Warehouse as WarehouseIcon, Building2,
+  Warehouse as WarehouseIcon,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAppStore, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
+import { useAppStore, formatNumber, commonText, type Lang } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
@@ -274,7 +274,7 @@ function NewWarehouseDialog({ open, onOpenChange, branches }: {
 }
 
 // ============ Items Tab ============
-function ItemsTab({ items, warehouses, isLoading, isError, refetch, onEdit, onDelete }: {
+function ItemsTab({ items, warehouses: _warehouses, isLoading, isError, refetch, onEdit, onDelete }: {
   items: InventoryItem[]; warehouses: Warehouse[]
   isLoading: boolean; isError: boolean; refetch: () => void
   onEdit: (item: InventoryItem) => void; onDelete: (id: string) => void

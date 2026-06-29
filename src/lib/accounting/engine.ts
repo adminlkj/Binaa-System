@@ -19,7 +19,6 @@ import {
 import {
   postJournalEntry as guardedPost,
   reverseJournalEntry as guardedReverse,
-  getNextEntryNo as guardedNextNo,
 } from '@/lib/accounting/guard'
 
 // Transaction client type - used for $transaction callbacks

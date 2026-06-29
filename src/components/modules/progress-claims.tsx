@@ -26,7 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { PrintButton } from '@/components/shared/print-button'
-import { useAppStore, formatSAR, formatDate, formatNumber, commonText, type Lang } from '@/stores/app-store'
+import { useAppStore, formatDate, commonText } from '@/stores/app-store'
 
 // ============ Types ============
 interface ProjectSummary { id: string; name: string; code: string; nameAr?: string | null }

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server'
 import { initializeChartOfAccounts } from '@/lib/accounting/engine'
-import { serializeDecimal } from '@/lib/decimal'
 
 export async function POST() {
   try {

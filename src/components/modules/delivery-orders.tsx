@@ -66,9 +66,6 @@ function formatDate(dateStr: string, lang: 'ar' | 'en' = 'ar'): string {
 const orderStatusLabels: Record<string, string> = {
   PENDING: 'في الانتظار', DELIVERED: 'تم التوصيل', RETURNED: 'تم الإرجاع', CANCELLED: 'ملغي',
 }
-const orderStatusLabelsEn: Record<string, string> = {
-  PENDING: 'Pending', DELIVERED: 'Delivered', RETURNED: 'Returned', CANCELLED: 'Cancelled',
-}
 const orderStatusColors: Record<string, string> = {
   PENDING: 'bg-amber-100 text-amber-700 border-amber-200',
   DELIVERED: 'bg-emerald-100 text-emerald-700 border-emerald-200',

@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { subcontractorId, projectId, date, amount, vatRate = 0.15, description } = body
+    const { subcontractorId, projectId, date, amount, description } = body
 
     if (!subcontractorId || !date || !amount) {
       return NextResponse.json({ error: 'البيانات المطلوبة غير مكتملة' }, { status: 400 })

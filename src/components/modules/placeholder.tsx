@@ -9,7 +9,7 @@ import { ModuleLayout } from '@/components/shared/module-layout'
 function t(ar: string, en: string, lang: 'ar' | 'en') { return lang === 'ar' ? ar : en }
 
 // Keep old export for backward compatibility
-export function ModulePlaceholder({ moduleKey }: { moduleKey: string }) {
+export function ModulePlaceholder({ moduleKey: _moduleKey }: { moduleKey: string }) {
   return <PlaceholderModule />
 }
 

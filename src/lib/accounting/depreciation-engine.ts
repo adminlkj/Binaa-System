@@ -18,7 +18,6 @@
 
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
-import { Prisma } from '@prisma/client'
 import {
   createJournalEntry,
   reverseEntry,
@@ -28,7 +27,6 @@ import {
   AccountRole,
   getAccountCodeByRole,
   getDefaultAccountByRole,
-  requireAccountByRole,
 } from '@/lib/account-roles'
 
 // ---------------------------------------------------------------------------
@@ -236,8 +234,8 @@ export function generateDepreciationSchedule(
 
   for (let i = 0; i < calc.usefulLifeMonths; i++) {
     // حساب الشهر والسنة (مع لف السنة)
-    let year = startYear + Math.floor((startMonth - 1 + i) / 12)
-    let month = ((startMonth - 1 + i) % 12) + 1
+    const year = startYear + Math.floor((startMonth - 1 + i) / 12)
+    const month = ((startMonth - 1 + i) % 12) + 1
 
     const periodKey = `${year}-${String(month).padStart(2, '0')}`
     const posted = postedMap.get(periodKey)

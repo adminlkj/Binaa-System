@@ -31,7 +31,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const body = await request.json()
 
     // Update team basic info
-    const team = await db.workTeam.update({
+    await db.workTeam.update({
       where: { id },
       data: {
         name: body.name,

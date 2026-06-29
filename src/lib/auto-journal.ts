@@ -10,8 +10,6 @@
 //   - getNextEntryNo() من guard.ts لتوليد رقم فريد
 // ============================================================================
 
-import { db } from '@/lib/db'
-import { PrismaClient } from '@prisma/client'
 import { toNumber } from '@/lib/decimal'
 import { AccountRole, getDefaultAccountByRole, requireAccountByRole, type AccountRoleKey } from '@/lib/account-roles'
 import { postJournalEntry, getNextEntryNo, type PrismaTransaction } from '@/lib/accounting/guard'

@@ -1174,7 +1174,7 @@ export async function calculateProjectProfitability(projectId: string): Promise<
 
   const equipment = round2(
     project.equipmentUsages.reduce((sum, eu) => sum + Number(eu.cost), 0) +
-    project.equipmentOperations.reduce((sum, eo) => sum + 0, 0) // operations logged but cost via usage
+    project.equipmentOperations.reduce((sum, _eo) => sum + 0, 0) // operations logged but cost via usage
   )
 
   const fuel = round2(
