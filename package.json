@@ -15,7 +15,8 @@
     "db:reset": "prisma migrate reset",
     "verify:accounting": "bun scripts/verify-engine-unification.ts",
     "verify:engine": "bun scripts/verify-engine-unification.ts",
-    "prebuild": "bun scripts/verify-engine-unification.ts || (echo '[BUILD BLOCKED] Accounting numerical consistency check failed. Fix discrepancies before building.' && exit 1)"
+    "test:accounting": "bun scripts/test-accounting-behavior.ts",
+    "prebuild": "bun scripts/verify-engine-unification.ts && bun scripts/test-accounting-behavior.ts || (echo '[BUILD BLOCKED] Accounting verification failed. Fix issues before building.' && exit 1)"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
