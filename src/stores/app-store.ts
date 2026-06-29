@@ -133,7 +133,7 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   'equipment-maintenance': { ar: 'الصيانة', en: 'Maintenance' },
   'fuel': { ar: 'الوقود', en: 'Fuel' },
   'subcontractors': { ar: 'مقاولو الباطن', en: 'Subcontractors' },
-  'expenses': { ar: 'المصروفات', en: 'Expenses' },
+  'expenses': { ar: 'المصروفات العامة', en: 'General Expenses' },
   'labor': { ar: 'تكاليف العمالة', en: 'Labor Costs' },
   'petty-cash': { ar: 'الصندوق النقدي', en: 'Petty Cash' },
   // المحاسبة والتقارير
