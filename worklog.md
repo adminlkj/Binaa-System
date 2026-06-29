@@ -6875,3 +6875,1005 @@ Stage Summary:
 - ✅ التقويم الموحّد يمنع الترحيل في الفترات المغلقة
 - ✅ القيود المرحّلة غير قابلة للتعديل (Reverse → Repost فقط)
 
+
+---
+Task ID: BA-06-1
+Agent: Purchases Cycle Review Agent
+Task: مراجعة دورة المشتريات (Purchases Cycle Review)
+
+Work Log:
+- قرأت /home/z/my-project/worklog.md لأفهم سياق BA-02 → BA-05 (المحرك الموحّد queries.ts، الحارس guard.ts R1-R12، التقويم الموحّد accounting-calendar.ts، assertJournalEntryMutable/Reversible، POSTED=Immutable).
+- راجعت 9 ملفات API + ملف auto-journal.ts + guard.ts سطراً سطراً:
+
+  1. **src/app/api/purchase-requests/route.ts** (82 LOC) + **[id]/route.ts** (181 LOC):
+     - طلبات الشراء = وثيقة داخلية فقط (لا قيد محاسبي). ✅ صحيح.
+     - آلة حالات محكمة: NEW→APPROVED→CONVERTED_TO_PO (لا رجعة) و CANCELLED طرفي.
+     - DELETE محصور بـ NEW فقط. PUT يمنع تعديل بعد APPROVED.
+
+  2. **src/app/api/purchase-orders/route.ts** (149 LOC) + **[id]/route.ts** (254 LOC):
+     - أمر الشراء = التزام قبل الاستلام (لا قيد محاسبي). ✅ صحيح.
+     - آلة حالات محكمة: DRAFT→PENDING_APPROVAL→APPROVED→PARTIALLY_RECEIVED→RECEIVED. لا رجعة بعد APPROVED.
+     - POST يتحقق من اعتماد PR قبل التحويل. DELETE محصور بـ DRAFT ولا يسمح بحذف PO مرتبط بـ GR.
+     - المنطق كله داخل `db.$transaction`. لا journalEntry.create مباشر.
+
+  3. **src/app/api/goods-receipt/route.ts** (330 LOC):
+     - ✅ POST ينشئ قيد GRNI عبر `createJournalEntry` من engine.ts (proxy إلى postJournalEntry في guard.ts). القيد: Dr Inventory / Dr Project Cost / Cr GRNI. R1-R12 مُطبَّقة.
+     - ✅ يستخدم `requireAccountByRole(AccountRole.GRNI/INVENTORY/PROJECT_COST)` (لا أكواد hardcoded).
+     - ✅ يحدِّث حالة PO، ينشئ StockMovement (RECEIPT)، ينشئ EquipmentCost مع journalEntryId مرتبط.
+     - ✅ كل شيء atomic داخل `$transaction`.
+     - ⚠️ السطر 68 تعليق يعد بأن "GRNI liability is cleared when the supplier invoice arrives and is matched" لكن لا يوجد كود يحقق ذلك — انظر الـ CRITICAL #1 بالأسفل.
+
+  4. **src/app/api/goods-receipt/[id]/route.ts** (267 LOC):
+     - ✅ PUT (إلغاء COMPLETED): يعكس قيد GRNI عبر `reverseEntry` (proxy إلى reverseJournalEntry). R12 مُحترَم.
+     - ✅ DELETE: يعكس القيد + يخفض Inventory + يحذف StockMovements + يحذف EquipmentCost + يحذف الإيصال — atomic. R12 مُحترَم.
+     - ✅ يمنع تعديل البنود بعد ترحيل القيد (يطلب DELETE + إعادة إنشاء).
+     - ✅ يمنع DELETE إذا مرتبط بـ PurchaseInvoice.
+
+  5. **src/app/api/purchase-invoices/route.ts** (239 LOC):
+     - ✅ POST: ينشئ فاتورة DRAFT بدون قيد (P5-CRIT-001 fix صحيح). R1 مُحترَم — DRAFT لا يظهر في GL.
+     - ✅ PUT: إذا تغيّرت المبالغ وفاتورة مرحّلة، يعكس القيد القديم + ينشئ قيداً جديداً عبر `createPurchaseInvoiceJournalEntry` + `reverseEntry`. atomic. R12 مُحترَم.
+     - تعليق السطر 130-133 يوضّح بصورة ممتازة سبب عدم إنشاء قيد في POST.
+
+  6. **src/app/api/purchase-invoices/[id]/route.ts** (92 LOC):
+     - ✅ DELETE: يعكس القيد المرتبط (إن وُجد) عبر `reverseEntry` ويضع الحالة CANCELLED — atomic. R12 مُحترَم. لا يكرّر bug الـ double-cancellation القديم.
+
+  7. **src/app/api/supplier-invoices/route.ts** (237 LOC):
+     - ✅ POST يتطلب `goodsReceiptId` إجبارياً (لا يمكن إنشاء فاتورة مورد بدون إيصال استلام).
+     - ✅ يتحقق عدم وجود فاتورة مرتبطة بالـ GR مسبقاً.
+     - ✅ يسحب supplierId/projectId/purchaseOrderId والإيتيمز تلقائياً من GR.
+     - ✅ ينشئ فاتورة DRAFT بدون قيد (P5-CRIT-001 fix).
+     - ✅ يولّد ZATCA QR للفاتورة (فاتورة مورد).
+     - ملاحظة: هذا المسار هو الواجهة "القياسية" لفاتورة المورد (المسار 5 purchase-invoices POST هو بديل مباشر بدون GR).
+
+  8. **src/app/api/supplier-invoices/[id]/route.ts** (314 LOC):
+     - ✅ آلة حالات محكمة: DRAFT→SENT→PARTIALLY_PAID→PAID. لا رجعة بعد SENT.
+     - ✅ DRAFT→SENT: يستدعي `createPurchaseInvoiceJournalEntry` داخل transaction. R1 مُطبَّق — إذا فشل القيد يفشل الانتقال كله.
+     - ✅ CANCELLED: يعكس القيد عبر `reverseEntry`. R12.
+     - ✅ تعديل المبالغ بعد SENT: reverse + recreate عبر `createPurchaseInvoiceJournalEntry`. atomic. R12.
+     - ✅ DELETE: محصور بـ DRAFT فقط + يعكس القيد إن وُجد.
+     - ⚠️ CRITICAL: راجع الـ CRITICAL #1 بالأسفل — منطق `createPurchaseInvoiceJournalEntry` لا يميّز بين فاتورة من GR (يجب أن يخفض GRNI) وفاتورة مباشرة (يخصم Cost).
+
+  9. **src/app/api/supplier-payments/route.ts** (205 LOC):
+     - ✅ POST: ينشئ الدفعة + `createSupplierPaymentJournalEntry` + يحدّث paidAmount/status للفاتورة + يحدّث paidAmount لـ PO — atomic. R1 مُطبَّق.
+     - ✅ يتحقق من حالة الفاتورة (يرفض CANCELLED/DRAFT/PAID) وفحص overpayment (P5-CRIT-009 fix).
+     - ✅ JE creator يستخدم `requireAccountByRole(SUPPLIER_AP)` و resolving payingAccount من payingAccountId أو fallback إلى CASH role.
+     - ⚠️ LOW #5: لا يتحقق أن payingAccountId يطابق paidFrom (TREASURY/BANK).
+
+  10. **src/app/api/supplier-payments/[id]/route.ts** (236 LOC):
+      - ✅ PUT: إذا الدفعة مرحّلة، reverse + unlink + عكس paidAmount + إعادة إنشاء JE + تطبيق paidAmount الجديد. atomic. R12.
+      - ✅ DELETE: يرفض حذف دفعة مرحّلة (يجب عكسها أولاً). R12.
+      - ⚠️ LOW #1: عند عكس paidAmount، يعيد الحالة إلى 'DRAFT' لو reversedPaidAmount <= 0. يجب أن تكون 'SENT' (لا يمكن الرجوع من PARTIALLY_PAID إلى DRAFT). يحدث في 3 أماكن: PUT step 3، PUT step 7، DELETE.
+
+  11. **src/lib/auto-journal.ts** (440 LOC):
+      - ✅ `createPurchaseInvoiceJournalEntry` و `createSupplierPaymentJournalEntry` كلاهما يستخدم `postJournalEntry` من guard.ts مباشرة (R1-R12 مُطبَّقة).
+      - ✅ استخدام `requireAccountByRole` لكل الأدوار (لا hardcoded codes).
+      - ✅ `getNextEntryNo` من guard.ts (تنسيق JE-NNNNNN موحّد).
+      - ✅ costCenterId propagation من project.costCenter (P5-CRIT-010 fix).
+      - ✅ expenseCategory-aware cost account mapping (P5-CRIT-006 fix).
+      - 🔴 CRITICAL #1: `createPurchaseInvoiceJournalEntry` لا يفحص `invoice.goodsReceiptId` ولا يحمّل علاقة goodsReceipt (line 153-156). القيد دائماً Dr Cost / Dr Input VAT / Cr Supplier AP — حتى لو الفاتورة من GR. انظر التفاصيل بالأسفل.
+
+  12. **src/lib/accounting/guard.ts** (653 LOC): راجعت كل القواعد R1-R12. كلها مُطبَّقة بشكل صحيح. assertJournalEntryValid ينفّذ R2-R8 قبل أي كتابة، assertPeriodOpen (R6) يُستدعى من accounting-calendar.ts، postJournalEntry ينشئ POSTED فقط (R1)، reverseJournalEntry يحافظ على الأصل POSTED وينشئ عكساً منفصلاً (R12). assertJournalEntryMutable و assertJournalEntryReversible (BA-02 Task 4) موجودان. لا يوجد skipPeriodGuard إلا للعكس وإقفال الفترة.
+
+  13. **src/lib/accounting/engine.ts**: راجعت أن `createJournalEntry` (line 281) و `reverseEntry` (line 269) مجرّد proxies إلى `postJournalEntry` و `reverseJournalEntry` في guard.ts. لا منطق محاسبي في engine.ts يتجاوز الحارس.
+
+  14. **Grep عبر كل src/app/api**: لا يوجد أي `journalEntry.create` / `journalEntry.update` / `journalEntry.delete` مباشر في أي من ملفات دورة المشتريات. الـ direct calls الوحيدة موجودة في seed/route.ts (لإعادة التهيئة) و journal-entries/[id]/route.ts (PUT/DELETE للمسودات فقط بعد assertJournalEntryMutable). ✅ ممتاز.
+
+  15. **scripts/archive/test-projects-cycle.ts**: راجعت الملف (مؤرشف) — لا يختبر دورة المشتريات فعلياً (لا فواتير مورد ولا دفعات). test-equipment-cycle.ts يختبر شراء معدات (Equipment model) وليس دورة المشتريات. لا يوجد سكربت اختبار شامل لدورة المشتريات الكاملة (PR→PO→GR→Invoice→Payment).
+
+Stage Summary:
+
+### ✅ ما هو صحيح (نقاط القوة):
+1. **الالتزام بالحارس المحاسبي**: كل إنشاء قيد في دورة المشتريات يمر عبر `postJournalEntry` (مباشرة أو عبر `createJournalEntry` proxy أو عبر `createPurchaseInvoiceJournalEntry`/`createSupplierPaymentJournalEntry`). R1-R12 مُطبَّقة بالكامل.
+2. **عدم قابلية القيود للكسر (POSTED = Immutable)**: كل عمليات الحذف/الإلغاء/التعديل تستخدم `reverseEntry` (proxy إلى `reverseJournalEntry`). الأصل يبقى POSTED، والعكس منفصل بتاريخ اليوم. R12 مُحترَم 100%.
+3. **التقويم الموحّد**: R6 مُطبَّق عبر `assertPeriodOpen` في guard.ts (لا يمكن لأي route تجاوزه). `skipPeriodGuard: true` محصور في العكس وإقفال الفترة فقط.
+4. **DRAFT لا يظهر في GL**: POST في purchase-invoices و supplier-invoices لا ينشئ قيداً. القيد ينشأ فقط عند DRAFT→SENT عبر PUT. R1 مُحترَم — "لا قيد = لا عملية".
+5. **آلات الحالات المحكمة**: PR / PO / GR / SI كلها لديها state machines صريحة مع منع الرجوع بعد نقطة الـ "no return" (APPROVED/SENT/RECEIVED/CANCELLED طرفية).
+6. **العمليات الـ Atomic**: كل منطق محاسبي + تحديثات حالة + تحديثات paidAmount داخل `db.$transaction` واحد. فشل أي خطوة → rollback كامل.
+7. **role-based account resolution**: `requireAccountByRole` / `getDefaultAccountByRole` في كل مكان — لا أكواد hardcoded.
+8. **costCenterId propagation**: مشاريع مرتبطة بـ cost center تمرر costCenterId إلى بنود القيد (P5-CRIT-010 fix في createPurchaseInvoiceJournalEntry و createSupplierPaymentJournalEntry).
+9. **expenseCategory-aware mapping**: createPurchaseInvoiceJournalEntry يحل الحساب حسب الفئة (CONSUMABLES → PROJECT_COST، SERVICES → SUBCONTRACTOR_COST، FUEL → FUEL_EXPENSE، إلخ).
+10. **فحوصات الأمان**: supplier-payments POST يفحص حالة الفاتورة (يرفض CANCELLED/DRAFT/PAID) + overpayment. supplier-invoices POST يرفض تكرار GR. goods-receipt DELETE يرفض الحذف إذا مرتبط بفاتورة.
+
+### 🔴 ما يحتاج إصلاحاً:
+
+#### CRITICAL #1 — GRNI لا يُطابق أبداً (تضاعف التكلفة + التزامم عالق)
+**المشكلة:** سير العمل الحالي:
+- **GR (goods-receipt POST)**: ينشئ قيد GRNI: `Dr Inventory/Project Cost / Cr GRNI (3330)` — ✅ صحيح.
+- **فاتورة المورد (supplier-invoices POST → PUT DRAFT→SENT)**: ينشئ قيد: `Dr Cost / Dr Input VAT / Cr Supplier AP` — ❌ يخصم التكلفة مرة ثانية ولا يخفض GRNI.
+
+النتيجة لكل فاتورة مورد تُنشأ من GR (وهي كل الفواتير لأن `goodsReceiptId` إجباري في supplier-invoices POST):
+- **PROJECT-destination**: Project Cost مخصوم مرتين (مثال: 1000 → 2000)، GRNI عالق بقيمة 1000، AP = 1150. P&L منفوخ، ميزانية منفوخة.
+- **INVENTORY-destination**: Inventory = 1000 (لا يُصرف أبداً)، Cost = 1000 (مصروف مبكر)، GRNI عالق = 1000، AP = 1150. الأصول والخصوم منفوخة.
+
+تعليق السطر 68 في goods-receipt/route.ts يقول "The GRNI liability is cleared when the supplier invoice arrives and is matched" — لكن لا يوجد أي كود يفعل ذلك. Grep عبر src/ لـ `GRNI` و `matched` لم يجد أي منطق مطابقة.
+
+**الإصلاح المقترح**: تعديل `createPurchaseInvoiceJournalEntry` في auto-journal.ts ليفحص `invoice.goodsReceiptId`:
+- إذا وُجد GR مرتبط: القيد يجب أن يكون `Dr GRNI (3330) / Dr Input VAT / Cr Supplier AP` (يخلي التزام GRNI ويستبدله بـ AP).
+- إذا لم يوجد (فاتورة مباشرة بدون GR): السلوك الحالي `Dr Cost / Dr Input VAT / Cr Supplier AP` (صحيح).
+- يجب أيضاً تحديث goods-receipt/route.ts: إذا destination=INVENTORY يجب أن يبقى Dr Inventory (صحيح)، لكن destination=PROJECT ربما يجب أن يبقى Dr Project Cost (لأن الفاتورة ستأتي لاحقاً بخطوة GRNI clearing منفصلة) — هذا يحتاج تصميماً محاسبياً واضحاً: هل نتبنى perpetual inventory (Dr Inventory عند الاستلام + Dr Cost عند الصرف) أم periodic (Dr Cost مباشرة عند الاستلام)؟
+
+ملاحظة: الفاتورة المباشرة بدون GR (purchase-invoices POST) لا تعاني من هذا الـ bug لأنها لا تنشئ GRNI — سلوكها صحيح.
+
+#### MEDIUM #1 — inventory consumption flow مفقود
+**المشكلة:** Prisma schema (line 2900) تعرّف `movementType: RECEIPT | ISSUE | TRANSFER | ADJUSTMENT | RETURN` لكن Grep عبر src/app/api وجد `stockMovement.create` في مكان واحد فقط: goods-receipt/route.ts (type=RECEIPT). لا يوجد أي endpoint أو دالة تُصدر أصناف المخزون إلى المشاريع (Dr Project Cost / Cr Inventory).
+
+**الأثر:** أصناف INVENTORY-destination المستلمة عبر GR تبقى على الميزانية (Account 1340) إلى الأبد. لا يمكن تحويلها إلى مصروف أو تكلفة مشروع. هذا يحوّل المخزون إلى "black hole" — كل ما يدخل لا يخرج.
+
+**الإصلاح المقترح**: إضافة API endpoint `/api/inventory/[id]/issue` ينشئ StockMovement type=ISSUE + قيد `Dr Project Cost / Cr Inventory` عبر postJournalEntry.
+
+#### MEDIUM #2 — إلغاء فاتورة مورد مدفوعة جزئياً لا يعكس الدفعات
+في supplier-invoices/[id] PUT، عند الانتقال إلى CANCELLED، يُعكس قيد الفاتورة فقط. لكن إذا كان `paidAmount > 0`، فإن دفعات المورد المرتبطة تبقى POSTED (قيد الدفع `Dr Supplier AP / Cr Cash` لا يزال مؤثراً). النتيجة: Supplier AP يصبح سالباً، والكاش منخفض بدفعة لفاتورة ملغاة.
+
+**الإصلاح المقترح**: قبل إلغاء الفاتورة، إما:
+(a) منع الإلغاء إذا `paidAmount > 0` ("لا يمكن إلغاء فاتورة بها دفعات — اعكس الدفعات أولاً")، أو
+(b) عكس كل SupplierPayment المرتبطة تلقائياً داخل نفس الـ transaction.
+
+#### LOW #1 — عكس paidAmount يعيد الفاتورة إلى DRAFT بدلاً من SENT
+في supplier-payments/[id]/route.ts في 3 أماكن (PUT step 3، PUT step 7، DELETE):
+```ts
+if (reversedPaidAmount <= 0) {
+  newStatus = 'DRAFT'  // ❌ يجب أن تكون 'SENT'
+}
+```
+الفاتورة التي كانت PARTIALLY_PAID ثم عُكست دفعتها يجب أن تعود إلى SENT (مرسلة وغير مدفوعة)، وليس DRAFT. الانتقال PARTIALLY_PAID → DRAFT يتخطى SENT وينتهك آلة الحالات في supplier-invoices (VALID_SI_TRANSITIONS: SENT→PARTIALLY_PAID→PAID، ولا رجعة من SENT إلى DRAFT).
+
+**الإصلاح**: استبدال `'DRAFT'` بـ `'SENT'` في هذه المواضع الثلاثة.
+
+#### LOW #2 — لا يوجد سكربت اختبار شامل لدورة المشتريات الكاملة
+`scripts/archive/test-projects-cycle.ts` لا يختبر دورة المشتريات (لا PR/PO/GR/SI/Payment). `test-equipment-cycle.ts` يختبر شراء معدات (Equipment model) وليس دورة المشتريات. لا يوجد اختبار E2E يتأكد من أن: PR → PO → GR → Supplier Invoice → Supplier Payment ينتج قيوداً متوازنة وصحيحة وأن GRNI يُخلى بشكل صحيح.
+
+**الإصلاح المقترح**: إنشاء `scripts/test-purchases-cycle.ts` على غرار `test-accounting-behavior.ts`، يغطي:
+1. إنشاء PR + PO + GR (تحقق من قيد GRNI).
+2. إنشاء فاتورة مورد من GR + اعتمادها (تحقق من قيد الفاتورة + عدم تضاعف التكلفة).
+3. دفعة مورد كاملة (تحقق من قيد الدفع + تحديث paidAmount + حالة الفاتورة PAID).
+4. عكس الفاتورة بعد الدفع (تحقق من المنع أو العكس المتسلسل).
+5. ميزان المراجعة قبل وبعد = متوازن.
+
+### المخاطر:
+- **CRITICAL #1 هو الخطر الأكبر**: كل فاتورة مورد تُنشأ من GR (وهو السيناريو القياسي) تُضاعف التكلفة وتُبقي GRNI عالقاً. ميزان المراجعة حالياً "متوازن" رياضياً (لأن الـ double-count متساوٍ على الجانبين) لكنه **محاسبياً خاطئ** — Project Cost منفوخ، Inventory منفوخ، GRNI عالق. التقارير المالية (Income Statement, Balance Sheet) غير صالحة للاستخدام حتى يُصلَّح.
+- يجب تشخيص قاعدة البيانات الإنتاجية بعد الإصلاح: عكس قيود الفواتير القديمة + إنشاء قيود عكسية صحيحة + مخفضة GRNI.
+
+### التوصيات:
+1. **إصلاح فوري (P0)**: CRITICAL #1 — تعديل `createPurchaseInvoiceJournalEntry` ليصبح GRNI-aware. تحديد ما إذا كان الـ GR النموذج الحالي (perpetual INVENTORY + periodic PROJECT_COST) مقصوداً أم bug. إذا مقصوداً، الفاتورة يجب أن تخلي GRNI فقط (لا إعادة خصم Cost). إذا bug، الـ GR يجب أن لا يخصم Project Cost عند destination=PROJECT (يفترض أن يخصم Inventory دائماً أو GRNI مؤقت).
+2. **إصلاح عاجل (P1)**: MEDIUM #1 — بناء inventory issue/consume flow.
+3. **إصلاح عاجل (P1)**: MEDIUM #2 — منع إلغاء فاتورة مدفوعة جزئياً أو عكس دفعاتها.
+4. **إصلاح روتيني (P2)**: LOW #1 — تعديل حالة الفاتورة عند عكس paidAmount إلى 'SENT' بدلاً من 'DRAFT'.
+5. **إصلاح روتيني (P2)**: LOW #2 — إنشاء سكربت اختبار E2E لدورة المشتريات.
+6. **تحقق روتيني (P3)**: LOW #5 — فحص تطابق `paidFrom` مع نوع حساب `payingAccountId` في supplier-payments POST.
+
+
+---
+Task ID: BA-06-2
+Agent: Projects Cycle Review Agent
+Task: مراجعة دورة المشاريع (Projects Cycle Review)
+
+Work Log:
+- قرأت worklog.md + audit-reports/02-projects-cycle.md + audit-reports/01-accounting-engine.md لفهم القرارات السابقة (BA-02 مكتمل، التقويم الموحّد، guard R1-R12، POSTED=Immutable).
+- قرأت src/lib/accounting/guard.ts (653 سطر) — التحقق من قواعد R1-R12، postJournalEntry، reverseJournalEntry، assertJournalEntryMutable، assertJournalEntryReversible.
+- قرأت src/lib/accounting/engine.ts (1568 سطر) — كل دوال autoEntry* تمر عبر createJournalEntry → guardedPost (postJournalEntry). لا bypass لـ db.journalEntry.create في الكود الحي (الموجود فقط في scripts/archive/*).
+- قرأت src/lib/accounting/period-guard.ts — delegate wrapper للتقويم الموحّد (accounting-calendar.ts). assertPeriodOpen تُفرض من guard.ts R6.
+- قرأت src/lib/auto-journal.ts (440 سطر) — createSalesInvoiceJournalEntry / createPurchaseInvoiceJournalEntry / createClientPaymentJournalEntry / createSupplierPaymentJournalEntry / createExpenseJournalEntry / createProgressClaimJournalEntry (dead). كلها تستخدم postJournalEntry + getDefaultAccountByRole/requireAccountByRole (لا أكواد hardcoded في المسار الحي).
+- راجعت src/app/api/projects/route.ts (119 سطر) — POST لا ينشئ مركز تكلفة تلقائياً للمشروع. costCenterId يبقى null.
+- راجعت src/app/api/projects/[id]/route.ts (325 سطر) — GET يحسب costSheet من reduce؛ DELETE soft-delete مع حماية ضد السجلات المالية المرتبطة (P2-CRIT-009 مُصلح).
+- راجعت src/app/api/cost-centers/route.ts (53 سطر) — إنشاء يدوي فقط، لا ربط تلقائي بالمشاريع.
+- راجعت src/app/api/progress-claims/route.ts + [id]/route.ts (169+155 سطر) — POST/PUT لا ينشئان قيداً (التصميم الصحيح: المستخلص طلب دفع وليس حدث إيراد). JE يُنشأ عند تحويل المستخلص إلى فاتورة مبيعات. DELETE soft-delete مع حراسة حالة.
+- راجعت src/app/api/sales-invoices/route.ts (789 سطر) — ثلاثة أوضاع: EXTRACT (من مستخلص)، TIMESHEET (تأجير)، MANUAL. كلها تنشئ status=DRAFT بدون JE (P6-CRIT-002 fix). JE يُنشأ عند PATCH DRAFT→SENT عبر createSalesInvoiceJournalEntry. PUT يرفض status (P6-CRIT-006 fix). costCenterId يُمرر من project.costCenter.id إلى كل بنود القيد.
+- راجعت src/app/api/sales-invoices/[id]/route.ts (351 سطر) — PATCH يفرض انتقالات الحالة الصحيحة (DRAFT→SENT ينشئ JE، *→CANCELLED يعكس JE، CANCELLED→SENT/DRAFT يعيد الإنشاء). DELETE يعكس JE قبل الحذف + يرفض إذا كان هناك تحصيلات (P6-CRIT-004/007).
+- راجعت src/app/api/client-payments/route.ts (194 سطر) — POST يتحقق من حالة الفاتورة + overpayment، ينشئ payment + createClientPaymentJournalEntry + تحديث paidAmount/status داخل $transaction. costCenterId يُمرر من invoice.project.costCenter.id.
+- راجعت src/app/api/client-payments/[id]/route.ts (252 سطر) — PATCH يعكس+يعيد إنشاء JE عند تعديل مدفوعة مرحّلة. DELETE يعكس JE + ي decrement paidAmount + يحذف.
+- راجعت src/app/api/cost-entries/route.ts (164 سطر) — POST ينشئ costEntry + autoEntryManualCost + تحديث CostCodeBudget.actualAmount في $transaction واحد (P2-CRIT-007 مُصلح). costCenterId يُمرر من project.costCenterId.
+- **لا يوجد [id]/route.ts لـ cost-entries** — لا يمكن جلب/تعديل/حذف سجل تكلفة فردي. سجلات التكلفة مع قيود مرحّلة لا يمكن عكسها عبر API.
+- راجعت src/app/api/labor-costs/route.ts (107 سطر) — POST ينشئ laborCost + autoEntryLaborCost في $transaction (P4-CRIT-005 مُصلح). costCenterId يُمرر من project.costCenterId.
+- راجعت src/app/api/labor-costs/[id]/route.ts (91 سطر) — **PUT يحرر الحقول مباشرةً بدون عكس+إعادة إنشاء JE**. إذا تغير المبلغ (workers/days/dailyRate) يبقى القديم في GL. **DELETE يحذف LaborCost hard-delete بدون عكس JE المرتبط** → قيد POSTED يتيم في GL للأبد.
+- راجعت src/app/api/subcontractor-invoices/route.ts (128 سطر) — POST ينشئ فاتورة + autoEntrySubcontractorInvoice في $transaction (P2-CRIT-002/008 مُصلح). costCenterId يُمرر من project.costCenterId. **لكن JE يُنشأ عند status=DRAFT** — يخالف نمط sales-invoice (DRAFT→no JE) و purchase-invoice (DRAFT→no JE). تضخم GL بـ AP/cost قبل اعتماد الفاتورة.
+- راجعت src/app/api/subcontractor-invoices/[id]/route.ts (162 سطر) — PUT يحرر DRAFT فقط (لا يمكن تعديل POSTED). DELETE يعكس JE + soft-delete (P2-CRIT-005/[id] مُصلح). يحظر الحذف إذا كانت هناك دفعات مرتبطة.
+- راجعت src/app/api/subcontractor-payments/route.ts (172 سطر) — POST ينشئ payment + autoEntrySubcontractorPayment + تحديث invoice.paidAmount/status في $transaction (P2-CRIT-002/003 مُصلح). costCenterId يُمرر من invoice.project.costCenterId.
+- راجعت src/app/api/subcontractor-payments/[id]/route.ts (151 سطر) — PUT يحرر status/notes/chequeNo فقط (لا يعكس JE عند تغيير الحالة). DELETE يعكس JE + decrement paidAmount + soft-cancel (سليم).
+- راجعت src/app/api/subcontractor-advances/route.ts + [id]/route.ts (131+137 سطر) — POST ينشئ advance + autoEntrySubcontractorAdvance في $transaction (P2-CRIT-002 مُصلح). costCenterId يُمرر من project.costCenterId. DELETE يعكس JE + soft-cancel + يحظر إذا recoveredAmount > 0. PUT يحرر الحالة فقط.
+- راجعت src/app/api/subcontractor-retentions/route.ts + [id]/route.ts (128+151 سطر) — POST ينشئ retention + autoEntrySubcontractorRetention في $transaction. costCenterId يُمرر. PUT يحرر releasedAmount/status. DELETE يعكس JE + soft-cancel. **لكن PUT/RELEASE لا ينشئ قيد عكس/تحرير retention** (ملاحظة في الـ comment أن "release JE should be created by a dedicated release endpoint" غير موجود).
+- راجعت src/lib/accounting/engine.ts:691-725 (autoEntrySubcontractorInvoice) — يستخدم getAccountCodeByRole لـ SUBCONTRACTOR_COST/VAT_INPUT/SUBCONTRACTOR_AP (لا hardcoded). costCenterId يُمرر إلى بند التكلفة فقط (وليس VAT/AP).
+- راجعت src/lib/accounting/engine.ts:1378-1471 (autoEntrySubcontractorAdvance/Payment/Retention) — كلها تستخدم getAccountCodeByRole. costCenterId يُمرر إلى البند المدين فقط (advance/AP-debit) وليس البند الدائن (cash/bank/retention-payable).
+- راجعت src/app/api/journal-entries/[id]/route.ts (282 سطر) — BA-02 Task 4 مُطبق: PUT POSTED → 423 LOCKED مع workflow للعكس+إعادة. DELETE POSTED يتطلب عكساً مُسبقاً.
+- راجعت src/app/api/journal-entries/[id]/reverse/route.ts (24 سطر) — POST يستخدم reverseEntry (engine.ts) → guardedReverse (guard.ts). عكس صحيح: يُنشئ قيد عكسي بتبديل مدين/دائن، يبقى الأصلي POSTED مع isReversal/reversedEntryId.
+- تحققت من Prisma schema: Project.costCenterId String? (optional). InvoiceStatus enum يشمل DRAFT/SENT/PARTIALLY_PAID/PAID/OVERDUE/CANCELLED. SubcontractorInvoice.status يستخدم InvoiceStatus enum. SubcontractorPayment/Advance/Retention تستخدم String status.
+
+Stage Summary:
+- **النتائج الصحيحة (ما يعمل بشكل سليم):**
+  1. **كل مسارات المشاريع تمر عبر postJournalEntry من guard.ts** — لا bypass لـ db.journalEntry.create في الكود الحي (الموجود فقط في scripts/archive/*). كل دوال autoEntry* في engine.ts تستخدم createJournalEntry → guardedPost. كل دوال auto-journal.ts تستخدم postJournalEntry مباشرة.
+  2. **قواعد R1-R12 مُفروضة بشكل صارم** — R2 (توازن)، R3 (≥2 بند)، R4 (حساب نشط قابل للترحيل)، R5 (جهة واحدة)، R6 (assertPeriodOpen)، R7 (entryNo فريد)، R8 (نوع صالح)، R12 (لا حذف POSTED) كلها مُفروضة في guard.ts.
+  3. **التقويم المحاسبي الموحّد مُستخدم** — assertPeriodOpen يُستدعى من guard.ts R6 لكل قيد. period-guard.ts أصبح delegate wrapper لـ accounting-calendar.ts (BA-02 Task 3).
+  4. **القيود المرحّلة غير قابلة للتعديل** — journal-entries/[id]/route.ts PUT يرفض POSTED بـ 423 LOCKED (BA-02 Task 4). DELETE يتطلب عكساً مُسبقاً.
+  5. **العكس يتم عبر reverseJournalEntry/reverseEntry فقط** — كل DELETE/CANCELLED/CORRECTION في دورة المشاريع يستخدم reverseEntry → guardedReverse (لا حذف مباشر للقيود المرحّلة).
+  6. **سلسلة مستخلص → فاتورة → تحصيل سليمة** — المستخلص لا ينشئ JE (تصحيح Phase 1 double-revenue). الفاتورة تنشئ JE عند SENT. التحصيل ينشئ JE عند POST. كلها في $transaction.
+  7. **costCenterId يُمرر في معظم القيود** — sales-invoice, client-payment, purchase-invoice, supplier-payment, expense, cost-entry, labor-cost, subcontractor-invoice/advance/payment/retention كلها تمرر costCenterId من project.costCenter.
+  8. **حراسة الحالة + منع الحذف غير الآمن** — sales-invoice PATCH يفرض transitions + يمنع PAID→DRAFT، DELETE يمنع إذا كانت هناك تحصيلات. subcontractor-invoice DELETE يمنع إذا كانت هناك دفعات. client-payment POST يتحقق من حالة الفاتورة + overpayment.
+
+- **النتائج التي تحتاج إصلاحاً:**
+  1. **[HIGH] labor-costs/[id]/route.ts PUT لا يعكس+يعيد إنشاء JE عند تغيير المبلغ** — عند تعديل workers/days/dailyRate، يُعاد حساب totalAmount ويُحفظ في DB، لكن القيد القديم (بالقيمة القديمة) يبقى POSTED في GL. التوصية: نسخ نمط client-payments/[id] PATCH — reverseEntry + update + createClientPaymentJournalEntry في $transaction.
+  2. **[HIGH] labor-costs/[id]/route.ts DELETE يحذف hard-delete بدون عكس JE** — على عكس client-payments/subcontractor-payments التي تعكس JE قبل الحذف. النتيجة: قيد POSTED يتيم في GL يشير إلى laborCost.id محذوف. التوصية: reverseEntry(journalEntryId, tx) + soft-delete (deletedAt) بدلاً من hard-delete.
+  3. **[MEDIUM] لا يوجد [id]/route.ts لـ cost-entries** — لا يمكن جلب/تعديل/حذف سجل تكلفة فردي. إذا كان هناك خطأ في cost-entry مع JE مرحّل، لا يوجد API لتصحيحه. التوصية: إضافة [id]/route.ts مع GET + PUT (عكس+إعادة إنشاء JE) + DELETE (عكس JE + soft-delete).
+  4. **[MEDIUM] subcontractor-invoices POST ينشئ JE عند status=DRAFT** — يخالف النمط الموحّد في sales-invoice و purchase-invoice حيث لا يُنشأ JE إلا عند SENT. النتيجة: فواتير مقاولي الباطن المسودة تضخم GL بـ AP/Subcontractor-Cost/VAT قبل الاعتماد. التوصية: تأجيل إنشاء JE حتى PATCH DRAFT→SENT (نسخ نمط sales-invoices/[id]/route.ts).
+  5. **[MEDIUM] لا يوجد costCenterId تلقائي عند إنشاء مشروع** — projects/route.ts POST لا ينشئ CostCenter ولا يربطه. costCenterId يبقى null لمعظم المشاريع. auto-journal.ts يستخدم `project.costCenter?.id || null` فيبقى costCenterId=null على بنود القيد. التوصية: في projects POST $transaction، أنشئ CostCenter(code=project.code, name=project.name) واربطه. (مُسجل سابقاً كـ P2-MED-001.)
+  6. **[MEDIUM] createProgressClaimJournalEntry في auto-journal.ts ميت (0 مستدعين)** — dead code. التوصية: حذف الدالة (مُسجل سابقاً كـ P2-LOW-002). الدالة لا تمرر costCenterId أيضاً لو أُعيد تفعيلها.
+  7. **[LOW] subcontractor-retentions/[id] PUT (release) لا ينشئ JE عكسي للتحرير** — الـ comment يذكر "release JE should be created by a dedicated release endpoint" غير موجود. retention يبقى WITHHELD في GL بعد تحريره إدارياً. التوصية: إضافة endpoint مخصص لـ releaseRetention ينشئ JE (Dr SUBCONTRACTOR_RETENTION_PAYABLE / Cr SUBCONTRACTOR_AP أو CASH).
+  8. **[LOW] costCenterId يُمرر إلى بعض البنود فقط في engine.ts** — autoEntrySubcontractor* يمرر costCenterId للبند المدين فقط (cost/advance/AP-debit) وليس للبند الدائن (cash/bank/retention-payable). نفس النمط في autoEntryManualCost و autoEntryLaborCost. قد يكون مقصوداً (النقدية لا تنتمي لمركز تكلفة)، لكن يجب توثيقه.
+  9. **[LOW] costCenterId يُمرر إلى AR/CUSTOMER_AR في sales-invoice و client-payment** — قد لا يكون صحيحاً محاسبياً لأن AR هو حساب دفتر الأستاذ العام (balance sheet) ولا يُقسم عادةً على مراكز التكلفة. التوصية: مراجعة ما إذا كان يجب إزالة costCenterId من بنود AR في createSalesInvoiceJournalEntry و createClientPaymentJournalEntry.
+
+- **مخاطر رئيسية:**
+  - **الخطر الأكبر** هو في labor-costs/[id]/route.ts (PUT + DELETE) — قيود POSTED تتيم أو تبقى بقيم قديمة بعد التعديل. هذا يكسر R9 (SSOT للقراءات من JournalLine) ويُظهر تكاليف عمالة خاطئة في تقارير ربحية المشروع.
+  - **خطر متوسط** في غياب [id]/route.ts لـ cost-entries — أخطاء الإدخال اليدوية لا يمكن تصحيحها عبر API.
+  - **خطر متوسط** في إنشاء JE مبكر لـ subcontractor-invoice (DRAFT) — قد يُظهر التقرير المالي مديونيات غير معتمدة.
+
+- **التوصيات المحددة للإصلاح:**
+  1. إصلاح labor-costs/[id]/route.ts PUT ليُعكس+يُعيد إنشاء JE داخل $transaction عند تغيير المبلغ (نسخ client-payments/[id] PATCH).
+  2. إصلاح labor-costs/[id]/route.ts DELETE لعكس JE + soft-delete (إضافة deletedAt إلى LaborCost إن لزم).
+  3. إضافة src/app/api/cost-entries/[id]/route.ts مع GET + PUT (reverseEntry + autoEntryManualCost) + DELETE (reverseEntry + soft-delete).
+  4. تأجيل إنشاء JE في subcontractor-invoices POST إلى PATCH DRAFT→SENT (نسخ sales-invoices/[id]/route.ts PATCH pattern).
+  5. إضافة إنشاء CostCenter تلقائي في projects/route.ts POST وربطه بـ costCenterId.
+  6. حذف createProgressClaimJournalEntry dead code من auto-journal.ts.
+  7. إضافة POST /api/subcontractor-retentions/[id]/release ينشئ JE تحرير صريح.
+  8. مراجعة سياسة costCenterId على بنود AR/Cash (balance sheet) — هل يجب إزالتها؟
+
+- **الخلاصة العامة:** دورة المشاريع مبنية على أساس محاسبي سليم بعد BA-02 (التقويم الموحّد، guard R1-R12، POSTED=Immutable، reverseEntry كمسار وحيد للعكس). الانتهاكات الكبرى للقواعد (R1: missing JEs, R12: direct delete of POSTED) تم إصلاحها في Phase 1-2. **المخاطر المتبقية محصورة في مسارات التصحيح/الحذف لـ labor-costs و cost-entries** (لا تعكس JEs)، وفي تأخير إنشاء JE لـ subcontractor-invoices (DRAFT يُنشئ JE). هذه إصلاحات محدودة المدى لا تتطلب إعادة هيكلة.
+
+---
+Task ID: BA-06-3
+Agent: Leasing Cycle Review Agent
+Task: مراجعة دورة التأجير (Leasing Cycle Review)
+
+Work Log:
+- **Context**: قراءة worklog.md — تم تأكيد أن BA-02 اكتمل (المحرك الموحّد queries.ts SSOT، guard.ts R1-R12، accounting-calendar.ts، POSTED=Immutable، reverseJournalEntry). تم تدقيق دورة التأجير ضد هذا الإطار.
+
+- **src/lib/accounting/guard.ts** (مرجعي): `postJournalEntry` يفرض R1-R12 + assertPeriodOpen (R6). `reverseJournalEntry` هو الطريق الوحيد لعكس POSTED. `assertJournalEntryMutable` يمنع تعديل POSTED. ✓
+
+- **src/app/api/equipment/route.ts** (POST شراء المعدات):
+  * ✓ ينشئ قيد شراء عبر `autoEntryEquipmentPurchase` → `createJournalEntry` → `postJournalEntry` (guard.ts) — R1 مُفرض.
+  * ✓ يستخدم `db.$transaction` (atomic: code + create + JE + link).
+  * ✓ يربط `journalEntryId` على سجل Equipment.
+  * ✓ إعادة المحاولة عند P2002 (code collision).
+  * ⚠️ **GAP حرج**: لا يُنشئ سجل `FixedAsset` مرتبط. المعدة تُرأسمَلة في GL (Dr FIXED_ASSET / Cr CASH|AP) لكن لا يُنشأ جدول إهلاك تلقائي. المستخدم يجب أن يُنشئ FixedAsset بـ category='EQUIPMENT' يدوياً عبر `/api/fixed-assets`. لا يوجد FK بين Equipment و FixedAsset — يمكن أن تتباين السجلان.
+
+- **src/app/api/equipment/[id]/route.ts** (PUT/DELETE):
+  * ⚠️ **GAP متوسط**: PUT يسمح بتعديل `purchasePrice` مباشرة دون عكس/إعادة ترحيل القيد. GL سيُظهر السعر القديم بينما سجل Equipment يُظهر الجديد. مثال: شراء بـ 100,000 ثم تعديل لـ 120,000 → GL يُظهر 100,000 (Dr FIXED_ASSET) لكن Equipment.purchasePrice=120,000. القاعدة: يجب عكس القيد القديم وإنشاء قيد جديد عند تغير السعر.
+  * ✓ DELETE يمنع الحذف إذا وُجدت سجلات مالية مرتبطة (rentals نشطة، timesheets، maintenance/fuel/expense مع journalEntryId).
+  * ✓ DELETE يعكس قيد الشراء عبر `reverseEntry` (R12) داخل `$transaction`.
+  * ✓ Soft-delete (isActive=false + deletedAt + status=OUT_OF_SERVICE).
+
+- **src/app/api/equipment/expenses/route.ts** (POST مصروفات المعدات):
+  * ✓ ينشئ قيد عبر `autoEntryEquipmentCost` → guard.ts. R1 مُفرض.
+  * ✓ $transaction + ربط journalEntryId على EquipmentExpense.
+  * ⚠️ **GAP متوسط**: لا يوجد route `[id]/` — لا DELETE ولا PUT. المصروف المرحّل لا يمكن حذفه أو عكسه من واجهة المعدات. يجب استخدام واجهة قيود اليومية يدوياً لعكس القيد، لكن سجل EquipmentExpense يبقى مع journalEntryId معلّق. غير متسق مع نمط maintenance/[id] الذي يدعم PUT/DELETE مع عكس القيد.
+
+- **src/app/api/equipment/fuel/route.ts** (POST سجل الوقود):
+  * ✓ ينشئ قيد عبر `autoEntryEquipmentCost` (costType='FUEL'). R1 مُفرض.
+  * ✓ $transaction + ربط journalEntryId على EquipmentFuelLog.
+  * ✓ أيضاً يُنشئ EquipmentCost للمشروع (إن وُجد projectId).
+  * ⚠️ EquipmentCost المُنشأ لا يُربط بـ journalEntryId (الربط فقط على fuelLog). تناقض مع usages/route.ts الذي يربط journalEntryId على EquipmentCost.
+
+- **src/app/api/equipment/fuel/[id]/route.ts** (DELETE):
+  * ✓ يعكس القيد عبر `reverseEntry` (R12) داخل $transaction.
+  * ✓ يفصل journalEntryId قبل الحذف.
+  * ⚠️ لا يحذف EquipmentCost المُنشأ بواسطة fuel POST — يترك سجل يتيم. القيد معكوس لكن EquipmentCost.amount يُظهر القيمة الأصلية في تقارير تكلفة المشروع. يمكن أن يُضلّل تقارير ربحية المشروع.
+
+- **src/app/api/equipment/maintenance/route.ts** (POST الصيانة):
+  * ✓ ينشئ قيد عبر `autoEntryEquipmentCost` (costType='MAINTENANCE'). R1 مُفرض.
+  * ✓ $transaction + ربط journalEntryId على EquipmentMaintenance.
+  * ✓ يحلّ costCenterId بشكل صحيح (project.code → costCenter.code، وليس projectId مباشرة).
+  * ⚠️ EquipmentCost المُنشأ لا يُربط بـ journalEntryId (نفس مشكلة fuel).
+
+- **src/app/api/equipment/maintenance/[id]/route.ts** (PUT/DELETE):
+  * ✓ PUT: عند تغير cost → يعكس القيد القديم وينشئ قيداً جديداً (reverseEntry + autoEntryEquipmentCost). R12 مُحترم.
+  * ✓ DELETE: يعكس القيد عبر `reverseEntry` (R12). يعيد equipment status إلى AVAILABLE (مع فحص صيانة أخرى نشطة).
+  * ✓ كلاهما داخل $transaction.
+  * ⚠️ **GAP متوسط**: PUT يعكس/يُعيد ترحيل القيد **فقط** عند `costChanged`. إذا تغير `date` أو `supplierId` (الذي يحدد payFrom CASH|AP)، القيد القديم يبقى بتاريخ/حساب قديم. هذا يخالف R6 ضمنياً (إذا التاريخ الجديد في فترة مغلقة، القيد القديم يبقى في فترة قديمة مفتوحة، لكن سجل الصيانة يُظهر تاريخاً جديداً — تناقض فترة محاسبية).
+  * ⚠️ PUT لا يُحدّث EquipmentCost المرتبط عند تغير cost.
+
+- **src/app/api/equipment/maintenance/[id]/complete/route.ts** (PATCH):
+  * ✓ تغيير حالة فقط (IN_PROGRESS → COMPLETED). لا قيد مطلوب.
+  * ✓ $transaction + فحص صيانة أخرى نشطة قبل إعادة equipment إلى AVAILABLE.
+
+- **src/app/api/equipment/operations/route.ts** (POST تشغيل المعدات):
+  * ✓ ينشئ قيد عبر `autoEntryEquipmentCost` (costType='OPERATION'). R1 مُفرض.
+  * ✓ $transaction.
+  * ⚠️ **GAP هيكلي**: القيد لا يُربط بأي سجل. EquipmentOperation model ليس له حقل `journalEntryId` (schema.prisma line 1544-1563). EquipmentCost المُنشأ يُربط لكن description يُولّد ديناميكياً ولا يمكن مطابقته لاحقاً.
+  * ⚠️ مخاطرة: إذا فشل القيد بعد إنشاء EquipmentOperation (مثلاً فترة مغلقة)، الـ $transaction يتدحرج، لكن لا يوجد سجل للمحاولة الفاشلة. مقبول لكن يستحق التوثيق.
+
+- **src/app/api/equipment/operations/[id]/route.ts** (DELETE):
+  * ❌ **GAP حرج**: لا يعكس القيد! التعليق صريح: "the JE remains as a historical accounting event. If you need to reverse the JE, use the journal-entries UI." هذا ينتهك R12 (ال reversals عبر reverseJournalEntry فقط) ويترك قيداً يتيم في GL. حذف سجل التشغيل لا يحذف/يعكس القيد المالي.
+  * السبب الجذري: EquipmentOperation model ليس له journalEntryId، فلا يوجد ربط للعثور على القيد لعكسه.
+  * ✓ $transaction + إعادة equipment status إلى AVAILABLE (إذا كان IN_USE).
+
+- **src/app/api/equipment/usages/route.ts** (POST استخدام المعدات):
+  * ✓ ينشئ قيد عبر `autoEntryEquipmentCost` (costType='OPERATION'). R1 مُفرض.
+  * ✓ $transaction + ربط journalEntryId على EquipmentCost (وليس على EquipmentUsage مباشرة — model ليس له الحقل).
+  * ⚠️ **GAP متوسط**: لا يوجد route `[id]/` — لا DELETE ولا PUT. الاستخدام المرحّل لا يمكن عكسه من واجهة المعدات. نفس نمط expenses.
+
+- **src/app/api/equipment/rental-contracts/route.ts** (POST عقد التأجير):
+  * ✓ **لا يُنشئ قيداً** — وهذا صحيح. العقد هو التزام، لا إيراد. الإيراد يُعترف به عند إصدار الفاتورة من التايم شيت.
+  * ✓ $transaction (atomic: Contract + EquipmentRental + equipment status).
+  * ✓ فحص تداخل عقود (overlapping).
+  * ✓ تحقق من وجود المعدة وكونها نشطة.
+  * ✓ توليد contractNo (RC-NNNN) و salesOrderNo (SO-NNNN) داخل الـ tx.
+
+- **src/app/api/equipment/rental-contracts/[id]/route.ts** (GET/PATCH/DELETE):
+  * ✓ DELETE يسمح فقط بحالة DRAFT (لا قيد متورط).
+  * ✓ PATCH $transaction + مزامنة Contract الأب + equipment status (RENTED/AVAILABLE) عند تغير حالة العقد.
+  * ✓ DELETE يمنع الحذف إذا وُجدت timesheets مرتبطة.
+
+- **src/app/api/equipment/timesheets/[id]/generate-invoice/route.ts** (POST توليد فاتورة تأجير):
+  * ✓ ينشئ SalesInvoice + قيد عبر `createSalesInvoiceJournalEntry` → `postJournalEntry` (guard.ts). R1-R12 مُفرضة.
+  * ✓ $transaction (atomic: invoice + timesheet update + JE).
+  * ✓ فرض workflow: contract ACTIVE → delivery DELIVERED → timesheet APPROVED → غير مفوتر.
+  * ✓ الفاتورة تُنشأ كـ 'SENT' (وليس DRAFT) لأن القيد مرحّل فوراً — تجنّب DRAFT+POSTED-JE غير متسق.
+  * ✓ رسوم التوصيل + VAT عليها تُضاف كبنود ائتمان صحيحة (P3-BUG fix في auto-journal.ts).
+  * ✓ يربط journalEntryId على SalesInvoice.
+
+- **src/app/api/rental-payments/route.ts** (POST سداد إيجار):
+  * ✓ ينشئ ClientPayment + قيد عبر `createClientPaymentJournalEntry` → `postJournalEntry` (guard.ts). R1 مُفرض.
+  * ✓ $transaction + تحديث salesInvoice.paidAmount + status (PAID/PARTIALLY_PAID).
+  * ✓ تحقق: client موجود، invoice نوعه RENTAL، ينتمي للعميل.
+  * ⚠️ `receivedIn: 'TREASURY'` افتراضياً لكن لا يربط بـ bankAccount محدد — قد لا يصلح للتقارير البنكية الدقيقة.
+
+- **src/app/api/rental-payments/[id]/route.ts** (GET/DELETE):
+  * ✓ DELETE يعكس القيد عبر `reverseEntry` (R12) داخل $transaction.
+  * ✓ Soft-delete (deletedAt).
+  * ✓ يقلل paidAmount ويعيد status إلى SENT (وليس APPROVED — P3-BUG fix لأن APPROVED ليس قيمة enum صالحة).
+  * ✓ فحص "already cancelled".
+
+- **src/app/api/delivery-orders/[id]/route.ts** (GET/PATCH/DELETE):
+  * ✓ **لا قيد** — أوامر التوصيل سجلات تشغيلية، ليست مالية. صحيح.
+  * ✓ PATCH $transaction + احترام حالة RENTED (P6-CRIT-008 fix: لا يكتب على equipment.status إذا RENTED).
+  * ✓ DELETE يسمح فقط بحالة PENDING.
+
+- **src/lib/accounting/depreciation-engine.ts** (932 سطر — محرك الإهلاك):
+  * ✓ إهلاك القسط الثابت (Straight-Line) وفق IAS 16 / SOCPA.
+  * ✓ قيد الإهلاك: Dr مصروف إهلاك / Cr مجمع إهلاك، عبر `createJournalEntry` → guard.ts. R1-R12 مُفرضة.
+  * ✓ قيد التملك: Dr FIXED_ASSET / Cr CASH|BANK، عبر guard.ts.
+  * ✓ equipment يستخدم دور `RENTAL_DEPRECIATION` (مع fallback إلى `DEPRECIATION_EXPENSE`).
+  * ✓ عكس الإهلاك عبر `reverseAssetDepreciation` → `reverseEntry` (R12) + إعادة حساب accumulatedDepreciation.
+  * ✓ عكس قيد التملك في `deleteAsset` عبر `reverseEntry`.
+  * ✓ تسوية آخر شهر للوصول للقيمة المتبقية بدقة.
+  * ✓ $transaction يلفّ JE + AssetDepreciation + FixedAsset update.
+  * ✓ تخطي ذكي: لا يعيد الإهلاك لنفس الفترة (@@unique([fixedAssetId, year, month])).
+  * ⚠️ **GAP متوسط (R1)**: `createAssetWithAcquisition` يلفّ قيد التملك في try/catch (line 457-481) ويكتمل بنجاح حتى لو فشل القيد: `console.error(...); // نكمل حتى لو فشل القيد — الأصل أُنشئ`. هذا ينتهك R1 ("لا قيد = لا عملية"). FixedAsset يُنشأ بدون journalEntryId، وال GL لا يُظهر التملك.
+  * ⚠️ **GAP منخفض (R1)**: `runDepreciationForAsset` يلفّ قيد الإهلاك في try/catch (line 719-743) ويعيد `skipped: true` عند الفشل. هذا أكثر قبولاً لأن accumulatedDepreciation لا يُحدّث، فيمكن إعادة التشغيل لاحقاً. لكن المستخدم قد لا ينتبه للسجلات المتخطاة.
+  * ⚠️ **GAP متوسط (R12)**: `deleteAsset` يلفّ عكس قيد التملك في try/catch (line 916-922) ويتابع الحذف الصلب للأصل حتى لو فشل العكس: `console.warn('[depreciation-engine] Could not reverse acquisition JE:', err)`. هذا يترك قيداً POSTED يتيم في GL بعد حذف الأصل.
+  * ⚠️ **GAP هيكلي**: لا يوجد FK بين Equipment و FixedAsset. شراء المعدة (via /api/equipment) يُنشئ قيداً يُdebited FIXED_ASSET GL account لكن لا يُنشئ سجل FixedAsset. الإهلاك يعمل فقط على FixedAsset. يمكن أن توجد Equipment بـ purchasePrice=100,000 بدون FixedAsset → لا إهلاك يُرحّل. العكس ممكن: FixedAsset بـ category='EQUIPMENT' بدون Equipment مرتبط.
+  * ⚠️ **GAP منخفض**: قيد التملك يستخدم `JE-AST-{code}-{timestamp}` (line 459) وقيد الإهلاك `JE-DEP-{code}-{year}{month}-{timestamp-suffix}` (line 721) — لا يستخدمان `getNextEntryNo()` القياسي (JE-NNNNNN). احتمال تصادم منخفض (timestamp ميلي ثانية) لكنه يخالف نظام الترقيم الموحّد.
+  * ⚠️ **GAP منخفض**: `deleteAsset` يستخدم `tx.assetDepreciation.deleteMany` + `tx.fixedAsset.delete` — حذف صلب (hard delete) بدلاً من soft-delete. النموذج ليس له deletedAt، لذا هذا متوقع، لكنه يكسر سلسلة التدقيق إذا حُذف أصل بخطأ. لا يمكن استرجاع السجلات التاريخية للإهلاك.
+
+Stage Summary:
+- **ما هو صحيح (15 نقطة)**:
+  1. كل إنشاء قيد في دورة التأجير يمر عبر `postJournalEntry` من guard.ts (R1-R12 مُفرضة مركزياً).
+  2. كل عكس قيد يتم عبر `reverseEntry` → `reverseJournalEntry` (R12).
+  3. كل العمليات المالية تستخدم `db.$transaction` (atomic).
+  4. التقويم الموحّد `assertPeriodOpen` يُفرض في guard.ts R6 (لا قيد في فترة مغلقة).
+  5. القيود POSTED غير قابلة للتعديل مباشرة (assertJournalEntryMutable في guard.ts).
+  6. عقود التأجير لا تُنشئ قيداً (صحيح — التزام وليس إيراد).
+  7. أوامر التوصيل لا تُنشئ قيداً (صحيح — سجلات تشغيلية).
+  8. فاتورة التأجير تُنشأ من التايم شيت فقط مع workflow مُفرض (contract ACTIVE → delivery DELIVERED → timesheet APPROVED).
+  9. فاتورة التأجير تُرحّل كـ SENT (ليس DRAFT) مع قيد مرحّل — متسق.
+  10. رسوم التوصيل + VAT عليها تُحسب كبنود ائتمان صحيحة (P3-BUG fix).
+  11. سداد الإيجار يُنشئ قيد تحصيل + يحدّث paidAmount/status للفاتورة.
+  12. عكس السداد يعكس القيد + يُعيد الفاتورة لحالة SENT (وليس APPROVED غير الصالح).
+  13. الصيانة: PUT يعكس/يُعيد ترحيل القيد عند تغير cost.
+  14. الإهلاك: قسط ثابت + تسوية آخر شهر + تخطي التكرار.
+  15. عكس الإهلاك يعيد حساب accumulatedDepreciation.
+
+- **ما يحتاج إصلاحاً (مرتباً بالأولوية)**:
+
+  **🔴 حرج (3)**:
+  1. **`/api/equipment/operations/[id]` DELETE لا يعكس القيد** — ينتهك R12. يترك قيداً يتيم في GL بعد حذف سجل التشغيل. السبب الجذري: EquipmentOperation model ليس له `journalEntryId`. **الإصلاح المقترح**: (أ) إضافة حقل `journalEntryId String?` إلى EquipmentOperation في schema.prisma، وربط القيد عند الإنشاء في POST، وعكسه في DELETE؛ أو (ب) منع حذف سجل التشغيل إذا وُجد قيد مرتبط (pattern بحثي بـ sourceType='EQUIPMENT_COST' + sourceId matching).
+
+  2. **`/api/equipment/[id]` PUT يسمح بتعديل `purchasePrice` دون عكس/إعادة ترحيل القيد** — GL يتباين عن سجل Equipment. **الإصلاح المقترح**: في PUT، إذا تغير `purchasePrice` و `journalEntryId` موجود، عكس القيد القديم وإنشاء قيد جديد (نفس نمط maintenance/[id] PUT). أو: منع تعديل `purchasePrice` إذا وُجد `journalEntryId` (إجبار المستخدم على عكس الشراء يدوياً أولاً).
+
+  3. **`depreciation-engine.ts::createAssetWithAcquisition` يبتلع فشل قيد التملك** (line 457-481) — ينتهك R1. FixedAsset يُنشأ بدون قيد تملك، GL لا يُظهر الأصل. **الإصلاح المقترح**: إزالة try/catch والسماح للخطأ بالانتشار (الـ $transaction ستتدحرج، لن يُنشأ الأصل). أو: إذا فشل القيد، فشل العملية بالكامل.
+
+  **🟡 متوسط (6)**:
+  4. **لا يوجد route `/api/equipment/expenses/[id]`** — المصروفات المرحّلة لا يمكن عكسها من واجهة المعدات. **الإصلاح**: إضافة route `[id]` مع DELETE يعكس القيد (نفس نمط fuel/[id]).
+  5. **لا يوجد route `/api/equipment/usages/[id]`** — نفس مشكلة expenses. **الإصلاح**: إضافة route `[id]` مع DELETE يعكس القيد عبر EquipmentCost.journalEntryId.
+  6. **`maintenance/[id]` PUT يعكس/يُعيد ترحيل القيد فقط عند `costChanged`** — تغيير `date` أو `supplierId` يُترك القيد القديم. **الإصلاح**: توسيع شرط العكس ليشمل تغير `date` أو `supplierId` (لأن payFrom يعتمد على supplierId).
+  7. **`fuel/[id]` DELETE لا يحذف EquipmentCost المُنشأ بواسطة fuel POST** — يترك سجل يتيم في تقارير تكلفة المشروع. **الإصلاح**: في DELETE، حذف EquipmentCost المرتبط (بمطابقة equipmentId + date + amount) قبل حذف fuelLog.
+  8. **`depreciation-engine.ts::deleteAsset` يبتلع فشل عكس قيد التملك** (line 916-922) — يترك قيداً POSTED يتيم بعد حذف الأصل. **الإصلاح**: السماح للخطأ بالانتشار (منع الحذف إذا فشل العكس).
+  9. **لا يوجد FK بين Equipment و FixedAsset** — شراء المعدة لا يُنشئ FixedAsset تلقائياً، والإهلاك يعمل فقط على FixedAsset. **الإصلاح المقترح**: في `/api/equipment` POST، إذا `purchasePrice > 0`، إنشاء FixedAsset مرتبط (مع usefulLifeYears/depreciationRate افتراضية) — أو إضافة حقل `equipmentId` على FixedAsset وربطهما.
+
+  **🟢 منخفض (3)**:
+  10. **`fuel/route.ts` POST و `maintenance/route.ts` POST يُنشئان EquipmentCost بدون ربط journalEntryId** — بينما `usages/route.ts` يربط. تناقض في النمط. **الإصلاح**: ربط journalEntryId على EquipmentCost في fuel و maintenance أيضاً.
+  11. **`depreciation-engine.ts` يستخدم `JE-AST-{code}-{timestamp}` و `JE-DEP-{code}-{year}{month}-{timestamp}`** بدلاً من `getNextEntryNo()` القياسي. **الإصلاح**: استخدام `getNextEntryNo(tx)` في كلا القيدين.
+  12. **`depreciation-engine.ts::deleteAsset` يستخدم hard delete** — لا soft-delete. لا يمكن استرجاع سجل الأصل بعد الحذف. **الإصلاح المقترح**: إضافة `deletedAt DateTime?` إلى FixedAsset و AssetDepreciation والتحول إلى soft-delete.
+
+- **المخاطر الرئيسية**:
+  - **مخاطر محاسبية**:
+    * القيود اليتيمة في GL من حذف operations (GAP #1) — قد تُظهر التقارير المالية تكاليف معدات وهمية.
+    * تباين Equipment.purchasePrice عن GL (GAP #2) — قد يُضلّل تقييم الأصول.
+    * FixedAsset بدون قيد تملك (GAP #3) — الأصل في الميزانية لكن لا يُهلك، مما يُبالغ في صافي الدخل.
+  - **مخاطر التشغيل**:
+    * المستخدم لا يستطيع عكس مصروفات/استخدامات المعدات من واجهتها (GAP #4، #5) — يلجأ لحذف القيود مباشرة من journal-entries UI، مما يكسر سلسلة التدقيق.
+    * تغيير تاريخ الصيانة لا يُحدّث القيد (GAP #6) — تناقض فترات محاسبية.
+  - **مخاطر التدقيق**:
+    * حذف الأصل الصلب (GAP #12) — لا أثر تدقيقي بعد الحذف.
+    * قيود الإهلاك برقم غير قياسي (GAP #11) — صعوبة تتبّع في سجل القيود.
+
+- **التوصيات للإصلاح (مرتبة)**:
+  1. (عاجل) إضافة `journalEntryId` إلى EquipmentOperation model + ربط في POST + عكس في DELETE.
+  2. (عاجل) في `/api/equipment/[id]` PUT: منع أو عكس/إعادة ترحيل عند تغير `purchasePrice`.
+  3. (عاجل) إزالة try/catch في `createAssetWithAcquisition` (السماح بفشل الـ tx).
+  4. (متوسط) إضافة routes `[id]/` لـ equipment/expenses و equipment/usages مع DELETE يعكس القيد.
+  5. (متوسط) توسعة `maintenance/[id]` PUT ليعكس عند تغير date/supplierId.
+  6. (متوسط) حذف EquipmentCost المرتبط في `fuel/[id]` DELETE.
+  7. (متوسط) إزالة try/catch في `deleteAsset` لعكس قيد التملك.
+  8. (متوسط) ربط FixedAsset بـ Equipment تلقائياً عند الشراء، أو إضافة FK صريح.
+  9. (منخفض) توحيد ربط journalEntryId على EquipmentCost في fuel/maintenance/usages.
+  10. (منخفض) استخدام `getNextEntryNo()` في depreciation-engine.
+  11. (منخفض) soft-delete لـ FixedAsset.
+
+- **الخلاصة**: دورة التأجير مبنية على أساس محاسبي سليم (guard.ts R1-R12 + accounting-calendar + postJournalEntry/reverseJournalEntry). 15 نقطة صحيحة. 12 نقطة تحتاج إصلاحاً (3 حرجة، 6 متوسطة، 3 منخفضة). أهم 3 إصلاحات: (1) عكس قيد التشغيل عند الحذف، (2) عكس قيد الشراء عند تعديل السعر، (3) فشل الـ tx عند فشل قيد التملك. لا توجد تغييرات على الكود (مراجعة فقط).
+
+---
+Task ID: BA-06-4
+Agent: HR Cycle Review Agent
+Task: مراجعة دورة الموارد البشرية (HR Cycle Review)
+
+Work Log:
+
+**1. src/lib/accounting/guard.ts** — قراءة كاملة (653 سطر)
+- الحارس يفرض R1-R12 بشكل صارم عبر postJournalEntry / reverseJournalEntry
+- assertJournalEntryValid يتحقق من: ≥2 بنود (R3)، حساب نشط يسمح بالترحيل (R4)، جانب واحد فقط (R5)، توازن 0.01 (R2)، فترة مفتوحة (R6)، entryNo فريد (R7)، نوع حساب صالح (R8)
+- assertJournalEntryMutable / assertJournalEntryReversible يفرضان R12 (POSTED = Immutable)
+- reverseJournalEntry ينشئ قيداً عكسياً منفصلاً (لا يلغي الأصلي) — يحترم R12
+- ✅ كل قيد في النظام MUST يمر عبر postJournalEntry — لا يمكن لأي API استدعاء db.journalEntry.create مباشرةً
+
+**2. src/lib/accounting/accounting-calendar.ts** — قراءة كاملة (487 سطر)
+- التقويم الموحّد (SSOT) لحالة الفترات: OPEN | LOCKED | CLOSED
+- assertPeriodOpen() يُستدعى تلقائياً من guard.ts في R6 لكل قيد جديد
+- لا يمكن لأي API تجاوز التقويم (skipPeriodGuard=true محجوز للإدخالات النظامية فقط)
+- ✅ كل قيود HR تمر تلقائياً عبر هذا الفحص
+
+**3. src/lib/accounting/engine.ts** — فحص دوال HR (autoEntry*)
+- **autoEntryEmployeeAdvance** (سطر 573): ✅ متوازن، يُستخدم من /api/advances
+- **autoEntryAdvanceSettlement** (سطر 636): ✅ متوازن (Dr SALARIES_PAYABLE / Cr EMPLOYEE_ADVANCE — إصلاح P4-CRIT-010 سليم)
+- **autoEntrySalary** (سطر 920): 🚨 غير متوازن عندما gosiEmployeeDeduction > 0
+  - Dr PAYROLL_EXPENSE: grossSalary
+  - Dr GOSI_EXPENSE: gosiEmployerContribution
+  - Cr PAYROLL_EXPENSE: gosiEmployeeDeduction (بند إضافي يكسر التوازن)
+  - Cr CASH: netCashPaid = grossSalary - gosiEmployeeDeduction
+  - Cr GOSI_PAYABLE: gosiEmployeeDeduction + gosiEmployerContribution
+  - مجموع مدين = grossSalary + gosiEmployerContribution
+  - مجموع دائن = grossSalary + gosiEmployeeDeduction + gosiEmployerContribution
+  - الفرق = gosiEmployeeDeduction (غير متوازن)
+  - 🚨 الدالة لم تُستدعَ من أي API — الخطأ كامن (dormant)
+- **autoEntryGOSI** (سطر 964): 🚨 غير متوازن عندما employeeContribution > 0
+  - Dr GOSI_EXPENSE: employerContribution فقط
+  - Cr GOSI_PAYABLE: employeeContribution + employerContribution
+  - الفرق = employeeContribution (غير متوازن)
+  - 🚨 الدالة لم تُستدعَ من أي API — الخطأ كامن
+- **autoEntryEndOfService** (سطر 1185): ✅ متوازن (Dr PAYROLL_EXPENSE / Cr EOS_PROVISION)
+  - 🚨 لكن لم تُستدعَ من أي API — مخصص نهاية الخدمة لا يُرحّل أبداً!
+
+**4. src/app/api/salaries/route.ts** — قراءة كاملة (202 سطر)
+- ✅ createSalaryAccrualJournalEntry: قيد استحقاق صحيح (Dr PAYROLL_EXPENSE / Cr SALARIES_PAYABLE)
+- ✅ استخدام requireAccountByRole (بدون أكواد hardcoded)
+- ✅ Atomic: $transaction يلف إنشاء الراتب + القيد + ربط journalEntryId
+- ⚠️ يرحّل NET salary كمصروف (يجب أن يكون GROSS)
+- ⚠️ لا يوجد معالجة GOSI إطلاقاً (لا خصم موظف، لا مصروف صاحب عمل)
+- ⚠️ لا يوجد تفصيل للخصومات (deductions كرقم واحد يُطرح من الإجمالي بدون قيد منفصل لاسترداد السلف)
+
+**5. src/app/api/salaries/[id]/route.ts** — قراءة كاملة (180 سطر)
+- ✅ State machine: DRAFT → APPROVED → PAID (لا سماح بالرجوع)
+- ✅ PUT (DRAFT→APPROVED): ينشئ قيد استحقاق + project cost atomically
+- ⚠️ PUT (APPROVED→PAID): لا ينشئ قيد دفع — يجب استخدام /api/salary-payments
+- ✅ DELETE: يسمح فقط بحذف DRAFT (R12 compliant soft-delete)
+- ⚠️ لا يوجد path لعكس راتب معتمد (يجب عكس القيد يدوياً عبر /api/journal-entries/[id]/reverse)
+
+**6. src/app/api/payroll-runs/route.ts** — قراءة كاملة (290 سطر)
+- ✅ منع التكرار: @@unique([year, month]) + فحص مسبق
+- ✅ حساب المخصصات والبدلات والإضافي لكل من الموظف الشهري والساعي
+- ✅ حساب gosiDeduction لكل بند
+- ⚠️ gosiDeduction يُحسب كرقم واحد (لا فصل بين حصة الموظف وصاحب العمل)
+- ✅ إنشاء مسير DRAFT مع جميع البنود — لا قيد محاسبي
+
+**7. src/app/api/payroll-runs/[id]/route.ts** — قراءة كاملة (428 سطر)
+- ✅ State machine صارم: DRAFT → REVIEW → APPROVED → PAID (مع PARTIALLY_PAID)
+- ✅ APPROVED: قيد استحقاق (Dr PAYROLL_EXPENSE / Cr SALARIES_PAYABLE / Cr EMPLOYEE_ADVANCE)
+- ✅ PAID: قيد دفع (Dr SALARIES_PAYABLE / Cr Bank)
+- ✅ استخدام getAccountCodeByRole (إصلاح P4-CRIT-008 — لا أكواد hardcoded)
+- ✅ إضافة بند استرداد السلف (إصلاح P4-CRIT-009)
+- ✅ DELETE: يسمح فقط بحذف DRAFT
+- 🚨 **خطأ محاسبي حرج في GOSI**: قيد غير متوازن عندما totalGosi > 0
+  - grossExpense = totalNet + totalDeductions + totalGosi (يعامل GOSI كجزء من الإجمالي)
+  - Dr PAYROLL_EXPENSE: grossExpense (= totalNet + totalDeductions + totalGosi)
+  - Dr GOSI_EXPENSE: totalGosi (نفس الرقم — خطأ منطقي)
+  - Cr SALARIES_PAYABLE: totalNet
+  - Cr EMPLOYEE_ADVANCE: totalDeductions
+  - Cr GOSI_PAYABLE: totalGosi (لا يشمل حصة صاحب العمل)
+  - مجموع مدين = totalNet + totalDeductions + 2×totalGosi
+  - مجموع دائن = totalNet + totalDeductions + totalGosi
+  - الفرق = totalGosi (R2 سيرفض القيد)
+  - 🚨 الخطأ كامن لأن Employee.hasGosi @default(false) — لكنه سيتفجر عند تفعيل GOSI
+- ⚠️ APPROVED → DRAFT موجود في VALID_TRANSITIONS لكن بدون handler (سيتجاوز إلى catch-all 400)
+- ⚠️ PAID: يستخدم salaryDate (أول الشهر) بدلاً من تاريخ الدفع الفعلي
+- ⚠️ لا يوجد path لعكس مسير معتمد/مدفوع
+
+**8. src/app/api/salary-payments/route.ts** — قراءة كاملة (296 سطر)
+- ✅ Atomic: $transaction يلف SalaryPayment + قيد الدفع + تحديث Salary.status
+- ✅ Idempotency: يرفض إعادة سداد راتب PAID (P4-CRIT-004 fix)
+- ✅ وضعان: دفع مسير كامل (consolidated JE) + دفع موظف واحد
+- ✅ قيد الدفع: Dr SALARIES_PAYABLE / Cr Bank (سليم)
+- ⚠️ دفع موظف واحد لا يحدّث حالة PayrollRun (تبقى APPROVED بدل PARTIALLY_PAID)
+- ⚠️ دفع المسير الكامل يتجاوز state machine في /api/payroll-runs/[id] (يحدّث status مباشرةً)
+
+**9. src/app/api/salary-payments/[id]/route.ts** — قراءة كاملة (137 سطر)
+- ✅ DELETE: يعكس القيد عبر reverseEntry (R12 compliant — P4-CRIT-007 fix)
+- ✅ DELETE: يعيد Salary.status من PAID → APPROVED
+- ✅ DELETE: يعيد حساب حالة PayrollRun (PAID → PARTIALLY_PAID → APPROVED)
+- ⚠️ DELETE: hard-delete للسجل SalaryPayment (يكسر audit trail للـ subledger — يجب soft-delete)
+- ⚠️ لا يوجد PUT لتعديل بيانات الدفع
+
+**10. src/app/api/advances/route.ts** — قراءة كاملة (137 سطر)
+- ✅ POST: Atomic + autoEntryEmployeeAdvance (R1 enforced)
+- ✅ PUT: Atomic + autoEntryAdvanceSettlement (R1 enforced)
+- ✅ يحترم اختيار المستخدم لمصدر السداد وطريقة التحصيل
+- ⚠️ لا يوجد DELETE endpoint (لا يمكن حذف سلفة خاطئة)
+- ⚠️ settlementJournalEntryId لا يُخزّن على السجل (فقط journalEntryId الأصلي)
+- ⚠️ لا يوجد idempotency token (التحقق من over-settlement يحمي لكن عبر 400 لا عبر idempotency)
+
+**11. src/app/api/advances/[id]/route.ts** — قراءة كاملة (91 سطر)
+- ✅ PUT: Atomic + autoEntryAdvanceSettlement (R1 enforced — P4-CRIT-006 fix)
+- ✅ تحقق settledAmount ≤ remaining (P4-MED-015)
+- ⚠️ لا يوجد DELETE endpoint
+- ⚠️ نفس قصور /route.ts حول settlementJournalEntryId
+
+**12. src/app/api/employees/route.ts + [id]/route.ts** — قراءة كاملة (128 + 113 سطر)
+- ✅ ليس له علاقة بالمحاسبة (بيانات الموظف الرئيسية)
+- ✅ DELETE: يمنع حذف موظف له سجلات مالية (FK restrict)
+- ✅ DELETE: soft-delete مع deletedAt + isActive=false + status=TERMINATED
+- ⚠️ رسالة DELETE تقترح "استخدم خيار إنهاء الخدمة" لكن لا يوجد endpoint لـ EOS
+
+**13. prisma/schema.prisma** — فحص نماذج HR
+- Employee: hasGosi @default(false), gosiPercentage @default(0) — يفسر كمون خطأ GOSI
+- PayrollRun: @@unique([year, month]) — منع تكرار المسيرات
+- PayrollRunLine: gosiDeduction كرقم واحد (لا فصل موظف/صاحب عمل)
+- EmployeeAdvance: deletedAt موجود لكن DELETE لا يستخدمه
+- SalaryPayment: لا يوجد deletedAt (لا يمكن soft-delete)
+
+**14. src/lib/accounting/closing-engine.ts** — فحص إقفال نهاية السنة
+- ✅ GOSI_EXPENSE و PAYROLL_EXPENSE في EXPENSE_ROLES (تُقفل في نهاية السنة)
+- ✅ EOS_PROVISION liability لا يُقفل (يُرحّل للسنة التالية) — سليم محاسبياً
+- لكن بما أن autoEntryEndOfService لم تُستدعَ، حساب EOS_PROVISION سيبقى 0 دائماً
+
+Stage Summary:
+
+**النقاط الصحيحة (What's Correct):**
+1. ✅ كل مسارات HR تمر عبر postJournalEntry (R1) — لا توجد db.journalEntry.create مباشرة
+2. ✅ كل القيود تمر عبر assertPeriodOpen تلقائياً (R6) — التقويم الموحّد محترم
+3. ✅ القيود POSTED غير قابلة للتعديل (R12) — DELETE مسموح فقط على DRAFT
+4. ✅ العكس يتم عبر reverseEntry (R12) — يستخدم في salary-payments/[id] DELETE
+5. ✅ State machine صارم في payroll-runs (DRAFT → REVIEW → APPROVED → PAID)
+6. ✅ atomic transactions في كل مكان (R1: لا قيد = لا عملية)
+7. ✅ استخدام role-based account resolution (إصلاح P4-CRIT-008)
+8. ✅ Idempotency في salary-payments (P4-CRIT-004 fix)
+9. ✅ استرداد السلف يُرحّل لـ EMPLOYEE_ADVANCE (إصلاح P4-CRIT-009)
+10. ✅ تسوية السلفة تُرحّل لـ SALARIES_PAYABLE (إصلاح P4-CRIT-010)
+
+**النقاط التي تحتاج إصلاح (What Needs Fixing):**
+
+🚨 **أخطاء حرجة (Critical Bugs):**
+
+1. **خطأ GOSI غير المتوازن في payroll-runs/[id]/route.ts** (سطور 144-191):
+   - عند تفعيل GOSI لأي موظف، القيد سيكون غير متوازن بـ totalGosi
+   - guard R2 سيرفض القيد → الـ transaction تتدحرج → فشل اعتماد المسير
+   - **السبب**: معالجة totalGosi كـ"مصروف صاحب العمل" و"خصم الموظف" في نفس الوقت
+   - **الإصلاح المقترح**: فصل employeeGosi عن employerGosi في النموذج، أو حذف البنود الإضافية (Dr GOSI_EXPENSE / Cr GOSI_PAYABLE) إذا كان totalGosi يمثل فقط حصة الموظف، أو ضبط Cr GOSI_PAYABLE = 2×totalGosi إذا كان يساوي حصتيهما
+
+2. **autoEntryGOSI و autoEntrySalary في engine.ts غير متوازنتين**:
+   - نفس النوع من الخطأ — تخصيص غير سليم للمدين/الدائن
+   - حالياً كامن (لم تُستدعَ الدالتان من أي API)
+   - **الإصلاح المقترح**: إصلاح التوازن أو حذف الدوال الميتة (dead code)
+
+3. **autoEntryEndOfService معرّفة لكن لم تُستدعَ**:
+   - مخصص نهاية الخدمة (EOS_PROVISION 3710) لا يُرحّل أبداً
+   - لا يوجد استحقاق شهري، لا ترحيل عند إنهاء الخدمة
+   - مخالف لمعايير SOCPA/IFRS التي تتطلب استحقاق EOS شهرياً
+   - **الإصلاح المقترح**: إنشاء endpoint للاستحقاق الشهري + endpoint للترحيل عند إنهاء الخدمة
+
+⚠️ **مخاطر متوسطة (Medium Risks):**
+
+4. **مسار salary البسيط (salaries/route.ts) لا يتعامل مع GOSI**:
+   - يرحّل NET كمصروف بدلاً من GROSS
+   - لا يخصم GOSI، لا يرحّل مصروف صاحب العمل
+   - **الإصلاح**: إضافة بنود GOSI وخصم السلف لـ createSalaryAccrualJournalEntry
+
+5. **لا يوجد فصل بين حصة الموظف وحصة صاحب العمل في GOSI**:
+   - نموذج البيانات يستخدم gosiDeduction كرقم واحد
+   - مخالف لقانون التأمينات السعودي (10% موظف + 12% صاحب عمل للسعودي، 2% صاحب عمل فقط لغير السعودي)
+   - **الإصلاح**: إضافة حقلين منفصلين في PayrollRunLine و Employee
+
+6. **لا يوجد endpoint لعكس مسير معتمد/مدفوع**:
+   - يجب عكس القيود يدوياً عبر /api/journal-entries/[id]/reverse
+   - **الإصلاح**: إضافة POST /api/payroll-runs/[id]/reverse يعكس القيود ويحدّث الحالة
+
+7. **hard-delete لـ SalaryPayment في salary-payments/[id]**:
+   - يكسر audit trail للـ subledger
+   - **الإصلاح**: soft-delete مع deletedAt + إضافة حقل deletedAt للنموذج
+
+8. **لا يوجد settlementJournalEntryId على EmployeeAdvance**:
+   - يصعب تتبع قيود التسوية
+   - **الإصلاح**: إضافة حقل + تخزين ID القيد عند كل تسوية
+
+9. **PAID JE في payroll-runs يستخدم salaryDate بدلاً من تاريخ الدفع الفعلي**:
+   - قد يرحّل الدفع في فترة خاطئة
+   - **الإصلاح**: استخدام new Date() أو body.paymentDate
+
+10. **APPROVED → DRAFT في state machine بدون handler**:
+    - state machine يسمح به لكن implementation يرفضه (catch-all 400)
+    - **الإصلاح**: إما إزالة من VALID_TRANSITIONS أو تنفيذ handler يعكس القيد
+
+11. **دفع موظف واحد لا يحدّث حالة PayrollRun**:
+    - يبقى APPROVED حتى بعد دفع جميع الموظفين فرادى
+    - **الإصلاح**: في salary-payments POST single-employee branch، أضف منطق تحديث حالة المسير
+
+⚠️ **مخاطر منخفضة (Low Risks):**
+
+12. Hardcoded fallbacks في engine.ts (|| '1230', || '3310', إلخ) — إذا فشل role mapping، يستخدم كود ثابت بصمت. يفضل throw بدلاً من fallback صامت.
+
+13. لا يوجد PUT في salary-payments/[id] لتعديل بيانات الدفع (reference, notes).
+
+14. رسالة DELETE employee تقترح "إنهاء الخدمة" لكن لا يوجد endpoint — تجربة مستخدم مضللة.
+
+**التوصيات ذات الأولوية (Recommendations by Priority):**
+
+1. **P0 (Critical)**: إصلاح خطأ GOSI غير المتوازن في payroll-runs/[id]/route.ts — سيتفجر عند أول تفعيل لـ GOSI
+2. **P0 (Critical)**: تنفيذ autoEntryEndOfService فعلياً — مخصص EOS مطلوب شرعاً ومحاسبياً
+3. **P1 (High)**: فصل حصة الموظف/صاحب العمل في نموذج GOSI
+4. **P1 (High)**: إضافة بنود GOSI وخصم السلف في salaries/route.ts (المسار البسيط)
+5. **P1 (High)**: إضافة endpoint عكس المسير (POST /api/payroll-runs/[id]/reverse)
+6. **P2 (Medium)**: soft-delete لـ SalaryPayment + إضافة deletedAt للنموذج
+7. **P2 (Medium)**: تخزين settlementJournalEntryId على EmployeeAdvance
+8. **P2 (Medium)**: إصلاح PAID JE لتاريخ الدفع الفعلي
+9. **P3 (Low)**: تنظيف dead code (autoEntryGOSI, autoEntrySalary غير المستخدمتين أو إصلاحهما)
+10. **P3 (Low)**: إزالة hardcoded fallbacks في engine.ts — استخدم requireAccountByRole
+
+
+
+---
+Task ID: BA-06-5
+Agent: Expenses Cycle Review Agent
+Task: مراجعة دورة المصروفات (Expenses Cycle Review)
+
+Work Log:
+- قرأت /home/z/my-project/worklog.md (7117 سطر) لأفهم سياق BA-02 → BA-06-2 (المحرك الموحّد queries.ts، الحارس guard.ts R1-R12، التقويم الموحّد accounting-calendar.ts، assertJournalEntryMutable/Reversible، POSTED=Immutable، reverseEntry كمسار وحيد للعكس). أكدت أن BA-06-1 (المشتريات) و BA-06-2 (المشاريع) مكتملة وأن نمط العكس الموحّد (reverseEntry بدلاً من cancel-original) هو القاعدة المعتمدة.
+- راجعت 7 ملفات سطراً سطراً:
+
+  1. **src/app/api/expenses/route.ts** (374 LOC):
+     - ✅ POST ينشئ expense + JE داخل `db.$transaction`. مسارا JE: (a) `buildExpenseJournalEntryWithExplicitAccounts` (عند تمرير accountId + payingAccountId) — يستدعي `postJournalEntry` مباشرة من guard.ts؛ (b) `createExpenseJournalEntry` من auto-journal.ts (fallback) — أيضاً يستدعي `postJournalEntry`. R1 مُحترَم.
+     - ✅ GET يدعم فلترة (projectId/category/categories/expenseType/equipmentId/costCenterId/date range) + pagination + search.
+     - ✅ PUT: عند تغيير amount/totalAmount/vatAmount لـ expense مرحّل، يعكس عبر `reverseEntry(existing.journalEntryId!, tx)` + ينشئ JE جديداً (R12 مُحترَم — لا تعديل مباشر للقيد المرحّل).
+     - ⚠️ CRITICAL/HIGH: PUT يعكس+يعيد إنشاء JE **فقط** عند تغيير المبالغ. تغيير date/category/description/projectId/costCenterId/accountId بمفرده **لا يعكس القيد** → سجل المصروف يتباعد عن قيده (انظر HIGH #2).
+     - 🔴 HIGH #3: داخل `$transaction` في PUT (سطر 320-327)، تُحدَّث amount/vatAmount/totalAmount فقط — **لا تُحدَّث costCenterId أو date** قبل استدعاء `buildExpenseJournalEntryWithExplicitAccounts`. الدالة تقرأ expense.costCenterId و expense.date القديمة. تحديث costCenterId/date يتم **خارج** الـ transaction (سطر 352-366) → القيد الجديد يُنشأ بقيم قديمة، ثم يُحدَّث المصروف بقيم جديدة → تباين دائم بين المصروف وقيده.
+     - 🔴 MEDIUM #1: GET (سطر 45-67) و [id] GET **لا يفلتران `deletedAt: null`**. المصروفات المُحذوفة ناعماً (soft-deleted) تظهر في القائمة ويمكن جلبها بالـ ID.
+     - ⚠️ MEDIUM #4: `buildExpenseJournalEntryWithExplicitAccounts` يستخدم `getDefaultAccountByRole(AccountRole.VAT_INPUT, tx)` (يُرجِع null إذا لم يوجد) بدلاً من `requireAccountByRole` (يرمي بخطأ واضح). إذا vatAmount > 0 ولا يوجد حساب بدور VAT_INPUT، يُسقَط بند الضريبة صامتاً → القيد غير متوازن → guard يرمي `NOT_BALANCED` برسالة غامضة. نفس النمط في `createExpenseJournalEntry` (auto-journal.ts:341).
+
+  2. **src/app/api/expenses/[id]/route.ts** (79 LOC):
+     - ✅ GET يجلب مصروفاً واحداً (لكن لا يفلتر `deletedAt: null` — انظر MEDIUM #1).
+     - ✅ DELETE: يعكس JE عبر `reverseEntry(existing.journalEntryId, tx)` ثم soft-delete (`deletedAt: new Date()`) داخل `$transaction` واحد. R12 مُحترَم 100%. لا double-cancellation.
+
+  3. **src/app/api/petty-cash/route.ts** (86 LOC):
+     - ✅ POST ينشئ pettyCash + `autoEntryPettyCash` داخل `$transaction`. R1 مُحترَم — فشل JE → rollback كامل.
+     - ✅ يدعم `transactionType: 'FUND' | 'DISBURSE'` (P4-CRIT-011 fix). FUND = Dr PETTY_CASH / Cr BANK؛ DISBURSE = Dr EXPENSE / Cr PETTY_CASH.
+     - ✅ GET يفلتر `deletedAt: null` صحيحاً.
+     - ⚠️ ملاحظة: POST لا يتحقق من أن `transactionType` مطابق لحالة الصندوق (مثلاً رفض DISBURSE إذا كان رصيد الصندوق سالباً) — لكن هذا منطق أعمال وليس قاعدة محاسبية.
+
+  4. **src/app/api/petty-cash/[id]/route.ts** (103 LOC):
+     - ✅ GET: جلب سجل فردي.
+     - ✅ PUT: يرفض تعديل أي سلفة مرحّلة (`if (existing.journalEntryId) return 400`) — صارم لكن متّسق مع POSTED=Immutable. المستخدم يجب أن يحذف + ينشئ من جديد.
+     - 🔴 CRITICAL #1: DELETE (سطر 72-101) **ليس داخل `$transaction`**. يستدعي `reverseEntry(existing.journalEntryId, db)` ثم `db.pettyCash.delete({ where: { id } })` كعمليتين منفصلتين على `db` (وليس `tx`). إذا نجح العكس وفشل الحذف → قيد عكسي POSTED موجود لكن سجل السلفة باقٍ مع journalEntryId الأصلي → حالة غير متّسقة. علاوة على ذلك، الحذف **hard-delete** وليس soft-delete، رغم أن الـ model لديه حقل `deletedAt` (schema سطر 1805).
+     - 🔴 CRITICAL #2: DELETE يستخدم `db.pettyCash.delete` (hard-delete) بدلاً من `tx.pettyCash.update({ data: { deletedAt: new Date() } })`. هذا يكسر مبدأ R12 (حفظ سجل التدقيق) ويخالف نمط expenses/[id] DELETE الذي يستخدم soft-delete. بعد الحذف الصلب، السجل يختفي لكن قيده الأصلي + قيد العكس كلاهما POSTED في GL بدون رابط يشير لأي سلفة — audit trail مكسور.
+
+  5. **src/components/modules/expenses.tsx** (1591 LOC):
+     - ✅ تعريف واضح لحدود المسؤولية (سطر 1-33): هذه الشاشة فقط للمصروفات العامة/الإدارية. الوقود/الصيانة/الرواتب/المقاولين/العمالة لها شاشاتها الخاصة.
+     - ✅ 60+ فئة مصروف جديدة منظمة في 10 مجموعات (Utilities, Admin Vehicles, Buildings, Government, Insurance, Subscriptions, Financial, General HR, Travel, Misc). كل القيم (SEWAGE, TELECOM, GOV_FEES, BANK_FEES, TRAVEL_TICKETS, ...) موجودة في `enum ExpenseCategory` (schema سطر 109-210). ✅ متوافق.
+     - ✅ تستخدم `AccountSelector` مع `filterByProperty={{ usableInExpenses: true }}` لاختيار حساب المصروف — property-based، يعتمد على خصائص الحساب (allowsProject, requiresEmployee, allowsVat, ...). النموذج يتكيّف ديناميكياً حسب الحساب المختار.
+     - ✅ VAT toggle يحترم `account.allowsVat` (يُعطَّل إذا false). معاينة JE حية (JePreview component).
+     - ✅ تمرر `accountId` + `payingAccountId` صراحةً إلى API → يفعّل مسار `buildExpenseJournalEntryWithExplicitAccounts` (لا يعتمد على category→role map).
+     - ⚠️ LOW #1: جدول المصروفات (سطر 1543-1547) لا يعرض أزرار تعديل أو حذف — فقط `PrintButton`. المسارات PUT و DELETE في API موجودة لكن غير مكشوفة في UI. المستخدم لا يستطيع تصحيح أو حذف مصروف من هذه الشاشة. (ربما مقصود لمنع العبث بقيد مرحّل، لكن يحدّ من القدرة على تصحيح الأخطاء.)
+     - ⚠️ LOW #2: `payFrom` يُضبط إلى 'PETTY_CASH' إذا كان payingAccount بدور CASH (سطر 995) — لكن `createExpenseJournalEntry` (fallback) يعامل 'PETTY_CASH' كـ CASH role (يُرجِع 1110 Treasury بدلاً من 1130 Petty Cash). نفس نمط bug الـ P4-CRIT-011. **خامل** لأن UI دائماً يمرر explicit accounts فلا يصل للمسار fallback. لكن لو استُدعيت API بدون explicit accounts ومع payFrom='PETTY_CASH' لانطلق الـ bug.
+
+  6. **src/components/modules/petty-cash.tsx** (432 LOC):
+     - 🔴 CRITICAL #3: الفئات (categoryOptions سطر 47-53) تستخدم **قيم عربية نصية** ('مصروفات نثرية', 'صيانة', 'نقل', 'قرطاسية', 'ضيافة', 'أخرى')، لكن `autoEntryPettyCash` في engine.ts (سطر 880-886) يتوقع **مفاتيح إنجليزية** ('OFFICE', 'TRANSPORT', 'HOSPITALITY', 'MAINTENANCE', 'OTHER'). نتيجة: `categoryRoleMap[data.category]` **لا يطابق أبداً** → كل قيود النثرية تُنشأ بدور `AccountRole.ADMIN_EXPENSE` (الافتراضي) بغض النظر عن الفئة المختارة. خريطة category→role ميتة عملياً للـ UI.
+     - 🔴 HIGH #1: UI لا يكشف حقل `transactionType` (FUND vs DISBURSE). كل السلف من الـ UI تُنشأ كـ DISBURSE (الافتراضي في API سطر 34). لا يمكن تغذية الصندوق من البنك عبر الـ UI → الصندوق يصبح سالباً عند أول سلف. المستخدم يجب أن يستدعي API مباشرةً لإنشاء FUND.
+     - ⚠️ MEDIUM #3: بطاقة "رصيد الصندوق" (سطر 250) تجمع كل المبالغ بنفس الإشارة (`reduce((s, e) => s + Number(e.amount || 0), 0)`). FUND (زيادة الصندوق) و DISBURSE (نقصان الصندوق) كلاهما يُجمَع موجباً → الرقم المعروض لا يساوي الرصيد الفعلي. الصحيح: `s + (e.transactionType === 'FUND' ? Number(e.amount) : -Number(e.amount))`. لكن `transactionType` ليست في واجهة `PettyCashEntry` أصلاً.
+     - ✅ PUT معطَّل كلياً للسلف المرحّلة (`isPosted` يعطّل كل الحقول) — متّسق مع API.
+
+  7. **src/lib/auto-journal.ts** (440 LOC) — راجعت `createExpenseJournalEntry` (سطر 329-378):
+     - ✅ يستخدم `postJournalEntry` + `getNextEntryNo` من guard.ts.
+     - ✅ يستخدم `getDefaultAccountByRole` (PROJECT_COST أو ADMIN_EXPENSE حسب projectId، VAT_INPUT، BANK أو CASH حسب payFrom). لا أكواد hardcoded.
+     - ✅ costCenterId يُمرر إلى كل البنود.
+     - ⚠️ LOW #3: `expense.payFrom === 'BANK' ? BANK : CASH` — لا يفرّق 'PETTY_CASH' عن 'TREASURY'. كلاهما يُعيد CASH role → 1110 (Treasury) وليس 1130 (Petty Cash). خامل لأن UI يستخدم explicit accounts.
+     - ⚠️ LOW #4: لا يستخدم `requireAccountByRole` لـ VAT_INPUT — يستخدم `getDefaultAccountByRole` (يُرجِع null) ثم `if (vatAmount > 0 && inputVatAccount)` (يسقط البند صامتاً). لو ضريبة > 0 ولا حساب VAT_INPUT → قيد غير متوازن → guard يرفض برسالة غامضة.
+
+  8. **src/lib/accounting/engine.ts** (1568 LOC) — راجعت `autoEntryExpense` (سطر 450-506) و `autoEntryPettyCash` (سطر 844-907):
+     - ✅ كلاهما يستخدم `createJournalEntry` (proxy إلى `postJournalEntry` في guard.ts). R1-R12 مُحترَمة.
+     - ✅ `autoEntryPettyCash` يستخدم `AccountRole.PETTY_CASH` صراحةً (سطر 893) — لا يقع في bug الـ CASH role. (P4-CRIT-011 مُصلح هنا.)
+     - ⚠️ LOW #5: `autoEntryExpense` (سطر 450-506) **ميت** — 0 مستدعين (grep عبر src/). المسار الفعلي يستخدم `createExpenseJournalEntry` (auto-journal.ts) و `buildExpenseJournalEntryWithExplicitAccounts` (route.ts). الدالة الميتة لا تزال تستخدم `getAccountCodeByRole` مع fallback لأكواد hardcoded ('8630', '3120') — نمط هش. التوصية: حذف الدالة أو تعليمها `@deprecated`.
+     - ✅ `autoEntryPettyCash` مُستخدَم من petty-cash/route.ts. خريطة الفئات (سطر 880-886) صحيحة لكنها لا تتطابق مع قيم UI العربية (انظر CRITICAL #3).
+     - ⚠️ LOW #6: `autoEntryPettyCash` DISBURSE لا يمرر costCenterId إلى بند الصندوق الدائن (سطر 902 — لا costCenterId). البند المدين (مصروف) يمرره. قد يكون مقصوداً (النقدية لا تنتمي لمركز تكلفة)، لكن يجب توثيقه.
+
+  9. **src/lib/accounting/guard.ts** (653 LOC) — راجعت كل القواعد:
+     - ✅ R1-R12 مُطبَّقة بالكامل في `assertJournalEntryValid` + `postJournalEntry` + `reverseJournalEntry`.
+     - ✅ `assertPeriodOpen` (R6) يُستدعى من guard.ts (سطر 249) — التقويم الموحّد مُحترَم.
+     - ✅ `reverseJournalEntry` (سطر 327-400) تُنشئ قيد عكسي منفصل بتبديل مدين/دائن، يبقي الأصل POSTED، يربطه عبر `isReversal` + `reversedEntryId`. لا double-cancellation.
+     - ✅ `postJournalEntry` دائماً `status: 'POSTED'` (R1). `isSystem` يُضبط حسب sourceType.
+     - ⚠️ LOW #7 (موجود مسبقاً، مذكور في worklog السابق سطر 3165/3339/3542): `JournalEntryInput.descriptionAr` (سطر 79) يُملأ من كل دوال autoEntry* (engine.ts:501, 869, 899) لكن `postJournalEntry` (سطر 291-309) لا يكتبه إلى DB. الـ schema (سطر 1961) لا يحوي عمود `descriptionAr`. الوصف العربي يُفقد صامتاً. (نصف منتهٍ من مراحل سابقة.)
+     - ⚠️ LOW #8 (موجود مسبقاً): `getNextEntryNo` (سطر 522-537) يفحص بادئة `JE-` فقط (`startsWith: 'JE-'`) ويفحص regex `^JE-(\d+)$`. القيود ذات البادئات المختلفة (JE-EXP-, JE-PTC-, JE-SI-, JE-VAT-, IFRS15-, JE-DEP-AST-) **لا تُحسَب** → قد يُولِّد رقم مكرر لـ JE-NNNNNN. + O(n) لكل قيد (findMany بدون limit ثم loop JS).
+
+  10. **src/lib/account-roles.ts** (768 LOC) — راجعت `getDefaultAccountByRole`، `requireAccountByRole`، `getAccountCodeByRole`، `resolvePaymentAccountCode`:
+      - ✅ `requireAccountByRole` (سطر 645) يرمي بخطأ عربي واضح إذا لم يوجد حساب للدور — أفضل من `getDefaultAccountByRole` (يُرجِع null صامتاً).
+      - 🔴 LOW #9: `resolvePaymentAccountCode` (سطر 697-715) يربط `'PETTY_CASH'` → `'CASH'` role (سطر 704) — ليس `'PETTY_CASH'` role. النتيجة: يُرجِع أول حساب CASH بترتيب code:asc = 1110 (Treasury)، ليس 1130 (Petty Cash). **خامل** — لا مستدعٍ يمرر 'PETTY_CASH' حالياً (كل المستدعين يمررون 'TREASURY' أو 'BANK'). لكن لو استُخدِمت لـ PETTY_CASH لانطلق الـ bug.
+      - ✅ Fallback لأكواد hardcoded (سطر 712-714) موجود فقط كحل أخير — مقبول.
+
+  11. **prisma/schema.prisma** — راجعت الـ models:
+      - ✅ `Expense` (سطر 1428): journalEntryId?, payFrom String default "TREASURY", deletedAt?, category ExpenseCategory enum. ✅
+      - ✅ `PettyCash` (سطر 1793): journalEntryId?, transactionType default "DISBURSE", deletedAt?. ✅ — لكن DELETE route لا يستخدم deletedAt (hard-delete).
+      - ✅ `JournalEntry` (سطر 1957): entryNo @unique, status, isReversal, reversedEntryId, isSystem, deletedAt. ✅ لا descriptionAr.
+      - ✅ `enum ExpenseCategory` (سطر 109-210): 60+ قيمة تشمل كل الفئات الجديدة في UI. ✅ متوافق.
+      - ✅ `JournalLine` (سطر 1983): costCenterId?, debit/credit Decimal. ✅
+
+  12. **grep عبر src/ للتأكد من عدم وجود journalEntry.create مباشر**: 
+      - `autoEntryExpense` (engine.ts) ميت (0 مستدعين).
+      - كل إنشاء قيد في دورة المصروفات يمر عبر `postJournalEntry` (مباشرة في route.ts أو عبر `createExpenseJournalEntry` في auto-journal.ts أو عبر `createJournalEntry` proxy في `autoEntryPettyCash`). ✅ لا bypass.
+      - `reverseEntry` (engine.ts:269) = proxy إلى `guardedReverse` (guard.ts). كل عمليات الحذف/العكس تستخدمه. ✅ لا cancel-original.
+
+Stage Summary:
+
+### ✅ ما هو صحيح (نقاط القوة):
+1. **كل إنشاء قيد في دورة المصروفات يمر عبر `postJournalEntry` من guard.ts** — مساران: (a) `buildExpenseJournalEntryWithExplicitAccounts` (route.ts:171) يستدعيها مباشرة؛ (b) `createExpenseJournalEntry` (auto-journal.ts:364) يستدعيها مباشرة؛ (c) `autoEntryPettyCash` (engine.ts:895) يستدعيها عبر `createJournalEntry` proxy. R1-R12 مُطبَّقة بالكامل.
+2. **التقويم الموحّد مُحترَم (R6)** — `assertJournalEntryValid` (guard.ts:249) يستدعي `assertPeriodOpen` من accounting-calendar.ts. لا route يتجاوزه.
+3. **القيود المرحّلة غير قابلة للتعديل (POSTED = Immutable)** — `postJournalEntry` دائماً `status: 'POSTED'`. عكس التصحيح عبر `reverseEntry` + إنشاء جديد، ليس بتعديل الأصلي.
+4. **العكس عبر `reverseEntry` فقط (R12)** — expenses/[id] DELETE و expenses PUT و petty-cash/[id] DELETE كلها تستخدم `reverseEntry` (proxy إلى `reverseJournalEntry`). الأصل يبقى POSTED، العكس منفصل بـ `isReversal=true` و `reversedEntryId`. لا double-cancellation.
+5. **VAT يُعالَج بشكل صحيح (ضريبة مدخلات على المصروفات)** — كلا المسارين يخصمان `VAT_INPUT` role account لـ vatAmount. UI يحترم `account.allowsVat` (يعطّل الضريبة إذا false) ويعرض معاينة JE حية. VAT rate = 15% افتراضياً، 0 إذا أُ off.
+6. **expenses/[id] DELETE يستخدم soft-delete + $transaction** — `reverseEntry` + `tx.expense.update({ data: { deletedAt } })` atomic. R12 مُحترَم. النمط الصحيح.
+7. **60+ فئة مصروف جديدة مُعرَّفة في schema و UI** — `enum ExpenseCategory` (schema:109-210) و `CATEGORY_GROUPS` (expenses.tsx:114-247) متوافقتان تماماً. التوسعة المؤجَّلة موجودة بنيوياً.
+8. **اختيار الحساب property-based في UI** — `AccountSelector` مع `filterByProperty={{ usableInExpenses: true }}`. النموذج يتكيّف ديناميكياً (يسمح/يفرض project/employee/equipment، يطفئ VAT) حسب خصائص الحساب. تصميم متقدم.
+9. **costCenterId يُمرر في كل بنود القيد** — `createExpenseJournalEntry` و `buildExpenseJournalEntryWithExplicitAccounts` كلاهما يمرر `expense.costCenterId` إلى كل البنود (مدين/دائن/VAT).
+10. **petty-cash يدعم FUND vs DISBURSE** (P4-CRIT-011 fix) — `autoEntryPettyCash` يفرّق بشكل صحيح: FUND = Dr PETTY_CASH / Cr BANK؛ DISBURSE = Dr EXPENSE / Cr PETTY_CASH. يستخدم `AccountRole.PETTY_CASH` (ليس CASH) → يُرجِع 1130 صحيحاً.
+
+### 🔴 ما يحتاج إصلاحاً:
+
+#### CRITICAL #1 — petty-cash/[id]/route.ts DELETE ليس atomic + hard-delete
+**المشكلة:** السطور 87-96:
+```ts
+if (existing.journalEntryId) {
+  await reverseEntry(existing.journalEntryId, db)  // ← db، ليس tx!
+}
+await db.pettyCash.delete({ where: { id } })  // ← hard-delete على db!
+```
+مشكلتان:
+1. **عدم atomicity**: العمليتان على `db` (وليس `tx`)، بدون `$transaction`. إذا نجح العكس وفشل الحذف → قيد عكسي POSTED موجود + سجل السلفة باقٍ مع journalEntryId الأصلي → حالة غير متّسقة. إذا فشل العكس → السلفة لا تُحذف (جيد) لكن لا رسالة واضحة للمستخدم.
+2. **hard-delete بدلاً من soft-delete**: `PettyCash` model لديه `deletedAt` (schema:1805) لكن الـ route لا يستخدمه. بعد الحذف الصلب، السجل يختفي لكن قيده الأصلي + قيد العكس كلاهما POSTED في GL بدون رابط يشير لأي سلفة → audit trail مكسور. يخالف R12 ومبدأ حفظ السجل. يخالف نمط expenses/[id] DELETE (الذي يستخدم soft-delete).
+
+**الإصلاح المقترح:**
+```ts
+await db.$transaction(async (tx: PrismaTransaction) => {
+  if (existing.journalEntryId) {
+    await reverseEntry(existing.journalEntryId, tx)
+  }
+  await tx.pettyCash.update({ where: { id }, data: { deletedAt: new Date() } })
+})
+```
+
+#### CRITICAL #2 — petty-cash UI يستخدم فئات عربية لكن engine يتوقع مفاتيح إنجليزية
+**المشكلة:** `categoryOptions` في petty-cash.tsx (سطر 47-53) يستخدم قيماً عربية نصية:
+```ts
+{ value: 'مصروفات نثرية', ... }, { value: 'صيانة', ... },
+{ value: 'نقل', ... }, { value: 'قرطاسية', ... },
+{ value: 'ضيافة', ... }, { value: 'أخرى', ... }
+```
+لكن `autoEntryPettyCash` في engine.ts (سطر 880-886) يتوقع مفاتيح إنجليزية:
+```ts
+const categoryRoleMap = {
+  'OFFICE': AccountRole.ADMIN_EXPENSE,
+  'TRANSPORT': AccountRole.TRANSPORT_EXPENSE,
+  'HOSPITALITY': AccountRole.ADMIN_EXPENSE,
+  'MAINTENANCE': AccountRole.MAINTENANCE_EXPENSE,
+  'OTHER': AccountRole.ADMIN_EXPENSE,
+}
+```
+نتيجة: `categoryRoleMap[data.category]` **لا يطابق أبداً** (لأن 'صيانة' ≠ 'MAINTENANCE') → `expenseRole = categoryRoleMap[data.category] || AccountRole.ADMIN_EXPENSE` يسقط دائماً للـ fallback → **كل قيود النثرية تُرحَّل بدور ADMIN_EXPENSE** بغض النظر عن الفئة المختارة. خريطة category→role ميتة عملياً. مصروف صيانة من النثرية يُرحَّل لـ ADMIN_EXPENSE بدلاً من MAINTENANCE_EXPENSE. مصروف نقل يُرحَّل لـ ADMIN_EXPENSE بدلاً من TRANSPORT_EXPENSE.
+
+**الإصلاح المقترح (خياران):**
+- (a) تغيير قيم `categoryOptions` في UI إلى مفاتيح إنجليزية (`{ value: 'MAINTENANCE', label: { ar: 'صيانة', en: 'Maintenance' } }`...) مع الإبقاء على الـ labels العربية للعرض.
+- (b) توسيع `categoryRoleMap` في engine.ts ليشمل القيم العربية: `'صيانة': AccountRole.MAINTENANCE_EXPENSE`, `'نقل': AccountRole.TRANSPORT_EXPENSE`, ...
+
+الأفضل (a) لأنها تتماشى مع نمط expenses.tsx (الذي يستخدم مفاتيح إنجليزية كقيم + labels عربية للعرض).
+
+#### HIGH #1 — petty-cash UI لا يكشف transactionType (FUND vs DISBURSE)
+**المشكلة:** UI لا يمرر `transactionType` إلى API. API يفترض DISBURSE (سطر 34: `body.transactionType === 'FUND' ? 'FUND' : 'DISBURSE'`). لا يمكن للمستخدم تغذية الصندوق من البنك عبر UI. أول DISBURSE يجعل رصيد PETTY_CASH (1130) سالباً.
+
+**الإصلاح المقترح:** إضافة selector لـ transactionType في `PettyCashFormDialog`:
+- DISBURSE (سلف/صرف من النثرية): Dr EXPENSE / Cr PETTY_CASH
+- FUND (تغذية الصندوق من البنك): Dr PETTY_CASH / Cr BANK
+عند اختيار FUND، عرض حقل `bankAccountCode` (أو `bankAccountId`) لاختيار البنك.
+
+#### HIGH #2 — expenses/route.ts PUT لا يعكس JE عند تغيير حقول غير المبالغ
+**المشكلة:** الشرط (سطر 302):
+```ts
+if (existing.journalEntryId && (updateData.amount !== undefined || updateData.totalAmount !== undefined || updateData.vatAmount !== undefined)) {
+  // reverse + repost
+}
+```
+فقط تغيير المبالغ يُفعّل العكس+الإعادة. تغيير **date** أو **category** أو **description** أو **projectId** أو **costCenterId** أو **accountId** بمفرده **لا يعكس القيد** → سجل المصروف يُحدَّث لكن قيده يبقى بالقيم القديمة.
+
+**الأثر:**
+- تغيير `date` ينقل المصروف لفترة مختلفة في جدول المصروفات، لكن القيد يبقى في الفترة القديمة → ميزان المراجعة / GL يُظهر المصروف في فترة خاطئة. قد يخالف R6 إذا كانت الفترة الجديدة مغلقة (لكن القيد لا يُعاد إنشاؤه فلا يُفحص).
+- تغيير `category` (في المسار fallback) لا يُحدِّث حساب المصروف في القيد.
+- تغيير `costCenterId` لا يُحدِّث مركز التكلفة في بنود القيد → تقارير ربحية المشروع خاطئة.
+- تغيير `accountId` (للمسار explicit) لا يُحدِّث حساب المصروف في القيد.
+
+**التخفيف:** UI لا يعرض نموذج تعديل (فقط PrintButton)، فالـ bug خامل من الواجهة. لكن الـ API قابل للاستدعاء المباشر.
+
+**الإصلاح المقترح:** توسيع الشرط ليشمل كل الحقول المؤثرة على القيد:
+```ts
+const jeAffectingFields = ['amount', 'totalAmount', 'vatAmount', 'date', 'category', 'accountId', 'payingAccountId', 'costCenterId', 'projectId']
+const affectsJE = jeAffectingFields.some(f => updateData[f] !== undefined)
+if (existing.journalEntryId && affectsJE) { /* reverse + repost */ }
+```
+أو (أبسط): منع تعديل أي حقل يؤثر على القيد بعد الترحيل (إرجاع 423 LOCKED) وإجبار المستخدم على DELETE + إنشاء جديد.
+
+#### HIGH #3 — expenses/route.ts PUT: القيد الجديد يُنشأ بقيم costCenterId و date القديمة
+**المشكلة:** داخل `$transaction` (سطر 320-327)، تُحدَّث amount/vatAmount/totalAmount فقط:
+```ts
+await tx.expense.update({
+  where: { id: existing.id },
+  data: { amount: newAmount, vatAmount: newVatAmount, totalAmount: newTotalAmount },
+})
+```
+ثم `buildExpenseJournalEntryWithExplicitAccounts(existing.id, ...)` (سطر 331) تقرأ المصروف — لكن `costCenterId` و `date` لا يزالان **بالقيم القديمة** (التحديث الخارجي في سطر 352-366 لم يُنفَّذ بعد داخل الـ transaction).
+- القيد الجديد يُنشأ بـ `expense.costCenterId` القديم و `expense.date` القديمة.
+- بعد commit الـ transaction، `db.expense.update` الخارجي يحدِّث costCenterId/date على سجل المصروف.
+- النتيجة: المصروف يعرض القيم الجديدة، قيده يحمل القيم القديمة → تباين دائم.
+
+**الإصلاح المقترح:** نقل **كل** تحديثات الحقول إلى داخل `$transaction` **قبل** استدعاء `buildExpenseJournalEntryWithExplicitAccounts` / `createExpenseJournalEntry`:
+```ts
+await db.$transaction(async (tx) => {
+  // 1. عكس القيد القديم
+  if (existing.journalEntryId) await reverseEntry(existing.journalEntryId!, tx)
+  // 2. تحديث كل الحقول على المصروف
+  await tx.expense.update({ where: { id: existing.id }, data: { ...allNewValues } })
+  // 3. إنشاء قيد جديد يقرأ القيم المحدَّثة
+  await buildExpenseJournalEntryWithExplicitAccounts(existing.id, newAccountId, newPayingAccountId, tx)
+})
+```
+وحذف `db.expense.update` الخارجي (سطر 352-366) — مكرر وغير atomic.
+
+#### MEDIUM #1 — expenses GET handlers لا يفلتران soft-deleted
+**المشكلة:** 
+- `expenses/route.ts` GET (سطر 45-67): لا `deletedAt: null` في `where`.
+- `expenses/[id]/route.ts` GET (سطر 13-19): لا `deletedAt: null`.
+Prisma لا تملك middleware soft-delete auto-filtering (db.ts سطر 1-13 — PrismaClient عاري).
+
+**الأثر:** بعد DELETE (soft-delete)، المصروف لا يزال يظهر في القائمة ويمكن جلبه بالـ ID. المستخدم يرى مصروفات "محذوفة" كأنها نشطة.
+
+**الإصلاح المقترح:** إضافة `deletedAt: null` إلى `where` في كلا الـ GET handlers.
+
+#### MEDIUM #2 — petty-cash UI "Cash Balance" مضلِّل
+**المشكلة:** petty-cash.tsx سطر 250:
+```ts
+const totalBalance = filtered.reduce((s, e) => s + Number(e.amount || 0), 0)
+```
+يجمع كل المبالغ بنفس الإشارة. FUND (يزيد الصندوق) و DISBURSE (ينقص الصندوق) كلاهما يُجمع موجباً. الرقم المعروض لا يساوي الرصيد الفعلي. والأسوأ: بما أن UI لا ينشئ إلا DISBURSE، الرقم المعروض = إجمالي المصروفات من الصندوق = **عكس** الرصيد الفعلي (الذي يجب أن يكون سالباً بدون FUND).
+
+**الإصلاح المقترح:** 
+- إضافة `transactionType` إلى واجهة `PettyCashEntry` وجلبها من API.
+- `totalBalance = filtered.reduce((s, e) => s + (e.transactionType === 'FUND' ? Number(e.amount) : -Number(e.amount)), 0)`.
+- أو (أبسط): عرض الرصيد الفعلي لحساب PETTY_CASH (1130) من GL بدلاً من حسابه من سجلات السلف.
+
+#### MEDIUM #3 — expenses/route.ts PUT: تحديث مزدوج للمصروف (داخل وخارج $transaction)
+**المشكلة:** داخل `$transaction` (سطر 320-327) يُحدَّث amount/vatAmount/totalAmount. خارج `$transaction` (سطر 352-366) يُحدَّث **كل** الحقول بما فيها amount/vatAmount (مرة ثانية). الـ update الخارجي يكتب فوق الـ update الداخلي بنفس القيم (أو بقيم مختلفة إذا كانت `updateData.amount` نصاً و `newAmount` رقماً). مضيعة + خطر تباين إذا فشل الـ update الخارجي بعد commit الـ transaction (المصروف محدَّث جزئياً).
+
+**الإصلاح المقترح:** نقل كل التحديثات إلى داخل `$transaction` (انظر HIGH #3). حذف `db.expense.update` الخارجي.
+
+#### LOW #1 — expenses UI لا يعرض أزرار تعديل/حذف
+**المشكلة:** جدول المصروفات (expenses.tsx سطر 1543-1547) يعرض فقط `PrintButton` في عمود الإجراءات. لا زر تعديل، لا زر حذف. المسارات PUT و DELETE في API موجودة لكن غير مكشوفة في UI.
+
+**الأثر:** المستخدم لا يستطيع تصحيح أو حذف مصروف من هذه الشاشة. يجب أن يستدعي API مباشرةً. (قد يكون مقصوداً لمنع العبث بقيد مرحّل — لكن يحدّ من القدرة على تصحيح الأخطاء.)
+
+**الإصلاح المقترح:** إما (a) إضافة زر حذف (يستدعي DELETE /api/expenses/[id] مع تأكيد) وربما زر "عكس وإنشاء جديد" لفتح نموذج التعديل؛ أو (b) توثيق أن التعديل/الحذف يتم عبر API فقط (للمحاسب).
+
+#### LOW #2 — `autoEntryExpense` في engine.ts ميت (dead code)
+**المشكلة:** `autoEntryExpense` (engine.ts:450-506) مُصدَّرة لكن 0 مستدعين (grep أكد). المسار الفعلي يستخدم `createExpenseJournalEntry` (auto-journal.ts) و `buildExpenseJournalEntryWithExplicitAccounts` (route.ts). الدالة الميتة لا تزال تستخدم `getAccountCodeByRole` مع fallback لأكواد hardcoded ('8630', '3120', '1110', '1120') — نمط هش لا يتماشى مع `requireAccountByRole` المعتمد في auto-journal.ts.
+
+**الإصلاح المقترح:** حذف الدالة أو تعليمها `@deprecated` مع توجيه المستخدمين إلى `createExpenseJournalEntry`.
+
+#### LOW #3 — `createExpenseJournalEntry` لا يفرّق 'PETTY_CASH' عن 'TREASURY'
+**المشكلة:** auto-journal.ts سطر 342-344:
+```ts
+const treasuryAccount = expense.payFrom === 'BANK'
+  ? await getDefaultAccountByRole(AccountRole.BANK, tx)
+  : await getDefaultAccountByRole(AccountRole.CASH, tx)
+```
+'TREASURY' و 'PETTY_CASH' كلاهما → CASH role → أول حساب بـ code:asc = 1110 (Treasury)، ليس 1130 (Petty Cash). نفس نمط bug الـ P4-CRIT-011 (الذي صُلِح في `autoEntryPettyCash`). **خامل** لأن UI دائماً يمرر explicit accounts فلا يصل لهذا المسار.
+
+**الإصلاح المقترح:**
+```ts
+const treasuryAccount = expense.payFrom === 'BANK'
+  ? await getDefaultAccountByRole(AccountRole.BANK, tx)
+  : expense.payFrom === 'PETTY_CASH'
+    ? await getDefaultAccountByRole(AccountRole.PETTY_CASH, tx)
+    : await getDefaultAccountByRole(AccountRole.CASH, tx)
+```
+
+#### LOW #4 — VAT_INPUT يستخدم getDefaultAccountByRole بدلاً من requireAccountByRole
+**المشكلة:** في `createExpenseJournalEntry` (auto-journal.ts:341) و `buildExpenseJournalEntryWithExplicitAccounts` (route.ts:140):
+```ts
+const inputVatAccount = await getDefaultAccountByRole(AccountRole.VAT_INPUT, tx)
+// ...
+if (toNumber(expense.vatAmount) > 0 && inputVatAccount) { /* add VAT line */ }
+```
+إذا vatAmount > 0 ولا يوجد حساب VAT_INPUT → البند يُسقَط صامتاً → القيد: Dr amount / Cr (amount + vatAmount) → غير متوازن → guard يرمي `NOT_BALANCED` برسالة غامضة. المستخدم لا يعرف أن السبب هو عدم ربط حساب بدور VAT_INPUT.
+
+**الإصلاح المقترح:** استخدام `requireAccountByRole(AccountRole.VAT_INPUT, 'مصروف', tx)` لترمي خطأ عربي واضحاً يوجّه المستخدم لشاشة ربط الحسابات. (نفس نمط `createPurchaseInvoiceJournalEntry` في auto-journal.ts:174.)
+
+#### LOW #5 — `descriptionAr` يُسقَط صامتاً (موجود مسبقاً، نصف منتهٍ)
+**المشكلة:** `JournalEntryInput.descriptionAr` (guard.ts:79) و `JournalEntryTemplate.descriptionAr` (engine.ts:99) يُملآن من كل دوال autoEntry* (engine.ts:501, 869, 899) لكن `postJournalEntry` (guard.ts:291-309) لا يكتبه. الـ schema (سطر 1961) لا يحوي `descriptionAr`. الوصف العربي يُفقد. (مذكور في worklog السابق سطر 3165/3339/3542 — لا يزال قائماً.)
+
+**الإصلاح المقترح:** إما (a) إضافة عمود `descriptionAr String?` إلى `JournalEntry` model ونقله في `postJournalEntry`؛ أو (b) إزالة الحقل من `JournalEntryInput` و `JournalEntryTemplate` وكل الـ callers (إكمال التنظيف النصفي).
+
+#### LOW #6 — `getNextEntryNo` لا يحسب القيود ذات البادئات المختلفة (موجود مسبقاً)
+**المشكلة:** guard.ts:522-537 يفحص `startsWith: 'JE-'` و regex `^JE-(\d+)$`. القيود `JE-EXP-`, `JE-PTC-`, `JE-SI-`, `JE-VAT-`, `IFRS15-`, `JE-DEP-AST-` **لا تُحسَب** → قد يُولِّد `JE-000123` مكرراً. + O(n) لكل قيد (findMany بدون limit ثم loop JS). (مذكور في worklog السابق سطر 3168/3534.)
+
+**الإصلاح المقترح:** استخدام `aggregate({_max: {entryNo}})` أو sequence table. أو على الأقل filter على regex `^JE-\d+$` في الـ query (بدلاً من `startsWith` ثم regex في JS).
+
+#### LOW #7 — `resolvePaymentAccountCode('PETTY_CASH')` يربط لـ CASH role (خامل)
+**المشكلة:** account-roles.ts:704: `'PETTY_CASH': 'CASH'` — يُرجِع 1110 (Treasury)، ليس 1130 (Petty Cash). **خامل** — لا مستدعٍ يمرر 'PETTY_CASH' حالياً (كلهم 'TREASURY' أو 'BANK').
+
+**الإصلاح المقترح:** تغيير الـ mapping: `'PETTY_CASH': 'PETTY_CASH'` (ليس 'CASH').
+
+#### LOW #8 — 60+ فئة جديدة غير موجودة في categoryRoleMap
+**المشكلة:** `categoryRoleMap` في `autoEntryExpense` (engine.ts:460-479) و `PURCHASE_CATEGORY_ROLE_MAP` في auto-journal.ts:128-147 كلاهما يحتوي 18 مفتاحاً قديماً فقط (FUEL, MAINTENANCE, TRANSPORT, ...). الـ 50+ فئة جديدة (SEWAGE, TELECOM, GOV_FEES, BANK_FEES, TRAVEL_TICKETS, ...) **غير موجودة** → تسقط للـ fallback `AccountRole.ADMIN_EXPENSE`. **خامل** لأن expenses UI تستخدم explicit accounts (لا تعتمد على الـ map) و petty-cash UI تستخدم فئات عربية (لا تطابق المفاتيح الإنجليزية — انظر CRITICAL #2).
+
+**ملاحظة:** المهمة تذكر أن "توسعة 60+ فئة مؤجَّلة". هذا متوقع. لكن الـ maps يجب تحديثها عند إعادة تفعيل المسار role-based. التوصية: توثيق أن المسار role-based معطل حالياً لصالح المسار explicit-account.
+
+#### LOW #9 — costCenterId لا يُمرر إلى بند الصندوق في autoEntryPettyCash
+**المشكلة:** engine.ts:901-902:
+```ts
+{ accountCode: expenseAccountCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
+{ accountCode: pettyCashCode, debit: 0, credit: data.amount },  // ← لا costCenterId
+```
+البند المدين (مصروف) يمرر costCenterId، البند الدائن (PETTY_CASH) لا. قد يكون مقصوداً (النقدية لا تنتمي لمركز تكلفة)، لكن غير موثَّق. (نفس النمط مذكور في BA-06-2 LOW #8.)
+
+**الإصلاح المقترح:** توثيق السياسة صراحةً في comment، أو تمرير costCenterId لكلا البندين إذا كانت السياسة تسمح.
+
+### المخاطر:
+- **CRITICAL #1 (petty-cash DELETE non-atomic + hard-delete)** هو الخطر الأكبر في دورة المصروفات. أي حذف سلفة نثرية قد يُترك قاعدة البيانات في حالة غير متّسقة (عكس بدون حذف، أو حذف بدون رابط للقيد). يخالف R12 (حفظ audit trail) ويمزق النمط الموحّد لـ expenses/[id] DELETE.
+- **CRITICAL #2 (petty-cash category mapping)** خطر متوسط — كل قيود النثرية تُرحَّل لـ ADMIN_EXPENSE بغض النظر عن الفئة. التأثير المالي محدود (المصروف يُرحَّل لحساب مصروف صحيح لكن ليس الأدق)، لكنه يُضعف دقة تقارير ربحية مركز التكلفة. silent bug لا يرمي أي خطأ.
+- **HIGH #1 (petty-cash FUND غير متاح في UI)** خطر تشغيلي — المستخدم لا يستطيع تغذية الصندوق من الواجهة. أول سلف يجعل الرصيد سالباً. يجب على المستخدم إما استدعاء API مباشرةً أو إنشاء قيد يدوي.
+- **HIGH #2 + #3 (expenses PUT stale JE)** خامل من UI (لا نموذج تعديل) لكن قابل للاستدعاء المباشر. إذا استُدعِي، يُنشئ قيداً جديداً بقيم قديمة (costCenterId/date) → تباين دائم بين المصروف وقيده → تقارير GL خاطئة.
+- **MEDIUM #1 (soft-delete filtering)** خطر تشغيلي — مصروفات محذوفة تظهر في القائمة. لا تأثير محاسبي (القيد معكوس → رصيده صافي صفر) لكن يُربك المستخدم.
+- باقي الـ LOWs خاملة أو تشمل dead code أو أنماط موجودة مسبقاً (descriptionAr, getNextEntryNo).
+
+### التوصيات المحددة للإصلاح (مرتَّبة حسب الأولوية):
+1. **P0 — CRITICAL #1**: إصلاح `petty-cash/[id]/route.ts` DELETE — تغليف في `$transaction`، تمرير `tx` لـ `reverseEntry`، استبدال `db.pettyCash.delete` بـ `tx.pettyCash.update({ data: { deletedAt: new Date() } })`. (3 أسطر تغيير.)
+2. **P0 — CRITICAL #2**: إصلاح تباين فئات النثرية — تغيير قيم `categoryOptions` في `petty-cash.tsx` إلى مفاتيح إنجليزية (OFFICE/TRANSPORT/HOSPITALITY/MAINTENANCE/OTHER) مع الإبقاء على الـ labels العربية. أو توسيع `categoryRoleMap` في engine.ts ليشمل القيم العربية.
+3. **P1 — HIGH #1**: إضافة selector لـ `transactionType` (FUND/DISBURSE) في `PettyCashFormDialog`. عند FUND، عرض حقل اختيار البنك.
+4. **P1 — HIGH #3 + MEDIUM #3**: نقل كل تحديثات الحقول في `expenses/route.ts` PUT إلى داخل `$transaction` قبل استدعاء JE builder. حذف `db.expense.update` الخارجي المكرر.
+5. **P1 — HIGH #2**: توسيع شرط العكس+الإعادة في PUT ليشمل date/category/accountId/costCenterId/projectId/payingAccountId (كل الحقول المؤثرة على القيد)، أو منع التعديل بعد الترحيل (423 LOCKED).
+6. **P2 — MEDIUM #1**: إضافة `deletedAt: null` إلى `where` في `expenses/route.ts` GET و `expenses/[id]/route.ts` GET.
+7. **P2 — MEDIUM #2**: إصلاح حساب "Cash Balance" في petty-cash.tsx ليدعم FUND/DISBURSE (أو عرض رصيد GL الفعلي لـ PETTY_CASH).
+8. **P3 — LOW #1**: إضافة زر حذف في جدول المصروفات (يستدعي DELETE مع تأكيد).
+9. **P3 — LOW #2**: حذف `autoEntryExpense` dead code من engine.ts.
+10. **P3 — LOW #3**: إضافة فرع `'PETTY_CASH'` في `createExpenseJournalEntry` (auto-journal.ts:342) لاستخدام `AccountRole.PETTY_CASH`.
+11. **P3 — LOW #4**: استبدال `getDefaultAccountByRole(AccountRole.VAT_INPUT)` بـ `requireAccountByRole` في `createExpenseJournalEntry` و `buildExpenseJournalEntryWithExplicitAccounts` لرسالة خطأ واضحة.
+12. **P3 — LOW #5/#6/#7**: إصلاحات موجودة مسبقاً (descriptionAr, getNextEntryNo, resolvePaymentAccountCode) — يمكن جدولتها مع إصلاحات BA-06 الأخرى.
+13. **P3 — LOW #8**: توثيق أن المسار role-based معطل لصالح explicit-account، أو تحديث الـ maps عند إعادة التفعيل.
+
+### الخلاصة العامة:
+دورة المصروفات مبنية على أساس محاسبي سليم بعد BA-02 (الحارس guard.ts R1-R12، التقويم الموحّد، POSTED=Immutable، reverseEntry كمسار وحيد للعكس). **المسار الصحيح هو المسار المُعتمد في expenses UI**: property-based account selection + explicit accounts → `buildExpenseJournalEntryWithExplicitAccounts` → `postJournalEntry`. هذا المسار يحترم كل القواعد.
+
+**المخاطر الرئيسية محصورة في دورة النثرية (petty-cash):**
+- DELETE غير atomic + hard-delete (CRITICAL #1) — يكسر R12 و audit trail.
+- تباين فئات النثرية عربية/إنجليزية (CRITICAL #2) — كل القيود تُرحَّل لـ ADMIN_EXPENSE بدلاً من الفئة الصحيحة (silent bug).
+- غياب FUND من UI (HIGH #1) — لا يمكن تغذية الصندوق.
+
+**مخاطر متوسطة في expenses PUT** (HIGH #2 + #3 + MEDIUM #3) — خاملة من UI لكن قابلة للاستدعاء المباشر. تسبب تبايناً بين المصروف وقيده عند تعديل حقول غير المبالغ.
+
+هذه إصلاحات محدودة المدى لا تتطلب إعادة هيكلة. جوهر المحرك (guard.ts + accounting-calendar.ts + postJournalEntry + reverseJournalEntry) سليم ومُحترَم بالكامل من دورة المصروفات.
