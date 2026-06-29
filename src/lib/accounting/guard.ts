@@ -400,6 +400,122 @@ export async function reverseJournalEntry(
 }
 
 // ---------------------------------------------------------------------------
+// BA-02 Task 4: Journal Immutability — POSTED = Immutable
+// ---------------------------------------------------------------------------
+//
+// A POSTED journal entry is a legal accounting record. It MUST NOT be edited,
+// deleted, or have its lines modified. The ONLY sanctioned operations on a
+// POSTED entry are:
+//
+//   1. Reversal (via reverseJournalEntry) — creates a separate reversal entry
+//      that nets the original to zero. Both entries remain POSTED for audit.
+//   2. Soft-delete (deletedAt) — ONLY for entries that were posted in error
+//      AND have been reversed. Direct soft-delete of an unreversed POSTED
+//      entry is forbidden.
+//
+// To correct a posted entry:
+//   Step 1: reverseJournalEntry(originalId)  → creates reversal
+//   Step 2: postJournalEntry(correctedEntry) → creates new entry with correct data
+//
+// This workflow preserves the audit trail and ensures the GL is always
+// reconstructable from the POSTED entry history.
+//
+// The ONLY fields that may be updated on a POSTED entry are:
+//   - isReversal (set to true by reverseJournalEntry)
+//   - reversedEntryId (set to the original's id by reverseJournalEntry)
+//   - deletedAt (only if the entry has been reversed — see assertReversible)
+// ---------------------------------------------------------------------------
+
+/**
+ * Assert that a journal entry is in a mutable state (DRAFT).
+ * Throws AccountingGuardError if the entry is POSTED, CANCELLED, or not found.
+ *
+ * Use this BEFORE any db.journalEntry.update() or db.journalLine.update() call
+ * that would modify the content (description, date, lines, status) of an entry.
+ *
+ * The only sanctioned mutations on POSTED entries go through reverseJournalEntry,
+ * which sets isReversal/reversedEntryId — those do NOT require this assertion.
+ */
+export async function assertJournalEntryMutable(
+  entryId: string,
+  tx?: PrismaTransaction
+): Promise<void> {
+  const client = tx ?? db
+  const entry = await client.journalEntry.findUnique({
+    where: { id: entryId },
+    select: { id: true, entryNo: true, status: true, deletedAt: true },
+  })
+  if (!entry) {
+    throw new AccountingGuardError(
+      'ENTRY_NOT_FOUND',
+      `القيد غير موجود: ${entryId}`,
+      { entryId }
+    )
+  }
+  if (entry.deletedAt) {
+    throw new AccountingGuardError(
+      'ENTRY_DELETED',
+      `القيد ${entry.entryNo} محذوف — لا يمكن تعديله`,
+      { entryId, entryNo: entry.entryNo, deletedAt: entry.deletedAt }
+    )
+  }
+  if (entry.status === 'POSTED') {
+    throw new AccountingGuardError(
+      'ENTRY_IMMUTABLE',
+      `القيد ${entry.entryNo} مرحّل وغير قابل للتعديل. لتصحيحه: اعكسه بقيد عكسي ثم أنشئ قيداً جديداً بالبيانات الصحيحة.`,
+      { entryId, entryNo: entry.entryNo, status: entry.status,
+        hint: 'Use reverseJournalEntry() then postJournalEntry() to correct.' }
+    )
+  }
+  if (entry.status === 'CANCELLED') {
+    throw new AccountingGuardError(
+      'ENTRY_CANCELLED',
+      `القيد ${entry.entryNo} ملغى — لا يمكن تعديله`,
+      { entryId, entryNo: entry.entryNo, status: entry.status }
+    )
+  }
+}
+
+/**
+ * Assert that a POSTED entry can be soft-deleted.
+ * A POSTED entry can only be soft-deleted if it has been reversed (i.e., a
+ * reversal entry exists pointing to it via reversedEntryId).
+ *
+ * This prevents accidentally hiding a POSTED entry that still affects the GL.
+ */
+export async function assertJournalEntryReversible(
+  entryId: string,
+  tx?: PrismaTransaction
+): Promise<void> {
+  const client = tx ?? db
+  const entry = await client.journalEntry.findUnique({
+    where: { id: entryId },
+    select: { id: true, entryNo: true, status: true, deletedAt: true },
+  })
+  if (!entry) {
+    throw new AccountingGuardError('ENTRY_NOT_FOUND', `القيد غير موجود: ${entryId}`, { entryId })
+  }
+  if (entry.status !== 'POSTED') {
+    throw new AccountingGuardError(
+      'NOT_POSTED',
+      `لا يمكن عكس قيد غير مرحّل (${entry.entryNo} - ${entry.status})`,
+      { entryId, status: entry.status }
+    )
+  }
+  // Check not already reversed
+  const alreadyReversed = await client.journalEntry.findFirst({
+    where: { reversedEntryId: entryId, deletedAt: null, status: 'POSTED' },
+  })
+  if (alreadyReversed) {
+    throw new AccountingGuardError(
+      'ALREADY_REVERSED',
+      `القيد ${entry.entryNo} معكوس مسبقاً بقيد ${alreadyReversed.entryNo}`,
+      { entryId, reversalEntryNo: alreadyReversed.entryNo }
+    )
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Next entry number generator (JE-NNNNNN)
 // ---------------------------------------------------------------------------
 
