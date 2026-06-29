@@ -460,9 +460,11 @@ export async function GET() {
     const netVAT = outputVat - inputVat
 
     // ===== 14. Low Inventory Items =====
-    // Use $queryRaw to compare quantity against minQuantity (column-to-column comparison)
+    // Use $queryRaw to compare quantity against minQuantity (column-to-column comparison).
+    // PostgreSQL-compatible (also runs on SQLite): quoted mixed-case identifiers +
+    // TRUE literal (SQLite ≥ 3.23 treats TRUE as 1; PostgreSQL uses native boolean).
     const lowInventoryResult = await db.$queryRaw<Array<{ count: bigint }>>`
-      SELECT COUNT(*) as count FROM InventoryItem WHERE quantity <= minQuantity AND isActive = 1
+      SELECT COUNT(*) as count FROM "InventoryItem" WHERE quantity <= "minQuantity" AND "isActive" = TRUE
     `
     const lowInventoryItems = Number(lowInventoryResult[0]?.count || 0)
 

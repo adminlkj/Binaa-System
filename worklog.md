@@ -6177,3 +6177,243 @@ Stage Summary:
   * تحويل `progressClaims?: {...}` إلى `{...}[]` يطابق الاستخدام الفعلي (`|| []`, `.length`, `.map`)
   * لفّ الأيقونات في `<span title={...}>` يعطي نفس تأثير الـ tooltip
   * double cast عبر `unknown` لا يغيّر القيم runtime، فقط يُرضي TypeScript
+
+---
+Task ID: AUDIT-PG
+Agent: PostgreSQL Readiness Auditor
+Task: Phase 6 — توافق PostgreSQL
+
+Work Log:
+
+**1. قراءة العمل الحالي:**
+- قراءة `worklog.md` (6,179 سطر) — مشروع ERP ناضج بمحاسبة كاملة، VAT، رواتب، معدات، عقود.
+- قراءة `prisma/schema.prisma` (≈2,900 سطر) — `datasource db { provider = "sqlite"; url = env("DATABASE_URL") }`.
+- قراءة `src/lib/db.ts` و`src/lib/decimal.ts`.
+
+**2. تدقيق Prisma Schema Compatibility:**
+- `provider = "sqlite"` — جاهز للتبديل إلى `"postgresql"` بدون تعديل بنية (لا توجد @db.* خاصة بـ SQLite).
+- أنواع الحقول المستخدمة: `String`, `Int`, `Boolean`, `DateTime`, `Decimal` — كلها متوافقة 100% مع PostgreSQL.
+- لا توجد أي حقول `Json` في الـ schema (لا حقل واحد) — لا حاجة لاهتمام JSON-specific.
+- لا توجد `@db.Text`, `@db.VarChar`, `@db.Decimal(p,s)` — الـ schema يستخدم أنواع Prisma النقية فقط. **توصية لاحقة**: إضافة `@db.Decimal(18,4)` لحقول المبالغ المالية للحفاظ على الدقة العشرية الصريحة في PostgreSQL (اختياري، الـ Decimal الافتراضي يعمل لكن بدون تحديد صريح للدقة).
+- جميع المعرّفات (IDs) تستخدم `String @id @default(cuid())` — لا يوجد `@default(autoincrement())`، لا حاجة لـ SERIAL/IDENTITY. ✅ متوافق تماماً.
+- `@unique` و`@@unique` معرّفة بوضوح في عشرات المواضع — تعمل بشكل متطابق على المحركين.
+- `onDelete` معرّف على كل العلاقات (Restrict / Cascade / SetNull) — جيد لفرض الـ FK في PostgreSQL.
+
+**3. تدقيق Raw SQL Queries:**
+- بحث شامل: `$queryRaw`, `$executeRaw`, `$queryRawUnsafe`, `$executeRawUnsafe`, `PRAGMA`, `sqlite_master`, `sqlite_`, `LIKE`, `ILIKE`.
+- **Production runtime (3 استعلامات):**
+  1. `src/app/api/dashboard/route.ts:464` — كان SQLite-specific: `FROM InventoryItem WHERE ... isActive = 1` (unquoted + boolean as integer). **تم إصلاحه** ← `FROM "InventoryItem" WHERE ... "isActive" = TRUE` (متوافق مع المحركين، SQLite ≥ 3.23 يقبل TRUE كـ 1).
+  2. `src/lib/accounting/consistency.ts:47` — توازن القيود. يستخدم identifiers مقتبسة (`"JournalEntry"`, `"JournalLine"`, `"deletedAt"`, `"status"`) — ✅ متوافق مع PostgreSQL كما هو.
+  3. `src/lib/accounting/consistency.ts:121` — قيود مكررة. نفس النمط المقتبس — ✅ متوافق.
+  4. `src/lib/accounting/guard.ts:421` — فحص صحة المحاسبة. نفس النمط المقتبس — ✅ متوافق.
+- **Admin/debug scripts (خارج runtime الإنتاج):**
+  - `scripts/check-db2.ts` — `sqlite_master` (SQLite-only). لا يعمل على PostgreSQL. بديل: `information_schema.tables`.
+  - `scripts/perf-audit.ts` — `sqlite_master`, `PRAGMA index_list`, `PRAGMA index_info` (SQLite-only). بديل: `pg_indexes`, `pg_index` في PostgreSQL.
+  - `scripts/cleanup-bad-data.ts`, `scripts/data-audit.ts`, `scripts/accounting-audit.ts`, `scripts/investigate.ts` — تستخدم `$queryRawUnsafe` مع SQL عام (identifiers مقتبسة في الغالب) — أغلبها يعمل على PostgreSQL كما هو، يُنصح بمراجعة قبل التشغيل ضد PostgreSQL.
+
+**4. تدقيق Date/Time Handling:**
+- جميع حقول التواريخ في الـ schema تستخدم `DateTime` — Prisma يُطبّع الفرق تلقائياً (SQLite يخزن TEXT ISO، PostgreSQL يستخدم `timestamp`). ✅
+- 8 مواضع تستخدم `date.toISOString().split('T')[0]` في `src/app/api/` لتنسيق التاريخ للعرض فقط (account-statement, dashboard, print) — لا تؤثر على التخزين/الاسترجاع، تعمل على المحركين.
+- لا توجد مقارنات تواريخ كنصوص (string-to-string) في WHERE clauses — جميعها تتم عبر Prisma Client كـ Date objects. ✅
+
+**5. تدقيق Decimal Precision:**
+- الـ schema يحتوي على ~130+ حقل `Decimal` (مبالغ، نسب VAT، أسعار، رواتب، إهلاك).
+- SQLite يخزن Decimal كـ REAL (float64) → فقدان دقة محتمل للقيم الكبيرة/الصغيرة جداً.
+- PostgreSQL يخزن Decimal كـ `numeric` (دقة عشوائية) → لا فقدان دقة.
+- **الانتقال إلى PostgreSQL سيُحسّن الدقة المالية تلقائياً** — هذا مكسب صافٍ.
+- `src/lib/decimal.ts` يوفّر `toNumber()` و`serializeDecimal()` لتحويل `Prisma.Decimal` → `number` للـ JSON. هذه الأداة تعمل على المحركين ولا تتأثر بالانتقال.
+- لا يوجد `parseFloat()` على حقول مالية في `src/app/api/` (تم البحث). تُستخدم `toNumber()` أو `Number(field)` في reduce operations — مقبول (الدقة تُحفظ في DB، التحويل إلى JS number يحدث فقط في طبقة العرض).
+
+**6. تدقيق Boolean Handling:**
+- جميع الـ Boolean fields تستخدم Prisma `Boolean` — Prisma يتوسط بين SQLite (0/1) و PostgreSQL (true/false) تلقائياً. ✅
+- النمط الوحيد الذي كان SQLite-specific: `isActive = 1` في dashboard route — **تم إصلاحه** إلى `= TRUE`.
+
+**7. تدقيق JSON Fields:**
+- لا يوجد حقل `Json` واحد في الـ schema (تم التحقق). ✅ لا حاجة لاهتمام.
+
+**8. تدقيق Case Sensitivity:**
+- SQLite `LIKE` غير حساس لحالة الأحرف افتراضياً (للأحرف ASCII).
+- PostgreSQL `LIKE` حساس لحالة الأحرف افتراضياً.
+- **بحث شامل عن `mode: 'insensitive'` في `src/`**: لا يوجد أي استخدام حالياً (0 matches).
+- يوجد 40+ موقع يستخدم `contains` و`startsWith` في عمليات البحث (clients, suppliers, employees, projects, equipment, invoices, journal entries, ...).
+- **⚠️ أثر الانتقال**: عمليات البحث ستصبح حساسة لحالة الأحرف بعد الانتقال إلى PostgreSQL. مثال: البحث عن "ahmed" لن يطابق "Ahmed".
+- **التوصية**: بعد تبديل provider إلى postgresql، إضافة `mode: 'insensitive'` لكل `contains`/`startsWith`/`endsWith` في عمليات البحث الحساسة. (ملاحظة: `mode: 'insensitive'` هو PostgreSQL-only، لذا لا يمكن إضافته الآن قبل التبديل.)
+- لا يوجد `LIKE`/`ILIKE` يدوي في الكود (تم البحث) — لا raw LIKE.
+
+**9. تدقيق Auto Increment:**
+- لا يوجد `@default(autoincrement())` في الـ schema (تم التحقق).
+- جميع المعرّفات تستخدم `cuid()` — يعمل بشكل متطابق على المحركين. ✅
+- لا حاجة لاهتمام SERIAL/IDENTITY.
+
+**10. تدقيق Connection String:**
+- `src/lib/db.ts` يستخدم `new PrismaClient({ log: [...] })` بدون تمرير datasource URL صراحةً.
+- Prisma Client يقرأ `DATABASE_URL` تلقائياً من الـ env عبر `env("DATABASE_URL")` في الـ schema.
+- ✅ جاهز للانتقال: فقط حدّث `DATABASE_URL` في `.env` إلى PostgreSQL connection string (`postgresql://user:pass@host:5432/dbname?schema=public`).
+- الـ singleton pattern مع `globalForPrisma` سليم ويمنع تعدد الـ connections في dev hot-reload.
+
+**11. تدقيق Foreign Key Constraints:**
+- 80+ علاقة معرّفة بـ `onDelete` صريح (Restrict / Cascade / SetNull).
+- SQLite لا يفرض FKs افتراضياً إلا مع `PRAGMA foreign_keys = ON` (Prisma Client يفعّله تلقائياً عند الاتصال).
+- PostgreSQL يفرض FKs دائماً على مستوى الـ DB.
+- **⚠️ خطر محتمل**: إذا كانت هناك سجلات يتيمة (orphaned) في SQLite الحالي (مثلاً journalLine مرتبطة بـ account محذوف، أو expense مرتبط بـ project محذوف)، فالـ migration إلى PostgreSQL سيفشل عند `prisma migrate deploy`.
+- **التوصية قبل الانتقال**: تشغيل فحص سلامة FK على قاعدة البيانات الحالية (يمكن استخدام `scripts/accounting-audit.ts` بعد تعديله لفحص كل FK)، ثم تنظيف السجلات اليتيمة قبل تصدير البيانات.
+
+**الإصلاحات المُطبّقة:**
+1. `src/app/api/dashboard/route.ts:464-468` — تحويل الـ raw SQL من SQLite-specific إلى portable:
+   - `FROM InventoryItem` → `FROM "InventoryItem"` (quoted identifier)
+   - `isActive = 1` → `"isActive" = TRUE` (boolean literal يعمل على المحركين)
+   - إضافة تعليق توثيقي.
+   - تم التحقق: `npx tsc --noEmit` لا ينتج أخطاء للملف.
+
+**الإصلاحات الموصى بها (لاحقاً، عند النشر):**
+1. تبديل `provider = "sqlite"` → `"postgresql"` في `prisma/schema.prisma` (سيقوم بها المسؤول عند النشر).
+2. تحديث `DATABASE_URL` في `.env` إلى PostgreSQL connection string.
+3. تشغيل `npx prisma migrate dev --name init_postgres` أو `npx prisma db push` لإنشاء الـ schema في PostgreSQL.
+4. إضافة `mode: 'insensitive'` لعمليات البحث بـ `contains`/`startsWith` (40+ موقع) — **بعد** التبديل إلى PostgreSQL.
+5. مراجعة سكربتات `scripts/check-db2.ts` و`scripts/perf-audit.ts` قبل تشغيلها على PostgreSQL (تستخدم `sqlite_master` و`PRAGMA`).
+6. فحص سلامة FK قبل التصدير (orphaned records cleanup).
+7. (اختياري) إضافة `@db.Decimal(18,4)` لحقول المبالغ المالية للحفاظ على دقة صريحة.
+
+Stage Summary:
+- SQLite-specific patterns: 1 (تم إصلاحه في dashboard route) + 2 في admin scripts (خارج runtime)
+- Raw SQL queries (production runtime): 4 — 3 منها متوافقة مع PostgreSQL كما هي، 1 تم إصلاحه
+- Raw SQL queries (admin scripts): 6 — 2 منها SQLite-specific (تحتاج تعديل يدوي لاحقاً)
+- Date/Time issues: 0 (Prisma DateTime يُطبّع الفرق تلقائياً)
+- Decimal precision issues: 0 (الانتقال إلى PostgreSQL سيُحسّن الدقة)
+- Boolean handling issues: 1 (تم إصلاحه: `isActive = 1` → `= TRUE`)
+- JSON fields: 0 (لا يوجد Json type في الـ schema)
+- Case sensitivity: 1 توصية مؤجّلة (إضافة `mode: 'insensitive'` بعد التبديل — 40+ موقع)
+- Auto-increment: 0 قضايا (cuid() فقط)
+- Connection string: 0 قضايا (`env("DATABASE_URL")` مُعدّ صح)
+- FK enforcement: 0 قضايا في الـ schema؛ خطر محتمل من السجلات اليتيمة في البيانات الحالية (يحتاج فحص قبل النشر)
+- @db.* modifiers: 0 موجودة (اختياري إضافتها لاحقاً للدقة الصريحة)
+- Ready for PostgreSQL: **YES** (مع توصيات مؤجّلة لما بعد التبديل)
+- توصيات الانتقال:
+  1. تبديل provider في schema + DATABASE_URL (عند النشر).
+  2. إضافة `mode: 'insensitive'` لعمليات البحث (40+ موقع) — بعد التبديل.
+  3. فحص/تنظيف السجلات اليتيمة قبل `prisma migrate`.
+  4. مراجعة سكربتات `scripts/check-db2.ts` و`scripts/perf-audit.ts` قبل تشغيلها على PostgreSQL.
+
+---
+Task ID: AUDIT-PRISMA
+Agent: Prisma Auditor
+Task: Phase 5 — تدقيق Prisma schema
+
+Work Log:
+
+**1) قراءة السياق:**
+- قرأت `worklog.md` (6179 سطراً) — آخر task كان TS-5 (TypeScript Fixer — components + printing)
+- قرأت `prisma/schema.prisma` كاملاً (2897 سطر، 94 model، 23 enum)
+- قرأت `src/lib/db.ts` (13 سطر — PrismaClient singleton عادي مع `globalThis` caching، لا ملاحظات)
+- لا توجد migrations (`prisma/migrations/`) — يعتمد المشروع على `db:push` (موصى به للإنتاج: استخدام migrations في Phase 6)
+
+**2) تدقيق Models Usage:**
+- شغّلت `rg "db\.modelName\b" src/` لكل model من الـ 94
+- **11 model بدون استخدام مباشر في src/** (مسجلة فقط، لم تُحذف):
+  1. `AdvanceRecovery` (0) — مرتبطة بـ CustomerAdvance عبر FK
+  2. `CommitmentLine` (0) — مرتبطة بـ Commitment
+  3. `LossProvision` (0) — مرتبطة بـ Project (Phase 1-2 IFRS)
+  4. `PayrollRunLine` (0) — مرتبطة بـ PayrollRun (تُحدّث عبر transaction في API)
+  5. `ProjectBudget` (0) — مرتبطة بـ Project
+  6. `ProjectBudgetLine` (0) — مرتبطة بـ ProjectBudget
+  7. `ProjectForecast` (0) — مرتبطة بـ Project (EVM metrics)
+  8. `StockMovement` (0) — مرتبطة بـ InventoryItem
+  9. `WIPAdjustment` (0) — مرتبطة بـ Project
+  10. `WIPEntry` (0) — مرتبطة بـ Project
+  11. `Warranty` (0) — مرتبطة بـ Project + Contract
+- **النماذج الأكثر استخداماً**: Account (90), JournalLine (73), Project (61), SalesInvoice (42), PurchaseInvoice (41)
+
+**3) تدقيق Relations — 25 علاقة بدون onDelete (أُضيف لكل منها):**
+
+| Model | Field | onDelete المضاف | السبب |
+|---|---|---|---|
+| Warehouse | branch | Restrict | لا تُحذف فرع بها مستودعات |
+| Employee | branch | Restrict | لا يُحذف فرع به موظفون |
+| Employee | expenseAccount | SetNull | رابط اختياري (الحقل optional) |
+| Project | branch | Restrict | لا يُحذف فرع به مشاريع |
+| Project | client | Restrict | لا يُحذف عميل به مشاريع |
+| BOQItem | wbsElement | SetNull | رابط اختياري |
+| WBSElement | parent (self-rel) | Restrict | منع حذف أب له أبناء |
+| CostCode | parent (self-rel) | Restrict | منع حذف أب له أبناء |
+| Activity | wbsElement | SetNull | رابط اختياري |
+| CostEntry | wbsElement | SetNull | رابط اختياري |
+| CostEntry | costCode | SetNull | رابط اختياري |
+| CostEntry | activity | SetNull | رابط اختياري |
+| CostEntry | costCenter | SetNull | رابط اختياري |
+| ProjectLedger | wbsElement | SetNull | رابط اختياري |
+| ProjectLedger | costCode | SetNull | رابط اختياري |
+| SubcontractorAdvance | subcontractor | Restrict | منع حذف مقاول له سلف |
+| SubcontractorRetention | subcontractor | Restrict | منع حذف مقاول له استقطاعات |
+| SubcontractorPayment | subcontractor | Restrict | منع حذف مقاول له دفعات |
+| SubcontractorPayment | subcontractorInvoice | SetNull | رابط اختياري |
+| ClaimItem | boqItem | SetNull | رابط اختياري |
+| ClaimItem | wbsElement | SetNull | رابط اختياري |
+| Measurement | wbsElement | SetNull | رابط اختياري |
+| Measurement | boqItem | SetNull | رابط اختياري |
+| Measurement | claimItem | SetNull | رابط اختياري (@unique) |
+| CustomerAdvance | client | Restrict | منع حذف عميل له سلف |
+
+**4) تدقيق Indexes — 13 FK بدون @@index (أُضيفت كلها):**
+1. `Employee.expenseAccountId` → `@@index([expenseAccountId])`
+2. `BOQItem.wbsElementId` → `@@index([wbsElementId])`
+3. `PurchaseOrder.purchaseRequestId` → `@@index([purchaseRequestId])`
+4. `Equipment.assetAccountId` → `@@index([assetAccountId])`
+5. `CostEntry.activityId` → `@@index([activityId])`
+6. `CostEntry.costCenterId` → `@@index([costCenterId])`
+7. `CostCodeBudget.costCodeId` → `@@index([costCodeId])` (للاستعلام العكسي؛ wbsElementId مغطى بـ @@unique)
+8. `ProjectLedger.wbsElementId` → `@@index([wbsElementId])`
+9. `ProjectLedger.costCodeId` → `@@index([costCodeId])`
+10. `ClaimItem.boqItemId` → `@@index([boqItemId])`
+11. `ClaimItem.wbsElementId` → `@@index([wbsElementId])`
+12. `Measurement.boqItemId` → `@@index([boqItemId])`
+13. `Measurement.wbsElementId` → `@@index([wbsElementId])`
+
+**5) تدقيق Constraints — @@unique مضافة (بعد التحقق من عدم وجود duplicates في DB):**
+- ✓ `PayrollRun.@@unique([year, month])` — منطقياً: مسير واحد لكل فترة (API يفرض ذلك بالفعل عبر `findFirst` checks في `src/app/api/payroll-runs/route.ts:60,71`)
+- ✓ `Timesheet.@@unique([rentalId, year, month])` — منطقياً: تايم شيت واحد لكل إيجار شهرياً
+- ✓ `AssetDepreciation.@@unique([fixedAssetId, year, month])` — منطقياً: إهلاك شهري واحد لكل أصل
+- ✓ `BankReconciliation.@@unique([bankAccountId, year, month])` — منطقياً: مطابقة واحدة لكل حساب شهرياً
+
+**تم تخطي @@unique المقترحة لأسباب منطقية:**
+- ✗ `VATReturn.@@unique([year, quarter])` — مرفوض لأن flow التعديلات (amendments) في `src/app/api/vat/route.ts:133` يسمح بإنشاء إقرار جديد بعد إلغاء القديم لنفس الفترة، مع `isAmendment: true` و`amendedFromId` — @@unique سيكسر هذا الـ flow
+- ✗ `Salary.@@unique([employeeId, year, month])` — مرفوض لأن البيانات تحتوي على duplicate واحد (`employeeId=cmqytimcj..., 2026/6` له سجلّان). يتطلب تنظيف البيانات يدوياً قبل إضافة الـ constraint
+
+**6) تدقيق PostgreSQL Compatibility:**
+- ✓ **لا توجد** @db.Text، @db.VarChar، @db.Decimal، أو أي native type annotations — الـ schema نظيف ومتوافق 100% مع PostgreSQL
+- ✓ كل `Decimal` fields بدون `@db.Decimal(p, s)` — يُنصح بإضافتها في Phase 6 (migration) للدقة المالية (مثلاً `@db.Decimal(18, 2)`)
+- ✓ كل `Boolean` لها `@default(false)` أو `@default(true)` بشكل صحيح
+- ✓ كل `DateTime` إما `@default(now())` أو `@updatedAt` أو بدون default (إلزامية)
+- ✓ كل `@id` تستخدم `@default(cuid())` (متوافق مع PG، نصّي عشوائي)
+- ✓ لا يوجد `Int @id @default(autoincrement())` (لا حاجة له — جميع الجداول تستخدم cuid)
+- ⚠️ **JSON fields مخزنة كـ String مع JSON.stringify**: `VATReturn.salesInvoiceIds`, `purchaseInvoiceIds`, `expenseIds`, `subcontractorInvoiceIds`, `progressClaimIds`, `FinancialMapping.debitRoles`, `creditRoles`, `AccountingHealthCheck.details` — هذه يمكن تحويلها إلى `Json?` type في PostgreSQL للاستعلامات الأعمق. لا ينصح بالتغيير الآن (يحتاج data migration). مسجلة للتقييم في Phase 6
+- ✓ جميع enums متوافقة مع PostgreSQL (Prisma ينشئها كـ enum type حقيقي في PG)
+
+**7) Migrations:**
+- ⚠️ **لا توجد migrations directory** — المشروع يستخدم `db:push` فقط (للتطوير). للإنتاج: **يجب** استخدام `prisma migrate dev` لإنشاء migrations قابلة للمراجعة. مسجلة كتوصية للمرحلة 6 (لم تُنشأ migrations في هذه المرحلة كما طلبت)
+
+**8) التطبيق والتحقق:**
+- شغّلت `bun run db:push --accept-data-loss` (لا توجد duplicates فعلية، لكن Prisma يحذّر احتياطياً) — نجح في 109ms
+- شغّلت `npx prisma validate` — ✓ "The schema at prisma/schema.prisma is valid 🚀"
+- شغّلت `npx tsc --noEmit` — ✓ exit code 0 (صفر أخطاء TS في src/)
+- تحققت من تطبيق الـ indexes فعلياً على SQLite عبر `PRAGMA index_list` — جميع الـ 13 indexes و 4 @@unique تم إنشاؤها بنجاح
+- لم أُعِد تشغيل dev server (db:push يُحدّث Prisma Client فقط)
+- لم أعمل git commit (حسب القواعد)
+
+Stage Summary:
+- **Models**: 94 model (11 غير مستخدمة مباشرة في src/ — مُسجلة فقط، لم تُحذف)
+- **Relations**: 147 علاقة FK صريحة (122 كانت لديها onDelete + 25 أُضيف لها onDelete في هذا التدقيق)
+- **Indexes مضافة**: 13 @@index لـ FKs حرجة (Employee.expenseAccountId, BOQItem.wbsElementId, PurchaseOrder.purchaseRequestId, Equipment.assetAccountId, CostEntry.activityId+costCenterId, CostCodeBudget.costCodeId, ProjectLedger.wbsElementId+costCodeId, ClaimItem.boqItemId+wbsElementId, Measurement.boqItemId+wbsElementId)
+- **Constraints مضافة**: 4 @@unique (PayrollRun[year,month], Timesheet[rentalId,year,month], AssetDepreciation[fixedAssetId,year,month], BankReconciliation[bankAccountId,year,month])
+- **onDelete مضاف**: 25 علاقة (موزعة: 12 Restrict, 13 SetNull)
+- **Unused models/fields**: 11 model (مسجلة فقط، لم تُحذف) — AdvanceRecovery, CommitmentLine, LossProvision, PayrollRunLine, ProjectBudget, ProjectBudgetLine, ProjectForecast, StockMovement, WIPAdjustment, WIPEntry, Warranty
+- **PostgreSQL compatibility issues**: 0 حرج — الـ schema نظيف. توصيات للمرحلة 6: (1) إضافة `@db.Decimal(p,s)` للدقة المالية، (2) تحويل JSON-كـ-String إلى `Json?` type، (3) إنشاء migrations directory
+- **التوصيات للمرحلة 6 (PostgreSQL Migration):**
+  1. شغّل `prisma migrate dev --name init` لإنشاء migration أولي من الـ schema الحالي
+  2. أضف `@db.Decimal(18, 2)` لكل حقول `Decimal` المالية (كميات العملة)
+  3. قيّم تحويل `String?` التي تخزن JSON إلى `Json?` (يحتاج data migration script)
+  4. نظّف duplicate في `Salary` table (`employeeId, year, month`) ثم أضف `@@unique([employeeId, year, month])`
+  5. تأكد أن `onDelete: Restrict` و`SetNull` يطبّقان فعلياً على PostgreSQL (SQLite لا يفرض FK constraints افتراضياً بدون `PRAGMA foreign_keys=ON`)
+
+**الملفات المُعدّلة:**
+- `/home/z/my-project/prisma/schema.prisma` — تعديلات فقط (إضافة @@index, @@unique, onDelete)، لا حذف models أو حقول
+

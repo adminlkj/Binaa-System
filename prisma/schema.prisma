@@ -373,7 +373,7 @@ model Warehouse {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch         Branch          @relation(fields: [branchId], references: [id])
+  branch         Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
   inventoryItems InventoryItem[]
 
   @@index([branchId])
@@ -608,8 +608,8 @@ model Employee {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  branch          Branch               @relation(fields: [branchId], references: [id])
-  expenseAccount  Account?             @relation(fields: [expenseAccountId], references: [id])
+  branch          Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  expenseAccount  Account?             @relation(fields: [expenseAccountId], references: [id], onDelete: SetNull)
   advances        EmployeeAdvance[]
   contracts       EmployeeContract[]
   attendance      Attendance[]
@@ -621,6 +621,7 @@ model Employee {
   salaryPayments  SalaryPayment[]
 
   @@index([branchId])
+  @@index([expenseAccountId])
   @@index([status])
   @@index([isActive])
 }
@@ -753,6 +754,7 @@ model PayrollRun {
   @@index([month, year])
   @@index([status])
   @@index([year])
+  @@unique([year, month])
 }
 
 model PayrollRunLine {
@@ -830,8 +832,8 @@ model Project {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  branch                 Branch                   @relation(fields: [branchId], references: [id])
-  client                 Client                   @relation(fields: [clientId], references: [id])
+  branch                 Branch                   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  client                 Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   costCenter             CostCenter?              @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
   contracts              Contract[]
   boqItems               BOQItem[]
@@ -1028,13 +1030,14 @@ model BOQItem {
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
   // ── Phase 2 relations ──
-  wbsElement   WBSElement?   @relation(fields: [wbsElementId], references: [id])
+  wbsElement   WBSElement?   @relation(fields: [wbsElementId], references: [id], onDelete: SetNull)
   measurements Measurement[]
   claimItems   ClaimItem[]
   wbsElementId String?
 
   @@index([projectId])
   @@index([code])
+  @@index([wbsElementId])
 }
 
 // ============ PROGRESS CLAIMS ============
@@ -1228,6 +1231,7 @@ model PurchaseOrder {
 
   @@index([projectId])
   @@index([supplierId])
+  @@index([purchaseRequestId])
   @@index([status])
   @@index([date])
   @@index([supplierId, status])
@@ -1531,6 +1535,7 @@ model Equipment {
   costExpenses     Expense[] // المصروفات المرتبطة بالمعدة
 
   @@index([supplierId])
+  @@index([assetAccountId])
   @@index([status])
   @@index([isActive])
   @@index([ownershipType])
@@ -1780,6 +1785,7 @@ model Timesheet {
   @@index([status])
   @@index([year, month])
   @@index([invoiced])
+  @@unique([rentalId, year, month])
 }
 
 // ============ PETTY CASH & ADVANCES ============
@@ -2192,6 +2198,7 @@ model AssetDepreciation {
   @@index([fixedAssetId])
   @@index([year, month])
   @@index([journalEntryId])
+  @@unique([fixedAssetId, year, month])
 }
 
 // ============ PROVISIONS ============
@@ -2294,6 +2301,7 @@ model BankReconciliation {
 
   @@index([bankAccountId])
   @@index([year, month])
+  @@unique([bankAccountId, year, month])
 }
 
 // ============ FINANCIAL MAPPING ENGINE ============
@@ -2377,7 +2385,7 @@ model WBSElement {
   updatedAt   DateTime @updatedAt
 
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  parent      WBSElement?  @relation("WBSHierarchy", fields: [parentId], references: [id])
+  parent      WBSElement?  @relation("WBSHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children    WBSElement[] @relation("WBSHierarchy")
   costEntries CostEntry[]
   costCodeBudgets CostCodeBudget[]
@@ -2405,7 +2413,7 @@ model CostCode {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  parent        CostCode?         @relation("CostCodeHierarchy", fields: [parentId], references: [id])
+  parent        CostCode?         @relation("CostCodeHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children      CostCode[]        @relation("CostCodeHierarchy")
   costEntries   CostEntry[]
   costCodeBudgets CostCodeBudget[]
@@ -2434,7 +2442,7 @@ model Activity {
   updatedAt        DateTime @updatedAt
 
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id])
+  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id], onDelete: SetNull)
   costEntries CostEntry[]
 
   @@unique([projectId, code])
@@ -2468,15 +2476,17 @@ model CostEntry {
   updatedAt       DateTime @updatedAt
 
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id])
-  costCode   CostCode?    @relation(fields: [costCodeId], references: [id])
-  activity   Activity?    @relation(fields: [activityId], references: [id])
-  costCenter CostCenter?  @relation(fields: [costCenterId], references: [id])
+  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id], onDelete: SetNull)
+  costCode   CostCode?    @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
+  activity   Activity?    @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  costCenter CostCenter?  @relation(fields: [costCenterId], references: [id], onDelete: SetNull)
 
   @@index([projectId, date])
   @@index([costType])
   @@index([sourceType, sourceId])
   @@index([wbsElementId, costCodeId])
+  @@index([activityId])
+  @@index([costCenterId])
 }
 
 // ── Cost Code Budget (WBS × CostCode matrix) ────────────────────────────
@@ -2499,6 +2509,7 @@ model CostCodeBudget {
 
   @@unique([wbsElementId, costCodeId])
   @@index([projectId])
+  @@index([costCodeId])
 }
 
 // ── Project Ledger (Single Source of Truth) ─────────────────────────────
@@ -2521,11 +2532,13 @@ model ProjectLedger {
   createdAt      DateTime @default(now())
 
   project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id])
-  costCode   CostCode?    @relation(fields: [costCodeId], references: [id])
+  wbsElement WBSElement?  @relation(fields: [wbsElementId], references: [id], onDelete: SetNull)
+  costCode   CostCode?    @relation(fields: [costCodeId], references: [id], onDelete: SetNull)
 
   @@index([projectId, entryDate])
   @@index([ledgerType])
+  @@index([wbsElementId])
+  @@index([costCodeId])
 }
 
 // ── Commitment Accounting (PO + Subcontract open commitments) ────────────
@@ -2586,7 +2599,7 @@ model SubcontractorAdvance {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
   project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([subcontractorId])
@@ -2609,7 +2622,7 @@ model SubcontractorRetention {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id])
+  subcontractor Subcontractor @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
   project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([subcontractorId])
@@ -2632,8 +2645,8 @@ model SubcontractorPayment {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  subcontractor       Subcontractor       @relation(fields: [subcontractorId], references: [id])
-  subcontractorInvoice SubcontractorInvoice? @relation(fields: [subcontractorInvoiceId], references: [id])
+  subcontractor       Subcontractor       @relation(fields: [subcontractorId], references: [id], onDelete: Restrict)
+  subcontractorInvoice SubcontractorInvoice? @relation(fields: [subcontractorInvoiceId], references: [id], onDelete: SetNull)
 
   @@index([subcontractorId])
   @@index([subcontractorInvoiceId])
@@ -2662,11 +2675,13 @@ model ClaimItem {
   updatedAt         DateTime @updatedAt
 
   claim       ProgressClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
-  boqItem     BOQItem?      @relation(fields: [boqItemId], references: [id])
-  wbsElement  WBSElement?   @relation(fields: [wbsElementId], references: [id])
+  boqItem     BOQItem?      @relation(fields: [boqItemId], references: [id], onDelete: SetNull)
+  wbsElement  WBSElement?   @relation(fields: [wbsElementId], references: [id], onDelete: SetNull)
   measurement Measurement?
 
   @@index([claimId])
+  @@index([boqItemId])
+  @@index([wbsElementId])
 }
 
 model Measurement {
@@ -2701,12 +2716,14 @@ model Measurement {
   updatedAt          DateTime @updatedAt
 
   project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  wbsElement WBSElement? @relation(fields: [wbsElementId], references: [id])
-  boqItem    BOQItem?    @relation(fields: [boqItemId], references: [id])
-  claimItem  ClaimItem?  @relation(fields: [claimItemId], references: [id])
+  wbsElement WBSElement? @relation(fields: [wbsElementId], references: [id], onDelete: SetNull)
+  boqItem    BOQItem?    @relation(fields: [boqItemId], references: [id], onDelete: SetNull)
+  claimItem  ClaimItem?  @relation(fields: [claimItemId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
   @@index([status])
+  @@index([wbsElementId])
+  @@index([boqItemId])
 }
 
 model ClaimCertification {
@@ -2856,7 +2873,7 @@ model CustomerAdvance {
   journalEntryId   String?
   createdAt        DateTime @default(now())
 
-  client  Client   @relation(fields: [clientId], references: [id])
+  client  Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
