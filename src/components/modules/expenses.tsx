@@ -37,7 +37,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Receipt, Plus, Search, RefreshCw, TrendingUp,
   Building2, Briefcase, Download, Landmark, Wallet, Banknote,
-  Target, Building, User as UserIcon,
+  Target, Building, User as UserIcon, Cog,
   AlertCircle, Info, ArrowLeft, FileText,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
@@ -454,19 +454,23 @@ interface ExpenseFormDialogProps {
   onOpenChange: (open: boolean) => void
   projects: ProjectOption[]
   costCenters: CostCenterOption[]
+  employees: Array<{ id: string; code: string; name: string; nameAr: string | null }>
+  equipment: Array<{ id: string; code: string; name: string; nameAr: string | null }>
 }
 
 function ExpenseFormDialog({
-  open, onOpenChange, projects, costCenters,
+  open, onOpenChange, projects, costCenters, employees, equipment,
 }: ExpenseFormDialogProps) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
 
   // Form state
   const [category, setCategory] = useState<string>(DEFAULT_NEW_CATEGORY)
-  const [linkType, setLinkType] = useState<'COMPANY' | 'PROJECT' | 'COST_CENTER'>('COMPANY')
+  const [linkType, setLinkType] = useState<'COMPANY' | 'PROJECT' | 'COST_CENTER' | 'EMPLOYEE' | 'EQUIPMENT'>('COMPANY')
   const [projectId, setProjectId] = useState('')
   const [costCenterId, setCostCenterId] = useState('')
+  const [employeeId, setEmployeeId] = useState('')
+  const [equipmentId, setEquipmentId] = useState('')
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
   const [vatEnabled, setVatEnabled] = useState(true)
@@ -479,10 +483,28 @@ function ExpenseFormDialog({
   })
   const [reference, setReference] = useState('')
 
-  // Account selection (single ADMIN_EXPENSE role)
+  // Account selection — PROPERTY-BASED (not role-based)
+  // The account is fetched by usableInExpenses=true property.
+  // When selected, the full account object (with all its properties) is stored
+  // so the form can dynamically adapt: show/hide project/equipment/employee fields,
+  // make them required/optional, toggle VAT, etc.
   const [expenseAccountId, setExpenseAccountId] = useState<string | null>(null)
   const [expenseAccountCode, setExpenseAccountCode] = useState('')
   const [expenseAccountNameAr, setExpenseAccountNameAr] = useState('')
+  const [expenseAccountProps, setExpenseAccountProps] = useState<{
+    allowsProject?: boolean
+    allowsCostCenter?: boolean
+    allowsEmployee?: boolean
+    allowsEquipment?: boolean
+    allowsSupplier?: boolean
+    allowsClient?: boolean
+    requiresEmployee?: boolean
+    requiresProject?: boolean
+    requiresEquipment?: boolean
+    requiresContract?: boolean
+    allowsVat?: boolean
+    documentType?: string | null
+  } | null>(null)
 
   // Payment account (CASH / BANK)
   const [payingAccountId, setPayingAccountId] = useState<string | null>(null)
@@ -492,9 +514,31 @@ function ExpenseFormDialog({
 
   // Computed amounts
   const parsedAmount = parseFloat(amount) || 0
-  const vatRate = vatEnabled ? 0.15 : 0
+  // VAT is controlled by the account's allowsVat property.
+  // If the account doesn't allow VAT, vatRate is forced to 0.
+  const accountAllowsVat = expenseAccountProps?.allowsVat !== false // default true
+  const vatRate = (vatEnabled && accountAllowsVat) ? 0.15 : 0
   const autoVat = useMemo(() => Math.round(parsedAmount * vatRate * 100) / 100, [parsedAmount, vatRate])
   const totalAmount = useMemo(() => Math.round((parsedAmount + autoVat) * 100) / 100, [parsedAmount, autoVat])
+
+  // ── DYNAMIC FORM ADAPTATION ────────────────────────────────────────
+  // Based on the selected account's properties, determine which fields
+  // to show, hide, or make required. This is the core of the property-driven
+  // design: the form builds itself based on the account's behavior.
+  const showProjectField = expenseAccountProps?.allowsProject === true ||
+                           expenseAccountProps?.requiresProject === true
+  const showCostCenterField = expenseAccountProps?.allowsCostCenter === true
+  const showEmployeeField = expenseAccountProps?.allowsEmployee === true ||
+                            expenseAccountProps?.requiresEmployee === true
+  const showEquipmentField = expenseAccountProps?.allowsEquipment === true ||
+                             expenseAccountProps?.requiresEquipment === true
+  const requireProject = expenseAccountProps?.requiresProject === true
+  const requireEmployee = expenseAccountProps?.requiresEmployee === true
+  const requireEquipment = expenseAccountProps?.requiresEquipment === true
+
+  // NOTE: When an account requires a specific link type (project/employee/equipment),
+  // we force the linkType in the onValueChange handler directly (not in an effect)
+  // to avoid cascading renders. See AccountSelector onValueChange below.
 
   // Determine expenseType (PROJECT vs INTERNAL) from linkType
   const expenseType = useMemo<string>(() => {
@@ -550,7 +594,7 @@ function ExpenseFormDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
-    // Validate the selected link
+    // Validate the selected link (dynamic based on account properties)
     if (linkType === 'PROJECT' && !projectId) {
       alert(t(lang, 'الرجاء اختيار المشروع', 'Please select a project'))
       return
@@ -559,10 +603,26 @@ function ExpenseFormDialog({
       alert(t(lang, 'الرجاء اختيار مركز التكلفة', 'Please select a cost center'))
       return
     }
+    if (linkType === 'EMPLOYEE' && !employeeId) {
+      alert(t(lang, 'الرجاء اختيار الموظف', 'Please select an employee'))
+      return
+    }
+    if (linkType === 'EQUIPMENT' && !equipmentId) {
+      alert(t(lang, 'الرجاء اختيار المعدة', 'Please select equipment'))
+      return
+    }
 
     const isProject = expenseType === 'PROJECT'
+    // Build reference string including employee/equipment info if present
+    const refParts: string[] = []
+    if (reference) refParts.push(reference)
+    if (linkType === 'EMPLOYEE' && employeeId) refParts.push(`Employee: ${employeeId}`)
+    if (linkType === 'EQUIPMENT' && equipmentId) refParts.push(`Equipment: ${equipmentId}`)
+    const effectiveReference = refParts.join(' | ') || null
+
     createMutation.mutate({
       projectId: isProject ? (projectId || null) : null,
+      equipmentId: linkType === 'EQUIPMENT' ? equipmentId : null,
       costCenterId: costCenterId || (linkType === 'COST_CENTER' ? costCenterId : null) || undefined,
       expenseType,
       activityType: 'GENERAL',
@@ -573,7 +633,7 @@ function ExpenseFormDialog({
       vatAmount: autoVat || null,
       totalAmount,
       date,
-      reference: reference || null,
+      reference: effectiveReference,
       payFrom,
       // Account-based fields → server uses buildExpenseJournalEntryWithExplicitAccounts
       accountId: expenseAccountId,
@@ -585,11 +645,34 @@ function ExpenseFormDialog({
     })
   }
 
-  const linkTypeOptions: { value: 'COMPANY' | 'PROJECT' | 'COST_CENTER'; label: string; icon: React.ElementType }[] = [
-    { value: 'COMPANY',     label: t(lang, 'خاص بالشركة', 'Company / General'),  icon: Building },
-    { value: 'PROJECT',     label: t(lang, 'مشروع', 'Project'),                   icon: Building2 },
-    { value: 'COST_CENTER', label: t(lang, 'مركز تكلفة', 'Cost Center'),          icon: Target },
-  ]
+  // ── DYNAMIC link type options ──────────────────────────────────────
+  // Build the link-type options dynamically based on the selected account's
+  // properties. COMPANY is always available. PROJECT/COST_CENTER/EMPLOYEE/
+  // EQUIPMENT appear only if the account allows or requires them.
+  type LinkTypeOption = {
+    value: 'COMPANY' | 'PROJECT' | 'COST_CENTER' | 'EMPLOYEE' | 'EQUIPMENT'
+    label: string
+    icon: React.ElementType
+    required?: boolean
+  }
+  const linkTypeOptions: LinkTypeOption[] = useMemo(() => {
+    const opts: LinkTypeOption[] = [
+      { value: 'COMPANY', label: t(lang, 'خاص بالشركة', 'Company / General'), icon: Building },
+    ]
+    if (showProjectField) {
+      opts.push({ value: 'PROJECT', label: t(lang, 'مشروع', 'Project'), icon: Building2, required: requireProject })
+    }
+    if (showCostCenterField) {
+      opts.push({ value: 'COST_CENTER', label: t(lang, 'مركز تكلفة', 'Cost Center'), icon: Target })
+    }
+    if (showEmployeeField) {
+      opts.push({ value: 'EMPLOYEE', label: t(lang, 'موظف', 'Employee'), icon: UserIcon, required: requireEmployee })
+    }
+    if (showEquipmentField) {
+      opts.push({ value: 'EQUIPMENT', label: t(lang, 'معدة', 'Equipment'), icon: Cog, required: requireEquipment })
+    }
+    return opts
+  }, [lang, showProjectField, showCostCenterField, showEmployeeField, showEquipmentField, requireProject, requireEmployee, requireEquipment])
 
   const SubmitDisabled =
     createMutation.isPending ||
@@ -599,7 +682,9 @@ function ExpenseFormDialog({
     !amount ||
     !date ||
     (linkType === 'PROJECT' && !projectId) ||
-    (linkType === 'COST_CENTER' && !costCenterId)
+    (linkType === 'COST_CENTER' && !costCenterId) ||
+    (linkType === 'EMPLOYEE' && !employeeId) ||
+    (linkType === 'EQUIPMENT' && !equipmentId)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -715,26 +800,117 @@ function ExpenseFormDialog({
               </Select>
             </div>
           )}
+          {linkType === 'EMPLOYEE' && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <UserIcon className="size-3.5 text-muted-foreground" />
+                {t(lang, 'الموظف *', 'Employee *')}
+              </Label>
+              <Select value={employeeId} onValueChange={setEmployeeId}>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر الموظف', 'Select employee')} /></SelectTrigger>
+                <SelectContent>
+                  {employees.map(emp => (
+                    <SelectItem key={emp.id} value={emp.id}>
+                      <span className="font-mono text-xs ml-1">{emp.code}</span> — {emp.nameAr || emp.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {linkType === 'EQUIPMENT' && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-1.5">
+                <Cog className="size-3.5 text-muted-foreground" />
+                {t(lang, 'المعدة *', 'Equipment *')}
+              </Label>
+              <Select value={equipmentId} onValueChange={setEquipmentId}>
+                <SelectTrigger className="w-full"><SelectValue placeholder={t(lang, 'اختر المعدة', 'Select equipment')} /></SelectTrigger>
+                <SelectContent>
+                  {equipment.map(eq => (
+                    <SelectItem key={eq.id} value={eq.id}>
+                      <span className="font-mono text-xs ml-1">{eq.code}</span> — {eq.nameAr || eq.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-          {/* ─── 4. Expense Account selector (ADMIN_EXPENSE role only) ── */}
+          {/* ─── 4. Expense Account selector (PROPERTY-BASED) ─────── */}
+          {/* Fetches all accounts where usableInExpenses=true.
+              The form adapts dynamically based on the selected account's properties. */}
           <AccountSelector
-            roles={EXPENSE_ACCOUNT_ROLES}
+            filterByProperty={{ usableInExpenses: true }}
             value={expenseAccountId}
             onValueChange={(id, account) => {
               setExpenseAccountId(id)
               setExpenseAccountCode(account.code)
               setExpenseAccountNameAr(account.nameAr || account.name)
+              setExpenseAccountProps({
+                allowsProject: account.allowsProject,
+                allowsCostCenter: account.allowsCostCenter,
+                allowsEmployee: account.allowsEmployee,
+                allowsEquipment: account.allowsEquipment,
+                allowsSupplier: account.allowsSupplier,
+                allowsClient: account.allowsClient,
+                requiresEmployee: account.requiresEmployee,
+                requiresProject: account.requiresProject,
+                requiresEquipment: account.requiresEquipment,
+                requiresContract: account.requiresContract,
+                allowsVat: account.allowsVat,
+                documentType: account.documentType,
+              })
+              // If the account requires a specific link type, force it immediately
+              // (avoids useEffect cascading renders)
+              if (account.requiresProject) {
+                setLinkType('PROJECT')
+              } else if (account.requiresEmployee) {
+                setLinkType('EMPLOYEE')
+              } else if (account.requiresEquipment) {
+                setLinkType('EQUIPMENT')
+              }
+              // If current linkType is no longer valid for this account, reset to COMPANY
+              const allowsProj = account.allowsProject || account.requiresProject
+              const allowsCC = account.allowsCostCenter
+              const allowsEmp = account.allowsEmployee || account.requiresEmployee
+              const allowsEq = account.allowsEquipment || account.requiresEquipment
+              if (linkType === 'PROJECT' && !allowsProj) setLinkType('COMPANY')
+              if (linkType === 'COST_CENTER' && !allowsCC) setLinkType('COMPANY')
+              if (linkType === 'EMPLOYEE' && !allowsEmp) setLinkType('COMPANY')
+              if (linkType === 'EQUIPMENT' && !allowsEq) setLinkType('COMPANY')
             }}
             label={t(lang, 'حساب المصروف *', 'Expense Account *')}
             placeholder={t(lang, 'اختر حساب المصروف...', 'Select expense account...')}
           />
           {expenseAccountId && (
-            <div className="flex items-center gap-2 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 rounded-lg bg-violet-50 border border-violet-200 px-3 py-2">
               <span className="font-mono text-xs bg-white text-gray-700 px-1.5 py-0.5 rounded border">{expenseAccountCode}</span>
               <span className="text-sm text-violet-700">{expenseAccountNameAr}</span>
-              <Badge variant="outline" className="text-[10px] text-violet-700 border-violet-200 bg-white ml-auto">
-                ADMIN_EXPENSE
-              </Badge>
+              {/* Show active properties as badges */}
+              <div className="flex flex-wrap gap-1 ml-auto">
+                {expenseAccountProps?.requiresProject && (
+                  <Badge variant="outline" className="text-[9px] text-rose-700 border-rose-200 bg-rose-50">{t(lang, 'يتطلب مشروع', 'requires project')}</Badge>
+                )}
+                {expenseAccountProps?.requiresEmployee && (
+                  <Badge variant="outline" className="text-[9px] text-rose-700 border-rose-200 bg-rose-50">{t(lang, 'يتطلب موظف', 'requires employee')}</Badge>
+                )}
+                {expenseAccountProps?.requiresEquipment && (
+                  <Badge variant="outline" className="text-[9px] text-rose-700 border-rose-200 bg-rose-50">{t(lang, 'يتطلب معدة', 'requires equipment')}</Badge>
+                )}
+                {expenseAccountProps?.allowsProject && !expenseAccountProps?.requiresProject && (
+                  <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t(lang, 'يسمح بمشروع', 'allows project')}</Badge>
+                )}
+                {expenseAccountProps?.allowsCostCenter && (
+                  <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t(lang, 'يسمح بمركز تكلفة', 'allows cost center')}</Badge>
+                )}
+                {expenseAccountProps?.allowsEmployee && !expenseAccountProps?.requiresEmployee && (
+                  <Badge variant="outline" className="text-[9px] text-sky-700 border-sky-200 bg-sky-50">{t(lang, 'يسمح بموظف', 'allows employee')}</Badge>
+                )}
+                {expenseAccountProps?.allowsVat === false && (
+                  <Badge variant="outline" className="text-[9px] text-amber-700 border-amber-200 bg-amber-50">{t(lang, 'بدون ضريبة', 'no VAT')}</Badge>
+                )}
+              </div>
             </div>
           )}
 
@@ -770,25 +946,31 @@ function ExpenseFormDialog({
                 required
               />
             </div>
-            {/* VAT toggle */}
-            <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${vatEnabled ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
+            {/* VAT toggle — disabled when account doesn't allow VAT (allowsVat=false) */}
+            <div className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+              !accountAllowsVat ? 'bg-gray-50 border-gray-200 opacity-60' :
+              vatEnabled ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'
+            }`}>
               <div className="flex items-center gap-2">
                 <Switch
-                  checked={vatEnabled}
-                  onCheckedChange={setVatEnabled}
+                  checked={vatEnabled && accountAllowsVat}
+                  onCheckedChange={(v) => setVatEnabled(v)}
+                  disabled={!accountAllowsVat}
                 />
                 <div>
                   <p className="text-sm font-medium">
                     {t(lang, 'ضريبة القيمة المضافة (15%)', 'Value Added Tax (15%)')}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {vatEnabled
-                      ? t(lang, '15% ضريبة تُسجّل في حساب ضريبة المدخلات (1410)', '15% VAT posted to Input VAT (1410)')
-                      : t(lang, 'بدون ضريبة', 'No VAT')}
+                    {!accountAllowsVat
+                      ? t(lang, 'هذا الحساب لا يسمح بالضريبة (حسب خصائصه)', 'This account does not allow VAT (per its properties)')
+                      : vatEnabled
+                        ? t(lang, '15% ضريبة تُسجّل في حساب ضريبة المدخلات (1410)', '15% VAT posted to Input VAT (1410)')
+                        : t(lang, 'بدون ضريبة', 'No VAT')}
                   </p>
                 </div>
               </div>
-              {vatEnabled && parsedAmount > 0 && (
+              {vatEnabled && accountAllowsVat && parsedAmount > 0 && (
                 <div className="text-left">
                   <p className="text-xs text-emerald-700">{t(lang, 'الضريبة', 'VAT')}</p>
                   <p className="font-bold text-emerald-700">
@@ -912,6 +1094,24 @@ export function ExpensesModule() {
     queryKey: ['cost-centers-list'],
     queryFn: async () => {
       const res = await fetch('/api/cost-centers')
+      if (!res.ok) return []
+      return res.json()
+    },
+  })
+
+  const { data: employees = [] } = useQuery<Array<{ id: string; code: string; name: string; nameAr: string | null }>>({
+    queryKey: ['employees-list-active'],
+    queryFn: async () => {
+      const res = await fetch('/api/employees?active=true')
+      if (!res.ok) return []
+      return res.json()
+    },
+  })
+
+  const { data: equipment = [] } = useQuery<Array<{ id: string; code: string; name: string; nameAr: string | null }>>({
+    queryKey: ['equipment-list'],
+    queryFn: async () => {
+      const res = await fetch('/api/equipment')
       if (!res.ok) return []
       return res.json()
     },
@@ -1388,6 +1588,8 @@ export function ExpensesModule() {
         onOpenChange={setDialogOpen}
         projects={projects}
         costCenters={costCenters}
+        employees={employees}
+        equipment={equipment}
       />
     </ModuleLayout>
   )

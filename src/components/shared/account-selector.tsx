@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils'
 
 // ============ Types ============
 
-/** Shape of an account returned by /api/accounts/by-role */
-interface AccountOption {
+/** Extended account shape — includes all usage/selection/behavior properties */
+export interface AccountOption {
   id: string
   code: string
   name: string
@@ -25,28 +25,55 @@ interface AccountOption {
   type?: string
   activityType?: string
   allowPosting?: boolean
+  // Usage properties
+  usableInExpenses?: boolean
+  usableInProjects?: boolean
+  usableInRental?: boolean
+  usableInPayroll?: boolean
+  usableInAdvances?: boolean
+  usableInMaintenance?: boolean
+  usableInFuel?: boolean
+  usableInPurchases?: boolean
+  usableInRevenue?: boolean
+  showInCash?: boolean
+  showInBank?: boolean
+  // Selection properties
+  allowsProject?: boolean
+  allowsCostCenter?: boolean
+  allowsEmployee?: boolean
+  allowsEquipment?: boolean
+  allowsSupplier?: boolean
+  allowsClient?: boolean
+  // Behavior properties
+  requiresEmployee?: boolean
+  requiresProject?: boolean
+  requiresEquipment?: boolean
+  requiresContract?: boolean
+  allowsVat?: boolean
+  documentType?: string | null
 }
 
 export interface AccountSelectorProps {
-  /** Array of account roles to fetch (e.g. ['CASH', 'BANK']) */
-  roles: string[]
+  /** Array of account roles to fetch (e.g. ['CASH', 'BANK']) — legacy mode */
+  roles?: string[]
+  /**
+   * NEW: Property-based filtering. Pass an object like:
+   *   { usableInExpenses: true }
+   *   { usableInFuel: true }
+   * The selector will fetch all accounts where the specified properties are true.
+   * This is the preferred mode going forward.
+   */
+  filterByProperty?: Record<string, boolean>
   /** Currently selected account ID */
   value: string | null
-  /** Callback when the user selects an account */
+  /** Callback when the user selects an account — receives FULL account object */
   onValueChange: (
     accountId: string,
-    account: {
-      id: string
-      code: string
-      name: string
-      nameAr: string | null
-      accountRole: string | null
-      activityType?: string | null
-    }
+    account: AccountOption
   ) => void
-  /** Label text (Arabic) */
+  /** Label text */
   label?: string
-  /** Placeholder text (Arabic) */
+  /** Placeholder text */
   placeholder?: string
   /** Optional filter by activityType */
   activityType?: string
@@ -59,7 +86,8 @@ export interface AccountSelectorProps {
 // ============ Component ============
 
 export function AccountSelector({
-  roles,
+  roles = [],
+  filterByProperty,
   value,
   onValueChange,
   label,
@@ -68,22 +96,37 @@ export function AccountSelector({
   parentCode,
   className,
 }: AccountSelectorProps) {
-  // Build the query URL based on whether we use parentCode or roles
+  // Build the query URL based on the mode
   const queryString = React.useMemo(() => {
     const params = new URLSearchParams()
-    if (parentCode) {
+
+    // NEW: Property-based mode takes priority
+    if (filterByProperty) {
+      for (const [key, val] of Object.entries(filterByProperty)) {
+        if (val) params.set(key, 'true')
+      }
+    } else if (parentCode) {
       params.set('parentCode', parentCode)
     } else if (roles.length > 0) {
       params.set('role', roles.join(','))
     }
+
     if (activityType) {
       params.set('activityType', activityType)
     }
     return params.toString()
-  }, [roles, parentCode, activityType])
+  }, [roles, filterByProperty, parentCode, activityType])
+
+  // Query key reflects the mode
+  const queryKey = React.useMemo(() => {
+    if (filterByProperty) {
+      return ['accounts-by-property', JSON.stringify(filterByProperty), activityType]
+    }
+    return ['accounts-by-role', roles.join(','), parentCode, activityType]
+  }, [roles, filterByProperty, parentCode, activityType])
 
   const { data: accounts = [], isLoading, isError } = useQuery<AccountOption[]>({
-    queryKey: ['accounts-by-role', roles.join(','), parentCode, activityType],
+    queryKey,
     queryFn: async () => {
       if (!queryString) return []
       const res = await fetch(`/api/accounts/by-role?${queryString}`)
@@ -106,14 +149,9 @@ export function AccountSelector({
   const handleValueChange = (accountId: string) => {
     const account = accountMap.get(accountId)
     if (account) {
-      onValueChange(accountId, {
-        id: account.id,
-        code: account.code,
-        name: account.name,
-        nameAr: account.nameAr,
-        accountRole: account.accountRole,
-        activityType: account.activityType ?? null,
-      })
+      // Pass the FULL account object (includes all properties) so the parent
+      // can dynamically adapt its form based on the account's behavior.
+      onValueChange(accountId, account)
     }
   }
 

@@ -1886,6 +1886,44 @@ model Account {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  // ========================================================================
+  // خصائص الاستخدام (Usage Properties) — تتحكم في ظهور الحساب في الشاشات
+  // هذه الخصائص هي التي تحدد أين يظهر الحساب، وليس اسمه أو رقمه.
+  // ========================================================================
+  usableInExpenses    Boolean @default(false) // يستخدم في شاشة المصروفات العامة
+  usableInProjects    Boolean @default(false) // يستخدم في شاشة المشاريع
+  usableInRental      Boolean @default(false) // يستخدم في شاشة التأجير
+  usableInPayroll     Boolean @default(false) // يستخدم في شاشة الرواتب
+  usableInAdvances    Boolean @default(false) // يستخدم في شاشة السلف
+  usableInMaintenance Boolean @default(false) // يستخدم في شاشة الصيانة
+  usableInFuel        Boolean @default(false) // يستخدم في شاشة الوقود
+  usableInPurchases   Boolean @default(false) // يستخدم في شاشة المشتريات
+  usableInRevenue     Boolean @default(false) // يستخدم في شاشة الإيرادات
+  showInCash          Boolean @default(false) // يظهر في شاشة الصندوق
+  showInBank          Boolean @default(false) // يظهر في شاشة البنك
+
+  // ========================================================================
+  // خصائص الاختيار (Selection Properties) — تتحكم في الحقول الاختيارية
+  // عندما يُختار هذا الحساب، تظهر هذه الخيارات للمستخدم (اختيارية)
+  // ========================================================================
+  allowsProject     Boolean @default(false) // يسمح باختيار مشروع
+  allowsCostCenter  Boolean @default(false) // يسمح باختيار مركز تكلفة
+  allowsEmployee    Boolean @default(false) // يسمح باختيار موظف
+  allowsEquipment   Boolean @default(false) // يسمح باختيار معدة
+  allowsSupplier    Boolean @default(false) // يسمح باختيار مورد
+  allowsClient      Boolean @default(false) // يسمح باختيار عميل
+
+  // ========================================================================
+  // سلوك الحساب (Account Behavior) — قواعد إلزامية عند استخدام الحساب
+  // هذه القواعد تُطبَّق عند إنشاء القيد: الحقول الإلزامية
+  // ========================================================================
+  requiresEmployee  Boolean @default(false) // يتطلب موظف (إلزامي)
+  requiresProject   Boolean @default(false) // يتطلب مشروع (إلزامي)
+  requiresEquipment Boolean @default(false) // يتطلب معدة (إلزامي)
+  requiresContract  Boolean @default(false) // يتطلب عقد (إلزامي)
+  allowsVat         Boolean @default(true)  // يسمح بالضريبة
+  documentType      String? // نوع المستند: ACCRUAL | CASH | INVOICE | etc.
+
   parent             Account?      @relation("AccountHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
   children           Account[]     @relation("AccountHierarchy")
   journalLines       JournalLine[]
@@ -1902,6 +1940,12 @@ model Account {
   @@index([activityType])
   @@index([accountRole])
   @@index([parentCode])
+  @@index([usableInExpenses])
+  @@index([usableInFuel])
+  @@index([usableInMaintenance])
+  @@index([usableInPayroll])
+  @@index([usableInProjects])
+  @@index([usableInRental])
 }
 
 model JournalEntry {
