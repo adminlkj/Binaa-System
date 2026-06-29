@@ -6829,3 +6829,49 @@ Work Log:
 
 Stage Summary:
 - (قيد التنفيذ)
+
+---
+Task ID: BA-02-COMPLETE
+Agent: Main Agent
+Task: إكمال مرحلة BA-02 (تثبيت نواة المحاسبة) — جميع المهام الخمس
+
+Work Log:
+- BA-02 Task 1: توحيد engine.ts + report-engine.ts + financial-statements/* في queries.ts (SSOT)
+  * ملفات جديدة: constants.ts, chart-of-accounts.ts, queries.ts
+  * engine.ts أصبح WRITE-ONLY
+  * verifyNumericalConsistency() دالة جديدة للتحقق
+  * commit 4577e9b
+
+- BA-02 Task 2: فرض الاتساق الرقمي (build-breaking)
+  * توسيع verifyNumericalConsistency() إلى 7 قواعد (I1-I7)
+  * prebuild hook يمنع البناء إذا فشل أي invariant
+  * /api/accounting-consistency endpoint جديد
+  * commit eeede0b
+
+- BA-02 Task 3: التقويم المحاسبي الموحّد
+  * accounting-calendar.ts (NEW) — المصدر الوحيد لحالة الفترات
+  * period-guard.ts أصبح delegate wrapper
+  * guard.ts R6 يفرض التقويم بشكل صارم (throw بدلاً من warn)
+  * commit f62a73b
+
+- BA-02 Task 4: حماية القيود (POSTED = Immutable)
+  * assertJournalEntryMutable + assertJournalEntryReversible في guard.ts
+  * PUT /api/journal-entries/[id] يرفض تعديل POSTED (HTTP 423)
+  * DELETE يتطلب عكس القيد أولاً
+  * commit 0d4f053
+
+- BA-02 Task 5: اختبارات سلوكية شاملة
+  * scripts/test-accounting-behavior.ts (NEW)
+  * 26 اختبار تغطي 10 سيناريوهات محاسبية حقيقية
+  * prebuild hook يشتغل_both verify + behavior tests
+  * commit c2647c9
+
+Stage Summary:
+- ✅ 5 commits مدفوعة لـ origin/main: 4577e9b → eeede0b → f62a73b → 0d4f053 → c2647c9
+- ✅ Single Source of Truth محققة: queries.ts هو المصدر الوحيد للقراءات
+- ✅ Build-breaking enforcement: البناء يفشل إذا اختلف ريال واحد
+- ✅ 0 أخطاء TypeScript، 0 أخطاء ESLint في ملفات المحاسبة
+- ✅ 26 اختبار سلوكي جميعها تنجح
+- ✅ التقويم الموحّد يمنع الترحيل في الفترات المغلقة
+- ✅ القيود المرحّلة غير قابلة للتعديل (Reverse → Repost فقط)
+
