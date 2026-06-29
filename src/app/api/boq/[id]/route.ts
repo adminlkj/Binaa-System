@@ -33,12 +33,25 @@ export async function PUT(
 
     const data: Record<string, unknown> = {}
 
+    // L4-DATA-004: Validate quantity and unitPrice are non-negative when provided.
+    if (body.quantity !== undefined) {
+      const q = parseFloat(body.quantity)
+      if (isNaN(q) || q < 0) {
+        return NextResponse.json({ error: 'الكمية يجب أن تكون رقماً صحيحاً وأكبر من أو يساوي صفر' }, { status: 400 })
+      }
+      data.quantity = q
+    }
+    if (body.unitPrice !== undefined) {
+      const p = parseFloat(body.unitPrice)
+      if (isNaN(p) || p < 0) {
+        return NextResponse.json({ error: 'سعر الوحدة يجب أن يكون رقماً صحيحاً وأكبر من أو يساوي صفر' }, { status: 400 })
+      }
+      data.unitPrice = p
+    }
     if (body.projectId !== undefined) data.projectId = body.projectId
     if (body.code !== undefined) data.code = body.code
     if (body.description !== undefined) data.description = body.description
     if (body.unit !== undefined) data.unit = body.unit
-    if (body.quantity !== undefined) data.quantity = parseFloat(body.quantity)
-    if (body.unitPrice !== undefined) data.unitPrice = parseFloat(body.unitPrice)
     if (body.category !== undefined) data.category = body.category || null
 
     // Recalculate total price if quantity or unitPrice changed

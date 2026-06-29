@@ -67,6 +67,24 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'الحقول المطلوبة: الكود، الاسم، العميل، الفرع، تاريخ البدء' }, { status: 400 })
     }
 
+    // L4-DATA-006: Validate name is non-empty + date order (endDate >= startDate).
+    if (typeof name !== 'string' || !name.trim()) {
+      return NextResponse.json({ error: 'اسم المشروع لا يمكن أن يكون فارغاً' }, { status: 400 })
+    }
+    if (endDate) {
+      const startD = new Date(startDate)
+      const endD = new Date(endDate)
+      if (isNaN(startD.getTime())) {
+        return NextResponse.json({ error: 'تاريخ بداية المشروع غير صالح' }, { status: 400 })
+      }
+      if (isNaN(endD.getTime())) {
+        return NextResponse.json({ error: 'تاريخ نهاية المشروع غير صالح' }, { status: 400 })
+      }
+      if (endD < startD) {
+        return NextResponse.json({ error: 'تاريخ نهاية المشروع لا يمكن أن يكون قبل تاريخ بدايته' }, { status: 400 })
+      }
+    }
+
     const existingCode = await db.project.findUnique({ where: { code } })
     if (existingCode) {
       return NextResponse.json({ error: 'كود المشروع موجود بالفعل' }, { status: 400 })

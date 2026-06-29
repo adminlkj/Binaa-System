@@ -50,6 +50,22 @@ export async function PUT(
 
     const updateData: Record<string, unknown> = {}
 
+    // L4-DATA-005: Validate date order — endDate must not be earlier than startDate.
+    // Use the effective startDate (provided or existing) for comparison when endDate provided.
+    if (body.startDate !== undefined || body.endDate !== undefined) {
+      const effectiveStart = body.startDate !== undefined ? new Date(body.startDate) : existing.startDate
+      const effectiveEnd = body.endDate !== undefined ? (body.endDate ? new Date(body.endDate) : null) : existing.endDate
+      if (body.startDate !== undefined && isNaN(effectiveStart.getTime())) {
+        return NextResponse.json({ error: 'تاريخ بداية العقد غير صالح' }, { status: 400 })
+      }
+      if (body.endDate !== undefined && body.endDate && isNaN(effectiveEnd!.getTime())) {
+        return NextResponse.json({ error: 'تاريخ نهاية العقد غير صالح' }, { status: 400 })
+      }
+      if (effectiveEnd && effectiveEnd < effectiveStart) {
+        return NextResponse.json({ error: 'تاريخ نهاية العقد لا يمكن أن يكون قبل تاريخ بدايته' }, { status: 400 })
+      }
+    }
+
     if (body.startDate !== undefined) updateData.startDate = new Date(body.startDate)
     if (body.endDate !== undefined) updateData.endDate = body.endDate ? new Date(body.endDate) : null
     if (body.basicSalary !== undefined) updateData.basicSalary = parseFloat(body.basicSalary) || 0

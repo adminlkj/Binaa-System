@@ -201,6 +201,24 @@ export async function PUT(
       }
     }
 
+    // L4-DATA-006: Validate name non-empty + date order (endDate >= startDate).
+    if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+      return NextResponse.json({ error: 'اسم المشروع لا يمكن أن يكون فارغاً' }, { status: 400 })
+    }
+    if (startDate !== undefined || endDate !== undefined) {
+      const effectiveStart = startDate !== undefined ? new Date(startDate) : existing.startDate
+      const effectiveEnd = endDate !== undefined ? (endDate ? new Date(endDate) : null) : existing.endDate
+      if (startDate !== undefined && isNaN(effectiveStart.getTime())) {
+        return NextResponse.json({ error: 'تاريخ بداية المشروع غير صالح' }, { status: 400 })
+      }
+      if (endDate !== undefined && endDate && isNaN(effectiveEnd!.getTime())) {
+        return NextResponse.json({ error: 'تاريخ نهاية المشروع غير صالح' }, { status: 400 })
+      }
+      if (effectiveEnd && effectiveEnd < effectiveStart) {
+        return NextResponse.json({ error: 'تاريخ نهاية المشروع لا يمكن أن يكون قبل تاريخ بدايته' }, { status: 400 })
+      }
+    }
+
     const project = await db.project.update({
       where: { id },
       data: {

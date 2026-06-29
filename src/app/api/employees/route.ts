@@ -81,6 +81,11 @@ export async function POST(request: Request) {
 
     const code = `EMP-${String(nextNum).padStart(3, '0')}`
 
+    // L4-DATA-001: Validate required fields — name must be non-empty string.
+    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+      return NextResponse.json({ error: 'اسم الموظف مطلوب ولا يمكن أن يكون فارغاً' }, { status: 400 })
+    }
+
     // Branch is required by schema - if not provided, fall back to first branch
     let branchId = body.branchId
     if (!branchId) {

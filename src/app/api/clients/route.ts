@@ -85,6 +85,11 @@ export async function POST(request: Request) {
 
     const code = `CLT-${String(nextNum).padStart(3, '0')}`
 
+    // L4-DATA-002: Validate required fields — name must be non-empty string.
+    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+      return NextResponse.json({ error: 'اسم العميل مطلوب ولا يمكن أن يكون فارغاً' }, { status: 400 })
+    }
+
     const client = await db.client.create({
       data: {
         code,

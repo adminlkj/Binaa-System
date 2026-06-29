@@ -30,6 +30,27 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
 
+    // L4-DATA-005: Validate required employeeId and date order (endDate >= startDate).
+    if (!body.employeeId) {
+      return NextResponse.json({ error: 'الموظف مطلوب' }, { status: 400 })
+    }
+    if (!body.startDate) {
+      return NextResponse.json({ error: 'تاريخ بداية العقد مطلوب' }, { status: 400 })
+    }
+    if (body.endDate) {
+      const startD = new Date(body.startDate)
+      const endD = new Date(body.endDate)
+      if (isNaN(startD.getTime())) {
+        return NextResponse.json({ error: 'تاريخ بداية العقد غير صالح' }, { status: 400 })
+      }
+      if (isNaN(endD.getTime())) {
+        return NextResponse.json({ error: 'تاريخ نهاية العقد غير صالح' }, { status: 400 })
+      }
+      if (endD < startD) {
+        return NextResponse.json({ error: 'تاريخ نهاية العقد لا يمكن أن يكون قبل تاريخ بدايته' }, { status: 400 })
+      }
+    }
+
     const contract = await db.employeeContract.create({
       data: {
         employeeId: body.employeeId,

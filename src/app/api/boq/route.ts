@@ -32,7 +32,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'جميع الحقول مطلوبة ما عدا التصنيف' }, { status: 400 })
     }
 
-    const totalPrice = Math.round(parseFloat(quantity) * parseFloat(unitPrice) * 100) / 100
+    // L4-DATA-004: Validate quantity and unitPrice are non-negative.
+    const qtyNum = parseFloat(quantity)
+    const priceNum = parseFloat(unitPrice)
+    if (isNaN(qtyNum) || qtyNum < 0) {
+      return NextResponse.json({ error: 'الكمية يجب أن تكون رقماً صحيحاً وأكبر من أو يساوي صفر' }, { status: 400 })
+    }
+    if (isNaN(priceNum) || priceNum < 0) {
+      return NextResponse.json({ error: 'سعر الوحدة يجب أن يكون رقماً صحيحاً وأكبر من أو يساوي صفر' }, { status: 400 })
+    }
+
+    const totalPrice = Math.round(qtyNum * priceNum * 100) / 100
 
     const item = await db.bOQItem.create({
       data: {
@@ -40,8 +50,8 @@ export async function POST(request: Request) {
         code,
         description,
         unit,
-        quantity: parseFloat(quantity),
-        unitPrice: parseFloat(unitPrice),
+        quantity: qtyNum,
+        unitPrice: priceNum,
         totalPrice,
         category: category || null,
       },

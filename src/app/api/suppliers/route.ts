@@ -73,6 +73,11 @@ export async function POST(request: Request) {
 
     const code = `SUP-${String(nextNum).padStart(3, '0')}`
 
+    // L4-DATA-003: Validate required fields — name must be non-empty string.
+    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+      return NextResponse.json({ error: 'اسم المورد مطلوب ولا يمكن أن يكون فارغاً' }, { status: 400 })
+    }
+
     const supplier = await db.supplier.create({
       data: {
         code,

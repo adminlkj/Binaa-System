@@ -27,6 +27,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params
     const body = await request.json()
 
+    // L4-DATA-002: Validate name is non-empty when provided.
+    if (body.name !== undefined && (typeof body.name !== 'string' || !body.name.trim())) {
+      return NextResponse.json({ error: 'اسم العميل لا يمكن أن يكون فارغاً' }, { status: 400 })
+    }
+
     const client = await db.client.update({
       where: { id },
       data: {
