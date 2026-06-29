@@ -309,11 +309,14 @@ export async function lockPeriod(
  * إقفال فترة شهري إقفالاً نهائياً (CLOSED).
  * يتطلب أن تكون الفترة OPEN أو LOCKED.
  * لا يُنشئ قيد إقفال (الإقفال الشهري لا يتطلب قيداً — فقط الإقفال السنوي).
+ *
+ * @param options.allowDuringClosing — إذا true، يتجاوز فحص حالة السنة المالية
+ *   (يُستخدم أثناء الإقفال السنوي عندما تكون السنة في حالة CLOSING/CLOSED)
  */
 export async function closePeriod(
   periodId: string,
   tx?: PrismaTransaction,
-  options?: { closedBy?: string; notes?: string }
+  options?: { closedBy?: string; notes?: string; allowDuringClosing?: boolean }
 ): Promise<void> {
   const client = tx ?? db
   const period = await client.fiscalPeriod.findUniqueOrThrow({
@@ -327,7 +330,9 @@ export async function closePeriod(
       { periodId }
     )
   }
-  if (period.fiscalYear.status === 'CLOSED') {
+  // During year-end closing, the fiscal year is in CLOSING/CLOSED status.
+  // We allow period closing in that case via allowDuringClosing=true.
+  if (!options?.allowDuringClosing && period.fiscalYear.status === 'CLOSED') {
     throw new AccountingCalendarError(
       'FISCAL_YEAR_CLOSED',
       `السنة المالية ${period.fiscalYear.name} مُقفلة — لا يمكن إقفال فترة فيها`,
