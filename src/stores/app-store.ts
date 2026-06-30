@@ -21,7 +21,17 @@ export type NavItem =
   // الإعدادات والبيانات الأساسية
   | 'clients' | 'suppliers' | 'inventory' | 'settings' | 'expenses' | 'accounting-mapping' | 'users'
 
-export type NavGroup = 'home' | 'construction-hub' | 'rental-hub' | 'hr' | 'supply-chain' | 'operations' | 'accounting-reports' | 'settings-data'
+// 9 محاور رئيسية (دورات) — كل دورة تحتوي مراحلها بالترتيب التسلسلي من البداية للنهاية
+export type NavGroup =
+  | 'projects-cycle'
+  | 'rental-cycle'
+  | 'costs-cycle'
+  | 'subcontractors-cycle'
+  | 'hr-cycle'
+  | 'accounting-cycle'
+  | 'reports-cycle'
+  | 'settings-cycle'
+  | 'users-cycle'
 
 export type Lang = 'ar' | 'en'
 
@@ -35,64 +45,80 @@ interface NavGroupConfig {
   items: NavItem[]
 }
 
+// كل دورة مرتبة تسلسلياً من بداية الدورة حتى نهايتها
 export const navGroups: NavGroupConfig[] = [
   {
-    key: 'home',
-    label: { ar: 'الرئيسية', en: 'Home' },
-    icon: 'LayoutDashboard',
-    color: 'text-gray-600',
-    items: ['dashboard', 'business-flows'],
-  },
-  {
-    key: 'construction-hub',
-    label: { ar: 'المشاريع التنفيذية', en: 'Construction Projects' },
+    key: 'projects-cycle',
+    label: { ar: 'دورة المشاريع', en: 'Projects Cycle' },
     icon: 'Building2',
     color: 'text-emerald-600',
     items: ['projects', 'contracts', 'boq', 'extracts', 'sales', 'service-invoices', 'client-payments'],
   },
   {
-    key: 'rental-hub',
-    label: { ar: 'تأجير المعدات', en: 'Equipment Rental' },
+    key: 'rental-cycle',
+    label: { ar: 'دورة تأجير المعدات', en: 'Equipment Rental Cycle' },
     icon: 'Truck',
     color: 'text-cyan-600',
-    items: ['equipment', 'rental-contracts', 'delivery-orders', 'timesheets', 'rental-invoices', 'rental-payments'],
+    items: ['equipment', 'rental-contracts', 'delivery-orders', 'timesheets', 'equipment-operations', 'equipment-maintenance', 'fuel', 'rental-invoices', 'rental-payments'],
   },
   {
-    key: 'hr',
-    label: { ar: 'الموارد البشرية', en: 'Human Resources' },
+    key: 'costs-cycle',
+    label: { ar: 'دورة التكاليف والمصروفات', en: 'Costs & Expenses Cycle' },
+    icon: 'Wallet',
+    color: 'text-amber-600',
+    items: ['purchase-requests', 'purchase-orders', 'goods-receipt', 'supplier-invoices', 'supplier-payments', 'expenses', 'labor', 'petty-cash'],
+  },
+  {
+    key: 'subcontractors-cycle',
+    label: { ar: 'دورة مقاولي الباطن', en: 'Subcontractors Cycle' },
+    icon: 'HardHat',
+    color: 'text-orange-600',
+    items: ['subcontractors'],
+  },
+  {
+    key: 'hr-cycle',
+    label: { ar: 'دورة الموارد البشرية', en: 'HR Cycle' },
     icon: 'Users',
     color: 'text-violet-600',
     items: ['employees', 'employee-contracts', 'work-teams', 'attendance', 'payroll-runs', 'salaries', 'salary-payments', 'advances', 'resource-distribution'],
   },
   {
-    key: 'supply-chain',
-    label: { ar: 'سلسلة التوريد', en: 'Supply Chain' },
-    icon: 'Package',
-    color: 'text-amber-600',
-    items: ['purchase-requests', 'purchase-orders', 'goods-receipt', 'supplier-invoices', 'supplier-payments'],
-  },
-  {
-    key: 'operations',
-    label: { ar: 'التشغيل والصيانة', en: 'Operations & Maintenance' },
-    icon: 'Wrench',
-    color: 'text-orange-600',
-    items: ['equipment-operations', 'equipment-maintenance', 'fuel', 'subcontractors', 'expenses', 'labor', 'petty-cash'],
-  },
-  {
-    key: 'accounting-reports',
-    label: { ar: 'المحاسبة والتقارير', en: 'Accounting & Reports' },
+    key: 'accounting-cycle',
+    label: { ar: 'دورة المحاسبة', en: 'Accounting Cycle' },
     icon: 'Calculator',
     color: 'text-teal-600',
-    items: ['accounting', 'depreciation', 'financial-years', 'vat', 'reports'],
+    items: ['accounting', 'depreciation', 'financial-years', 'vat'],
   },
   {
-    key: 'settings-data',
-    label: { ar: 'الإعدادات والبيانات', en: 'Settings & Data' },
+    key: 'reports-cycle',
+    label: { ar: 'دورة التقارير', en: 'Reports Cycle' },
+    icon: 'FileText',
+    color: 'text-fuchsia-600',
+    items: ['reports'],
+  },
+  {
+    key: 'settings-cycle',
+    label: { ar: 'دورة الإعدادات', en: 'Settings Cycle' },
     icon: 'Settings',
-    color: 'text-gray-500',
-    items: ['clients', 'suppliers', 'inventory', 'users', 'settings', 'accounting-mapping'],
+    color: 'text-slate-500',
+    items: ['clients', 'suppliers', 'inventory', 'settings', 'accounting-mapping'],
+  },
+  {
+    key: 'users-cycle',
+    label: { ar: 'دورة المستخدمين والصلاحيات', en: 'Users & Permissions Cycle' },
+    icon: 'ShieldCheck',
+    color: 'text-rose-600',
+    items: ['users'],
   },
 ]
+
+// Helper: find which cycle a nav item belongs to
+export function findCycleForItem(item: NavItem): NavGroup | null {
+  for (const group of navGroups) {
+    if (group.items.includes(item)) return group.key
+  }
+  return null
+}
 
 export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   // الرئيسية

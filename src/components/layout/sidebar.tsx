@@ -10,12 +10,13 @@ import {
   Receipt, ArrowRightLeft, ListChecks, HardHat,
   DollarSign, Warehouse, Link2, Wallet, Circle,
   TrendingDown, CalendarRange, HandCoins, Coins, FileSignature,
+  ShieldCheck,
 } from 'lucide-react'
 import {
   useAppStore,
   navGroups,
   navItemLabels,
-  navItemActivity,
+  findCycleForItem,
   type NavItem,
   type NavGroup,
 } from '@/stores/app-store'
@@ -24,6 +25,7 @@ import { cn } from '@/lib/utils'
 // Icon mapping for each nav item
 const navItemIcons: Record<NavItem, React.ElementType> = {
   'dashboard': LayoutDashboard,
+  'business-flows': TrendingUp,
   // Construction Hub
   'projects': Building2,
   'contracts': FileText,
@@ -75,47 +77,53 @@ const navItemIcons: Record<NavItem, React.ElementType> = {
   'inventory': Warehouse,
   'settings': Settings,
   'accounting-mapping': Link2,
+  'users': ShieldCheck,
 }
 
 // Fallback icon for safety (prevents 'Element type is invalid' crashes)
 const FallbackIcon = Circle
 
-// Hub group icons
+// Cycle group icons — one per cycle
 const groupIcons: Record<NavGroup, React.ElementType> = {
-  'home': LayoutDashboard,
-  'construction-hub': Building2,
-  'rental-hub': Truck,
-  'hr': Users,
-  'supply-chain': Package,
-  'operations': Wrench,
-  'accounting-reports': Calculator,
-  'settings-data': Settings,
+  'projects-cycle': Building2,
+  'rental-cycle': Truck,
+  'costs-cycle': Wallet,
+  'subcontractors-cycle': HardHat,
+  'hr-cycle': Users,
+  'accounting-cycle': Calculator,
+  'reports-cycle': FileText,
+  'settings-cycle': Settings,
+  'users-cycle': ShieldCheck,
 }
 
-// Hub group colors for the header
-const groupColors: Record<NavGroup, { bg: string; text: string; border: string; light: string }> = {
-  'home': { bg: 'bg-gray-600', text: 'text-gray-600', border: 'border-gray-300', light: 'bg-gray-50' },
-  'construction-hub': { bg: 'bg-emerald-600', text: 'text-emerald-600', border: 'border-emerald-300', light: 'bg-emerald-50' },
-  'rental-hub': { bg: 'bg-cyan-600', text: 'text-cyan-600', border: 'border-cyan-300', light: 'bg-cyan-50' },
-  'hr': { bg: 'bg-violet-600', text: 'text-violet-600', border: 'border-violet-300', light: 'bg-violet-50' },
-  'supply-chain': { bg: 'bg-amber-600', text: 'text-amber-600', border: 'border-amber-300', light: 'bg-amber-50' },
-  'operations': { bg: 'bg-orange-600', text: 'text-orange-600', border: 'border-orange-300', light: 'bg-orange-50' },
-  'accounting-reports': { bg: 'bg-teal-600', text: 'text-teal-600', border: 'border-teal-300', light: 'bg-teal-50' },
-  'settings-data': { bg: 'bg-gray-500', text: 'text-gray-500', border: 'border-gray-300', light: 'bg-gray-50' },
+// Cycle colors
+const groupColors: Record<NavGroup, { bg: string; text: string; border: string; light: string; dot: string }> = {
+  'projects-cycle': { bg: 'bg-emerald-600', text: 'text-emerald-600', border: 'border-emerald-300', light: 'bg-emerald-50', dot: 'bg-emerald-500' },
+  'rental-cycle': { bg: 'bg-cyan-600', text: 'text-cyan-600', border: 'border-cyan-300', light: 'bg-cyan-50', dot: 'bg-cyan-500' },
+  'costs-cycle': { bg: 'bg-amber-600', text: 'text-amber-600', border: 'border-amber-300', light: 'bg-amber-50', dot: 'bg-amber-500' },
+  'subcontractors-cycle': { bg: 'bg-orange-600', text: 'text-orange-600', border: 'border-orange-300', light: 'bg-orange-50', dot: 'bg-orange-500' },
+  'hr-cycle': { bg: 'bg-violet-600', text: 'text-violet-600', border: 'border-violet-300', light: 'bg-violet-50', dot: 'bg-violet-500' },
+  'accounting-cycle': { bg: 'bg-teal-600', text: 'text-teal-600', border: 'border-teal-300', light: 'bg-teal-50', dot: 'bg-teal-500' },
+  'reports-cycle': { bg: 'bg-fuchsia-600', text: 'text-fuchsia-600', border: 'border-fuchsia-300', light: 'bg-fuchsia-50', dot: 'bg-fuchsia-500' },
+  'settings-cycle': { bg: 'bg-slate-600', text: 'text-slate-600', border: 'border-slate-300', light: 'bg-slate-50', dot: 'bg-slate-500' },
+  'users-cycle': { bg: 'bg-rose-600', text: 'text-rose-600', border: 'border-rose-300', light: 'bg-rose-50', dot: 'bg-rose-500' },
 }
 
 // ============ Desktop Sidebar ============
 
 export function Sidebar() {
   const { activeItem, setActiveItem, lang, toggleLang, sidebarCollapsed, setSidebarCollapsed } = useAppStore()
-  // L2-MED-002 fix: expand all groups by default on desktop so all 41 nav items are
-  // discoverable without requiring the user to click each group header first.
-  const [expandedGroups, setExpandedGroups] = useState<Set<NavGroup>>(
-    new Set(['home', 'construction-hub', 'rental-hub', 'hr', 'supply-chain', 'operations', 'accounting-reports', 'settings-data'])
-  )
+
+  // The active cycle is always expanded (derived during render — no effect needed).
+  // `manualOpen` tracks cycles the user explicitly opened beyond the active one.
+  const [manualOpen, setManualOpen] = useState<Set<NavGroup>>(new Set())
+  const activeCycle = findCycleForItem(activeItem)
+
+  const isGroupExpanded = (group: NavGroup) => group === activeCycle || manualOpen.has(group)
 
   const toggleGroup = (group: NavGroup) => {
-    setExpandedGroups(prev => {
+    if (group === activeCycle) return // active cycle stays open
+    setManualOpen(prev => {
       const next = new Set(prev)
       if (next.has(group)) next.delete(group)
       else next.add(group)
@@ -127,20 +135,30 @@ export function Sidebar() {
     setActiveItem(item)
   }
 
+  // In collapsed mode, clicking a cycle icon expands the sidebar and navigates
+  // to the first stage of that cycle (which auto-expands it).
+  const handleCollapsedCycleClick = (group: NavGroup) => {
+    setSidebarCollapsed(false)
+    const groupConfig = navGroups.find(g => g.key === group)
+    if (groupConfig && groupConfig.items.length > 0) {
+      setActiveItem(groupConfig.items[0])
+    }
+  }
+
   return (
     <aside
       className={cn(
         'hidden lg:flex flex-col border-l bg-card transition-all duration-300 h-screen sticky top-0',
-        sidebarCollapsed ? 'w-16' : 'w-64'
+        sidebarCollapsed ? 'w-16' : 'w-72'
       )}
       dir="rtl"
     >
       {/* Header */}
       <div className={cn(
-        'flex items-center border-b px-3 h-14',
+        'flex items-center border-b px-3 h-14 shrink-0',
         sidebarCollapsed ? 'justify-center' : 'gap-3'
       )}>
-        {!sidebarCollapsed && (
+        {!sidebarCollapsed ? (
           <>
             <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white font-bold text-sm">
               ب
@@ -150,52 +168,70 @@ export function Sidebar() {
               <p className="text-[10px] text-muted-foreground truncate">نظام إدارة المقاولات</p>
             </div>
           </>
-        )}
-        {sidebarCollapsed && (
+        ) : (
           <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white font-bold text-sm">
             ب
           </div>
         )}
       </div>
 
-      {/* Navigation */}
+      {/* Standalone Dashboard button */}
+      <div className="border-b py-1 px-2 shrink-0">
+        <button
+          onClick={() => handleItemClick('dashboard')}
+          className={cn(
+            'flex items-center w-full rounded-lg transition-colors text-sm font-medium',
+            sidebarCollapsed ? 'justify-center px-2 py-2.5' : 'gap-2.5 px-2 py-2',
+            activeItem === 'dashboard'
+              ? 'bg-gray-100 text-gray-900'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          )}
+          title={lang === 'ar' ? 'لوحة التحكم' : 'Dashboard'}
+        >
+          <LayoutDashboard className="size-4 shrink-0" />
+          {!sidebarCollapsed && <span>{lang === 'ar' ? 'لوحة التحكم' : 'Dashboard'}</span>}
+        </button>
+      </div>
+
+      {/* Navigation — 9 cycles */}
       <nav className="flex-1 overflow-y-auto py-1 scrollbar-thin">
         {navGroups.map(group => {
-          const isExpanded = expandedGroups.has(group.key)
+          const isExpanded = isGroupExpanded(group.key)
           const hasActiveItem = group.items.includes(activeItem)
           const GroupIcon = groupIcons[group.key] || FallbackIcon
-          const colors = groupColors[group.key] || groupColors['settings-data']
-          const isHub = group.key === 'construction-hub' || group.key === 'rental-hub'
+          const colors = groupColors[group.key]
 
           return (
             <div key={group.key} className="mb-0.5">
-              {/* Group Header */}
+              {/* Cycle Header */}
               {!sidebarCollapsed ? (
                 <button
                   onClick={() => toggleGroup(group.key)}
                   className={cn(
-                    'flex items-center w-full px-3 py-1.5 text-xs font-semibold tracking-wider transition-colors',
-                    isHub ? 'border-r-4 pr-2' : '',
+                    'flex items-center w-full px-3 py-2 text-[13px] font-bold transition-colors',
                     hasActiveItem
-                      ? cn(colors.text, colors.border, colors.light, 'border-r-4')
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                      ? cn(colors.text, colors.light, 'border-r-4', colors.border)
+                      : 'text-foreground hover:bg-muted/50',
                   )}
                 >
-                  <GroupIcon className="size-3.5 ml-1.5 shrink-0" />
-                  <span className="flex-1 text-right uppercase">{group.label[lang]}</span>
+                  <GroupIcon className={cn('size-4 ml-2 shrink-0', hasActiveItem ? colors.text : 'text-muted-foreground')} />
+                  <span className="flex-1 text-right">{group.label[lang]}</span>
+                  <span className={cn('text-[10px] font-normal px-1.5 py-0.5 rounded-full', hasActiveItem ? cn(colors.light, colors.text, 'ring-1', colors.border) : 'bg-muted text-muted-foreground')}>
+                    {group.items.length}
+                  </span>
                   <ChevronDown
                     className={cn(
-                      'size-3 transition-transform',
+                      'size-3.5 mr-1 transition-transform',
                       isExpanded ? 'rotate-180' : 'rotate-0'
                     )}
                   />
                 </button>
               ) : (
-                <div className="px-2 py-1 my-0.5">
+                <div className="px-1.5 py-1 my-0.5">
                   <button
-                    onClick={() => toggleGroup(group.key)}
+                    onClick={() => handleCollapsedCycleClick(group.key)}
                     className={cn(
-                      'flex items-center justify-center w-full rounded-md py-1.5 transition-colors',
+                      'flex items-center justify-center w-full rounded-md py-2 transition-colors',
                       hasActiveItem ? colors.light : 'hover:bg-muted'
                     )}
                     title={group.label[lang]}
@@ -205,41 +241,43 @@ export function Sidebar() {
                 </div>
               )}
 
-              {/* Group Items */}
-              {isExpanded && group.items.map(item => {
+              {/* Cycle Stages — sequential numbered steps */}
+              {isExpanded && !sidebarCollapsed && group.items.map((item, idx) => {
                 const Icon = navItemIcons[item] || FallbackIcon
                 const isActive = activeItem === item
                 const label = navItemLabels[item] || { ar: item, en: item }
-                const activity = navItemActivity[item]
+                const stepNumber = idx + 1
+                const isLastStep = idx === group.items.length - 1
 
                 return (
                   <button
                     key={item}
                     onClick={() => handleItemClick(item)}
                     className={cn(
-                      'flex items-center w-full transition-colors text-sm',
-                      sidebarCollapsed
-                        ? 'justify-center px-2 py-2.5 mx-1 rounded-lg'
-                        : 'px-4 py-1.5 gap-2.5 border-r-2',
+                      'flex items-center w-full transition-colors text-sm relative',
+                      'px-3 py-1.5 gap-2 border-r-2',
                       isActive
-                        ? sidebarCollapsed
-                          ? cn(colors.light, colors.text, 'ring-2 ring-offset-1', colors.border)
-                          : cn(colors.light, colors.text, 'border-r-4 font-medium', isHub ? colors.border : 'border-emerald-500')
-                        : sidebarCollapsed
-                          ? 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                          : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground border-transparent'
+                        ? cn(colors.light, colors.text, 'border-r-4 font-semibold', colors.border)
+                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground border-transparent'
                     )}
                     title={label[lang]}
                   >
-                    <Icon className="size-4 shrink-0" />
-                    {!sidebarCollapsed && (
-                      <span className="truncate flex-1 text-right">{label[lang]}</span>
-                    )}
-                    {!sidebarCollapsed && activity === 'construction' && (
-                      <div className="size-2 rounded-full bg-emerald-500 shrink-0" title={lang === 'ar' ? 'مشاريع تنفيذية' : 'Construction'} />
-                    )}
-                    {!sidebarCollapsed && activity === 'rental' && (
-                      <div className="size-2 rounded-full bg-cyan-500 shrink-0" title={lang === 'ar' ? 'تأجير معدات' : 'Equipment Rental'} />
+                    {/* Sequential step indicator */}
+                    <span
+                      className={cn(
+                        'flex items-center justify-center size-5 rounded-full text-[10px] font-bold shrink-0',
+                        isActive
+                          ? cn(colors.bg, 'text-white')
+                          : 'bg-muted text-muted-foreground'
+                      )}
+                    >
+                      {stepNumber}
+                    </span>
+                    <Icon className="size-3.5 shrink-0" />
+                    <span className="truncate flex-1 text-right">{label[lang]}</span>
+                    {/* Arrow indicator showing flow direction (except last step) */}
+                    {!isLastStep && (
+                      <span className="text-muted-foreground/40 text-[10px] shrink-0" aria-hidden>↓</span>
                     )}
                   </button>
                 )
@@ -249,27 +287,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Activity Legend */}
-      {!sidebarCollapsed && (
-        <div className="border-t px-3 py-2 space-y-1">
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            {lang === 'ar' ? 'النشاط' : 'Activity'}
-          </p>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1.5">
-              <div className="size-2 rounded-full bg-emerald-500" />
-              <span className="text-[10px] text-muted-foreground">{lang === 'ar' ? 'تنفيذي' : 'Const.'}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="size-2 rounded-full bg-cyan-500" />
-              <span className="text-[10px] text-muted-foreground">{lang === 'ar' ? 'تأجير' : 'Rental'}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Footer */}
-      <div className="border-t p-2 space-y-1">
+      <div className="border-t p-2 space-y-1 shrink-0">
         <button
           onClick={toggleLang}
           className={cn(
@@ -310,12 +329,15 @@ export function Sidebar() {
 
 export function MobileSidebar() {
   const { activeItem, setActiveItem, sidebarOpen, setSidebarOpen, lang, toggleLang } = useAppStore()
-  const [expandedGroups, setExpandedGroups] = useState<Set<NavGroup>>(
-    new Set(['home', 'construction-hub', 'rental-hub', 'hr', 'supply-chain', 'operations', 'accounting-reports', 'settings-data'])
-  )
+
+  const [manualOpen, setManualOpen] = useState<Set<NavGroup>>(new Set())
+  const activeCycle = findCycleForItem(activeItem)
+
+  const isGroupExpanded = (group: NavGroup) => group === activeCycle || manualOpen.has(group)
 
   const toggleGroup = (group: NavGroup) => {
-    setExpandedGroups(prev => {
+    if (group === activeCycle) return
+    setManualOpen(prev => {
       const next = new Set(prev)
       if (next.has(group)) next.delete(group)
       else next.add(group)
@@ -357,39 +379,63 @@ export function MobileSidebar() {
           </button>
         </div>
 
-        {/* Navigation */}
-        <nav className="py-2">
+        {/* Standalone Dashboard button */}
+        <div className="border-b py-1 px-2">
+          <button
+            onClick={() => {
+              setActiveItem('dashboard')
+              setSidebarOpen(false)
+            }}
+            className={cn(
+              'flex items-center w-full rounded-lg transition-colors text-sm font-medium gap-2.5 px-2 py-2',
+              activeItem === 'dashboard'
+                ? 'bg-gray-100 text-gray-900'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            )}
+          >
+            <LayoutDashboard className="size-4 shrink-0" />
+            <span>{lang === 'ar' ? 'لوحة التحكم' : 'Dashboard'}</span>
+          </button>
+        </div>
+
+        {/* Navigation — 9 cycles */}
+        <nav className="py-1">
           {navGroups.map(group => {
-            const isExpanded = expandedGroups.has(group.key)
+            const isExpanded = isGroupExpanded(group.key)
             const hasActiveItem = group.items.includes(activeItem)
             const GroupIcon = groupIcons[group.key] || FallbackIcon
-            const colors = groupColors[group.key] || groupColors['settings-data']
-            const isHub = group.key === 'construction-hub' || group.key === 'rental-hub'
+            const colors = groupColors[group.key]
 
             return (
               <div key={group.key} className="mb-0.5">
                 <button
                   onClick={() => toggleGroup(group.key)}
                   className={cn(
-                    'flex items-center w-full px-4 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors',
-                    isHub && hasActiveItem ? cn(colors.text, colors.light) : 'text-muted-foreground hover:text-foreground',
+                    'flex items-center w-full px-3 py-2 text-[13px] font-bold transition-colors',
+                    hasActiveItem
+                      ? cn(colors.text, colors.light, 'border-r-4', colors.border)
+                      : 'text-foreground hover:bg-muted/50',
                   )}
                 >
-                  <GroupIcon className="size-3.5 ml-1.5 shrink-0" />
+                  <GroupIcon className={cn('size-4 ml-2 shrink-0', hasActiveItem ? colors.text : 'text-muted-foreground')} />
                   <span className="flex-1 text-right">{group.label[lang]}</span>
+                  <span className={cn('text-[10px] font-normal px-1.5 py-0.5 rounded-full', hasActiveItem ? cn(colors.light, colors.text, 'ring-1', colors.border) : 'bg-muted text-muted-foreground')}>
+                    {group.items.length}
+                  </span>
                   <ChevronDown
                     className={cn(
-                      'size-3 transition-transform',
+                      'size-3.5 mr-1 transition-transform',
                       isExpanded ? 'rotate-180' : 'rotate-0'
                     )}
                   />
                 </button>
 
-                {isExpanded && group.items.map(item => {
+                {isExpanded && group.items.map((item, idx) => {
                   const Icon = navItemIcons[item] || FallbackIcon
                   const isActive = activeItem === item
                   const label = navItemLabels[item] || { ar: item, en: item }
-                  const activity = navItemActivity[item]
+                  const stepNumber = idx + 1
+                  const isLastStep = idx === group.items.length - 1
 
                   return (
                     <button
@@ -399,19 +445,26 @@ export function MobileSidebar() {
                         setSidebarOpen(false)
                       }}
                       className={cn(
-                        'flex items-center w-full px-6 py-2 gap-2.5 border-r-2 text-sm transition-colors',
+                        'flex items-center w-full px-3 py-1.5 gap-2 border-r-2 text-sm transition-colors',
                         isActive
-                          ? cn(colors.light, colors.text, 'font-medium', isHub ? colors.border : 'border-emerald-500')
+                          ? cn(colors.light, colors.text, 'border-r-4 font-semibold', colors.border)
                           : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground border-transparent'
                       )}
                     >
-                      <Icon className="size-4 shrink-0" />
-                      <span className="flex-1">{label[lang]}</span>
-                      {activity === 'construction' && (
-                        <div className="size-2 rounded-full bg-emerald-500 shrink-0" />
-                      )}
-                      {activity === 'rental' && (
-                        <div className="size-2 rounded-full bg-cyan-500 shrink-0" />
+                      <span
+                        className={cn(
+                          'flex items-center justify-center size-5 rounded-full text-[10px] font-bold shrink-0',
+                          isActive
+                            ? cn(colors.bg, 'text-white')
+                            : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        {stepNumber}
+                      </span>
+                      <Icon className="size-3.5 shrink-0" />
+                      <span className="flex-1 text-right">{label[lang]}</span>
+                      {!isLastStep && (
+                        <span className="text-muted-foreground/40 text-[10px] shrink-0" aria-hidden>↓</span>
                       )}
                     </button>
                   )
