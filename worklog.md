@@ -8682,3 +8682,43 @@ Stage Summary:
 - Frontend JE preview in rental-invoices.tsx now fetches accounts by role from the API instead of hardcoding '1210'/'6210'/'6220'/'3110'.
 - mapping.ts static maps removed (dead code); ACCOUNT_MAPPINGS kept as documentation only.
 - The Chart of Accounts now DRIVES the system: if an accountant changes account 6210→6215 for RENTAL_REVENUE, all screens automatically use the new code. New accounts with a role automatically appear in screens. ZERO code changes needed.
+
+---
+Task ID: BA-09
+Agent: Code Agent (main)
+Task: BA-09 — Business Flow: transform independent screens into integrated business workflows
+
+Work Log:
+- Explored existing codebase: found workflow definitions already exist in app-store.ts (CONSTRUCTION_WORKFLOW, RENTAL_WORKFLOW, PURCHASE_WORKFLOW) but no HR workflow and no UI to visualize them.
+- Added 'business-flows' to NavItem type, navGroups (home group), navItemLabels, navItemActivity.
+- Added HR_WORKFLOW definition: Employee → Contract → Attendance → Payroll → Salary → Payment → Entry (7 steps).
+- Created /api/business-flows endpoint: aggregates counts from 25+ models using Promise.allSettled (graceful degradation if a model doesn't exist). Returns workflow steps with live counts + active instances (projects, rental contracts, payroll runs).
+- Fixed Prisma model names: boqItem→bOQItem, supplierInvoice→purchaseInvoice, deliveryOrder→equipmentDeliveryOrder, rentalContract→equipmentRental, clientPayment.paymentType (not sourceType).
+- Fixed ProjectStatus enum: used ['PLANNING', 'ACTIVE', 'ON_HOLD'] (not 'IN_PROGRESS').
+- Created BusinessFlowsModule component (src/components/modules/business-flows.tsx):
+  - 4 tabs: Construction | Rental | HR | Purchase
+  - Each tab shows a horizontal visual stepper with step icons, count badges, and clickable navigation
+  - Active instances list below the stepper (projects, rental contracts, payroll runs with progress indicators)
+  - Full RTL Arabic support
+  - Uses shadcn/ui Tabs, Card, Badge, Button, Skeleton components
+  - Responsive design (grid-cols-2 on mobile, grid-cols-4 on desktop for tabs)
+- Registered BusinessFlowsModule in page.tsx moduleMap.
+
+Testing with Agent Browser (logged in as admin):
+- Navigation shows "تدفقات الأعمال" button ✅
+- Construction tab: 8 steps with live counts (العميل:5, المشروع:3, العقد:3, BOQ:11, المستخلص:5, فاتورة:0, التحصيل:0, قيد محاسبي:4) ✅
+- Rental tab: 8 steps (العميل:5, المعدة:3, عقد التأجير:0, أمر التسليم:0, ساعات التشغيل:0, فاتورة:0, التحصيل:0, قيد محاسبي:4) ✅
+- HR tab: 7 steps (الموظف:5, عقد العمل:0, الحضور:0, مسير الرواتب:0, الراتب:0, الصرف:0, قيد محاسبي:4) ✅
+- Purchase tab: 6 steps ✅
+- Clicking a step navigates to the correct screen (e.g., "الموظف" → #employees) ✅
+- bun run lint → 0 errors, 0 warnings ✅
+
+Stage Summary:
+- BA-09 COMPLETE: The system now has an integrated Business Flows dashboard that visualizes all 4 business workflows (Construction, Rental, HR, Purchase) as connected step-by-step journeys.
+- Each workflow shows: (1) a visual stepper with live item counts at each stage, (2) clickable steps that navigate to the relevant screen, (3) active instances with their progress through the workflow.
+- The 4 flows defined by the user are fully mapped:
+  - Projects: Client→Project→Contract→BOQ→Extract→Invoice→Collection→Entry
+  - Leasing: Client→Equipment→Rental Contract→Delivery Order→Operating Hours→Invoice→Collection→Entry
+  - HR: Employee→Contract→Attendance→Payroll→Salary→Payment→Entry
+  - Purchase: Request→Order→Receipt→Invoice→Payment→Entry
+- The module transforms the system from "a collection of independent screens" into "an integrated workflow-driven ERP" where users can see the complete journey of each business cycle at a glance.

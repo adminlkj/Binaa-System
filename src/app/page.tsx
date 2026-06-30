@@ -20,6 +20,7 @@ function ModuleLoading() {
 
 // Dynamically import all modules to avoid compiling everything at once
 const DashboardModule = dynamic(() => import('@/components/modules/dashboard').then(m => ({ default: m.DashboardModule })), { loading: ModuleLoading, ssr: false })
+const BusinessFlowsModule = dynamic(() => import('@/components/modules/business-flows').then(m => ({ default: m.BusinessFlowsModule })), { loading: ModuleLoading, ssr: false })
 
 // Construction Hub modules
 const ProjectsModule = dynamic(() => import('@/components/modules/projects').then(m => ({ default: m.ProjectsModule })), { loading: ModuleLoading, ssr: false })
@@ -85,6 +86,7 @@ const PlaceholderModule = dynamic(() => import('@/components/modules/placeholder
 const moduleMap: Record<NavItem, React.ComponentType> = {
   // الرئيسية
   'dashboard': DashboardModule,
+  'business-flows': BusinessFlowsModule,
   // محور المشاريع التنفيذية
   'projects': ProjectsModule,
   'contracts': ContractsModule,

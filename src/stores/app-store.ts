@@ -5,7 +5,7 @@ import { create } from 'zustand'
 
 export type NavItem =
   // الرئيسية
-  | 'dashboard'
+  | 'dashboard' | 'business-flows'
   // محور المشاريع التنفيذية (Construction Hub)
   | 'projects' | 'contracts' | 'boq' | 'extracts' | 'sales' | 'service-invoices' | 'client-payments'
   // محور تأجير المعدات (Rental Hub)
@@ -41,7 +41,7 @@ export const navGroups: NavGroupConfig[] = [
     label: { ar: 'الرئيسية', en: 'Home' },
     icon: 'LayoutDashboard',
     color: 'text-gray-600',
-    items: ['dashboard'],
+    items: ['dashboard', 'business-flows'],
   },
   {
     key: 'construction-hub',
@@ -97,6 +97,7 @@ export const navGroups: NavGroupConfig[] = [
 export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
   // الرئيسية
   'dashboard': { ar: 'لوحة التحكم', en: 'Dashboard' },
+  'business-flows': { ar: 'تدفقات الأعمال', en: 'Business Flows' },
   // محور المشاريع التنفيذية
   'projects': { ar: 'المشاريع', en: 'Projects' },
   'contracts': { ar: 'العقود', en: 'Contracts' },
@@ -153,6 +154,7 @@ export const navItemLabels: Record<NavItem, { ar: string; en: string }> = {
 // Activity type mapping
 export const navItemActivity: Record<NavItem, ActivityType> = {
   'dashboard': 'both',
+  'business-flows': 'both',
   // Construction hub
   'projects': 'construction',
   'contracts': 'construction',
@@ -241,6 +243,17 @@ export const PURCHASE_WORKFLOW = [
   { step: 'receipt', label: { ar: 'استلام', en: 'Goods Receipt' }, navItem: 'goods-receipt' as NavItem },
   { step: 'invoice', label: { ar: 'فاتورة مورد', en: 'Supplier Invoice' }, navItem: 'supplier-invoices' as NavItem },
   { step: 'payment', label: { ar: 'سداد', en: 'Payment' }, navItem: 'supplier-payments' as NavItem },
+  { step: 'accounting', label: { ar: 'قيد محاسبي', en: 'Journal Entry' }, navItem: 'accounting' as NavItem },
+]
+
+// BA-09: HR Workflow — Employee → Contract → Attendance → Payroll → Salary → Payment → Entry
+export const HR_WORKFLOW = [
+  { step: 'employee', label: { ar: 'الموظف', en: 'Employee' }, navItem: 'employees' as NavItem },
+  { step: 'contract', label: { ar: 'عقد العمل', en: 'Employment Contract' }, navItem: 'employee-contracts' as NavItem },
+  { step: 'attendance', label: { ar: 'الحضور', en: 'Attendance' }, navItem: 'attendance' as NavItem },
+  { step: 'payroll', label: { ar: 'مسير الرواتب', en: 'Payroll Run' }, navItem: 'payroll-runs' as NavItem },
+  { step: 'salary', label: { ar: 'الراتب', en: 'Salary' }, navItem: 'salaries' as NavItem },
+  { step: 'payment', label: { ar: 'الصرف', en: 'Payment' }, navItem: 'salary-payments' as NavItem },
   { step: 'accounting', label: { ar: 'قيد محاسبي', en: 'Journal Entry' }, navItem: 'accounting' as NavItem },
 ]
 
