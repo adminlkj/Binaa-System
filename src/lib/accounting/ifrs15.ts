@@ -211,10 +211,11 @@ export async function autoEntryIFRS15Revenue(
 
   // Lazy import to avoid circular dependency
   const { createJournalEntry } = await import('./engine')
-  const { getAccountCodeByRole } = await import('../account-roles')
+  const { requireAccountCodeByRole } = await import('../account-roles')
 
-  const contractAssetCode = await getAccountCodeByRole('CONTRACT_ASSET', client) || '1310'
-  const unbilledRevenueCode = await getAccountCodeByRole('UNBILLED_REVENUE', client) || '4210'
+  // BA-08: no hardcoded fallbacks — throw if role not mapped
+  const contractAssetCode = await requireAccountCodeByRole('CONTRACT_ASSET', 'اعتراف إيراد IFRS 15', client)
+  const unbilledRevenueCode = await requireAccountCodeByRole('UNBILLED_REVENUE', 'اعتراف إيراد IFRS 15', client)
 
   const je = await createJournalEntry({
     entryNo: `IFRS15-${projectId.slice(-6)}-${asOfDate.getTime()}`,

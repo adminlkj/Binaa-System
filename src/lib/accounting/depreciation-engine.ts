@@ -27,6 +27,7 @@ import {
   AccountRole,
   getAccountCodeByRole,
   getDefaultAccountByRole,
+  requireAccountCodeByRole,
 } from '@/lib/account-roles'
 
 // ---------------------------------------------------------------------------
@@ -451,7 +452,8 @@ export async function createAssetWithAcquisition(
     let acquisitionJournalEntryId: string | null = null
     if (input.createAcquisitionEntry !== false && accounts.assetAccountCode) {
       const paymentRole = input.payFrom === 'BANK' ? AccountRole.BANK : AccountRole.CASH
-      const paymentCode = await getAccountCodeByRole(paymentRole, tx) || '1110'
+      // BA-08: no hardcoded fallback — throw if role not mapped
+      const paymentCode = await requireAccountCodeByRole(paymentRole, 'تملك أصل ثابت', tx)
       const assetName = input.nameAr || input.name
 
       try {

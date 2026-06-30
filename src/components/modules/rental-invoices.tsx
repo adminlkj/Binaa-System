@@ -156,8 +156,21 @@ function CreateRentalInvoicePage({
   const [dueDate, setDueDate] = useState('')
   const [notes, setNotes] = useState('')
   const [rentalRevenueAccountId, setRentalRevenueAccountId] = useState<string | null>(null)
-  const [rentalRevenueAccountCode, setRentalRevenueAccountCode] = useState('6210')
-  const [rentalRevenueAccountNameAr, setRentalRevenueAccountNameAr] = useState('إيرادات تأجير المعدات')
+  const [rentalRevenueAccountCode, setRentalRevenueAccountCode] = useState('')
+  const [rentalRevenueAccountNameAr, setRentalRevenueAccountNameAr] = useState('')
+
+  // BA-08: fetch account codes by role from the Chart of Accounts — no hardcoded codes.
+  const { data: roleAccounts = [] } = useQuery<Array<{ code: string; nameAr: string | null; name: string; accountRole: string }>>({
+    queryKey: ['accounts-by-role', 'rental-invoice-preview'],
+    queryFn: async () => {
+      const res = await fetch('/api/accounts/by-role?role=CUSTOMER_AR,RENTAL_REVENUE,VAT_OUTPUT')
+      if (!res.ok) return []
+      return res.json()
+    },
+  })
+  const arAccount = roleAccounts.find(a => a.accountRole === 'CUSTOMER_AR')
+  const revenueAccount = roleAccounts.find(a => a.accountRole === 'RENTAL_REVENUE')
+  const vatAccount = roleAccounts.find(a => a.accountRole === 'VAT_OUTPUT')
 
   // Selected timesheet - RULE: User selects ONLY a Timesheet
   const selectedTimesheet = approvedTimesheets.find(ts => ts.id === timesheetId)
@@ -204,23 +217,27 @@ function CreateRentalInvoicePage({
     const _totalAmount = _subtotal + _deliveryFees + _totalVat
     if (_totalAmount <= 0) return []
     const lines: JePreviewLine[] = []
-    // Debit: Clients Receivable
-    lines.push({ accountCode: '1210', accountNameAr: 'عملاء', debit: _totalAmount, credit: 0 })
-    // Credit: Rental Revenue (or Delivery Revenue)
-    const revenueCode = rentalRevenueAccountCode || '6210'
-    const revenueName = rentalRevenueAccountNameAr || 'إيرادات تأجير المعدات'
-    if (_subtotal > 0) {
+    // BA-08: account codes resolved by role from the Chart of Accounts — no hardcoded codes.
+    // Debit: Clients Receivable (CUSTOMER_AR role)
+    if (arAccount) {
+      lines.push({ accountCode: arAccount.code, accountNameAr: arAccount.nameAr || arAccount.name, debit: _totalAmount, credit: 0 })
+    }
+    // Credit: Rental Revenue (RENTAL_REVENUE role) — user-selected override takes precedence
+    const revenueCode = rentalRevenueAccountCode || revenueAccount?.code || ''
+    const revenueName = rentalRevenueAccountNameAr || revenueAccount?.nameAr || revenueAccount?.name || 'إيرادات تأجير'
+    if (_subtotal > 0 && revenueCode) {
       lines.push({ accountCode: revenueCode, accountNameAr: revenueName, debit: 0, credit: _subtotal })
     }
-    if (_deliveryFees > 0) {
-      lines.push({ accountCode: '6220', accountNameAr: 'إيرادات نقل وتوصيل', debit: 0, credit: _deliveryFees })
+    // Delivery fees use the same revenue account (RENTAL_REVENUE role) — no separate hardcoded code
+    if (_deliveryFees > 0 && revenueCode) {
+      lines.push({ accountCode: revenueCode, accountNameAr: revenueName, debit: 0, credit: _deliveryFees })
     }
-    // Credit: Output VAT if VAT > 0
-    if (_totalVat > 0) {
-      lines.push({ accountCode: '3110', accountNameAr: 'ضريبة مخرجات', debit: 0, credit: _totalVat })
+    // Credit: Output VAT (VAT_OUTPUT role)
+    if (_totalVat > 0 && vatAccount) {
+      lines.push({ accountCode: vatAccount.code, accountNameAr: vatAccount.nameAr || vatAccount.name, debit: 0, credit: _totalVat })
     }
     return lines
-  }, [timesheetId, approvedTimesheets, rentalRevenueAccountCode, rentalRevenueAccountNameAr])
+  }, [timesheetId, approvedTimesheets, rentalRevenueAccountCode, rentalRevenueAccountNameAr, arAccount, revenueAccount, vatAccount])
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>

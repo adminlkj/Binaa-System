@@ -469,93 +469,32 @@ export const ACCOUNT_MAPPINGS: Record<OperationType, AccountMapping> = {
   },
 }
 
-// ============ EXPENSE CATEGORY TO ACCOUNT MAPPING ============
-
-export const EXPENSE_CATEGORY_ACCOUNT_MAP: Record<string, { code: string; nameAr: string; nameEn: string }> = {
-  'CONSUMABLES': { code: '7110', nameAr: 'تكاليف المشاريع', nameEn: 'Project Costs' },
-  'SERVICES': { code: '7130', nameAr: 'تكاليف مقاولي الباطن', nameEn: 'Subcontractor Costs' },
-  'MAINTENANCE': { code: '7220', nameAr: 'صيانة المعدات', nameEn: 'Equipment Maintenance' },
-  'FUEL': { code: '7230', nameAr: 'وقود', nameEn: 'Fuel' },
-  'DRIVERS': { code: '7230', nameAr: 'سائقين', nameEn: 'Drivers' },
-  'TRANSPORT': { code: '7240', nameAr: 'نقل', nameEn: 'Transport' },
-  'DELIVERY': { code: '7240', nameAr: 'توصيل', nameEn: 'Delivery' },
-  'RENT': { code: '8120', nameAr: 'إيجار', nameEn: 'Rent' },
-  'OFFICE': { code: '8140', nameAr: 'مصروفات مكتبية', nameEn: 'Office Expenses' },
-  'INTERNET': { code: '8130', nameAr: 'خدمات', nameEn: 'Utilities' },
-  'ELECTRICITY': { code: '8130', nameAr: 'كهرباء', nameEn: 'Utilities' },
-  'WATER': { code: '8130', nameAr: 'مياه', nameEn: 'Utilities' },
-  'SALARIES': { code: '8110', nameAr: 'رواتب', nameEn: 'Salaries' },
-  'INSURANCE': { code: '7400', nameAr: 'تأمين', nameEn: 'Insurance' },
-  'PERMITS': { code: '7160', nameAr: 'تراخيص', nameEn: 'Permits' },
-  'HOSPITALITY': { code: '8630', nameAr: 'ضيافة', nameEn: 'Hospitality' },
-  'MANAGEMENT_CARS': { code: '8630', nameAr: 'سيارات إدارية', nameEn: 'Management Cars' },
-  'PROFESSIONAL_FEES': { code: '8160', nameAr: 'أتعاب مهنية', nameEn: 'Professional Fees' },
-  'LEGAL_FEES': { code: '8170', nameAr: 'أتعاب قانونية', nameEn: 'Legal Fees' },
-  'OTHER': { code: '8630', nameAr: 'مصروفات أخرى', nameEn: 'Other Expenses' },
-}
-
-// ============ EQUIPMENT ACCOUNT MAPPING ============
-
-export const EQUIPMENT_ACCOUNT_MAP = {
-  ASSET: { code: '2120', nameAr: 'معدات التأجير', nameEn: 'Rental Equipment' },
-  ACCUM_DEPRECIATION: { code: '2220', nameAr: 'مجمع إهلاك معدات تأجير', nameEn: 'Accum. Depreciation - Rental' },
-  DEPRECIATION_EXPENSE: { code: '7250', nameAr: 'إهلاك معدات التأجير', nameEn: 'Rental Depreciation' },
-  MAINTENANCE: { code: '7220', nameAr: 'صيانة المعدات', nameEn: 'Equipment Maintenance' },
-  FUEL: { code: '7230', nameAr: 'وقود', nameEn: 'Fuel' },
-  REVENUE: { code: '6210', nameAr: 'إيرادات التأجير', nameEn: 'Rental Revenue' },
-  DELIVERY_REVENUE: { code: '6220', nameAr: 'إيرادات النقل', nameEn: 'Delivery Fees Revenue' },
-} as const
-
-// ============ CLIENT/SUPPLIER ACCOUNT MAPPING ============
-
-export const CLIENT_ACCOUNT = { code: '1210', nameAr: 'عملاء', nameEn: 'Clients Receivable' }
-export const SUPPLIER_ACCOUNT = { code: '3210', nameAr: 'الموردون', nameEn: 'Suppliers Payable' }
-export const SUBCONTRACTOR_ACCOUNT = { code: '3220', nameAr: 'مقاولو الباطن', nameEn: 'Subcontractors Payable' }
-
-// ============ PAYMENT METHOD TO ACCOUNT MAPPING ============
-
-export const PAYMENT_METHOD_ACCOUNT_MAP: Record<string, { code: string; nameAr: string; nameEn: string }> = {
-  'TREASURY': { code: '1110', nameAr: 'الصندوق (الخزينة)', nameEn: 'Cash - Treasury' },
-  'BANK': { code: '1120', nameAr: 'البنوك', nameEn: 'Bank Accounts' },
-  'PETTY_CASH': { code: '1130', nameAr: 'الصندوق النقدي', nameEn: 'Petty Cash' },
-}
-
-// ============ SALARY ACCOUNT MAPPING ============
-
-export const SALARY_ACCOUNT_MAP = {
-  SALARY_EXPENSE: { code: '8110', nameAr: 'الرواتب', nameEn: 'Salaries Expense' },
-  GOSI_EXPENSE: { code: '8210', nameAr: 'تأمينات اجتماعية', nameEn: 'GOSI Expense' },
-  SALARY_PAYABLE: { code: '3310', nameAr: 'رواتب مستحقة', nameEn: 'Salaries Payable' },
-  GOSI_PAYABLE: { code: '3830', nameAr: 'تأمينات مستحقة', nameEn: 'GOSI Payable' },
-  ADVANCES: { code: '1230', nameAr: 'سلف الموظفين', nameEn: 'Advances to Employees' },
-  EOS_PROVISION: { code: '3710', nameAr: 'مخصص نهاية خدمة', nameEn: 'End of Service Provision' },
-} as const
-
-// ============ HELPER FUNCTIONS ============
+// ============================================================================
+// BA-08: Dynamic Accounting Architecture
+// ----------------------------------------------------------------------------
+// The static hardcoded account-code maps below have been REMOVED. The system
+// is now driven by the Chart of Accounts via role-based lookups:
+//
+//   import { requireAccountCodeByRole, AccountRole } from '@/lib/account-roles'
+//   const code = await requireAccountCodeByRole(AccountRole.FUEL_EXPENSE, 'op', tx)
+//
+// The `ACCOUNT_MAPPINGS` object above is kept as DOCUMENTATION ONLY — it shows
+// the typical JE pattern for each operation type. The `accountCode` fields in
+// it are the SOCPA-default codes for reference; at runtime, codes are resolved
+// dynamically from the DB by role.
+// ============================================================================
 
 /**
- * Get the account mapping for a given operation type
+ * Get the account mapping for a given operation type (DOCUMENTATION ONLY).
+ * The returned `accountCode` fields are typical SOCPA defaults for reference.
+ * At runtime, use `requireAccountCodeByRole()` from `@/lib/account-roles`.
  */
 export function getAccountMapping(operationType: OperationType): AccountMapping {
   return ACCOUNT_MAPPINGS[operationType]
 }
 
 /**
- * Get the account code for an expense category
- */
-export function getExpenseAccountCode(category: string): string {
-  return EXPENSE_CATEGORY_ACCOUNT_MAP[category]?.code || '8630'
-}
-
-/**
- * Get the account code for a payment method
- */
-export function getPaymentAccountCode(method: string): string {
-  return PAYMENT_METHOD_ACCOUNT_MAP[method]?.code || '1110'
-}
-
-/**
- * Get all accounts for a specific activity type
+ * Get all accounts for a specific activity type (DOCUMENTATION ONLY).
  */
 export function getAccountsByActivity(activityType: 'CONSTRUCTION' | 'EQUIPMENT_RENTAL' | 'BOTH' | 'ADMIN'): AccountMapping[] {
   return Object.values(ACCOUNT_MAPPINGS).filter(
@@ -564,14 +503,9 @@ export function getAccountsByActivity(activityType: 'CONSTRUCTION' | 'EQUIPMENT_
 }
 
 /**
- * Get all expense accounts (for expense screen account selector)
- */
-export function getExpenseAccounts(): Array<{ code: string; nameAr: string; nameEn: string }> {
-  return Object.entries(EXPENSE_CATEGORY_ACCOUNT_MAP).map(([_key, val]) => val)
-}
-
-/**
- * Generate expected journal entry preview for an operation
+ * Generate expected journal entry preview for an operation (DOCUMENTATION ONLY).
+ * Uses the typical SOCPA default codes from ACCOUNT_MAPPINGS for display.
+ * At runtime, the actual JE uses codes resolved by role from the DB.
  */
 export function generateEntryPreview(
   operationType: OperationType,

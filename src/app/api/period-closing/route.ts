@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { PrismaTransaction } from '@/lib/accounting/engine'
 import { postJournalEntry, getNextEntryNo } from '@/lib/accounting/guard'
 import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAccountByRole, AccountRole } from '@/lib/account-roles'
 
 export async function GET() {
   try {
@@ -96,10 +97,10 @@ async function closePeriod(year: number, month: number, type: string) {
         }
       }
 
-      // Get Retained Earnings account (5200)
-      const retainedEarningsAccount = await tx.account.findUnique({ where: { code: '5200' } })
+      // BA-08: resolve Retained Earnings account by role — no hardcoded code.
+      const retainedEarningsAccount = await requireAccountByRole(AccountRole.RETAINED_EARNINGS, 'إقفال فترة', tx)
       if (!retainedEarningsAccount) {
-        throw new Error('Retained Earnings account (5200) not found')
+        throw new Error('Retained Earnings account not found — please map the RETAINED_EARNINGS role in the Chart of Accounts')
       }
 
       // Build closing journal entry lines

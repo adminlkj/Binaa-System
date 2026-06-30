@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { createJournalEntry, getSalaryAccountCode, type PrismaTransaction } from '@/lib/accounting/engine'
-import { AccountRole, getAccountCodeByRole } from '@/lib/account-roles'
+import { AccountRole, requireAccountCodeByRole } from '@/lib/account-roles'
 import { NextResponse } from 'next/server'
 
 // ============================================================================
@@ -99,12 +99,12 @@ export async function PUT(
 
         const salaryDate = new Date(existing.year, existing.month - 1, 1)
 
-        // P4-CRIT-008 FIX: resolve account codes by role (no hardcoded '3310','8210','3830').
-        const payableCode = (await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx)) || '3310'
-        const gosiExpenseCode = (await getAccountCodeByRole(AccountRole.GOSI_EXPENSE, tx)) || '8210'
-        const gosiPayableCode = (await getAccountCodeByRole(AccountRole.GOSI_PAYABLE, tx)) || '3830'
+        // BA-08: resolve account codes by role — no hardcoded fallbacks.
+        const payableCode = await requireAccountCodeByRole(AccountRole.SALARIES_PAYABLE, 'اعتماد مسير رواتب', tx)
+        const gosiExpenseCode = await requireAccountCodeByRole(AccountRole.GOSI_EXPENSE, 'اعتماد مسير رواتب', tx)
+        const gosiPayableCode = await requireAccountCodeByRole(AccountRole.GOSI_PAYABLE, 'اعتماد مسير رواتب', tx)
         // P4-CRIT-009 FIX: deductions are typically advance recoveries → credit EMPLOYEE_ADVANCE.
-        const advanceCode = (await getAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, tx)) || '1230'
+        const advanceCode = await requireAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, 'اعتماد مسير رواتب', tx)
 
         // تجميع البنود حسب نوع النشاط (PROJECT, RENTAL, ADMIN) لإنشاء قيود منفصلة
         const linesByActivity: Record<string, { totalNet: number; totalGosi: number; totalDeductions: number; costCenterId?: string }> = {}
@@ -260,8 +260,8 @@ export async function PUT(
         const bankAccountCode = String(body.bankAccountCode)
         const bankAccountNameAr = String(body.bankAccountNameAr || 'البنك')
 
-        // P4-CRIT-008 FIX: resolve payable code by role (no hardcoded '3310').
-        const payableCode = (await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx)) || '3310'
+        // BA-08: resolve payable code by role — no hardcoded fallback.
+        const payableCode = await requireAccountCodeByRole(AccountRole.SALARIES_PAYABLE, 'سداد مسير رواتب', tx)
 
         // قيد الدفع: مدين رواتب مستحقة / دائن البنك
         const jeLines = [

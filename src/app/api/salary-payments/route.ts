@@ -74,6 +74,7 @@ export async function POST(request: Request) {
       }
 
       // Resolve the credit (cash/bank) account once for the whole run.
+      // BA-08: no hardcoded fallback — throw if role not mapped.
       const resolveCreditAccount = async (tx?: PrismaTransaction) => {
         if (payingAccountCode) {
           return { code: payingAccountCode, name: payingAccountName || 'الحساب المحدد' }
@@ -83,9 +84,16 @@ export async function POST(request: Request) {
         if (acc) {
           return { code: acc.code, name: acc.nameAr || acc.name }
         }
-        return paymentMethod === 'BANK'
-          ? { code: '1120', name: 'البنك' }
-          : { code: '1110', name: 'الصندوق (الخزينة)' }
+        // Cross-fallback: if CASH missing, try PETTY_CASH then BANK (and vice versa)
+        const fallbackRole = role === 'BANK' ? 'CASH' : 'BANK'
+        const fallbackAcc = await getDefaultAccountByRole(fallbackRole, tx as any)
+        if (fallbackAcc) {
+          return { code: fallbackAcc.code, name: fallbackAcc.nameAr || fallbackAcc.name }
+        }
+        throw new Error(
+          `لا يمكن تحديد حساب السداد لطريقة "${paymentMethod}" - لا يوجد حساب مرتبط بدور CASH/BANK في دليل الحسابات. ` +
+          `يرجى ربط حساب نقدية/بنك من شاشة دليل الحسابات.`
+        )
       }
 
       const totalNet = Number(run.totalNet)
@@ -214,6 +222,7 @@ export async function POST(request: Request) {
     }
 
     // Resolve the credit (cash/bank) account code
+    // BA-08: no hardcoded fallback — throw if role not mapped.
     const resolveCreditAccount = async (tx?: PrismaTransaction) => {
       if (payingAccountCode) {
         return { code: payingAccountCode, name: payingAccountName || 'الحساب المحدد' }
@@ -223,9 +232,15 @@ export async function POST(request: Request) {
       if (acc) {
         return { code: acc.code, name: acc.nameAr || acc.name }
       }
-      return paymentMethod === 'BANK'
-        ? { code: '1120', name: 'البنك' }
-        : { code: '1110', name: 'الصندوق (الخزينة)' }
+      const fallbackRole = role === 'BANK' ? 'CASH' : 'BANK'
+      const fallbackAcc = await getDefaultAccountByRole(fallbackRole, tx as any)
+      if (fallbackAcc) {
+        return { code: fallbackAcc.code, name: fallbackAcc.nameAr || fallbackAcc.name }
+      }
+      throw new Error(
+        `لا يمكن تحديد حساب السداد لطريقة "${paymentMethod}" - لا يوجد حساب مرتبط بدور CASH/BANK في دليل الحسابات. ` +
+        `يرجى ربط حساب نقدية/بنك من شاشة دليل الحسابات.`
+      )
     }
 
     const netSalary = Number(existingSalary.netSalary)

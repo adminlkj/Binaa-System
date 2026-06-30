@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { getAccountCodeByRole, AccountRole } from '@/lib/account-roles'
 
 // GET /api/clients/[id]/accounting
 // Returns accounting summary for a client:
@@ -86,8 +87,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     const totalPaid = toNumber(paymentAgg._sum.amount)
     const currentBalance = Math.round((totalInvoiced - totalPaid) * 10000) / 10000
 
+    // BA-08: resolve account code by role (CUSTOMER_AR) — no hardcoded code.
+    const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR) || '—'
+
     return NextResponse.json({
-      accountCode: '1210',
+      accountCode: arCode,
       accountNameAr: 'العملاء',
       accountNameEn: 'Clients Receivable',
       currentBalance,

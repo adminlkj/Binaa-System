@@ -11,6 +11,7 @@ import { db } from '@/lib/db'
 import {
   getAccountCodeByRole,
   requireAccountByRole,
+  requireAccountCodeByRole,
   resolvePaymentAccountCode,
   AccountRole,
 } from '@/lib/account-roles'
@@ -478,9 +479,9 @@ export async function autoEntryExpense(data: {
     'OTHER': AccountRole.ADMIN_EXPENSE,
   }
   const expenseRole = categoryRoleMap[data.category] || AccountRole.ADMIN_EXPENSE
-  const expenseAccountCode = await getAccountCodeByRole(expenseRole, tx) || '8630'
+  const expenseAccountCode = await requireAccountCodeByRole(expenseRole, 'العملية المحاسبية', tx)
   const cashAccountCode = await resolvePaymentAccountCode(data.payFrom, tx)
-  const vatInputCode = await getAccountCodeByRole(AccountRole.VAT_INPUT, tx) || '3120'
+  const vatInputCode = await requireAccountCodeByRole(AccountRole.VAT_INPUT, 'العملية المحاسبية', tx)
 
   const totalCashOut = data.amount + (data.vatAmount || 0)
 
@@ -519,7 +520,7 @@ export async function autoEntryClientPayment(data: {
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
   const cashAccountCode = await resolvePaymentAccountCode(data.receivedIn === 'BANK' ? 'BANK' : 'TREASURY', tx)
-  const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR, tx) || '1210'
+  const arCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_AR, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-CP-${Date.now()}`,
@@ -548,7 +549,7 @@ export async function autoEntrySupplierPayment(data: {
   reference?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const apCode = await getAccountCodeByRole(AccountRole.SUPPLIER_AP, tx) || '3210'
+  const apCode = await requireAccountCodeByRole(AccountRole.SUPPLIER_AP, 'العملية المحاسبية', tx)
   const cashAccountCode = await resolvePaymentAccountCode(data.paidFrom === 'BANK' ? 'BANK' : 'TREASURY', tx)
 
   return createJournalEntry({
@@ -587,7 +588,7 @@ export async function autoEntryEmployeeAdvance(data: {
   description?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const advanceCode = await getAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, tx) || '1230'
+  const advanceCode = await requireAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, 'العملية المحاسبية', tx)
 
   // احترم اختيار المستخدم لمصدر السداد
   let creditCode: string
@@ -648,7 +649,7 @@ export async function autoEntryAdvanceSettlement(data: {
   settlementAccountCode?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const advanceCode = await getAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, tx) || '1230'
+  const advanceCode = await requireAccountCodeByRole(AccountRole.EMPLOYEE_ADVANCE, 'العملية المحاسبية', tx)
 
   // احترم اختيار المستخدم لطريقة التحصيل
   let debitCode: string
@@ -664,7 +665,7 @@ export async function autoEntryAdvanceSettlement(data: {
     debitLabel = 'نقدية'
   } else {
     // SALARY_DEDUCTION (default) — Dr SALARIES_PAYABLE
-    debitCode = await getAccountCodeByRole(AccountRole.SALARIES_PAYABLE, tx) || '3310'
+    debitCode = await requireAccountCodeByRole(AccountRole.SALARIES_PAYABLE, 'العملية المحاسبية', tx)
     debitLabel = 'خصم من الراتب'
   }
 
@@ -699,9 +700,9 @@ export async function autoEntrySubcontractorInvoice(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const costCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_COST, tx) || '7130'
-  const vatInputCode = await getAccountCodeByRole(AccountRole.VAT_INPUT, tx) || '3120'
-  const apCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, tx) || '3220'
+  const costCode = await requireAccountCodeByRole(AccountRole.SUBCONTRACTOR_COST, 'العملية المحاسبية', tx)
+  const vatInputCode = await requireAccountCodeByRole(AccountRole.VAT_INPUT, 'العملية المحاسبية', tx)
+  const apCode = await requireAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, 'العملية المحاسبية', tx)
 
   const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: costCode, debit: data.amount, credit: 0, costCenterId: data.costCenterId },
@@ -745,9 +746,9 @@ export async function autoEntryEquipmentCost(data: {
     'OTHER': AccountRole.PROJECT_COST,
   }
   const debitRole = accountRoleMap[data.costType] || AccountRole.PROJECT_COST
-  const debitAccountCode = await getAccountCodeByRole(debitRole, tx) || '7210'
+  const debitAccountCode = await requireAccountCodeByRole(debitRole, 'العملية المحاسبية', tx)
   const creditAccountCode = data.payFrom === 'AP'
-    ? (await getAccountCodeByRole(AccountRole.SUPPLIER_AP, tx) || '3210')
+    ? (await requireAccountCodeByRole(AccountRole.SUPPLIER_AP, 'العملية المحاسبية', tx))
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
@@ -778,9 +779,9 @@ export async function autoEntryEquipmentPurchase(data: {
   date: Date
   payFrom: 'CASH' | 'AP'
 }, tx?: PrismaTransaction) {
-  const assetCode = await getAccountCodeByRole(AccountRole.FIXED_ASSET, tx) || '2120'
+  const assetCode = await requireAccountCodeByRole(AccountRole.FIXED_ASSET, 'العملية المحاسبية', tx)
   const creditAccountCode = data.payFrom === 'AP'
-    ? (await getAccountCodeByRole(AccountRole.SUPPLIER_AP, tx) || '3210')
+    ? (await requireAccountCodeByRole(AccountRole.SUPPLIER_AP, 'العملية المحاسبية', tx))
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
@@ -812,8 +813,8 @@ export async function autoEntryRentalInvoice(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR, tx) || '1210'
-  const revenueCode = await getAccountCodeByRole(AccountRole.RENTAL_REVENUE, tx) || '6210'
+  const arCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_AR, 'العملية المحاسبية', tx)
+  const revenueCode = await requireAccountCodeByRole(AccountRole.RENTAL_REVENUE, 'العملية المحاسبية', tx)
 
   const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: arCode, debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId },
@@ -821,7 +822,7 @@ export async function autoEntryRentalInvoice(data: {
   ]
 
   if (data.vatAmount > 0) {
-    const vatCode = await getAccountCodeByRole(AccountRole.VAT_OUTPUT, tx) || '3110'
+    const vatCode = await requireAccountCodeByRole(AccountRole.VAT_OUTPUT, 'العملية المحاسبية', tx)
     lines.push({ accountCode: vatCode, debit: 0, credit: data.vatAmount })
   }
 
@@ -857,10 +858,9 @@ export async function autoEntryPettyCash(data: {
 
   if (txnType === 'FUND') {
     // Fund replenishment: Dr PETTY_CASH (1130) / Cr BANK (1120)
-    const pettyCashCode = await getAccountCodeByRole(AccountRole.PETTY_CASH, tx) || '1130'
+    const pettyCashCode = await requireAccountCodeByRole(AccountRole.PETTY_CASH, 'العملية المحاسبية', tx)
     const bankCode = data.bankAccountCode
-      || (await getAccountCodeByRole(AccountRole.BANK, tx))
-      || '1120'
+      || (await requireAccountCodeByRole(AccountRole.BANK, 'تغذية صندوق نثرية', tx))
 
     return createJournalEntry({
       entryNo: `JE-PTC-${Date.now()}`,
@@ -885,12 +885,12 @@ export async function autoEntryPettyCash(data: {
     'OTHER': AccountRole.ADMIN_EXPENSE,
   }
   const expenseRole = categoryRoleMap[data.category] || AccountRole.ADMIN_EXPENSE
-  const expenseAccountCode = await getAccountCodeByRole(expenseRole, tx) || '8630'
+  const expenseAccountCode = await requireAccountCodeByRole(expenseRole, 'العملية المحاسبية', tx)
   // P4-CRIT-011 FIX: use PETTY_CASH (1130), not the first CASH (1110 = Treasury).
   // The CASH role has defaultCodes ['1110', '1130'] and getAccountCodeByRole returns
   // the first by code:asc, which is 1110 (Treasury) — so all petty cash disbursements
   // hit Treasury instead of the Petty Cash sub-account 1130. Use PETTY_CASH role instead.
-  const pettyCashCode = await getAccountCodeByRole(AccountRole.PETTY_CASH, tx) || '1130'
+  const pettyCashCode = await requireAccountCodeByRole(AccountRole.PETTY_CASH, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-PTC-${Date.now()}`,
@@ -927,10 +927,10 @@ export async function autoEntrySalary(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const payrollCode = await getAccountCodeByRole(AccountRole.PAYROLL_EXPENSE, tx) || '8110'
-  const gosiExpenseCode = await getAccountCodeByRole(AccountRole.GOSI_EXPENSE, tx) || '8210'
+  const payrollCode = await requireAccountCodeByRole(AccountRole.PAYROLL_EXPENSE, 'العملية المحاسبية', tx)
+  const gosiExpenseCode = await requireAccountCodeByRole(AccountRole.GOSI_EXPENSE, 'العملية المحاسبية', tx)
   const cashAccountCode = await resolvePaymentAccountCode(data.payFrom === 'BANK' ? 'BANK' : 'TREASURY', tx)
-  const gosiPayableCode = await getAccountCodeByRole(AccountRole.GOSI_PAYABLE, tx) || '3830'
+  const gosiPayableCode = await requireAccountCodeByRole(AccountRole.GOSI_PAYABLE, 'العملية المحاسبية', tx)
   const netCashPaid = data.grossSalary - data.gosiEmployeeDeduction
 
   const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
@@ -968,8 +968,8 @@ export async function autoEntryGOSI(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const gosiExpenseCode = await getAccountCodeByRole(AccountRole.GOSI_EXPENSE, tx) || '8210'
-  const gosiPayableCode = await getAccountCodeByRole(AccountRole.GOSI_PAYABLE, tx) || '3830'
+  const gosiExpenseCode = await requireAccountCodeByRole(AccountRole.GOSI_EXPENSE, 'العملية المحاسبية', tx)
+  const gosiPayableCode = await requireAccountCodeByRole(AccountRole.GOSI_PAYABLE, 'العملية المحاسبية', tx)
   const totalGOSI = data.employeeContribution + data.employerContribution
 
   return createJournalEntry({
@@ -1006,8 +1006,8 @@ export async function autoEntryDepreciation(data: {
   }
 
   const mapping = depreciationRoleMap[data.assetType]
-  const expenseCode = await getAccountCodeByRole(mapping.expense, tx) || '8310'
-  const accumulatedCode = await getAccountCodeByRole(mapping.accumulated, tx) || '2210'
+  const expenseCode = await requireAccountCodeByRole(mapping.expense, 'العملية المحاسبية', tx)
+  const accumulatedCode = await requireAccountCodeByRole(mapping.accumulated, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-DEP-${Date.now()}`,
@@ -1034,8 +1034,8 @@ export async function autoEntryRentalDepreciation(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const depExpenseCode = await getAccountCodeByRole(AccountRole.RENTAL_DEPRECIATION, tx) || '7250'
-  const accumDepCode = await getAccountCodeByRole(AccountRole.ACCUM_DEPRECIATION, tx) || '2220'
+  const depExpenseCode = await requireAccountCodeByRole(AccountRole.RENTAL_DEPRECIATION, 'العملية المحاسبية', tx)
+  const accumDepCode = await requireAccountCodeByRole(AccountRole.ACCUM_DEPRECIATION, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-RDEP-${Date.now()}`,
@@ -1066,8 +1066,8 @@ export async function autoEntryDeliveryFees(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR, tx) || '1210'
-  const revenueCode = await getAccountCodeByRole(AccountRole.RENTAL_REVENUE, tx) || '6220'
+  const arCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_AR, 'العملية المحاسبية', tx)
+  const revenueCode = await requireAccountCodeByRole(AccountRole.RENTAL_REVENUE, 'العملية المحاسبية', tx)
 
   const lines: { accountCode: string; debit: number; credit: number; costCenterId?: string }[] = [
     { accountCode: arCode, debit: data.totalAmount, credit: 0, costCenterId: data.costCenterId },
@@ -1075,7 +1075,7 @@ export async function autoEntryDeliveryFees(data: {
   ]
 
   if (data.vatAmount > 0) {
-    const vatCode = await getAccountCodeByRole(AccountRole.VAT_OUTPUT, tx) || '3110'
+    const vatCode = await requireAccountCodeByRole(AccountRole.VAT_OUTPUT, 'العملية المحاسبية', tx)
     lines.push({ accountCode: vatCode, debit: 0, credit: data.vatAmount })
   }
 
@@ -1105,7 +1105,7 @@ export async function autoEntryContractAdvance(data: {
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
   const cashAccountCode = await resolvePaymentAccountCode(data.receivedIn === 'BANK' ? 'BANK' : 'TREASURY', tx)
-  const advanceAccountCode = await getAccountCodeByRole(AccountRole.CUSTOMER_ADVANCE, tx) || (data.activityType === 'CONSTRUCTION' ? '3410' : '3420')
+  const advanceAccountCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_ADVANCE, 'دفعة مقدمة عقد', tx)
 
   return createJournalEntry({
     entryNo: `JE-CA-${Date.now()}`,
@@ -1133,8 +1133,8 @@ export async function autoEntryRetention(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const retentionCode = await getAccountCodeByRole(AccountRole.RETENTION_RECEIVABLE, tx) || '1220'
-  const arCode = await getAccountCodeByRole(AccountRole.CUSTOMER_AR, tx) || '1210'
+  const retentionCode = await requireAccountCodeByRole(AccountRole.RETENTION_RECEIVABLE, 'العملية المحاسبية', tx)
+  const arCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_AR, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-RET-${Date.now()}`,
@@ -1160,8 +1160,8 @@ export async function autoEntryZakat(data: {
   date: Date
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const zakatExpenseCode = await getAccountCodeByRole(AccountRole.ZAKAT_EXPENSE, tx) || '8510'
-  const zakatPayableCode = await getAccountCodeByRole(AccountRole.ZAKAT_PAYABLE, tx) || '3810'
+  const zakatExpenseCode = await requireAccountCodeByRole(AccountRole.ZAKAT_EXPENSE, 'العملية المحاسبية', tx)
+  const zakatPayableCode = await requireAccountCodeByRole(AccountRole.ZAKAT_PAYABLE, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-ZAK-${Date.now()}`,
@@ -1188,8 +1188,8 @@ export async function autoEntryEndOfService(data: {
   costCenterId?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const payrollCode = await getAccountCodeByRole(AccountRole.PAYROLL_EXPENSE, tx) || '8110'
-  const eosCode = await getAccountCodeByRole(AccountRole.EOS_PROVISION, tx) || '3710'
+  const payrollCode = await requireAccountCodeByRole(AccountRole.PAYROLL_EXPENSE, 'العملية المحاسبية', tx)
+  const eosCode = await requireAccountCodeByRole(AccountRole.EOS_PROVISION, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-EOS-${Date.now()}`,
@@ -1232,10 +1232,13 @@ export async function autoEntryAssetDisposal(data: {
   ]
 
   // If gain, credit gain account. If loss, debit loss account.
+  // BA-08: resolved by role — no hardcoded account codes.
   if (gainLoss > 0) {
-    lines.push({ accountCode: '6310', debit: 0, credit: gainLoss }) // Gain on Sale of Used Equipment
+    const gainCode = await requireAccountCodeByRole(AccountRole.ASSET_DISPOSAL_GAIN, 'التخلص من أصل', tx)
+    lines.push({ accountCode: gainCode, debit: 0, credit: gainLoss })
   } else if (gainLoss < 0) {
-    lines.push({ accountCode: '8610', debit: Math.abs(gainLoss), credit: 0 }) // Loss on Asset Disposal
+    const lossCode = await requireAccountCodeByRole(AccountRole.ASSET_DISPOSAL_LOSS, 'التخلص من أصل', tx)
+    lines.push({ accountCode: lossCode, debit: Math.abs(gainLoss), credit: 0 })
   }
 
   return createJournalEntry({
@@ -1267,14 +1270,14 @@ export async function autoEntryVATDeclaration(data: {
   date: Date
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const vatOutputCode = await getAccountCodeByRole(AccountRole.VAT_OUTPUT, tx) || '3110'
-  const vatInputCode = await getAccountCodeByRole(AccountRole.VAT_INPUT, tx) || '3120'
-  const vatDueCode = await getAccountCodeByRole(AccountRole.VAT_DUE, tx) || '3130'
+  const vatOutputCode = await requireAccountCodeByRole(AccountRole.VAT_OUTPUT, 'العملية المحاسبية', tx)
+  const vatInputCode = await requireAccountCodeByRole(AccountRole.VAT_INPUT, 'العملية المحاسبية', tx)
+  const vatDueCode = await requireAccountCodeByRole(AccountRole.VAT_DUE, 'العملية المحاسبية', tx)
   // FIXED (CRITICAL #14): VAT refund is an ASSET (1410), not a liability.
   // The prior code used VAT_INPUT role (which maps to liability 3120) as the refund
   // debit account → zeroed out the liability instead of creating a receivable asset.
   // Now uses the dedicated VAT_REFUND_RECEIVABLE role.
-  const vatRefundCode = await getAccountCodeByRole(AccountRole.VAT_REFUND_RECEIVABLE, tx) || '1410'
+  const vatRefundCode = await requireAccountCodeByRole(AccountRole.VAT_REFUND_RECEIVABLE, 'العملية المحاسبية', tx)
 
   const lines: { accountCode: string; debit: number; credit: number }[] = []
 
@@ -1316,7 +1319,7 @@ export async function autoEntryVATPayment(data: {
   reference?: string
 }, tx?: PrismaTransaction) {
   // Resolved by role — no hardcoded code!
-  const vatDueCode = await getAccountCodeByRole(AccountRole.VAT_DUE, tx) || '3130'
+  const vatDueCode = await requireAccountCodeByRole(AccountRole.VAT_DUE, 'العملية المحاسبية', tx)
   const bankCode = await resolvePaymentAccountCode('BANK', tx)
 
   return createJournalEntry({
@@ -1345,12 +1348,12 @@ export async function autoEntryVATPayment(data: {
 export async function getSalaryAccountCode(activity: 'PROJECT' | 'RENTAL' | 'ADMIN', tx?: PrismaTransaction): Promise<string> {
   switch (activity) {
     case 'RENTAL':
-      return await getAccountCodeByRole(AccountRole.DRIVER_EXPENSE, tx) || '7210'
+      return await requireAccountCodeByRole(AccountRole.DRIVER_EXPENSE, 'العملية المحاسبية', tx)
     case 'PROJECT':
-      return await getAccountCodeByRole(AccountRole.PROJECT_COST, tx) || '7120'
+      return await requireAccountCodeByRole(AccountRole.PROJECT_COST, 'العملية المحاسبية', tx)
     case 'ADMIN':
     default:
-      return await getAccountCodeByRole(AccountRole.PAYROLL_EXPENSE, tx) || '8110'
+      return await requireAccountCodeByRole(AccountRole.PAYROLL_EXPENSE, 'العملية المحاسبية', tx)
   }
 }
 
@@ -1383,9 +1386,9 @@ export async function autoEntrySubcontractorAdvance(data: {
   paymentMethod?: 'CASH' | 'BANK'
   costCenterId?: string
 }, tx?: PrismaTransaction) {
-  const advanceCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_ADVANCE, tx) || '1230'
+  const advanceCode = await requireAccountCodeByRole(AccountRole.SUBCONTRACTOR_ADVANCE, 'العملية المحاسبية', tx)
   const cashCode = data.paymentMethod === 'BANK'
-    ? (await getAccountCodeByRole(AccountRole.BANK, tx) || '1120')
+    ? (await requireAccountCodeByRole(AccountRole.BANK, 'العملية المحاسبية', tx))
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
@@ -1419,9 +1422,9 @@ export async function autoEntrySubcontractorPayment(data: {
   paymentMethod?: 'CASH' | 'BANK'
   costCenterId?: string
 }, tx?: PrismaTransaction) {
-  const apCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, tx) || '3220'
+  const apCode = await requireAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, 'العملية المحاسبية', tx)
   const cashCode = data.paymentMethod === 'BANK'
-    ? (await getAccountCodeByRole(AccountRole.BANK, tx) || '1120')
+    ? (await requireAccountCodeByRole(AccountRole.BANK, 'العملية المحاسبية', tx))
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
@@ -1453,8 +1456,8 @@ export async function autoEntrySubcontractorRetention(data: {
   date: Date
   costCenterId?: string
 }, tx?: PrismaTransaction) {
-  const apCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, tx) || '3220'
-  const retentionCode = await getAccountCodeByRole(AccountRole.SUBCONTRACTOR_RETENTION_PAYABLE, tx) || '3500'
+  const apCode = await requireAccountCodeByRole(AccountRole.SUBCONTRACTOR_AP, 'العملية المحاسبية', tx)
+  const retentionCode = await requireAccountCodeByRole(AccountRole.SUBCONTRACTOR_RETENTION_PAYABLE, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
     entryNo: `JE-SRT-${Date.now()}`,
@@ -1486,9 +1489,9 @@ export async function autoEntryManualCost(data: {
   payFrom?: 'CASH' | 'AP'
   costCenterId?: string
 }, tx?: PrismaTransaction) {
-  const costCode = await getAccountCodeByRole(AccountRole.PROJECT_COST, tx) || '7110'
+  const costCode = await requireAccountCodeByRole(AccountRole.PROJECT_COST, 'العملية المحاسبية', tx)
   const creditCode = data.payFrom === 'AP'
-    ? (await getAccountCodeByRole(AccountRole.SUPPLIER_AP, tx) || '3210')
+    ? (await requireAccountCodeByRole(AccountRole.SUPPLIER_AP, 'العملية المحاسبية', tx))
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
@@ -1527,7 +1530,7 @@ export async function autoEntryLaborCost(data: {
   /** كود الحساب الدائن الفعلي (اختياري — يحترم اختيار المستخدم) */
   paymentAccountCode?: string
 }, tx?: PrismaTransaction) {
-  const laborCode = await getAccountCodeByRole(AccountRole.LABOR_COST, tx) || '7110'
+  const laborCode = await requireAccountCodeByRole(AccountRole.LABOR_COST, 'العملية المحاسبية', tx)
   // احترم اختيار المستخدم: استخدم paymentAccountCode إن وُجد، وإلا احلل من paymentSource
   let creditCode: string
   if (data.paymentAccountCode) {

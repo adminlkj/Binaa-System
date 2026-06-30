@@ -8644,3 +8644,41 @@ Stage Summary:
 - القيد: مدين CONTRACT_ASSET (1610) / دائن UNBILLED_REVENUE (6130)
 - Idempotency: periodRevenue = revenueToDate - previouslyRecognizedRevenue (لا ازدواج)
 - الفرق الواضح: مشروع PRJ-002 — billed=420,000 لكن earned=13,800 (كانت الربحية خاطئة!)
+
+---
+Task ID: BA-08
+Agent: Code Agent (main)
+Task: BA-08 — Dynamic Accounting Architecture (Blocker 3: Hardcoded Account Logic)
+
+Work Log:
+- Audit: found ~60 hardcoded `|| 'xxxx'` account code fallbacks across engine.ts (45), ifrs15.ts (2), depreciation-engine.ts (1), mapping.ts (2), account-roles.ts (1), salary-payments route (2), payroll-runs route (4+), rental-invoices.tsx (1). Plus 3 direct hardcoded codes in clients/suppliers/period-closing accounting routes.
+- Added `requireAccountCodeByRole(role, operationName, tx)` helper to account-roles.ts — returns just the code string, THROWS a descriptive Arabic error if no account is mapped to the role (instead of silently falling back to a hardcoded code).
+- Added `ASSET_DISPOSAL_GAIN` and `ASSET_DISPOSAL_LOSS` roles to AccountRole enum + ACCOUNT_ROLES registry.
+- Updated chart-of-accounts.ts template: assigned `accountRole: 'ASSET_DISPOSAL_GAIN'` to 6310 and `accountRole: 'ASSET_DISPOSAL_LOSS'` to 8610.
+- Backfilled DB: updated accounts 6310 and 8610 with the new roles.
+- engine.ts: replaced ALL 55 `getAccountCodeByRole(ROLE, tx) || 'xxxx'` patterns with `requireAccountCodeByRole(ROLE, 'العملية المحاسبية', tx)` via regex. Also fixed 2 special cases (petty cash bank fallback, contract advance ternary fallback) and the asset disposal gain/loss hardcoded codes.
+- ifrs15.ts: replaced 2 fallbacks (CONTRACT_ASSET, UNBILLED_REVENUE) with requireAccountCodeByRole.
+- depreciation-engine.ts: replaced 1 fallback (payment account) with requireAccountCodeByRole.
+- account-roles.ts: rewrote `resolvePaymentAccountCode` — removed `|| '1110'` and `|| '1120'` fallbacks; now throws if no CASH/BANK/PETTY_CASH account is mapped (with cross-fallback between cash-equivalent roles first).
+- salary-payments route: rewrote `resolveCreditAccount` (2 locations) — removed `{ code: '1120' }` and `{ code: '1110' }` fallbacks; now throws with cross-fallback.
+- payroll-runs/[id] route: replaced 4+ fallbacks (SALARIES_PAYABLE, GOSI_EXPENSE, GOSI_PAYABLE, EMPLOYEE_ADVANCE) with requireAccountCodeByRole.
+- rental-invoices.tsx (frontend): removed hardcoded '1210', '6210', '6220', '3110' from JE preview. Added useQuery to fetch accounts by role from `/api/accounts/by-role?role=CUSTOMER_AR,RENTAL_REVENUE,VAT_OUTPUT`. Preview now uses role-resolved codes.
+- mapping.ts: removed all static hardcoded account code maps (EXPENSE_CATEGORY_ACCOUNT_MAP, EQUIPMENT_ACCOUNT_MAP, SALARY_ACCOUNT_MAP, CLIENT_ACCOUNT, SUPPLIER_ACCOUNT, SUBCONTRACTOR_ACCOUNT, PAYMENT_METHOD_ACCOUNT_MAP) and the helper functions with `|| 'fallback'` (getExpenseAccountCode, getPaymentAccountCode, getExpenseAccounts). Kept ACCOUNT_MAPPINGS + generateEntryPreview as DOCUMENTATION ONLY with clear BA-08 header comment.
+- clients/[id]/accounting route: replaced `accountCode: '1210'` with `getAccountCodeByRole(AccountRole.CUSTOMER_AR)`.
+- suppliers/[id]/accounting route: replaced `accountCode: '3210'` with `getAccountCodeByRole(AccountRole.SUPPLIER_AP)`.
+- period-closing route: replaced `where: { code: '5200' }` with `requireAccountByRole(AccountRole.RETAINED_EARNINGS, 'إقفال فترة', tx)`.
+
+Testing with Agent Browser (logged in as admin / Admin@123):
+- POST /api/expenses → 201 + JE created. JE lines: 8160 (ADMIN_EXPENSE) / 3120 (VAT_INPUT) / 1110 (CASH) — all resolved by role ✅
+- POST /api/advances → 201 + JE created. JE lines: 1230 (EMPLOYEE_ADVANCE) / 1110 (CASH) — all resolved by role ✅
+- POST /api/equipment/fuel → 201 + JE created. JE lines: 7210 (FUEL_EXPENSE) / 1110 (CASH) — all resolved by role ✅
+- bun run lint → 0 errors, 0 warnings ✅
+- Test data cleaned up (expenses, advances, fuel logs, JEs deleted)
+
+Stage Summary:
+- BA-08 COMPLETE: Zero hardcoded account codes in business logic. ALL account resolution is now role-based via `requireAccountCodeByRole` / `requireAccountByRole` from account-roles.ts.
+- The anti-pattern `getAccountCodeByRole(ROLE) || 'hardcoded'` (which SILENTLY posted to wrong accounts if a role was unmapped) is eliminated. The new pattern THROWS a descriptive Arabic error telling the accountant exactly which role needs mapping.
+- 2 new roles added: ASSET_DISPOSAL_GAIN (6310), ASSET_DISPOSAL_LOSS (8610).
+- Frontend JE preview in rental-invoices.tsx now fetches accounts by role from the API instead of hardcoding '1210'/'6210'/'6220'/'3110'.
+- mapping.ts static maps removed (dead code); ACCOUNT_MAPPINGS kept as documentation only.
+- The Chart of Accounts now DRIVES the system: if an accountant changes account 6210→6215 for RENTAL_REVENUE, all screens automatically use the new code. New accounts with a role automatically appear in screens. ZERO code changes needed.

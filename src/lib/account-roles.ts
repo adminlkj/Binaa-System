@@ -73,6 +73,9 @@ export const AccountRole = {
   INVENTORY: 'INVENTORY',
   GRNI: 'GRNI',
   VAT_SETTLEMENT: 'VAT_SETTLEMENT',
+  // ── BA-08 additions — Asset disposal gain/loss ──
+  ASSET_DISPOSAL_GAIN: 'ASSET_DISPOSAL_GAIN',
+  ASSET_DISPOSAL_LOSS: 'ASSET_DISPOSAL_LOSS',
 } as const
 
 /** TypeScript type derived from the keys of `AccountRole` */
@@ -508,6 +511,21 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     description: 'حساب تسوية الفرق بين ضريبة المبيعات والمشتريات',
     defaultCodes: ['2305'],
   },
+  // ── BA-08 additions — Asset disposal gain/loss ──
+  ASSET_DISPOSAL_GAIN: {
+    role: 'ASSET_DISPOSAL_GAIN',
+    labelAr: 'أرباح بيع أصول',
+    labelEn: 'Gain on Asset Disposal',
+    description: 'إيرادات الربح من التخلص من الأصول الثابتة',
+    defaultCodes: ['6310'],
+  },
+  ASSET_DISPOSAL_LOSS: {
+    role: 'ASSET_DISPOSAL_LOSS',
+    labelAr: 'خسارة التخلص من أصول',
+    labelEn: 'Loss on Asset Disposal',
+    description: 'خسارة التخلص من الأصول الثابتة',
+    defaultCodes: ['8610'],
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -662,6 +680,34 @@ export async function requireAccountByRole(
 }
 
 /**
+ * REQUIRE an account code for a given role. Convenience wrapper around
+ * `requireAccountByRole` that returns just the code string.
+ *
+ * This is the BA-08 replacement for the dangerous anti-pattern:
+ *   ❌ const code = await getAccountCodeByRole(ROLE, tx) || '1210'
+ * which SILENTLY falls back to a hardcoded account code if the role mapping
+ * is missing — potentially posting to the WRONG account without any warning.
+ *
+ *   ✅ const code = await requireAccountCodeByRole(ROLE, 'operation name', tx)
+ * which THROWS a descriptive error if no account is mapped, forcing the
+ * accountant to fix the mapping in the Chart of Accounts screen.
+ *
+ * @param role - One of the `AccountRole` keys
+ * @param operationName - Human-readable name of the operation (for error message)
+ * @param tx - Optional Prisma transaction client
+ * @returns The account code string (guaranteed to exist)
+ * @throws Error if no account is mapped to the role
+ */
+export async function requireAccountCodeByRole(
+  role: string,
+  operationName: string,
+  tx?: { account: { findFirst: (args: any) => Promise<any> } }
+): Promise<string> {
+  const account = await requireAccountByRole(role, operationName, tx)
+  return account.code
+}
+
+/**
  * Get all accounts for a role, optionally filtered by activity type.
  * Used when a screen needs to show all available accounts for a role
  * (e.g., showing all CASH + BANK accounts for payment method selection).
@@ -700,22 +746,38 @@ export async function resolvePaymentAccountCode(
   payFrom: 'TREASURY' | 'BANK' | 'PETTY_CASH',
   tx?: { account: { findFirst: (args: any) => Promise<any> } }
 ): Promise<string> {
+  // BA-08: No hardcoded fallbacks. If no account is mapped to the payment role,
+  // throw a descriptive error forcing the accountant to fix the Chart of Accounts.
   const roleMap: Record<string, string> = {
     'TREASURY': 'CASH',
     'BANK': 'BANK',
-    'PETTY_CASH': 'CASH',
+    'PETTY_CASH': 'PETTY_CASH',
   }
   const role = roleMap[payFrom] || 'CASH'
   const code = await getAccountCodeByRole(role, tx)
-  if (!code) {
-    // Fallback: if no role-mapped account, try the other cash role
-    if (payFrom === 'TREASURY') {
-      const bankCode = await getAccountCodeByRole('BANK', tx)
-      return bankCode || '1110'
-    }
-    return payFrom === 'BANK' ? '1120' : '1110'
+  if (code) return code
+
+  // Cross-fallback: if TREASURY has no CASH account, try PETTY_CASH then BANK
+  // (these are all valid cash-equivalent accounts). Only throw if ALL fail.
+  if (payFrom === 'TREASURY') {
+    const pettyCash = await getAccountCodeByRole('PETTY_CASH', tx)
+    if (pettyCash) return pettyCash
+    const bankCode = await getAccountCodeByRole('BANK', tx)
+    if (bankCode) return bankCode
   }
-  return code
+  if (payFrom === 'BANK') {
+    const cashCode = await getAccountCodeByRole('CASH', tx)
+    if (cashCode) return cashCode
+  }
+  if (payFrom === 'PETTY_CASH') {
+    const cashCode = await getAccountCodeByRole('CASH', tx)
+    if (cashCode) return cashCode
+  }
+
+  throw new Error(
+    `لا يمكن تحديد حساب السداد لطريقة "${payFrom}" - لا يوجد حساب مرتبط بدور CASH/BANK/PETTY_CASH في دليل الحسابات. ` +
+    `يرجى ربط حساب نقدية/بنك من شاشة دليل الحسابات → تبويب ربط الحسابات.`
+  )
 }
 
 /**
