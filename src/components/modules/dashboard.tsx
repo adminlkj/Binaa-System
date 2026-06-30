@@ -14,17 +14,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog'
-import {
   useAppStore,
   CONSTRUCTION_WORKFLOW, RENTAL_WORKFLOW,
 } from '@/stores/app-store'
@@ -569,60 +558,9 @@ function ErrorState({ onRetry, lang }: { onRetry: () => void; lang: 'ar' | 'en' 
   )
 }
 
-// ============ Seed Button ============
-function SeedButton({ onSeedSuccess, lang }: { onSeedSuccess: () => void; lang: 'ar' | 'en' }) {
-  const [isSeeding, setIsSeeding] = React.useState(false)
-  const [confirmOpen, setConfirmOpen] = React.useState(false)
-  const handleSeed = async () => {
-    setIsSeeding(true)
-    try {
-      // SECURITY: send explicit confirmation param matching the server guard
-      const res = await fetch('/api/seed?confirm=WIPE_ALL_DATA', { method: 'POST' })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.message || 'Seed failed')
-      }
-      onSeedSuccess()
-    } catch (e) {
-      console.error('Seed error:', e)
-    } finally {
-      setIsSeeding(false)
-      setConfirmOpen(false)
-    }
-  }
-  return (
-    <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-      <AlertDialogTrigger asChild>
-        <Button disabled={isSeeding} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
-          {isSeeding ? <RefreshCw className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-          {isSeeding ? t('جاري التهيئة...', 'Seeding...', lang) : t('تهيئة البيانات التجريبية', 'Seed Demo Data', lang)}
-        </Button>
-      </AlertDialogTrigger>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>{t('تحذير: عملية لا يمكن التراجع عنها', 'Warning: Irreversible operation', lang)}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {t(
-              'سيتم مسح جميع الموظفين والمشاريع والفواتير والقيود المحاسبية نهائياً واستبدالها ببيانات تجريبية. هل أنت متأكد؟',
-              'All employees, projects, invoices, and journal entries will be permanently erased and replaced with demo data. Are you sure?',
-              lang
-            )}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel disabled={isSeeding}>{t('إلغاء', 'Cancel', lang)}</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={handleSeed}
-            disabled={isSeeding}
-            className="bg-red-600 hover:bg-red-700 text-white"
-          >
-            {isSeeding ? t('جاري المحو...', 'Wiping...', lang) : t('نعم، امسح كل شيء', 'Yes, wipe everything', lang)}
-          </AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
-  )
-}
+// ============ Empty State ============
+// زر تهيئة البيانات التجريبية تمت إزالته نهائياً من الواجهة.
+// البيانات التجريبية تُدار فقط عبر سطر الأوامر في بيئة التطوير.
 
 // ============ Alerts Section ============
 function AlertsSection({ alerts, lang }: { alerts: DashboardData['alerts']; lang: 'ar' | 'en' }) {
@@ -737,20 +675,25 @@ export function DashboardModule() {
   if (isLoading) return <DashboardSkeleton />
   if (isError) return <ErrorState onRetry={() => refetch()} lang={lang} />
 
-  // Empty state - no data seeded yet
+  // Empty state - النظام جاهز لكن لا توجد بيانات بعد
   if (hasNoData) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <Card className="max-w-lg border-emerald-200 bg-emerald-50">
+        <Card className="max-w-lg">
           <CardHeader className="items-center text-center">
             <div className="flex size-16 items-center justify-center rounded-2xl bg-emerald-100">
               <Building2 className="size-8 text-emerald-600" />
             </div>
-            <CardTitle className="mt-4 text-2xl">{t('لا توجد بيانات', 'No Data', lang)}</CardTitle>
+            <CardTitle className="mt-4 text-2xl">{t('مرحباً بك في نظام بِنَاء', 'Welcome to Binaa System', lang)}</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
-            <p className="text-muted-foreground leading-relaxed">{t('يرجى تهيئة البيانات التجريبية لعرض لوحة التحكم', 'Please seed demo data to view dashboard', lang)}</p>
-            <div className="mt-6"><SeedButton onSeedSuccess={() => refetch()} lang={lang} /></div>
+            <p className="text-muted-foreground leading-relaxed">
+              {t(
+                'النظام جاهز للاستخدام. ابدأ بإضافة العملاء والمشاريع والموردين من القائمة الجانبية لعرض المؤشرات هنا.',
+                'The system is ready. Start by adding clients, projects, and suppliers from the side menu to see metrics here.',
+                lang
+              )}
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -768,7 +711,6 @@ export function DashboardModule() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <SeedButton onSeedSuccess={() => refetch()} lang={lang} />
           <Button variant="outline" size="icon" onClick={() => refetch()} title={t('تحديث', 'Refresh', lang)}>
             <RefreshCw className="size-4" />
           </Button>

@@ -8,13 +8,23 @@ import { NextResponse } from 'next/server'
  * SECURITY GUARD: This endpoint WIPES THE ENTIRE DATABASE.
  *
  * طبقات الحماية (Defense in Depth):
- *   1. Middleware: يرفض أي طلب بدون جلسة (401)
- *   2. requireRoleApi('ADMIN'): لا يسمح إلا للمدير (403 لغير المدير)
- *   3. confirm=WIPE_ALL_DATA: تأكيد صريح في query string (403 بدونه)
+ *   1. NODE_ENV=development: يعمل فقط في بيئة التطوير (معطّل في الإنتاج)
+ *   2. Middleware: يرفض أي طلب بدون جلسة (401)
+ *   3. requireRoleApi('ADMIN'): لا يسمح إلا للمدير (403 لغير المدير)
+ *   4. confirm=WIPE_ALL_DATA: تأكيد صريح في query string (403 بدونه)
  *
  * هذه العملية مدمرة بالكامل ولا يمكن التراجع عنها.
+ * زر الواجهة أُزيل نهائياً — يستخدم فقط عبر سطر الأوامر في التطوير.
  */
 export async function POST(request: Request) {
+  // ============ SECURITY LAYER 0: DEV ONLY ============
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { success: false, message: 'هذه العملية معطّلة في بيئة الإنتاج.' },
+      { status: 403 }
+    )
+  }
+
   // ============ SECURITY LAYER 1: ADMIN only ============
   const { response } = await requireRoleApi('ADMIN')
   if (response) return response

@@ -119,7 +119,7 @@ function DeliveryOrderFormPage({
 
   const handleRentalChange = (id: string) => {
     setRentalId(id)
-    if (id === 'NONE') {
+    if (id === '') {
       setEquipmentId('')
       setClientId('')
       setProjectId('NONE')
@@ -146,7 +146,7 @@ function DeliveryOrderFormPage({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     createMutation.mutate({
-      rentalId: rentalId === 'NONE' ? null : rentalId,
+      rentalId: rentalId || null,
       equipmentId,
       clientId: clientId || null,
       projectId: projectId === 'NONE' ? null : projectId,
@@ -180,9 +180,8 @@ function DeliveryOrderFormPage({
               <div className="space-y-2">
                 <Label>{t('عقد التأجير', 'Rental Contract')}</Label>
                 <Select value={rentalId} onValueChange={handleRentalChange}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر عقد التأجير (اختياري)', 'Select rental contract (optional)')} /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder={t('اختر عقد التأجير (مطلوب)', 'Select rental contract (required)')} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NONE">{t('بدون عقد', 'No Contract')}</SelectItem>
                     {rentalContracts.map(r => (
                       <SelectItem key={r.id} value={r.id}>
                         {r.contract?.contractNo || '—'} - {r.equipment?.name || '—'} ({r.client?.name || '—'})
@@ -191,7 +190,7 @@ function DeliveryOrderFormPage({
                   </SelectContent>
                 </Select>
                 {rentalContracts.length === 0 && (
-                  <p className="text-xs text-amber-600">{t('لا توجد عقود تأجير نشطة. يمكنك إنشاء أمر توصيل مستقل.', 'No active rental contracts. You can create an independent delivery order.')}</p>
+                  <p className="text-xs text-red-600">{t('لا توجد عقود تأجير نشطة. يجب إنشاء عقد تأجير أولاً قبل أمر التوصيل.', 'No active rental contracts. You must create a rental contract first before a delivery order.')}</p>
                 )}
               </div>
             </div>
@@ -283,7 +282,7 @@ function DeliveryOrderFormPage({
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 no-print">
           <Button type="button" variant="outline" onClick={onBack}>{t('إلغاء', 'Cancel')}</Button>
-          <Button type="submit" disabled={createMutation.isPending || !equipmentId || !clientId || !deliveryDate} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
+          <Button type="submit" disabled={createMutation.isPending || !rentalId || !equipmentId || !clientId || !deliveryDate} className="bg-emerald-600 hover:bg-emerald-700 min-w-[160px]">
             {createMutation.isPending ? t('جاري الإنشاء...', 'Creating...') : t('إنشاء أمر التوصيل', 'Create Delivery Order')}
           </Button>
         </div>

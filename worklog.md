@@ -8722,3 +8722,76 @@ Stage Summary:
   - HR: Employee→Contract→Attendance→Payroll→Salary→Payment→Entry
   - Purchase: Request→Order→Receipt→Invoice→Payment→Entry
 - The module transforms the system from "a collection of independent screens" into "an integrated workflow-driven ERP" where users can see the complete journey of each business cycle at a glance.
+
+---
+Task ID: BA-10-CRITICAL
+Agent: Code Agent (main)
+Task: إصلاح الكتلة الحرجة — نظام المصادقة + حساب المطور الدائم + إزالة بيانات التجربة + شاشة المستخدمين
+
+Work Log:
+- تم اكتشاف (عبر فحص AUDIT-1/2/3) أن النظام معطّل تماماً: لا يوجد نموذج User في prisma/schema.prisma، لا جدول User في DB، NEXTAUTH_SECRET غير مضبوط، وبالتالي لا أحد يستطيع تسجيل الدخول.
+- إضافة `enum UserRole { ADMIN ACCOUNTANT MANAGER VIEWER }` و `model User` (id, username @unique, email @unique, name, passwordHash, role, isActive, lastLoginAt, createdAt, updatedAt) إلى prisma/schema.prisma.
+- توليد NEXTAUTH_SECRET (openssl rand -base64 32) وإضافته إلى .env مع NEXTAUTH_URL.
+- تشغيل `bun run db:generate` + `bun run db:push` — تم إنشاء جدول User في DB.
+- إعادة كتابة scripts/seed-admin.ts لإنشاء حسابين دائمين:
+  - admin (admin@binaa.local, Admin@123, ADMIN) — مدير النظام
+  - developer (developer@binaa.local, Dev@Binaa2026!, ADMIN) — مطوّر النظام
+  كلاهما role=ADMIN ودائم.
+- تشغيل seed-admin.ts — تم إنشاء الحسابين بنجاح في DB.
+- التحقق عبر Agent Browser: تسجيل الدخول بـ developer/Dev@Binaa2026! → نجح، تم التوجيه إلى / (لوحة التحكم).
+- إزالة SeedButton نهائياً من src/components/modules/dashboard.tsx (الزر الأخضر "تهيئة البيانات التجريبية" + AlertDialog المرتبط به + استدعاءات fetch('/api/seed')). استبدال الحالة الفارغة برسالة ترحيب بدون seed.
+- إضافة حماية NODE_ENV=production إلى src/app/api/seed/route.ts — الـ API معطّل في الإنتاج (يرجع 403).
+- بناء شاشة إدارة المستخدمين الكاملة:
+  - src/app/api/users/route.ts (GET قائمة + POST إنشاء) — ADMIN فقط
+  - src/app/api/users/[id]/route.ts (PATCH تحديث + DELETE حذف) — ADMIN فقط
+  - حماية الحسابات الدائمة: PROTECTED_USERNAMES=['admin','developer'] لا يمكن حذفها/إلغاء تفعيلها/تغيير دورها/تغيير username. يمكن تغيير كلمة مرورها واسمها وبريدها.
+  - src/components/modules/users.tsx — واجهة كاملة: جدول المستخدمين، إنشاء/تعديل/حذف، تغيير كلمة المرور، تفعيل/إلغاء تفعيل (Switch)، شارات الصلاحيات، مؤشر الحساب الدائم (ShieldCheck)، مؤشر "أنت" للمستخدم الحالي، منع حذف الذات.
+  - إضافة 'users' إلى NavItem، navGroups (settings-data)، navItemLabels، navItemActivity في app-store.ts.
+  - تسجيل UsersModule في moduleMap في page.tsx.
+- إصلاح bug في users.tsx: استبدال useToast (غير موجود) بـ sonner.
+- bun run lint → 0 errors, 0 warnings ✅
+- التحقق عبر Agent Browser (مستخدم developer):
+  - لوحة التحكم تظهر رسالة "مرحباً بك في نظام بِنَاء" (لا يوجد زر seed) ✅
+  - النقر على "المستخدمون" في القائمة الجانبية → تظهر شاشة إدارة المستخدمين ✅
+  - الجدول يعرض الحسابين: admin (مدير النظام) + developer (مدير النظام) ✅
+  - كلاهما يحمل مؤشر ShieldCheck (حساب دائم) ✅
+  - زر "مستخدم جديد" موجود ✅
+
+Stage Summary:
+- الكتلة الحرجة مُصلَحة بالكامل: نظام المصادقة يعمل، حسابان دائمان (admin + developer) في DB، NEXTAUTH_SECRET مضبوط.
+- زر/API البيانات التجريبية محمي بـ NODE_ENV (معطّل في الإنتاج) والزر أُزيل من الواجهة.
+- شاشة إدارة المستخدمين جاهزة مع حماية كاملة للحسابات الدائمة.
+- النظام الآن قابل للاستخدام فعلياً (قابل لتسجيل الدخول).
+
+---
+Task ID: BA-10-CLEANUP
+Agent: Code Agent (main)
+Task: تنظيف الكود الميت + الـ APIs اليتيمة + إصلاح فجوات الدورات
+
+Work Log:
+- [فجوة دورة التأجير] إصلاح src/components/modules/delivery-orders.tsx: جعل rentalId مطلوباً (لم يعد مسموحاً "بدون عقد"). زر الإنشاء معطّل حتى يُختار عقد. رسالة تحذير حمراء إن لم توجد عقود.
+- [فجوة دورة التأجير] إضافة deliveryOrderId String? إلى نموذج Timesheet في prisma/schema.prisma + علاقة deliveryOrder مع EquipmentDeliveryOrder (مع إضافة timesheets Timesheet[] كعلاقة عكسية). هذا يربط سلسلة: Rental → DeliveryOrder → Timesheet → Invoice. db:push ناجح.
+- [كود ميت] حذف src/lib/print-service.ts (3866 سطر) — لم يكن مستورَداً من أي مكان. النظام الفعلي في src/printing/print-service.ts (11KB) + src/lib/unified-print-engine.ts.
+- [APIs مكررة - 0 مستدعٍ] حذف:
+  - src/app/api/financial-statements/income, /balance-sheet, /cash-flow (مكررة مع /api/reports/*)
+  - src/app/api/financial-reports (تطبيق ثالث يتيم للقوائم المالية)
+  - src/app/api/financial-summary, /gl-financial-summary (يتيمة)
+- [APIs يتيمة - 0 مستدعٍ] حذف:
+  - src/app/api/account-statement/customer, /supplier, /project (3 routes يتيمة)
+  - src/app/api/subcontractor-invoices, /subcontractor-payments, /subcontractor-advances, /subcontractor-retentions (4 routes — subcontractors.tsx لا يستخدمها)
+  - src/app/api/commitments, /wbs, /cost-codes, /cost-entries, /measurements, /claim-items, /claim-certifications, /project-ledger, /project-controls (9 routes للتحكم المتقدم في المشاريع — بدون UI)
+  - src/app/api/clients/[id]/accounting, /suppliers/[id]/accounting (2 routes يتيمة)
+- bun run lint → 0 errors, 0 warnings ✅
+
+التحقق عبر Agent Browser (developer):
+- لوحة التحكم: تظهر "مرحباً بك في نظام بِنَاء" + "النظام جاهز للاستخدام" — لا يوجد زر Seed ✅
+- إدارة المستخدمين: جدول يعرض admin + developer (دائمين) ✅
+- إنشاء مستخدم جديد (محاسب تجريبي): نجح، ظهر في القائمة ✅
+- حذف المستخدم التجريبي عبر API: نجح ✅
+- النظام يعمل بدون أخطاء بعد كل عمليات الحذف ✅
+
+Stage Summary:
+- تم إصلاح فجوتي تسلسل الدورات: DO الآن يتطلب عقد تأجير، و Timesheet له ربط اختياري بـ DO.
+- تم حذف 3866 سطر كود ميت (print-service.ts القديم).
+- تم حذف 20+ API route يتيمة/مكررة (financial-statements/*, financial-reports, financial-summary, gl-financial-summary, account-statement/{customer,supplier,project}, subcontractor-{invoices,payments,advances,retentions}, commitments, wbs, cost-codes, cost-entries, measurements, claim-items, claim-certifications, project-ledger, project-controls, clients/[id]/accounting, suppliers/[id]/accounting).
+- الكود أصبح أنظف وأسهل صيانة. النظام يعمل بكامل وظائفه.
