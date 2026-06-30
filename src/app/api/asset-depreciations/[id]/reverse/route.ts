@@ -1,5 +1,6 @@
 import { reverseAssetDepreciation } from '@/lib/accounting/depreciation-engine'
 import { NextResponse } from 'next/server'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 // ============ POST: Reverse a single depreciation record ============
 // يعكس قيد الإهلاك ويُعيد حساب مجمع الإهلاك والقيمة الدفترية للأصل
@@ -7,6 +8,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
   try {
     const { id } = await params
     const result = await reverseAssetDepreciation(id)

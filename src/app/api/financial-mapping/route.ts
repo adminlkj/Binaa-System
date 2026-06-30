@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAllFinancialMappings, getFinancialMapping, seedFinancialMappings, resolveOperationAccounts, validateOperationMapping, getRoleMappingOverview } from '@/lib/financial-mapping-engine'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +57,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
   try {
     const body = await request.json()
     const { action } = body

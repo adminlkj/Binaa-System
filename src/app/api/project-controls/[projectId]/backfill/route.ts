@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 export const dynamic = 'force-dynamic'
 
@@ -9,6 +10,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
   try {
     const { projectId } = await params
     const results = { expenses: 0, laborCosts: 0, subcontractorInvoices: 0, equipmentCosts: 0, salaries: 0 }

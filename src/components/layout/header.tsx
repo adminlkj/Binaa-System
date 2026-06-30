@@ -1,9 +1,11 @@
 'use client'
 
 import React from 'react'
-import { Menu, Home } from 'lucide-react'
+import { Menu, Home, LogOut, UserCircle } from 'lucide-react'
+import { useSession, signOut } from 'next-auth/react'
 import { useAppStore, navItemLabels, navGroups, type NavItem } from '@/stores/app-store'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -25,6 +27,7 @@ function findGroupForItem(item: NavItem): { group: string; item: string } | null
 
 export function Header() {
   const { activeItem, lang, setSidebarOpen, setActiveItem, detailBreadcrumb } = useAppStore()
+  const { data: session } = useSession()
 
   const currentLabel = navItemLabels[activeItem]
   const groupInfo = findGroupForItem(activeItem)
@@ -97,6 +100,30 @@ export function Header() {
 
         {/* Spacer */}
         <div className="flex-1" />
+
+        {/* User info + logout */}
+        {session?.user && (
+          <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 text-sm">
+              <UserCircle className="size-4 text-muted-foreground" />
+              <span className="font-medium text-foreground">{session.user.name}</span>
+              <Badge variant="secondary" className="text-xs">
+                {session.user.role === 'ADMIN' ? 'مدير' :
+                 session.user.role === 'ACCOUNTANT' ? 'محاسب' :
+                 session.user.role === 'MANAGER' ? 'مدير مشاريع' : 'مشاهدة'}
+              </Badge>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              title={lang === 'ar' ? 'تسجيل الخروج' : 'Logout'}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <LogOut className="size-5" />
+            </Button>
+          </div>
+        )}
       </div>
     </header>
   )

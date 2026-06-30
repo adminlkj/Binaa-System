@@ -8321,3 +8321,82 @@ Stage Summary:
 2. 🔴 BA-07.2 GAP-1: قيد IFRS15 بدون costCenterId (ربحية المشروع غير موثوقة).
 
 الأساس المحاسبي إنتاجي: المحرك الموحّد صحيح، الحارس R1-R12 يُطبَّق، الذرية مُتحقَّق منها، الأداء مقبول.
+
+---
+Task ID: B1-GATE
+Agent: full-stack-developer (endpoint gating)
+Task: Add requireRoleApi checks to 12 dangerous API endpoints
+
+Work Log:
+- Read /home/z/my-project/worklog.md and src/lib/auth-helpers.ts to understand prior work and the auth helper pattern.
+- Added `import { requireRoleApi } from '@/lib/auth-helpers'` and the auth guard at the top of each handler body, before any DB/business logic. GET handlers left untouched in all files.
+
+ADMIN-only gates (5 files):
+1. src/app/api/accounts/initialize/route.ts — POST → `requireRoleApi('ADMIN')` (GET left open)
+2. src/app/api/company-settings/route.ts — PUT → `requireRoleApi('ADMIN')` (GET left open; no PATCH handler exists)
+3. src/app/api/fixed-assets/depreciate-all/route.ts — POST → `requireRoleApi('ADMIN')`
+4. src/app/api/financial-mapping/route.ts — POST → `requireRoleApi('ADMIN')` (entire POST gated, incl. seed/update actions; GET left open)
+5. src/app/api/project-controls/[projectId]/backfill/route.ts — POST → `requireRoleApi('ADMIN')`
+
+ADMIN or ACCOUNTANT gates (5 files):
+6. src/app/api/period-closing/route.ts — POST → `requireRoleApi('ADMIN', 'ACCOUNTANT')` (GET left open)
+7. src/app/api/fiscal-years/[id]/close/route.ts — POST → `requireRoleApi('ADMIN', 'ACCOUNTANT')` (check placed before `const { id } = await params`)
+8. src/app/api/fiscal-years/[id]/reopen/route.ts — POST → `requireRoleApi('ADMIN', 'ACCOUNTANT')` (check placed before `const { id } = await params`)
+9. src/app/api/journal-entries/[id]/reverse/route.ts — POST → `requireRoleApi('ADMIN', 'ACCOUNTANT')` (check placed before try block)
+10. src/app/api/asset-depreciations/[id]/reverse/route.ts — POST → `requireRoleApi('ADMIN', 'ACCOUNTANT')` (check placed before try block)
+
+ADMIN or ACCOUNTANT gates (operational, 2 files):
+11. src/app/api/fixed-assets/depreciate/route.ts — POST → `requireRoleApi('ADMIN', 'ACCOUNTANT')`
+12. src/app/api/fixed-assets/[id]/depreciate/route.ts — POST → `requireRoleApi('ADMIN', 'ACCOUNTANT')` (check placed before try block)
+
+Stage Summary:
+- All 12 endpoint files existed and had the expected POST/PUT handlers; all were gated successfully.
+- No GET handlers were modified. No business logic was changed.
+- For dynamic-param routes (`[id]` / `[projectId]`), the auth check was placed at the very top of the handler body, before `await params` destructuring and before any DB calls, satisfying the "before any DB operations" rule.
+- `bun run lint` passed cleanly with no errors after the edits (eslint . exited 0).
+- Note: company-settings has no PATCH handler — only PUT was gated, as specified.
+
+---
+Task ID: B1-IMPL
+Agent: Code Agent (main)
+Task: Barrier 1 — بناء نظام المصادقة والصلاحيات الكامل (Authentication & Authorization)
+
+Work Log:
+- تدقيق أمني شامل: 183 API route، 0 محمية (0%) — Production Blocker
+- تثبيت bcryptjs + @types/bcryptjs
+- توليد NEXTAUTH_SECRET وإضافته إلى .env و .env.example
+- إضافة نموذج User + enum UserRole (ADMIN/ACCOUNTANT/MANAGER/VIEWER) إلى prisma/schema.prisma
+- تشغيل db:push لتطبيق الـ schema
+- إنشاء src/lib/auth.ts — NextAuth config (CredentialsProvider + JWT + bcrypt)
+- إنشاء src/types/next-auth.d.ts — type augmentation للـ session/jwt
+- إنشاء src/lib/auth-helpers.ts — requireAuthApi() و requireRoleApi() helpers
+- إنشاء src/app/api/auth/[...nextauth]/route.ts — NextAuth route handler
+- إنشاء src/middleware.ts — حماية عامة لكل المسارات (API → 401، صفحات → redirect /login)
+- إنشاء src/app/login/page.tsx — صفحة login RTL Arabic مع shadcn/ui
+- تحديث src/components/layout/providers.tsx — إضافة SessionProvider
+- تحديث src/components/layout/header.tsx — معلومات المستخدم + زر logout
+- إنشاء scripts/seed-admin.ts — إنشاء مدير افتراضي (admin / Admin@123)
+- تشغيل seed-admin → تم إنشاء المدير بنجاح
+- حماية /api/seed بـ requireRoleApi('ADMIN') + تأكيد صريح
+- تفويض وكيل لحماية 12 endpoint خطير (accounts/initialize, company-settings, depreciate-all, financial-mapping, period-closing, fiscal-years close/reopen, journal reverse, asset reverse, depreciate)
+
+الاختبار بـ Agent Browser:
+- زيارة / بدون مصادقة → redirect إلى /login ✅
+- login بـ admin/Admin@123 → redirect إلى / (dashboard) ✅
+- dashboard حمّل بالكامل (SPA + navigation) ✅
+- header يعرض اسم المستخدم + الصلاحية + زر logout ✅
+- logout → redirect إلى /login ✅
+- /api/dashboard بدون مصادقة → 401 ✅
+- /api/seed?confirm=WIPE_ALL_DATA بدون مصادقة → 401 ✅ (الـ Production Blocker تم إصلاحه!)
+- /api/clients بدون مصادقة → 401 ✅
+- /api/health (عام) → 200 ✅
+- /api/seed?confirm=WRONG (admin) → 403 ✅
+- lint نظيف ✅
+
+Stage Summary:
+- Production Blocker تم إصلاحه: endpoint حذف القاعدة محمي بطبقتين (مصادقة + ADMIN role + تأكيد)
+- جميع 183 API route محمية بالمصادقة عبر middleware
+- 12 endpoint خطير محمي بـ role-based access control
+- نظام RBAC: ADMIN (كل شيء), ACCOUNTANT (مالية), MANAGER (مشاريع), VIEWER (مشاهدة)
+- بيانات الـ admin الافتراضي: admin / Admin@123 (يجب تغييرها في الإنتاج)
+- ملاحظة: Next.js 16 يفضل proxy.ts بدل middleware.ts (يعمل لكن مع تحذير deprecation)

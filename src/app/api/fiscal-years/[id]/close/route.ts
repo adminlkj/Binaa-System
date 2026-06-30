@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { closeFiscalYear, ClosingEngineError } from '@/lib/accounting/closing-engine'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 // ============ POST: Execute year-end closing ============
 // BA-04: Redesigned to use the unified closing-engine.ts.
@@ -12,6 +13,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
   const { id } = await params
   let body: any
   try {

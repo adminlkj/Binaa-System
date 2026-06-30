@@ -2,8 +2,11 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import type { PrismaTransaction } from '@/lib/accounting/engine'
 import { postJournalEntry, getNextEntryNo } from '@/lib/accounting/guard'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 export async function POST(request: NextRequest) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
   try {
     const body = await request.json()
     const { year, month } = body

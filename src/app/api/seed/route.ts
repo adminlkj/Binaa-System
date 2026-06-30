@@ -1,16 +1,25 @@
 import { db } from '@/lib/db'
 import { initializeChartOfAccounts } from '@/lib/accounting/engine'
 import { seedFinancialMappings } from '@/lib/financial-mapping-engine'
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 
 /**
  * SECURITY GUARD: This endpoint WIPES THE ENTIRE DATABASE.
- * It requires an explicit `confirm=WIPE_ALL_DATA` query parameter to proceed.
- * Without it, the request is rejected with 403.
- * This prevents accidental data destruction via misclicks or automated tools.
+ *
+ * طبقات الحماية (Defense in Depth):
+ *   1. Middleware: يرفض أي طلب بدون جلسة (401)
+ *   2. requireRoleApi('ADMIN'): لا يسمح إلا للمدير (403 لغير المدير)
+ *   3. confirm=WIPE_ALL_DATA: تأكيد صريح في query string (403 بدونه)
+ *
+ * هذه العملية مدمرة بالكامل ولا يمكن التراجع عنها.
  */
 export async function POST(request: Request) {
-  // ============ SECURITY: require explicit confirmation ============
+  // ============ SECURITY LAYER 1: ADMIN only ============
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
+
+  // ============ SECURITY LAYER 2: require explicit confirmation ============
   const url = new URL(request.url)
   const confirm = url.searchParams.get('confirm')
   if (confirm !== 'WIPE_ALL_DATA') {

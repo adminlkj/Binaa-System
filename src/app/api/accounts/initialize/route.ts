@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { initializeChartOfAccounts } from '@/lib/accounting/engine'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 export async function POST() {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
   try {
     const result = await initializeChartOfAccounts()
     return NextResponse.json({

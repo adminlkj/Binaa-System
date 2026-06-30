@@ -1,5 +1,6 @@
 import { runDepreciationForAsset } from '@/lib/accounting/depreciation-engine'
 import { NextResponse } from 'next/server'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 // ============ POST: Run depreciation for a single asset ============
 // يستخدم محرك الإهلاك المركزي — كل المنطق في depreciation-engine.ts
@@ -7,6 +8,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
   try {
     const { id } = await params
     const body = await request.json()

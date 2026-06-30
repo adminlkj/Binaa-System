@@ -1,6 +1,7 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SessionProvider } from 'next-auth/react'
 import { useState, useEffect } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { CompanyProvider, useCompany } from '@/contexts/company-context'
@@ -56,12 +57,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   )
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <CompanyProvider>
-        <CurrencySettingsInitializer />
-        <TooltipProvider>
-          {children}
-        </TooltipProvider>
+    <SessionProvider>
+      <QueryClientProvider client={queryClient}>
+        <CompanyProvider>
+          <CurrencySettingsInitializer />
+          <TooltipProvider>
+            {children}
+          </TooltipProvider>
         {/* Global toast notifications — success/error messages for every operation */}
         <SonnerToaster
           position="top-center"
@@ -74,7 +76,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
             },
           }}
         />
-      </CompanyProvider>
-    </QueryClientProvider>
+        </CompanyProvider>
+      </QueryClientProvider>
+    </SessionProvider>
   )
 }

@@ -2,11 +2,14 @@ import { db } from '@/lib/db'
 import { reverseEntry } from '@/lib/accounting/engine'
 import type { PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
   try {
     const { id } = await params
 

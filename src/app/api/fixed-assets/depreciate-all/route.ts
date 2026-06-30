@@ -1,9 +1,12 @@
 import { runBulkDepreciation } from '@/lib/accounting/depreciation-engine'
 import { NextResponse } from 'next/server'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 // ============ POST: Run depreciation for ALL active assets ============
 // يستخدم محرك الإهلاك المركزي — كل المنطق في depreciation-engine.ts
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
   try {
     const body = await request.json()
     const year = parseInt(body.year)

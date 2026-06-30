@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 const defaultSettings = {
   nameAr: 'شركة البناء الحديثة للمقاولات',
@@ -49,6 +50,8 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
   try {
     const body = await request.json()
     const existing = await db.companySetting.findFirst()
