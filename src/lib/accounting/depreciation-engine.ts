@@ -23,6 +23,7 @@ import {
   reverseEntry,
   PrismaTransaction,
 } from '@/lib/accounting/engine'
+import { getNextEntryNo } from '@/lib/accounting/guard'
 import {
   AccountRole,
   getAccountCodeByRole,
@@ -719,8 +720,13 @@ export async function runDepreciationForAsset(
     let journalEntryId: string | null = null
     let journalEntryNo: string | null = null
     try {
+      // FIX-RBAC-VAT / AUDIT-ACCT Q7: use the shared sequential entry-no
+      // generator (JE-NNNNNN) instead of a Date.now() suffix — bulk
+      // depreciation runs otherwise collide on the same millisecond and the
+      // guard's R7 uniqueness check fails the entire run atomically.
+      const stdEntryNo = await getNextEntryNo(t)
       const je = await createJournalEntry({
-        entryNo: `JE-DEP-${asset.assetCode.replace('AST-', '')}-${year}${String(month).padStart(2, '0')}-${Date.now().toString().slice(-6)}`,
+        entryNo: stdEntryNo,
         date: periodDate,
         description: `Depreciation - ${asset.name} (${month}/${year})`,
         descriptionAr: `إهلاك ${assetName} - ${month}/${year}`,

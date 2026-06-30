@@ -28,6 +28,7 @@ import { PrintButton } from '@/components/shared/print-button'
 import { JePreview, JePreviewLine } from '@/components/shared/je-preview'
 import { AccountSelector } from '@/components/shared/account-selector'
 import { useAppStore, formatDate, formatNumber, commonText } from '@/stores/app-store'
+import { useCompany } from '@/contexts/company-context'
 
 // ============ Arabic/English Month Names ============
 const arabicMonths = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
@@ -149,6 +150,7 @@ function CreateRentalInvoicePage({
 }) {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
+  const { company } = useCompany()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
   const [timesheetId, setTimesheetId] = useState('')
@@ -195,7 +197,10 @@ function CreateRentalInvoicePage({
 
   // RULE: System auto-calculates: hours × rate = subtotal
   const subtotal = operatingHours * hourlyRate
-  const vatRate = 0.15
+  // VAT rate comes from company settings (FIX-RBAC-VAT / AUDIT-SETTINGS Q3).
+  // The server re-applies the same lookup on save, so a stale client value is
+  // harmless — this is only used for preview math.
+  const vatRate = company.defaultVatRate ?? 0.15
   const rentalVat = Math.round(subtotal * vatRate * 100) / 100
   // Delivery fees (with/without VAT based on contract setting)
   const deliveryVat = deliveryFeesTaxable && deliveryFees > 0 ? Math.round(deliveryFees * vatRate * 100) / 100 : 0
@@ -211,8 +216,9 @@ function CreateRentalInvoicePage({
     const _deliveryFees = ts.rental?.deliveryFees || ts.contract?.deliveryFees || 0
     const _deliveryFeesTaxable = ts.rental?.deliveryFeesTaxable ?? ts.contract?.deliveryFeesTaxable ?? true
     const _subtotal = _operatingHours * _hourlyRate
-    const _rentalVat = Math.round(_subtotal * 0.15 * 100) / 100
-    const _deliveryVat = _deliveryFeesTaxable && _deliveryFees > 0 ? Math.round(_deliveryFees * 0.15 * 100) / 100 : 0
+    const _vatRate = company.defaultVatRate ?? 0.15
+    const _rentalVat = Math.round(_subtotal * _vatRate * 100) / 100
+    const _deliveryVat = _deliveryFeesTaxable && _deliveryFees > 0 ? Math.round(_deliveryFees * _vatRate * 100) / 100 : 0
     const _totalVat = _rentalVat + _deliveryVat
     const _totalAmount = _subtotal + _deliveryFees + _totalVat
     if (_totalAmount <= 0) return []
@@ -237,7 +243,7 @@ function CreateRentalInvoicePage({
       lines.push({ accountCode: vatAccount.code, accountNameAr: vatAccount.nameAr || vatAccount.name, debit: 0, credit: _totalVat })
     }
     return lines
-  }, [timesheetId, approvedTimesheets, rentalRevenueAccountCode, rentalRevenueAccountNameAr, arAccount, revenueAccount, vatAccount])
+  }, [timesheetId, approvedTimesheets, rentalRevenueAccountCode, rentalRevenueAccountNameAr, arAccount, revenueAccount, vatAccount, company.defaultVatRate])
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>

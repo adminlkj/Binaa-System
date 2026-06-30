@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import {
   LayoutDashboard, Building2, Truck, Users, Package, Wrench,
   Calculator, Settings, ChevronDown, Globe, X,
@@ -12,6 +12,7 @@ import {
   TrendingDown, CalendarRange, HandCoins, Coins, FileSignature,
   ShieldCheck,
 } from 'lucide-react'
+import { useSession } from 'next-auth/react'
 import {
   useAppStore,
   navGroups,
@@ -21,6 +22,66 @@ import {
   type NavGroup,
 } from '@/stores/app-store'
 import { cn } from '@/lib/utils'
+
+// ============================================================================
+// RBAC — Role-based visibility for the 9 sidebar cycles and their items.
+//
+// Policy (per task FIX-RBAC-VAT):
+//   ADMIN      → all 9 cycles, all items.
+//   ACCOUNTANT → all cycles EXCEPT users-cycle. Within settings-cycle: clients,
+//                suppliers, inventory, accounting-mapping (NO settings).
+//                Accounting/reports/HR/costs/projects/rental/subcontractors allowed.
+//   MANAGER    → projects-cycle, rental-cycle, costs-cycle, subcontractors-cycle,
+//                hr-cycle, reports-cycle, settings-cycle (clients/suppliers/inventory
+//                only — NO settings, NO accounting-mapping). NO accounting-cycle,
+//                NO users-cycle.
+//   VIEWER     → can SEE all cycles EXCEPT users-cycle and accounting-cycle (no
+//                journal entries). All other items visible (data view only).
+//
+// The standalone Dashboard button is always visible to all roles.
+// ============================================================================
+
+type Role = 'ADMIN' | 'ACCOUNTANT' | 'MANAGER' | 'VIEWER'
+
+/** Items excluded per role within a cycle (empty = whole cycle allowed). */
+const EXCLUDED_ITEMS_BY_ROLE: Record<Role, Partial<Record<NavGroup, NavItem[]>>> = {
+  ADMIN: {},
+  ACCOUNTANT: {
+    'settings-cycle': ['settings'],
+    // users-cycle fully excluded via EXCLUDED_CYCLES below
+  },
+  MANAGER: {
+    'settings-cycle': ['settings', 'accounting-mapping'],
+  },
+  VIEWER: {},
+}
+
+/** Entire cycles hidden per role. */
+const EXCLUDED_CYCLES_BY_ROLE: Record<Role, NavGroup[]> = {
+  ADMIN: [],
+  ACCOUNTANT: ['users-cycle'],
+  MANAGER: ['accounting-cycle', 'users-cycle'],
+  VIEWER: ['users-cycle', 'accounting-cycle'],
+}
+
+/** Filter the global navGroups list for the current role. */
+function filterNavGroupsForRole(role: Role | undefined): typeof navGroups {
+  const effectiveRole: Role = role ?? 'VIEWER'
+  const excludedCycles = new Set<NavGroup>(EXCLUDED_CYCLES_BY_ROLE[effectiveRole])
+  const excludedItems = EXCLUDED_ITEMS_BY_ROLE[effectiveRole]
+
+  return navGroups
+    .filter(group => !excludedCycles.has(group.key))
+    .map(group => {
+      const hiddenItems = excludedItems[group.key]
+      if (!hiddenItems || hiddenItems.length === 0) return group
+      return {
+        ...group,
+        items: group.items.filter(item => !hiddenItems.includes(item)),
+      }
+    })
+    .filter(group => group.items.length > 0) // hide empty groups
+}
 
 // Icon mapping for each nav item
 const navItemIcons: Record<NavItem, React.ElementType> = {
@@ -116,6 +177,11 @@ const SIDEBAR_WIDTH = 'w-72'
 
 export function Sidebar() {
   const { activeItem, setActiveItem, lang, toggleLang } = useAppStore()
+  const { data: session } = useSession()
+  const role = session?.user?.role
+
+  // Role-filtered nav groups (admin sees all; others see subset per policy).
+  const visibleNavGroups = useMemo(() => filterNavGroupsForRole(role), [role])
 
   // The active cycle is always open. Other cycles can be opened manually.
   const [manualOpen, setManualOpen] = useState<Set<NavGroup>>(new Set())
@@ -174,7 +240,7 @@ export function Sidebar() {
 
       {/* Navigation — 9 cycles, fixed width, clean & simple */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
-        {navGroups.map(group => {
+        {visibleNavGroups.map(group => {
           const isExpanded = isGroupExpanded(group.key)
           const hasActiveItem = group.items.includes(activeItem)
           const GroupIcon = groupIcons[group.key] || FallbackIcon
@@ -252,6 +318,11 @@ export function Sidebar() {
 
 export function MobileSidebar() {
   const { activeItem, setActiveItem, sidebarOpen, setSidebarOpen, lang, toggleLang } = useAppStore()
+  const { data: session } = useSession()
+  const role = session?.user?.role
+
+  // Role-filtered nav groups — same policy as the desktop sidebar.
+  const visibleNavGroups = useMemo(() => filterNavGroupsForRole(role), [role])
 
   const [manualOpen, setManualOpen] = useState<Set<NavGroup>>(new Set())
   const activeCycle = findCycleForItem(activeItem)
@@ -324,7 +395,7 @@ export function MobileSidebar() {
 
         {/* Navigation — 9 cycles, clean & simple */}
         <nav className="py-2">
-          {navGroups.map(group => {
+          {visibleNavGroups.map(group => {
             const isExpanded = isGroupExpanded(group.key)
             const hasActiveItem = group.items.includes(activeItem)
             const GroupIcon = groupIcons[group.key] || FallbackIcon

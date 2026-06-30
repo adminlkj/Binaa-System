@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { type PrismaTransaction } from '@/lib/auto-journal'
 import { toNumber } from '@/lib/decimal'
 import { generateZatcaQRForInvoice } from '@/lib/zatca-qr'
+import { getDefaultVatRate } from '@/lib/settings'
 import { NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -73,7 +74,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { goodsReceiptId, date, dueDate, supplierInvoiceNo, supplierInvoiceDate, attachmentPath, notes, vatRate = 0.15 } = body
+    const { goodsReceiptId, date, dueDate, supplierInvoiceNo, supplierInvoiceDate, attachmentPath, notes, vatRate: vatRateRaw } = body
+
+    // Use the client-provided VAT rate if present, otherwise fall back to the
+    // configured company default (FIX-RBAC-VAT / AUDIT-SETTINGS Q3).
+    const vatRate = vatRateRaw != null ? Number(vatRateRaw) : await getDefaultVatRate()
 
     // RULE: Must have goodsReceiptId - cannot create without GR
     if (!goodsReceiptId) {

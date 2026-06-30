@@ -21,6 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useAppStore, formatSAR as storeFormatSAR, formatDate as storeFormatDate, formatNumber } from '@/stores/app-store'
+import { useCompany } from '@/contexts/company-context'
 import { PrintButton } from '@/components/shared/print-button'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { InvoicePreview } from '@/components/invoice/invoice-preview'
@@ -115,6 +116,7 @@ function ServiceInvoiceFormPage({
 }) {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
+  const { company } = useCompany()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
   const [clientId, setClientId] = useState('')
@@ -143,7 +145,8 @@ function ServiceInvoiceFormPage({
 
   // Auto-calculate
   const subtotal = useMemo(() => lineItems.reduce((s, i) => s + (Number(i.quantity || 0) * Number(i.unitPrice || 0)), 0), [lineItems])
-  const vatRate = 0.15
+  // VAT rate comes from company settings (FIX-RBAC-VAT / AUDIT-SETTINGS Q3).
+  const vatRate = company.defaultVatRate ?? 0.15
   const finalDiscountAmount = useMemo(() => {
     if (discountType === 'rate') return subtotal * (discountRate / 100)
     if (discountType === 'amount') return discountAmount

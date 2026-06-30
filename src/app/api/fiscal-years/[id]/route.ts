@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 
 // ============ Helper: live totals for a fiscal year ============
@@ -102,6 +103,10 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // FIX-RBAC-VAT / AUDIT-SETTINGS Q5: only ADMIN/ACCOUNTANT may update a fiscal year.
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -170,6 +175,10 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // FIX-RBAC-VAT / AUDIT-SETTINGS Q5: only ADMIN/ACCOUNTANT may delete a fiscal year.
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
 

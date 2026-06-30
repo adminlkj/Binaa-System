@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { previewFiscalYearClose, ClosingEngineError } from '@/lib/accounting/closing-engine'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 // ============ GET: Preview year-end closing ============
 // BA-04: Redesigned to use the unified closing-engine.ts.
@@ -8,6 +9,11 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  // FIX-RBAC-VAT / AUDIT-SETTINGS Q5: closing preview discloses revenue/expense
+  // balances — restrict to ADMIN/ACCOUNTANT.
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   const { id } = await params
 
   try {

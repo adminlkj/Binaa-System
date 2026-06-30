@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 
 // ============ Helper: compute live revenue/expenses/netProfit for a fiscal year ============
@@ -100,6 +101,10 @@ export async function GET() {
 
 // ============ POST: Create a new fiscal year ============
 export async function POST(request: Request) {
+  // FIX-RBAC-VAT / AUDIT-SETTINGS Q5: only ADMIN/ACCOUNTANT may create a fiscal year.
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
 

@@ -28,6 +28,7 @@ import { ModuleLayout, StatusBadge } from '@/components/shared/module-layout'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
 import { useAppStore, formatDate, formatNumber, commonText } from '@/stores/app-store'
+import { useCompany } from '@/contexts/company-context'
 import { PrintButton } from '@/components/shared/print-button'
 
 // ============ Types ============
@@ -197,6 +198,7 @@ function CreateInvoiceFlow({
 }) {
   const queryClient = useQueryClient()
   const { lang } = useAppStore()
+  const { company } = useCompany()
   const t = (ar: string, en: string) => lang === 'ar' ? ar : en
 
   const [step, setStep] = useState(initialState.step || 1)
@@ -248,7 +250,8 @@ function CreateInvoiceFlow({
   const tsDeliveryFees = selectedTimesheet?.rental?.deliveryFees || 0
   const tsDeliveryFeesTaxable = selectedTimesheet?.rental?.deliveryFeesTaxable ?? true
   const tsSubtotal = tsOperatingHours * tsHourlyRate
-  const tsVatRate = 0.15
+  // VAT rate comes from company settings (FIX-RBAC-VAT / AUDIT-SETTINGS Q3).
+  const tsVatRate = company.defaultVatRate ?? 0.15
   const tsRentalVat = Math.round(tsSubtotal * tsVatRate * 100) / 100
   const tsDeliveryVat = tsDeliveryFeesTaxable && tsDeliveryFees > 0 ? Math.round(tsDeliveryFees * tsVatRate * 100) / 100 : 0
   const tsTotalVat = tsRentalVat + tsDeliveryVat

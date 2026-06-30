@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 export async function GET(request: Request) {
   try {
@@ -92,6 +93,10 @@ export async function GET(request: Request) {
 // القواعد R1-R12 تُفرض مركزياً ولا يمكن كسرها.
 export async function POST(request: Request) {
   try {
+    // Role gate: only ADMIN and ACCOUNTANT may post manual journal entries
+    const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+    if (response) return response
+
     const body = await request.json()
 
     // Basic field presence (deeper validation in the guard)

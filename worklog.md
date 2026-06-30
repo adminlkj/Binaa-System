@@ -8887,3 +8887,637 @@ Stage Summary:
 - لا أرقام، لا أسهم، لا شارات، لا زر طي — فقط ما يحتاجه المستخدم: اسم الدورة + مراحلها بالترتيب.
 - لوحة التحكم لم تُعدَّل (لا توجد قائمة تنقل هرمية فيها — التنقل كله في الشريط الجانبي).
 - النظام الآن واضح وسريع وتسلسلي بدون تعقيد.
+
+---
+Task ID: AUDIT-PERM
+Agent: General-Purpose Audit Agent
+Task: Audit the permissions/RBAC system of the Next.js ERP (Binaa ERP) — role-based screen hiding, route-level protection, user CRUD, Users UI, session/auth, and VIEWER/ACCOUNTANT/MANAGER role behavior.
+
+Work Log:
+- Read /home/z/my-project/worklog.md (context) and surveyed project structure.
+- Read src/middleware.ts, src/lib/auth.ts, src/lib/auth-helpers.ts, src/types/next-auth.d.ts.
+- Read src/app/api/users/route.ts and src/app/api/users/[id]/route.ts.
+- Read src/components/modules/users.tsx.
+- Read src/stores/app-store.ts, src/components/layout/sidebar.tsx, src/components/layout/app-shell.tsx, src/components/layout/header.tsx.
+- Grepped src/app/api/** for `requireRoleApi|requireAuthApi` usage; counted 159 total `route.ts` files vs 16 that call the auth helpers.
+- Traced mutation endpoints: POST /api/projects, POST /api/clients, DELETE /api/clients/[id], POST /api/journal-entries, PUT/DELETE /api/journal-entries/[id], PUT/DELETE /api/projects/[id], POST/PUT /api/sales-invoices, POST/PUT /api/expenses, POST /api/salaries, POST /api/accounts, PUT/DELETE /api/fiscal-years/[id].
+- Verified prisma/schema.prisma UserRole enum (ADMIN, ACCOUNTANT, MANAGER, VIEWER; default VIEWER).
+- Verified src/app/api/auth/[...nextauth]/route.ts just re-exports NextAuth handler.
+
+Findings (per question):
+
+============================================================
+Q1 — Role-based screen hiding (sidebar / app-shell / header)
+============================================================
+(a) Finding: BROKEN (not implemented). Every authenticated user — ADMIN, ACCOUNTANT, MANAGER, VIEWER — sees ALL 9 cycles and ALL ~45 nav items in the sidebar, including the sensitive "Users & Permissions Cycle" (`users` module).
+(b) Evidence:
+   - src/stores/app-store.ts:49-113 — `navGroups` is a static array with no per-role filtering. `NavItem` and `NavGroup` types carry no `roles`/`allowedRoles` field.
+   - src/components/layout/sidebar.tsx:117-249 (Desktop `Sidebar`) and :253-400 (`MobileSidebar`) — both `map(group => ...)` over the entire `navGroups` array unconditionally. No reference to `useSession()` or `session.user.role` anywhere in the file.
+   - src/components/layout/app-shell.tsx:1-25 — renders `<Sidebar/>` and `<MobileSidebar/>` unconditionally; no role gate.
+   - src/components/layout/header.tsx:105-115 — only displays a role badge (مدير / محاسب / مدير مشاريع / مشاهدة) but does NOT hide or restrict anything.
+(c) Severity: HIGH. A VIEWER can open the "Users" screen, see the list (the API will 403, but the UI still renders the table shell, the "مستخدم جديد" button, and triggers useless network errors). More importantly a VIEWER sees every business module (Accounting, Financial Years, VAT, Settings, Accounting Mapping) in the nav and can navigate to them — UI affordances like "New" buttons render regardless of role.
+(d) Recommended fix: Add an `allowedRoles?: Role[]` field to `NavGroupConfig` and `NavItem` metadata; in `Sidebar`/`MobileSidebar`, obtain `session.user.role` via `useSession()` and filter `navGroups` / items before rendering. As a minimum, gate the `users-cycle` and `settings-cycle` (or at least `users`, `accounting-mapping`, `financial-years`) to ADMIN/ACCOUNTANT.
+
+============================================================
+Q2 — Route-level protection (middleware + API role checks)
+============================================================
+(a) Finding: PARTIAL — authentication is enforced globally, but authorization (role checks) is enforced on only ~16 of 159 route files (~10%). The vast majority of mutation endpoints allow ANY authenticated user.
+(b) Evidence:
+   - src/middleware.ts:25-61 — middleware only verifies a JWT token exists; it does NOT inspect `token.role`. It returns 401 (no token) or passes through. The header comment (lines 6-8) explicitly defers role checks to route handlers, but most handlers never call them.
+   - src/lib/auth-helpers.ts:47-89 — `requireAuthApi()` and `requireRoleApi(...roles)` are defined correctly (401 unauth / 403 forbidden with `required` and `current` echoed).
+   - Only 16 route files import `requireRoleApi`/`requireAuthApi`:
+       • /api/users/route.ts (GET, POST → ADMIN)
+       • /api/users/[id]/route.ts (PATCH, DELETE → ADMIN)
+       • /api/seed/route.ts (POST → ADMIN, dev-only, +confirm guard)
+       • /api/company-settings/route.ts (PUT → ADMIN; GET open)
+       • /api/accounts/initialize/route.ts (POST → ADMIN; GET open)
+       • /api/financial-mapping/route.ts (POST → ADMIN; GET open)
+       • /api/period-closing/route.ts (POST → ADMIN|ACCOUNTANT; GET open)
+       • /api/fiscal-years/[id]/close/route.ts and /[id]/reopen/route.ts (POST → ADMIN|ACCOUNTANT)
+       • /api/fixed-assets/[id]/depreciate, /depreciate, /depreciate-all/route.ts (ADMIN or ADMIN|ACCOUNTANT)
+       • /api/asset-depreciations/[id]/reverse/route.ts (ADMIN|ACCOUNTANT)
+       • /api/journal-entries/[id]/reverse/route.ts (ADMIN|ACCOUNTANT)
+       • /api/ifrs15/recognize/route.ts (ADMIN|ACCOUNTANT) and /preview/route.ts (requireAuthApi — any user)
+   - Routes with NO role checks (any authenticated user, including VIEWER, has full CRUD):
+       • POST /api/projects (src/app/api/projects/route.ts:61)
+       • PUT/DELETE /api/projects/[id] (src/app/api/projects/[id]/route.ts:183, :251)
+       • POST /api/clients, DELETE /api/clients/[id] (src/app/api/clients/route.ts:70; [id]/route.ts:62)
+       • POST /api/journal-entries — MANUAL journal entry creation! (src/app/api/journal-entries/route.ts:93)
+       • PUT/DELETE /api/journal-entries/[id] (src/app/api/journal-entries/[id]/route.ts:72, :235)
+       • POST /api/sales-invoices, PUT (src/app/api/sales-invoices/route.ts:115, :676)
+       • POST /api/expenses, PUT (src/app/api/expenses/route.ts:187, :275)
+       • POST /api/salaries (src/app/api/salaries/route.ts:85)
+       • POST /api/accounts (chart-of-accounts creation, src/app/api/accounts/route.ts:103)
+       • PUT/DELETE /api/fiscal-years/[id] (src/app/api/fiscal-years/[id]/route.ts:101, :169) — note the sub-routes /close and /reopen are protected but the parent PUT/DELETE are not
+       • and ~140 other routes (clients, suppliers, equipment, contracts, BOQ, purchase orders, goods receipt, supplier invoices, payments, payroll runs, salary payments, attendance, advances, petty cash, depreciation schedules, VAT, reports, etc.)
+(c) Severity: CRITICAL. Authentication ≠ Authorization. A VIEWER (or MANAGER) can create journal entries, post invoices, modify the chart of accounts, delete projects, edit/soft-delete clients, etc., simply by hitting the API directly with their session cookie. The whole role system is effectively advisory.
+(d) Recommended fix: Make `requireRoleApi()` (or a per-method wrapper) mandatory at the top of every POST/PUT/PATCH/DELETE handler. Codify via a small middleware-style helper or an ESLint rule that flags any `route.ts` exporting a mutation verb without an auth call. At minimum: protect all /api/journal-entries (POST manual entry, PUT, DELETE), /api/accounts (POST/PATCH/DELETE), /api/sales-invoices, /api/expenses, /api/salaries, /api/fiscal-years/[id] PUT/DELETE, /api/clients DELETE, /api/projects POST/PUT/DELETE with `requireRoleApi('ADMIN','ACCOUNTANT')` (or 'ADMIN' for chart-of-accounts/fiscal-year mutations).
+
+============================================================
+Q3 — User CRUD (/api/users and /api/users/[id])
+============================================================
+(a) Finding: WORKS for the basics (ADMIN-only), with sensible protected-account guards; PARTIAL gap on self-deletion.
+(b) Evidence:
+   - POST /api/users (src/app/api/users/route.ts:43-118) — wrapped in `requireRoleApi('ADMIN')` (line 44). Only ADMIN can create users. Validates required fields, password ≥8 chars, role in [ADMIN, ACCOUNTANT, MANAGER, VIEWER], uniqueness of username+email. ✅
+   - PATCH /api/users/[id] (src/app/api/users/[id]/route.ts:16-135) — `requireRoleApi('ADMIN')` (line 20). Only ADMIN can edit. Protected-account logic (lines 34-59) correctly blocks role change, deactivation, and username change for `admin` and `developer`. Password change IS allowed for protected accounts (intended). ✅
+   - DELETE /api/users/[id] (src/app/api/users/[id]/route.ts:137-173) — `requireRoleApi('ADMIN')` (line 141). Protected accounts cannot be deleted (lines 156-161). ✅
+   - GAP: There is NO server-side check preventing an ADMIN from deleting their own account. The UI disables the delete button when `u.id === currentUserId` (src/components/modules/users.tsx:269), but the API has no such guard. An ADMIN whose username is NOT `admin`/`developer` (e.g., a second admin user created via POST) can issue `DELETE /api/users/<self-id>` directly and lock themselves out.
+(c) Severity: MEDIUM (self-deletion gap); rest is OK.
+(d) Recommended fix: In `DELETE /api/users/[id]`, after the protected-account check, compare `existing.id` to the current session user id (the `user` returned from `requireRoleApi`) and return 403 if they match ("لا يمكن حذف حسابك الخاص").
+
+============================================================
+Q4 — Users UI (src/components/modules/users.tsx)
+============================================================
+(a) Finding: PARTIAL — the UI enforces protected-account rules locally, but does NOT hide/disable actions based on the logged-in user's role. A non-admin who somehow reaches this screen sees full action buttons and the "مستخدم جديد" button.
+(b) Evidence:
+   - src/components/modules/users.tsx:61-316 — the component reads `useSession()` only to compute `currentUserId` (line 166) for the "أنت" badge and self-delete disable. It never reads `session.user.role` and never gates the "مستخدم جديد" button (lines 177-183) or the edit/delete/password buttons (lines 246-278) on the role.
+   - Role badges ARE rendered correctly: `ROLE_BADGE` map (lines 54-59) and `ROLE_LABELS` map (lines 47-52) produce colored badges per role (red for ADMIN, teal for ACCOUNTANT, violet for MANAGER, gray for VIEWER). ✅
+   - Protected-account enforcement in the UI matches the API:
+       • Delete button disabled when `u.isProtected || u.id === currentUserId` (line 269). ✅
+       • Active toggle disabled when `u.isProtected` (line 235). ✅
+       • In UserFormDialog: username field disabled (line 392), role Select disabled (line 418), isActive Switch disabled (line 432) when `isProtected`. ✅
+   - However: if a VIEWER logs in and opens the Users screen (which they can, per Q1), the screen fires `GET /api/users` → 403 → "فشل تحميل المستخدمين" toast, but the "مستخدم جديد" button is still visible and clickable. Clicking it opens the form; submitting fires `POST /api/users` → 403. Confusing UX, not a real security hole (the API correctly 403s), but it leaks intent.
+(c) Severity: LOW (UI hygiene — server already blocks it).
+(d) Recommended fix: In `UsersModule`, compute `const isAdmin = (session?.user as any)?.role === 'ADMIN'` and: (1) hide the "مستخدم جديد" button unless `isAdmin`; (2) hide the edit/delete/password buttons in each row unless `isAdmin`; (3) optionally render an "access denied" panel instead of the table when `!isAdmin` so the screen fails gracefully rather than flashing a 403 toast.
+
+============================================================
+Q5 — Session / auth (src/lib/auth.ts, src/types/next-auth.d.ts)
+============================================================
+(a) Finding: WORKS — `role` is correctly persisted in the JWT and exposed to the client via the session. The plumbing is sound; the gap is downstream (consumers don't use it).
+(b) Evidence:
+   - src/lib/auth.ts:33-70 — `authorize()` validates username/password with bcrypt, checks `user.isActive`, updates `lastLoginAt`, returns `{id, username, email, name, role}`.
+   - src/lib/auth.ts:74-94 — `jwt` callback copies `id`, `username`, `role` into the token on first login; `session` callback copies them from the token to `session.user`. ✅
+   - src/types/next-auth.d.ts:6-28 — type augmentation adds `id`, `username`, `role: 'ADMIN'|'ACCOUNTANT'|'MANAGER'|'VIEWER'` to `Session.user`, `User`, and `JWT`. ✅
+   - src/components/layout/header.tsx:111-114 — confirms `session.user.role` is reachable on the client (used to render the role badge).
+   - Session fields on the client: `{ id, username, name, email, image?, role }`. `role` IS exposed to the client (by design — needed for UI gating, but trust boundary must be the API).
+   - src/lib/auth-helpers.ts:34-38 — `getCurrentUser()` correctly returns the typed session user for server-side use.
+   - Minor: the `email` field is on the session but `authorize()` returns `email: user.email` while the augmented `Session.user` type does not explicitly list `email` (it inherits from `DefaultSession['user']` which has it). Not a bug.
+(c) Severity: N/A (this layer is correct). The risk is purely that other layers don't consume `role`.
+(d) Recommended fix: None for this layer. The infrastructure is ready; the work is to actually use `role` in middleware and route handlers (Q2) and in the UI (Q1/Q4). Optionally: add `role`-based path matching in `src/middleware.ts` for a defense-in-depth layer (e.g., reject `/api/users/*` for non-ADMINs at the middleware layer before the route handler runs).
+
+============================================================
+Q6 — VIEWER / ACCOUNTANT / MANAGER role behavior on mutation endpoints
+============================================================
+(a) Finding: BROKEN — a VIEWER can create, edit, and delete records via the API. There is no role enforcement on the traced endpoints.
+(b) Evidence (3 traced examples):
+   1. POST /api/projects (src/app/api/projects/route.ts:61-119) — NO call to `requireAuthApi` or `requireRoleApi`. A VIEWER with a valid session cookie can POST a new project. The handler validates field presence and date order but never checks `role`. Returns 201 on success.
+   2. DELETE /api/clients/[id] (src/app/api/clients/[id]/route.ts:62-117) — NO role check. A VIEWER can soft-delete any client (the only protection is the FK pre-flight that blocks clients with related records). Returns 200 on success.
+   3. POST /api/journal-entries (src/app/api/journal-entries/route.ts:93-146) — NO role check. A VIEWER can create MANUAL journal entries via `postJournalEntry()`. This is the most critical: it bypasses the entire accounting control framework. (Note: the REVERSAL endpoint /api/journal-entries/[id]/reverse IS correctly gated to ADMIN|ACCOUNTANT — but the initial POST is not.)
+   - Additional confirmation: PUT/DELETE /api/projects/[id] (no check), POST/PUT /api/sales-invoices (no check), POST/PUT /api/expenses (no check), POST /api/salaries (no check), POST /api/accounts (no check), PUT/DELETE /api/fiscal-years/[id] (no check — only the /close and /reopen sub-routes are protected).
+   - The middleware (src/middleware.ts:39-57) only verifies the JWT exists; it does not inspect `token.role`. So the middleware will not catch this either.
+(c) Severity: CRITICAL. The VIEWER role is effectively equivalent to ADMIN for ~90% of the API surface. ACCOUNTANT and MANAGER are also unrestricted on these endpoints (they may legitimately need some, but the system makes no distinction).
+(d) Recommended fix: Add `requireRoleApi('ADMIN','ACCOUNTANT')` (or stricter, 'ADMIN') at the top of every mutation handler — at minimum the three traced above plus the others listed in Q2. For VIEWER-only-safe endpoints, gate mutations to ADMIN|ACCOUNTANT|MANAGER and reads to any authenticated user. Long-term: introduce a centralized `withRole(handler, ...roles)` wrapper and refactor all `route.ts` files to use it, plus add an ESLint/CI check that fails if a mutation handler lacks an auth wrapper.
+
+============================================================
+OVERALL SUMMARY
+============================================================
+- AuthN (authentication): SOLID — NextAuth JWT + bcrypt + middleware gate on all /api/* and pages. 8h session expiry, isActive check, lastLoginAt tracking. ✅
+- AuthZ (authorization): BROKEN — role exists in the data model, JWT, session, and types, but is consumed in only ~10% of API routes and 0% of the UI navigation. The role system is decorative for most of the app.
+- Top 3 critical fixes (in priority order):
+   1. Add role checks to all mutation API routes — especially /api/journal-entries (POST manual entry), /api/accounts (POST/PATCH/DELETE), /api/sales-invoices, /api/expenses, /api/salaries, /api/fiscal-years/[id] (PUT/DELETE), /api/projects (POST/PUT/DELETE), /api/clients (POST/DELETE). [CRITICAL]
+   2. Block self-deletion in DELETE /api/users/[id] (compare target id to session user id). [MEDIUM]
+   3. Filter sidebar nav items by `session.user.role` (gate `users`, `accounting-mapping`, `financial-years`, `settings` to ADMIN/ACCOUNTANT at minimum), and hide Users-module action buttons for non-admins. [HIGH/LOW]
+- No code was modified during this audit.
+
+Stage Summary:
+- The Binaa ERP has a well-designed authentication foundation (NextAuth JWT, bcrypt, middleware gate, typed session with `role`) and a correct, narrow RBAC enforcement on ~16 admin/accounting-close endpoints (users CRUD, fiscal-year close/reopen, period closing, depreciation, JE reversal, financial mapping, chart-of-accounts init, company settings, IFRS15 recognition, DB seed).
+- However, role-based authorization is MISSING from the broad API surface (~143 of 159 route files) and from the entire UI navigation. A VIEWER can currently create projects, clients, manual journal entries, sales invoices, expenses, salaries, accounts, and edit/delete most records by calling the API directly. The "VIEWER" role provides no real restriction, and "ACCOUNTANT"/"MANAGER" are indistinguishable from "ADMIN" on most endpoints.
+- The Users CRUD module itself is well-built (ADMIN-only, protected-account guards for `admin`/`developer`, UI-disabled buttons matching API rules, role badges) with one gap: no server-side self-deletion guard.
+- Recommended path forward: (1) introduce a `withRole(...roles)` wrapper and retrofit it across all mutation handlers (CI-enforced), (2) add role-based filtering in `Sidebar`/`MobileSidebar` and gate Users-module buttons, (3) add a defense-in-depth role check in `middleware.ts` for `/api/users/*` and other admin-only prefixes.
+
+---
+Task ID: AUDIT-ACCT
+Agent: Audit Agent (general-purpose)
+Task: Audit accounting flow, journal entries, reports, closing, settlement, and year-end carry-forward
+
+Work Log:
+- Read worklog.md (last 200 lines) for context — system is Binaa ERP, Next.js 15 + Prisma (SQLite), with a unified accounting guard (`src/lib/accounting/guard.ts`) enforcing rules R1–R12.
+- Audited 7 dimensions of the accounting flow without modifying any code. For each, traced POST handlers, the JE creation path (`src/lib/auto-journal.ts`, `src/lib/accounting/engine.ts`), the guard (`guard.ts`), reports (`src/lib/accounting/queries.ts`), and closing/depreciation/VAT engines.
+- Confirmed all journal entries funnel through a single choke-point: `postJournalEntry()` in `guard.ts` (line 281). No `db.journalEntry.create` calls bypass it (enforced by comment-only contract — see Recommendation).
+- Appended concrete findings (with file:line citations) below.
+
+Stage Summary — Audit Findings:
+
+═══════════════════════════════════════════════════════════════════
+Q1 — Journal entry creation from operations
+═══════════════════════════════════════════════════════════════════
+
+(a) Finding: WORKS — every financial operation creates a posted JE through `postJournalEntry()`. Two operations (sales invoice, supplier invoice) intentionally defer the JE to the DRAFT→SENT transition (ZATCA-compliant); the rest post immediately.
+
+| Operation | Endpoint | JE? | JE function | Dr / Cr accounts | Source |
+|---|---|---|---|---|---|
+| Client invoice (sales) | POST `/api/sales-invoices` | NO at DRAFT; YES at PATCH DRAFT→SENT | `createSalesInvoiceJournalEntry` | Dr `CUSTOMER_AR` (totalAmount) / Cr `PROJECT_REVENUE` or `RENTAL_REVENUE` (netAmount) / Cr `VAT_OUTPUT` (vatAmount) + delivery-fee lines | `src/app/api/sales-invoices/route.ts:115` (POST creates DRAFT only — P6-CRIT-002 fix at line 272); JE at `src/app/api/sales-invoices/[id]/route.ts:123-128`; generator at `src/lib/auto-journal.ts:26-114` |
+| Client payment (collection) | POST `/api/client-payments` | YES (immediate) | `createClientPaymentJournalEntry` | Dr Cash/Bank (`receivingAccount` or `CASH` role) / Cr `CUSTOMER_AR` | `src/app/api/client-payments/route.ts:152`; generator at `src/lib/auto-journal.ts:206-258` |
+| Supplier invoice | POST `/api/supplier-invoices` | NO at DRAFT; YES at PUT DRAFT→SENT | `createPurchaseInvoiceJournalEntry` | Dr cost (expenseCategory-mapped: `PROJECT_COST`/`SUBCONTRACTOR_COST`/`FUEL_EXPENSE`/`ADMIN_EXPENSE`/…) / Dr `VAT_INPUT` / Cr `SUPPLIER_AP` | `src/app/api/supplier-invoices/route.ts:185-189` (P5-CRIT-001 fix); JE at `src/app/api/supplier-invoices/[id]/route.ts:96-108`; generator at `src/lib/auto-journal.ts:149-199` |
+| Supplier payment | POST `/api/supplier-payments` | YES (immediate) | `createSupplierPaymentJournalEntry` | Dr `SUPPLIER_AP` / Cr Cash/Bank | `src/app/api/supplier-payments/route.ts:149`; generator at `src/lib/auto-journal.ts:268-321` |
+| Salary payment | POST `/api/salary-payments` | YES (immediate, single consolidated JE per run OR per-employee) | inline `createJournalEntry` | Dr `SALARIES_PAYABLE` / Cr Cash/Bank | `src/app/api/salary-payments/route.ts:154-165` (run flow) and `:269-280` (single-employee flow) |
+| Petty cash | POST `/api/petty-cash` | YES (immediate) | `autoEntryPettyCash` | FUND: Dr `PETTY_CASH` / Cr `BANK`; DISBURSE: Dr `ADMIN_EXPENSE` (category-mapped) / Cr `PETTY_CASH` | `src/app/api/petty-cash/route.ts:54-61`; generator at `src/lib/accounting/engine.ts:845-892` |
+| Expenses | POST `/api/expenses` | YES (immediate) | `createExpenseJournalEntry` OR `buildExpenseJournalEntryWithExplicitAccounts` | Dr cost (`PROJECT_COST` if projectId, else `ADMIN_EXPENSE`) / Dr `VAT_INPUT` (if vat>0) / Cr Cash/Bank | `src/app/api/expenses/route.ts:245-254`; generator at `src/lib/auto-journal.ts:329-378` |
+| Fuel | POST `/api/equipment/fuel` | YES (immediate) | `autoEntryEquipmentCost` | Dr `FUEL_EXPENSE` / Cr Cash | `src/app/api/equipment/fuel/route.ts:76-83`; generator at `src/lib/accounting/engine.ts:733-766` |
+| Rental invoice | (no `/api/rental-invoices` — rental invoices are `SalesInvoice` with `invoiceType='RENTAL'`) | NO at DRAFT; YES at PATCH DRAFT→SENT (same as sales invoice, using `RENTAL_REVENUE` role) | `createSalesInvoiceJournalEntry` | same as sales invoice | `src/app/api/sales-invoices/route.ts` (shared) |
+
+All generators use `getDefaultAccountByRole` / `requireAccountByRole` — the accounting-mapping IS used (no hardcoded account codes). The legacy `autoEntry*` functions in `engine.ts` (e.g. `autoEntrySalesInvoice`, `autoEntryPurchaseInvoice`) are deprecated/throw, replaced by the role-based generators in `auto-journal.ts`.
+
+(b) Evidence: `src/lib/auto-journal.ts:26-439` (5 generators); `src/lib/accounting/engine.ts:312-566` (legacy `autoEntry*`); `src/lib/accounting/guard.ts:281` (postJournalEntry).
+
+(c) Severity: LOW (mostly works as designed; the DRAFT↔SENT split is intentional and correct).
+
+(d) Recommended fix: none required. Optional: add an integration test that posts each of the 8 operations and asserts a corresponding POSTED JE exists with balanced lines and the expected sourceType.
+
+═══════════════════════════════════════════════════════════════════
+Q2 — Journal entry model & API
+═══════════════════════════════════════════════════════════════════
+
+(a) Finding: WORKS — manual entries can be created, POSTED entries are immutable (locked), and balances are computed dynamically from JournalLine.
+
+(b) Evidence:
+- Schema: `prisma/schema.prisma:1986-2031` — `JournalEntry` (status, sourceType, isReversal, reversedEntryId, deletedAt) + `JournalLine` (accountId, debit, credit, costCenterId, deletedAt). `JournalEntryStatus` enum at line 74: DRAFT, POSTED, CANCELLED.
+- Manual creation: `src/app/api/journal-entries/route.ts:93-146` (POST) → `postJournalEntry()` (status='POSTED', sourceType='MANUAL').
+- Immutability: `src/app/api/journal-entries/[id]/route.ts:97-112` returns HTTP 423 LOCKED for any PUT on a POSTED entry; only DRAFT can transition (line 144: DRAFT→POSTED validates R2/R3/R4/R6). DELETE on POSTED requires prior reversal (line 251-270).
+- Reversal: `src/app/api/journal-entries/[id]/reverse/route.ts` + `reverseJournalEntry()` in `guard.ts:327-400` — creates a separate POSTED reversal entry, flips debit/credit, leaves the original POSTED (correct accounting treatment).
+- Balance updates: there is NO stored `Account.balance` field. Balances are computed on-the-fly from `JournalLine` via `postedLinesWhere()` helper at `src/lib/accounting/queries.ts:53-62`. This is the Single Source of Truth for all reports.
+
+(c) Severity: LOW.
+
+(d) Recommended fix: enforce the "no direct `db.journalEntry.create`" contract by ESLint rule or by making `JournalEntry` writes go through a private Prisma extension — currently it is a comment-only contract (`guard.ts:23`).
+
+═══════════════════════════════════════════════════════════════════
+Q3 — Reports (Trial Balance / Income Statement / Balance Sheet)
+═══════════════════════════════════════════════════════════════════
+
+(a) Finding: WORKS — all three statements read exclusively from posted JournalLine; data flow from operations (Q1) → JournalLine → reports is unified.
+
+(b) Evidence:
+- Trial balance: `src/lib/accounting/queries.ts:298-377` (`getTrialBalance`) — aggregates `JournalLine` grouped by `accountId` WHERE `journalEntry.status='POSTED' AND deletedAt IS NULL`. R10 net-debit/net-credit column placement. API: `src/app/api/reports/trial-balance/route.ts` and legacy `src/app/api/trial-balance/route.ts` (both call the same `getTrialBalance`).
+- Income statement: `src/lib/accounting/queries.ts:391-419` (`getIncomeStatement`) — REVENUE vs EXPENSE account balances, computes grossProfit (revenue − direct-cost roles), netIncome, netProfitMargin.
+- Balance sheet: `src/lib/accounting/queries.ts:435-490` (`getBalanceSheet`) — ASSETS, LIABILITIES, EQUITY, plus a synthetic "Current Year Earnings (Unclosed P&L)" equity row (line 460-473) so the accounting equation ties without requiring an explicit closing JE.
+- Frontend: `src/components/modules/financial-statements-tab.tsx:120-185` calls `/api/reports/{income-statement,balance-sheet,trial-balance,cash-flow-statement,general-ledger,account-statement,cost-center-report,project-wip,vat-reconciliation}`. The legacy `src/components/modules/reports.tsx:537` calls `/api/trial-balance` (also backed by `getTrialBalance`).
+- The `postedLinesWhere()` filter at `queries.ts:53` is the only definition of "what counts as a posted line" — used everywhere.
+
+(c) Severity: LOW.
+
+(d) Recommended fix: deprecate the legacy `/api/trial-balance` route and the `reports.tsx` call to it, to converge on the `/api/reports/trial-balance` endpoint. Functionally identical today, but the duplication is a maintenance liability.
+
+═══════════════════════════════════════════════════════════════════
+Q4 — Account closing / settlement (إقفال وتسوية)
+═══════════════════════════════════════════════════════════════════
+
+(a) Finding: PARTIAL — year-end and monthly period closing works (with two parallel engines — duplication). Settlement logic exists only for employee advances; no general AR/AP settlement, retention release, or subcontractor-retention release endpoint.
+
+(b) Evidence:
+- Year-end closing (engine #1, canonical): `src/lib/accounting/closing-engine.ts:249-398` (`closeFiscalYear`) — atomic OPEN→CLOSING→CLOSED, builds closing JE (sourceType=`YEAR_END_CLOSING`) that Dr revenue / Cr expense / Cr-or-Dr `RETAINED_EARNINGS`, then closes all monthly FiscalPeriods. API: `src/app/api/fiscal-years/[id]/close/route.ts` (POST, ADMIN/ACCOUNTANT). Reopen: `src/app/api/fiscal-years/[id]/reopen/route.ts` → `reopenFiscalYear()` reverses the closing JE.
+- Period closing (engine #2, DUPLICATE): `src/app/api/period-closing/route.ts:44-188` (`closePeriod` for type=YEARLY) — also computes revenue/expense balances and creates a closing JE but with sourceType=`PERIOD_CLOSING` (different from `YEAR_END_CLOSING` above) and uses a separate `PeriodClosing` table (`prisma/schema.prisma:2377-2392`). The two engines are not coordinated — running both for the same year would create TWO closing JEs and double-count the retained-earnings transfer.
+- Period guard (R6): `src/lib/accounting/guard.ts:247-261` calls `assertPeriodOpen()` for every JE; closed periods reject new postings. Closing/reversal JEs use `skipPeriodGuard: true`.
+- Settlement: only `autoEntryAdvanceSettlement` exists — `src/app/api/advances/route.ts:119` (employee-advance settlement). No general AR/AP settlement, no retention-release endpoint, no subcontractor-retention-release endpoint (the `autoEntrySubcontractorRetention` generator exists in `engine.ts:1452` but no API route calls it).
+
+(c) Severity: HIGH — the duplicate closing engines (`period-closing` vs `fiscal-years/[id]/close`) are a real risk: an admin could close the year twice and double-zero P&L / double-credit Retained Earnings. The `PeriodClosing` table also lacks any link to `FiscalYear`, so the two systems are fully decoupled.
+
+(d) Recommended fix: (1) delete `src/app/api/period-closing/route.ts` YEARLY branch (or route it to `closeFiscalYear`); keep only MONTHLY there. (2) Add explicit retention-release and AR/AP-settlement endpoints. (3) Backfill `PeriodClosing.fiscalYearId` or remove the table.
+
+═══════════════════════════════════════════════════════════════════
+Q5 — Year-end carry-forward (ترحيل للسنة التالية)
+═══════════════════════════════════════════════════════════════════
+
+(a) Finding: PARTIAL — the year-end closing JE (Q4) zeroes P&L and transfers net income to Retained Earnings, which IS the correct carry-forward for P&L. Balance-sheet accounts carry forward implicitly because the GL is a single continuous table (not partitioned per year). However, the schema's `openingJournalEntryId` field is declared but NEVER populated — no explicit opening-balance JE is created when a new FiscalYear is created.
+
+(b) Evidence:
+- Schema field: `prisma/schema.prisma:479` — `openingJournalEntryId String?` on `FiscalYear`. Grep across `src/` found ZERO assignments to this field (only the TS interface declaration in `src/components/modules/financial-years.tsx:45`).
+- New-year creation: `src/app/api/fiscal-years/route.ts:102-185` (POST) — creates FiscalYear + 12 FiscalPeriods but does NOT create an opening JE and does NOT link to the prior year's closing JE.
+- Closing JE handles P&L only: `src/lib/accounting/closing-engine.ts:300-337` — revenue/expense accounts zeroed, `RETAINED_EARNINGS` credited/debited with net income. BS accounts (ASSET/LIABILITY/EQUITY) are NOT touched, so their cumulative balance persists into the new year automatically.
+- No "carryForward" / "yearEnd" / "ترحيل" / "سنوي" logic found anywhere in `src/` or `prisma/` (grep returned only `closing-engine.ts` references and the unused `openingJournalEntryId`).
+
+(c) Severity: MEDIUM — for a continuous-ledger system this is functionally OK (BS balances carry forward naturally; P&L is zeroed). But the unused `openingJournalEntryId` field is misleading, and there is no per-year isolation for multi-year reporting (e.g., "show me 2025 trial balance" works via date filter, but there's no formal "opening balance" snapshot).
+
+(d) Recommended fix: either (i) remove the unused `openingJournalEntryId` field from the schema and document that the system uses a continuous-ledger model, OR (ii) implement an explicit opening-balance JE when transitioning to a new fiscal year (Dr all ASSET/LIABILITY/EQUITY accounts with their prior-year closing balance, dated the first day of the new year) — this would also enable per-year ledger isolation. Option (i) is simpler and recommended unless multi-tenant or per-year isolation is a hard requirement.
+
+═══════════════════════════════════════════════════════════════════
+Q6 — VAT (ضريبة القيمة المضافة)
+═══════════════════════════════════════════════════════════════════
+
+(a) Finding: WORKS — VAT is aggregated from operations, reconciled against the GL, declared, and paid through proper journal entries that post to a VAT liability account.
+
+(b) Evidence:
+- Aggregation: `src/lib/vat-calc.ts:174-239` (`calculateVatForQuarter`) — pulls SalesInvoice, ProgressClaim, PurchaseInvoice, Expense (SubcontractorInvoice field referenced but model was removed in cleanup). ZATCA category classification (Standard 15% / Zero / Exempt) at line 92-99.
+- VAT return report: `prisma/schema.prisma:2035-2091` (`VATReturn` model with full ZATCA breakdown, GL cross-check fields `glOutputVat`/`glInputVat`/`glMatch`, amendment tracking). API at `src/app/api/vat/route.ts` (GET list, POST create, PATCH FILE/PAY/REVERSE, DELETE draft). Reconciliation endpoint at `src/app/api/reports/vat-reconciliation/route.ts`.
+- GL cross-check: `src/lib/vat-calc.ts:116-166` (`getVatGlBalance`) compares invoice-aggregated VAT with posted `JournalLine` balances on `VAT_OUTPUT`/`VAT_INPUT` accounts, EXCLUDING `VAT_DECLARATION` and `VAT_PAYMENT` entries (so the declaration JE doesn't pollute the verification). Sets `glMatch` boolean.
+- Posting to VAT liability: 
+  - Invoice time: VAT_OUTPUT (Cr) and VAT_INPUT (Dr) posted via the invoice JEs in Q1.
+  - Declaration FILE: `src/lib/accounting/engine.ts:1265-1308` (`autoEntryVATDeclaration`) — Dr `VAT_OUTPUT` (close it), Cr `VAT_INPUT` (close it), Cr `VAT_DUE` (liability) if net payable, or Dr `VAT_REFUND_RECEIVABLE` (asset) if refundable. Dated to period-end (correct period attribution).
+  - Declaration PAY: `engine.ts:1315-1337` (`autoEntryVATPayment`) — Dr `VAT_DUE` / Cr `BANK`.
+  - REVERSE: reverses both JEs.
+- All role-based (no hardcoded codes) — `requireAccountCodeByRole(VAT_OUTPUT/VAT_INPUT/VAT_DUE/VAT_REFUND_RECEIVABLE)`.
+
+(c) Severity: LOW.
+
+(d) Recommended fix: the `VATReturn.subcontractorInvoiceIds` field (schema:2068) references a model (`subcontractorInvoice`) that was deleted in BA-10-CLEANUP. Either remove the field or rewire it to pull from `PurchaseInvoice` with `expenseCategory='SERVICES'`. Minor.
+
+═══════════════════════════════════════════════════════════════════
+Q7 — Depreciation (الإهلاك)
+═══════════════════════════════════════════════════════════════════
+
+(a) Finding: WORKS — depreciation is calculated (straight-line), a journal entry is created (Dr depreciation expense / Cr accumulated depreciation), the asset record is updated, and bulk runs are supported.
+
+(b) Evidence:
+- Calculation: `src/lib/accounting/depreciation-engine.ts:113-175` (`calculateDepreciation`) — straight-line, derives rate from useful life if not provided, computes residual value, monthly/annual amounts.
+- Schedule: `:189` (`generateDepreciationSchedule`) — full month-by-month schedule.
+- Per-asset run: `:621-782` (`runDepreciationForAsset`) — validates asset is ACTIVE, checks idempotency (no duplicate for same fixedAssetId+year+month at line 644), computes depreciation with last-month adjustment to residual value, then creates JE at line 722-733:
+  - Dr `DEPRECIATION_EXPENSE` (or `RENTAL_DEPRECIATION` for category=EQUIPMENT, line 698-699)
+  - Cr `ACCUM_DEPRECIATION`
+  - Then creates `AssetDepreciation` record (line 752) and updates `FixedAsset` (accumulatedDepreciation, netBookValue, lastDepreciationDate, status, line 764-772).
+- Bulk run: `:797` (`runBulkDepreciation`) — iterates all active assets.
+- Reversal: `:848` (`reverseAssetDepreciation`) — reverses the JE and the asset-update.
+- API: `src/app/api/fixed-assets/depreciate-all/route.ts` (POST, ADMIN only) → `runBulkDepreciation`. Also per-asset `src/app/api/fixed-assets/[id]/depreciate/route.ts` and `src/app/api/asset-depreciations/[id]/reverse/route.ts`.
+- Frontend: `src/components/modules/depreciation.tsx`.
+
+(c) Severity: MEDIUM — one bug: the depreciation JE entryNo is `JE-DEP-...-${Date.now().toString().slice(-6)}` (line 723) instead of `getNextEntryNo()`. If two assets are depreciated in the same millisecond (or if the 6-digit suffix collides), the guard's R7 uniqueness check throws and the whole bulk run fails atomically. The standard `getNextEntryNo()` produces sequential `JE-NNNNNN` numbers and is used everywhere else.
+
+(d) Recommended fix: replace line 723 with `entryNo: await getNextEntryNo(t)` (imported from `@/lib/accounting/guard`). One-line fix; eliminates the collision risk.
+
+═══════════════════════════════════════════════════════════════════
+OVERALL ASSESSMENT
+═══════════════════════════════════════════════════════════════════
+
+The accounting core is well-architected: a single unbreakable guard (`guard.ts`) enforces rules R1–R12, all 8 operations create proper double-entry JEs through role-based account resolution (no hardcoded codes), reports read exclusively from posted JournalLine (Single Source of Truth), and the year-end closing engine correctly zeroes P&L to Retained Earnings.
+
+Critical gaps:
+1. HIGH — duplicate year-end closing engines (`/api/period-closing` vs `/api/fiscal-years/[id]/close`) — risk of double-closing.
+2. MEDIUM — depreciation JE entryNo uses `Date.now()` suffix instead of `getNextEntryNo()` — collision risk in bulk runs.
+3. MEDIUM — `FiscalYear.openingJournalEntryId` field is declared but never populated — no explicit opening-balance JE (functionally OK for continuous-ledger model, but the dead field is misleading).
+4. LOW — `VATReturn.subcontractorInvoiceIds` references a deleted model.
+5. LOW — no general AR/AP settlement or retention-release endpoints (only employee-advance settlement exists).
+
+No code was modified during this audit. All findings are documentation-only; fixes should be implemented in a follow-up task.
+
+---
+Task ID: AUDIT-SETTINGS
+Agent: General-Purpose Audit Agent
+Task: Audit the Settings system of the Next.js ERP — settings model, API, UI, application, accounting mapping, financial years, and persistence cycle.
+
+Work Log:
+
+Read prisma/schema.prisma (CompanySetting model lines 305-355), src/app/api/company-settings/route.ts (160 lines), src/components/modules/settings.tsx (1675 lines), src/components/modules/accounting-mapping.tsx (846 lines), src/components/modules/financial-years.tsx (1274 lines), src/lib/accounting/closing-engine.ts (488 lines), src/lib/accounting/accounting-calendar.ts (partial), src/lib/account-roles.ts (getRoleAccountMapping), src/lib/currency.ts, src/lib/auth-helpers.ts, src/middleware.ts, src/contexts/company-context.tsx, src/components/layout/providers.tsx, src/components/ui/money-display.tsx, src/app/api/fiscal-years/route.ts, src/app/api/fiscal-years/[id]/route.ts, src/app/api/fiscal-years/[id]/close/route.ts, src/app/api/fiscal-years/[id]/reopen/route.ts, src/app/api/fiscal-years/[id]/closing-preview/route.ts, src/app/api/fiscal-years/[id]/periods/[periodId]/route.ts, src/app/api/accounts/role-mapping/route.ts, src/app/api/financial-mapping/route.ts, src/app/api/sales-invoices/route.ts (lines 1-100, 365-380, 525-545), src/app/api/supplier-invoices/route.ts (line 76), src/printing/shared/utils.ts, src/app/api/print/route.ts (lines 1-200). Grepped for defaultVatRate, currencySymbolImage, headerHeight, footerHeight, decimalPlaces, useThousandSeparatorsOfficial, logo usage, vatRate=0.15 across modules. Did NOT modify any code.
+
+=====================================================================
+AUDIT FINDINGS (per question)
+=====================================================================
+
+─────────────────────────────────────────────────────────────────────
+Q1. SETTINGS MODEL & API
+─────────────────────────────────────────────────────────────────────
+(a) Finding: PARTIAL — Model has 43 user fields; API GET loads all, but PUT (not PATCH) silently drops 3 fields.
+
+CompanySetting model fields (prisma/schema.prisma:305-355):
+  id, nameAr, nameEn, logo, logoUrl, commercialReg, taxNumber, address,
+  phone, email, website, bankName, bankIban, bankAccountName, stamp,
+  defaultVatRate (Decimal @default 0.15), currency (default "SAR"),
+  currencySymbol, currencySymbolEn, currencySymbolAr, invoiceTerms,
+  currencySymbolImage, headerImage, footerImage, headerHeight (Int @default 30),
+  footerHeight (Int @default 22), useThousandSeparatorsSystem (Bool @default true),
+  useThousandSeparatorsOfficial (Bool @default false), decimalPlaces (Int @default 2),
+  invoiceTemplate, invoicePrimaryColor, invoiceAccentColor, invoiceFontFamily,
+  invoiceShowBankDetails, invoiceShowSignature, invoiceShowStamp, stampPosition,
+  stampWidth, stampHeight, stampOffsetX, stampOffsetY, stampOpacity, stampRotation,
+  createdAt, updatedAt.
+
+API: src/app/api/company-settings/route.ts
+  • GET (lines 39-50): finds first record; if none, creates with `defaultSettings` (line 5-37) which omits decimalPlaces, headerHeight, footerHeight — those get schema defaults only.
+  • PUT (lines 52-160): the task asks about PATCH but the route is PUT. Partial-update model: only fields present in body get added to `updateData`. The PUT handler explicitly lists ~37 fields. **MISSING from updateData whitelist:** `decimalPlaces`, `headerHeight`, `footerHeight`. Even if the UI sent them, they would be silently ignored. (route.ts:59-103 — these three fields never appear in the if-body checks.)
+  • No field-level validation beyond presence checks. `defaultVatRate` accepts any number (no range check, e.g., -1 or 5.0 would be saved). `email` not validated as email. `bankIban` not validated. `stampOpacity` and rotation have no bounds enforcement at API (UI slider clamps, but API doesn't).
+  • GET is open to any authenticated user (no requireRoleApi) — acceptable since print templates/dashboard need it.
+  • PUT correctly requires ADMIN (route.ts:53: `requireRoleApi('ADMIN')`).
+
+(b) Evidence: prisma/schema.prisma:305-355; src/app/api/company-settings/route.ts:5-37 (defaults), 59-103 (PUT field whitelist), 52-160.
+
+(c) Severity: MEDIUM. Three model fields (decimalPlaces, headerHeight, footerHeight) are unsaveable via API. Missing server-side validation.
+
+(d) Recommended fix: Add `decimalPlaces`, `headerHeight`, `footerHeight` to the PUT updateData whitelist with Number() coercion (matching stampWidth/Height pattern at route.ts:97-98). Add range validation for defaultVatRate (0–1), stampOpacity (0–1), email format, and IBAN format.
+
+─────────────────────────────────────────────────────────────────────
+Q2. SETTINGS UI (settings.tsx + accounting-mapping.tsx)
+─────────────────────────────────────────────────────────────────────
+(a) Finding: PARTIAL — UI renders ~22 company fields + ~14 invoice template fields; 9 model fields are dead (never shown); 0 UI-only fields that would fail to save.
+
+Fields rendered in CompanySettingsTab (settings.tsx:245-691):
+  nameAr, nameEn, taxNumber, commercialReg, address, phone, email, website,
+  bankName, bankIban, bankAccountName, defaultVatRate, currencySymbolImage,
+  invoiceTerms, logoUrl, stamp, headerImage, footerImage.
+
+Fields rendered in InvoiceTemplatesTab (settings.tsx:1114-1675):
+  invoiceTemplate, invoicePrimaryColor, invoiceAccentColor, invoiceFontFamily,
+  invoiceShowBankDetails, invoiceShowSignature, invoiceShowStamp,
+  stampPosition, stampWidth, stampHeight, stampOffsetX, stampOffsetY,
+  stampOpacity, stampRotation.
+
+DEAD MODEL FIELDS (no UI exposure, unsaveable from any screen):
+  1. `logo` (String?) — duplicate of `logoUrl`; only referenced as fallback in print-button.tsx:451 (`settings.logoUrl || settings.logo`). NEVER set by UI.
+  2. `currency` (String default "SAR") — never shown; only read by lib/currency.ts:58 as fallback text symbol.
+  3. `currencySymbol` (String?) — legacy text symbol; UI banner explicitly states "image is the only approved symbol" (settings.tsx:521-528).
+  4. `currencySymbolEn` (String?) — same legacy.
+  5. `currencySymbolAr` (String?) — same legacy.
+  6. `useThousandSeparatorsSystem` (Bool) — read by MoneyDisplay + providers.tsx but NO UI toggle exists to change it.
+  7. `useThousandSeparatorsOfficial` (Bool) — same; also never read by print templates (verified by grep: only in providers.tsx, app-store.ts, company-context.tsx, company-settings/route.ts).
+  8. `decimalPlaces` (Int) — NEVER read anywhere in src/ (grep returned 0 hits outside company-context.tsx type definition). Effectively dead.
+  9. `headerHeight` (Int) — NEVER read anywhere. Dead.
+  10. `footerHeight` (Int) — NEVER read anywhere. Dead.
+
+UI-only fields not in model: NONE found. All UI fields map to model fields. No save failures expected from UI side.
+
+Save button (CompanySettingsTab): settings.tsx:333-335 calls `saveMutation.mutate(form)` → PUT /api/company-settings with full form. Success/error feedback via toast (sonner) at lines 325, 329 + inline alert banners at lines 367-377. ✅
+InvoiceTemplatesTab save: settings.tsx:1229 calls `saveMutation.mutate(form)` → PUT. Feedback via toast at lines 1185, 1190. ✅
+
+accounting-mapping.tsx (separate module):
+  • Save button in edit dialog calls `updateMutation.mutate({accountId, accountRole})` → PUT /api/accounts/role-mapping (accounting-mapping.tsx:299-303).
+  • No toast on success — just closes dialog (line 307-313). No error toast either (no onError handler). User gets no feedback if save fails. ⚠️
+  • Validation mutation uses POST /api/accounts/role-mapping (line 319-321) — returns validation report.
+
+(b) Evidence: settings.tsx:245-691 (CompanySettingsTab form), 1114-1675 (InvoiceTemplatesTab), 333-335 (save), 367-377 (feedback); accounting-mapping.tsx:297-314 (mutation, no onError); prisma/schema.prisma:325-334 (dead fields); grep for headerHeight/footerHeight/decimalPlaces → only in company-context.tsx type.
+
+(c) Severity: MEDIUM (dead fields confuse maintainers and add DB weight) / LOW (UI is functional).
+
+(d) Recommended fix: Either (a) remove the 10 dead fields from the Prisma schema and migration, or (b) add UI controls for useThousandSeparatorsSystem/Official + decimalPlaces to the Company tab and route them through the PUT whitelist. Add onError toast to accounting-mapping updateMutation.
+
+─────────────────────────────────────────────────────────────────────
+Q3. SETTINGS APPLICATION (do settings actually affect the system?)
+─────────────────────────────────────────────────────────────────────
+(a) Finding: MIXED — Some settings apply correctly; critical ones (defaultVatRate) do NOT.
+
+✅ WORKS:
+  • Company name/address/phone/email/taxNumber/commercialReg/bank details — used in print templates. src/app/api/print/route.ts:67-88 fetches all from DB and passes as `printSettings` to unified-print-engine. Verified in src/printing/shared/sections.ts:139 (`terms || settings.invoiceTerms`) and ProjectContract.ts:144.
+  • `logoUrl` — printed in invoice/contract headers (print-button.tsx:451).
+  • `stamp` — printed when `invoiceShowStamp=true` (settings.tsx:1629-1661 preview; print templates consume `settings.stamp`).
+  • `currencySymbolImage` — applied system-wide via two paths:
+      (1) UI: providers.tsx:20-44 pushes to Zustand store → MoneyDisplay reads via `useAppStore(s => s.currencySymbolImage)` (money-display.tsx:288, 337-346).
+      (2) Print: print route pre-processes image via /api/remove-bg (print/route.ts:48-65) and passes to fmtMoney → getCurrencyDisplay (printing/shared/utils.ts:67-84).
+  • `taxNumber` — drives ZATCA QR generation in sales-invoices API (route.ts:14-22 calls generateZatcaQRForInvoice with settings.taxNumber). Also in lib/zatca-qr.ts:155-158.
+  • `useThousandSeparatorsSystem` — applied in MoneyDisplay via `effectiveMode` (money-display.tsx:289-295). When false, switches to "official" mode (no separators).
+  • Financial year (FiscalYear model, not CompanySetting) — enforced by assertPeriodOpen (accounting-calendar.ts:227-260). Posting to a CLOSED year/period throws AccountingCalendarError. ✅
+
+❌ BROKEN / NOT APPLIED:
+  • `defaultVatRate` — **HARDCODED 0.15 in invoice creation paths**:
+      - src/app/api/sales-invoices/route.ts:373: `const vatRate = 0.15` (rental/timesheet invoice path)
+      - src/app/api/sales-invoices/route.ts:536: `vatRate = 0.15` (manual invoice path default)
+      - src/app/api/supplier-invoices/route.ts:76: `vatRate = 0.15` (supplier invoice default)
+      - src/components/modules/rental-invoices.tsx:198: `const vatRate = 0.15`
+      - src/components/modules/service-invoices.tsx:146: `const vatRate = 0.15`
+      - src/components/modules/supplier-invoices.tsx:110: `const vatRate = 0.15`
+      - src/components/modules/sales.tsx:251: `const tsVatRate = 0.15`
+    defaultVatRate IS used in print templates as fallback (printing/invoices/ServiceInvoice.ts:55, RentalInvoice.ts:35, SupplierInvoice.ts:33, etc.) and in print/route.ts:84, 193 — but NOT in the actual invoice creation. Changing defaultVatRate in settings has zero effect on new invoices.
+  • `decimalPlaces` — NEVER read. All formatting hardcodes 2 decimals (formatAmount in money-display.tsx:118-119, fmtPrint in printing/shared/utils.ts:18-22).
+  • `headerHeight`/`footerHeight` — NEVER read by print templates.
+  • `useThousandSeparatorsOfficial` — declared but NEVER consumed by print templates. The `formatAmountOfficial` function exists (utils.ts:26-29) but print templates call `fmtPrint` (always uses separators) or `fmtMoney` (which calls `formatMoneyPrint` = no separators, utils.ts:11-14). The setting is dead.
+  • `currency` field — only used as text-symbol fallback in lib/currency.ts:58. The image always wins.
+  • Financial year start/end — there is NO `financialYearStart` field in CompanySetting. Each FiscalYear record carries its own start/end (prisma/schema.prisma:474-475). The settings system does NOT configure FY start; users create explicit year records. This is acceptable design but means the "settings" UI cannot, e.g., set "fiscal year starts in April".
+
+(b) Evidence: sales-invoices/route.ts:373, 536; supplier-invoices/route.ts:76; rental-invoices.tsx:198; service-invoices.tsx:146; supplier-invoices.tsx:110; sales.tsx:251 (all hardcode 0.15). money-display.tsx:288-295 (separator logic). print/route.ts:67-105 (settings applied to print).
+
+(c) Severity: HIGH. `defaultVatRate` is the most user-facing setting — a company changing VAT (e.g., to 0% in a tax-free zone, or a future rate change) would expect new invoices to pick up the new rate. They won't.
+
+(d) Recommended fix: In each invoice-creation API route, replace `const vatRate = 0.15` with `const settings = await db.companySetting.findFirst(); const vatRate = Number(settings?.defaultVatRate) || 0.15`. Same for the UI modules (rental-invoices.tsx:198, service-invoices.tsx:146, supplier-invoices.tsx:110, sales.tsx:251). Either remove decimalPlaces/headerHeight/footerHeight/useThousandSeparatorsOfficial from the schema or implement them.
+
+─────────────────────────────────────────────────────────────────────
+Q4. ACCOUNTING MAPPING (accounting-mapping.tsx + API)
+─────────────────────────────────────────────────────────────────────
+(a) Finding: PARTIAL — Functional but with two architectural concerns.
+
+The accounting-mapping.tsx module uses `/api/accounts/role-mapping` (NOT /api/financial-mapping — those are two separate systems, see below).
+
+  • GET (role-mapping/route.ts:9-20): calls `getRoleAccountMapping()` which iterates all 40+ roles and finds accounts where `accountRole === role` (account-roles.ts:802-826). Returns `{ mappings: [{role, accounts[], primaryAccount}] }`. ✅
+  • PUT (role-mapping/route.ts:27-87): accepts `{accountId, accountRole}`, validates role is in ACCOUNT_ROLES enum (line 40-46), validates account exists (line 49-58), then `db.account.update({ data: { accountRole } })`. Saves. ✅
+  • POST /validate (role-mapping/route.ts:94-129): returns list of unmapped roles. ✅
+
+UI (accounting-mapping.tsx): displays 8 operation groups (revenue, receivables, cash, direct costs, opex, taxes, liabilities, assets) with 35 operations. Each operation has a "Change" button opening an AccountSelector dialog. Save works. Validation button at bottom shows unmapped roles. ✅
+
+CONCERN #1 — TWO PARALLEL MAPPING SYSTEMS:
+  • `accounting-mapping.tsx` (sidebar "Accounting Mapping") uses `/api/accounts/role-mapping` → sets `Account.accountRole` (single String per account, schema:1915).
+  • `accounting.tsx` Tab 2 ("ربط الحسابات بالنظام") uses `/api/financial-mapping` → uses separate `FinancialMapping` model (schema:2340) mapping `operationType → {debitRoles[], creditRoles[]}` (arrays).
+  These two systems overlap conceptually but are NOT synced. An accountant setting mappings in one screen does not affect the other. The auto-journal engine (lib/auto-journal.ts) likely uses one or the other — this duplication is a maintenance hazard.
+
+CONCERN #2 — NO UNIQUENESS ENFORCEMENT:
+  When `PUT /api/accounts/role-mapping` assigns `accountRole=BANK` to account B, the previously-BANK account A is NOT updated. Both A and B will have `accountRole=BANK`. The system picks `primaryAccount = accounts.find(a => a.allowPosting)` (account-roles.ts:826) — first match wins. Deactivating account A would silently switch the "primary BANK" to B without warning. There's no UI indicator that multiple accounts share a role.
+
+CONCERN #3 — NO AUTHORIZATION:
+  `PUT /api/accounts/role-mapping` has NO `requireRoleApi` call (verified by grep — 0 matches in the file). Any authenticated user (even VIEWER) can change which account is mapped to which role. This affects every future journal entry.
+
+(b) Evidence: accounting-mapping.tsx:299-303 (PUT call); role-mapping/route.ts:27-87 (no auth); account-roles.ts:802-826 (primaryAccount = first allowPosting); financial-mapping/route.ts (parallel system); prisma/schema.prisma:2340-2354 (FinancialMapping model).
+
+(c) Severity: HIGH (no auth on mapping changes is a financial-integrity risk) / MEDIUM (architectural duplication).
+
+(d) Recommended fix: Add `requireRoleApi('ADMIN', 'ACCOUNTANT')` to PUT /api/accounts/role-mapping. When assigning role R to account B, the API should atomically clear `accountRole=R` from any other account that had it (db.account.updateMany({ where: { accountRole: R }, data: { accountRole: null } }) before the new assignment) OR at minimum warn the UI. Long-term: consolidate the two mapping systems into one.
+
+─────────────────────────────────────────────────────────────────────
+Q5. FINANCIAL YEARS (financial-years.tsx + APIs + carry-forward)
+─────────────────────────────────────────────────────────────────────
+(a) Finding: PARTIAL — Create/close/reopen work; year-end carry-forward (ترحيل للأرصدة) is INCOMPLETE.
+
+  • CREATE: `POST /api/fiscal-years` (fiscal-years/route.ts:102-185). Validates name uniqueness, validates no date overlap (line 127-139), creates year + 12 monthly periods in a transaction. UI: CreateFiscalYearDialog (financial-years.tsx:131-231). ✅
+  • CLOSE: `POST /api/fiscal-years/[id]/close` → calls `closeFiscalYear()` in closing-engine.ts:249-398. Atomic transaction: locks year (OPEN→CLOSING), computes revenue/expense balances, posts a single balanced closing JE (Dr Revenue, Cr Expense, Cr/Dr Retained Earnings), updates year to CLOSED with totals, closes all 12 periods. Bypasses period guard for the closing entry itself (skipPeriodGuard:true, line 351). ✅
+  • REOPEN: `POST /api/fiscal-years/[id]/reopen` → `reopenFiscalYear()` (closing-engine.ts:418-488). Reverses the closing JE (via reverseJournalEntry), sets year back to OPEN, clears closingJournalEntryId, reopens all periods. ✅
+  • DELETE: `DELETE /api/fiscal-years/[id]` (route.ts:169-192) — works for any status, leaves closing JE in ledger as historical record. ✅
+  • EDIT: `PUT /api/fiscal-years/[id]` (route.ts:101-166) — admin override, can edit closed years too. If status changed to OPEN via PUT, reopens all periods in a transaction. ✅
+  • PERIOD TOGGLE: `PATCH /api/fiscal-years/[id]/periods/[periodId]` — toggles OPEN/CLOSED. UI bulk "Open All"/"Close All" in PeriodsViewDialog (financial-years.tsx:663-669). ✅
+  • CLOSING PREVIEW: `GET /api/fiscal-years/[id]/closing-preview` → `previewFiscalYearClose()` (closing-engine.ts:146-228). Returns expected JE lines without posting. UI: ClosingPreviewDialog (financial-years.tsx:321-621). ✅
+
+❌ YEAR-END CARRY-FORWARD (ترحيل للأرصدة) — INCOMPLETE:
+  The FiscalYear model has `openingJournalEntryId String?` (schema:479) with comment "قيد افتتاح السنة الجديدة (ترحيل الأرصدة)" — explicitly intended to hold an opening JE that carries asset/liability/equity balances forward to the new year.
+  But `closeFiscalYear()` NEVER sets this field (closing-engine.ts:357-369 — only sets closingJournalEntryId, retainedEarningsAccountCode, totals, closedBy/At). And `reopenFiscalYear()` doesn't touch it either (closing-engine.ts:458-467).
+  Grep for `openingJournalEntryId` writes: 0 results anywhere in src/. The field is dead schema.
+  Practical effect: the system relies on natural continuity of balance-sheet account balances (Assets/Liabilities/Equity are never zeroed, so their balances carry forward implicitly across years). This works because the closing JE only touches revenue/expense accounts. But the explicit "opening balance JE" feature promised by the schema is NOT implemented. There is also NO UI to view/set the opening JE.
+
+❌ NO AUTHORIZATION on most fiscal-year routes:
+  • `POST /api/fiscal-years` (create) — NO requireRoleApi. Any VIEWER can create a year.
+  • `PUT /api/fiscal-years/[id]` (update) — NO requireRoleApi.
+  • `DELETE /api/fiscal-years/[id]` — NO requireRoleApi. Any VIEWER can delete a closed year with all its periods.
+  • `PATCH /api/fiscal-years/[id]/periods/[periodId]` — NO requireRoleApi. Any VIEWER can reopen a closed period (bypassing the IFRS/GAAP control the educational banner brags about at financial-years.tsx:1129-1132).
+  • `GET /api/fiscal-years/[id]/closing-preview` — NO requireRoleApi (information disclosure of all revenue/expense balances).
+  • Only `/close` and `/reopen` routes correctly call `requireRoleApi('ADMIN', 'ACCOUNTANT')`.
+
+(b) Evidence: closing-engine.ts:249-398 (close), 418-488 (reopen); prisma/schema.prisma:479 (openingJournalEntryId field); grep `openingJournalEntryId` writes → 0 results; fiscal-years/route.ts:102-185 (POST create, no auth); fiscal-years/[id]/route.ts:101-166 (PUT, no auth), 169-192 (DELETE, no auth); fiscal-years/[id]/periods/[periodId]/route.ts:1-39 (PATCH, no auth); fiscal-years/[id]/close/route.ts:16 (auth ✅); fiscal-years/[id]/reopen/route.ts:12 (auth ✅).
+
+(c) Severity: HIGH (no auth on year/period mutation is a serious financial-audit control failure) / MEDIUM (opening-JE field is dead schema, but natural carry-forward works).
+
+(d) Recommended fix: Add `requireRoleApi('ADMIN', 'ACCOUNTANT')` to POST /api/fiscal-years, PUT /api/fiscal-years/[id], DELETE /api/fiscal-years/[id], PATCH /api/fiscal-years/[id]/periods/[periodId]. Either implement openingJournalEntryId logic (create an opening JE in the new year that = mirror of prior year's closing JE for BS accounts) or remove the field from the schema and update the comment to clarify that carry-forward is implicit.
+
+─────────────────────────────────────────────────────────────────────
+Q6. SETTINGS PERSISTENCE (full save cycle)
+─────────────────────────────────────────────────────────────────────
+(a) Finding: WORKS — with one minor cache-staleness caveat.
+
+Trace of one save cycle (CompanySettingsTab):
+  1. UI mounts → useQuery(['company-settings']) (settings.tsx:269-276) → GET /api/company-settings → DB.findFirst (creates default if missing, route.ts:41-44) → returns record.
+  2. settingsData useMemo (settings.tsx:278-297) projects onto form shape.
+  3. settingsLoadedRef pattern (settings.tsx:300-306): useEffect sets form ONCE when data arrives, guarded by ref to avoid clobbering user edits during refetches.
+  4. User edits → `updateField(field, value)` (settings.tsx:337-339) → setForm.
+  5. User clicks "Save Changes" → `saveMutation.mutate(form)` (settings.tsx:333-335) → PUT /api/company-settings with full form JSON.
+  6. API: requireRoleApi('ADMIN') (route.ts:53) → findFirst (route.ts:57) → build updateData from defined fields only (route.ts:59-103) → db.companySetting.update (route.ts:106-109) → returns updated record.
+  7. onSuccess (settings.tsx:318-325): resets settingsLoadedRef.current=false, calls `queryClient.invalidateQueries({ queryKey: ['company-settings'] })`, calls `setCurrencySymbolImage(data.currencySymbolImage || null)` to push to Zustand store immediately, shows success toast.
+  8. invalidateQueries triggers refetch of ALL ['company-settings'] subscribers (settings tab, InvoiceTemplatesTab, CompanyProvider in company-context.tsx, service-invoices.tsx).
+  9. CompanyProvider refetches → CurrencySettingsInitializer useEffect re-runs (providers.tsx:25-41) when company.currencySymbolImage / useThousandSeparatorsSystem change → pushes to Zustand → MoneyDisplay re-renders everywhere.
+  10. Back in CompanySettingsTab: settingsData recomputes → useEffect fires (settingsLoadedRef now false) → setForm(settingsData) → form shows fresh persisted values. ✅
+
+Verified: cycle works end-to-end. The user sees the new value after save.
+
+CAVEAT — `useThousandSeparatorsSystem` propagation:
+  In onSuccess (settings.tsx:324) only `setCurrencySymbolImage` is pushed to the Zustand store immediately. `useThousandSeparatorsSystem` is NOT pushed directly — it propagates only via the CompanyProvider refetch + CurrencySettingsInitializer useEffect cycle. This works but is slower (one extra render) and depends on the invalidation completing. In practice, since the CompanySettingsTab UI does NOT expose a thousand-separator toggle anyway, this is moot until that UI is added.
+
+CAVEAT — Partial-update semantics:
+  The PUT route uses field-presence checks (`if body.X !== undefined`). The CompanySettingsTab always sends the full form, so all displayed fields get updated. The InvoiceTemplatesTab also sends its full subset. HOWEVER: because the two tabs send DIFFERENT subsets, saving from InvoiceTemplatesTab does NOT zero out company fields managed by CompanySettingsTab (good — partial update protects them). This is intentional (route.ts:60-61 comment: "only update if provided — allows partial updates from the Invoice Templates tab"). ✅
+
+CACHE:
+  QueryClient default staleTime = 60s (providers.tsx:51-53). CompanyProvider query staleTime = 5 min (company-context.tsx:83). But `invalidateQueries` bypasses staleTime and forces refetch — so no stale data after save. ✅
+
+(b) Evidence: settings.tsx:269-335 (load + save), 318-325 (onSuccess); route.ts:52-160 (PUT); providers.tsx:20-44 (initializer); company-context.tsx:73-84 (provider query); money-display.tsx:288-298 (store read).
+
+(c) Severity: LOW. Cycle is correct. Only nit is the missing direct push of useThousandSeparatorsSystem in onSuccess (cosmetic — would matter only if a UI toggle existed).
+
+(d) Recommended fix: No change required for current UI. If a thousand-separator toggle is added to the UI, also call `setThousandSeparatorSettings(...)` in onSuccess for instant propagation.
+
+=====================================================================
+STAGE SUMMARY
+=====================================================================
+The Settings system is largely functional for company master data, currency symbol image, invoice templates, and stamp customization. The persistence cycle works correctly with proper cache invalidation. However, the audit surfaced 5 substantive issues:
+
+1. **CRITICAL — defaultVatRate is decorative**: hardcoded `0.15` in 7 places (3 API routes, 4 UI modules). Changing it in Settings has zero effect on invoice creation. Only print templates honor it as a fallback.
+
+2. **HIGH — Missing authorization on financial-year & role-mapping mutations**: 5 fiscal-year routes (POST create, PUT update, DELETE, PATCH period-toggle, GET closing-preview) and 1 role-mapping route (PUT) lack `requireRoleApi`. Any authenticated VIEWER can delete a closed fiscal year, reopen a closed period (defeating IFRS/GAAP controls), or re-route accounting entries to a different account.
+
+3. **MEDIUM — Dead schema fields**: 6 fields in CompanySetting (logo, currency, currencySymbol, currencySymbolEn, currencySymbolAr, decimalPlaces, headerHeight, footerHeight, useThousandSeparatorsOfficial) are never read by any code path; 3 of them (decimalPlaces, headerHeight, footerHeight) are also unsaveable via the PUT API (missing from the whitelist). The FiscalYear.openingJournalEntryId field is also dead — year-end carry-forward of balance-sheet accounts is NOT implemented as an explicit opening JE; only the implicit natural-continuity model is used.
+
+4. **MEDIUM — Two parallel accounting-mapping systems**: `Account.accountRole` (single-role-per-account, used by accounting-mapping.tsx) vs `FinancialMapping` model (operation→roles[], used by accounting.tsx Tab 2). They are not synced and the auto-journal engine uses one of them — risk of divergence.
+
+5. **MEDIUM — No uniqueness enforcement on account roles**: assigning role R to account B does not unset R from account A. Multiple accounts can share a role; primaryAccount is "first allowPosting match" — silently switches when accounts are deactivated.
+
+Recommended priority order: fix #2 (security) → fix #1 (functional correctness) → clean up #3 (schema hygiene) → address #4 and #5 (architecture).
+
+---
+Task ID: FIX-RBAC-VAT
+Agent: Code Agent (Z.ai Code)
+Task: Fix critical RBAC, settings-driven VAT, fiscal-year/account-mapping auth, self-deletion guard, and depreciation entryNo collision — per the AUDIT-PERM, AUDIT-SETTINGS, and AUDIT-ACCT findings.
+
+Work Log:
+
+**Read first (per worklog instructions):**
+- AUDIT-PERM (lines 8892–9028) — sidebar role hiding, route protection gaps, self-deletion gap.
+- AUDIT-ACCT (lines 9029–9191) — depreciation entryNo collision at `depreciation-engine.ts:723`.
+- AUDIT-SETTINGS (lines 9192–9429) — `defaultVatRate` hardcoded in 7 places; missing role auth on fiscal-year + role-mapping routes.
+- `src/lib/auth-helpers.ts` — confirmed `requireRoleApi(...roles)` returns `{ user, response } | { user: null, response }` and is imported from `@/lib/auth-helpers`.
+- `src/types/next-auth.d.ts` — confirmed `session.user.role` is typed as `'ADMIN' | 'ACCOUNTANT' | 'MANAGER' | 'VIEWER'`.
+- `src/contexts/company-context.tsx` — confirmed `useCompany()` exposes `company.defaultVatRate` (already fetched reactively from `/api/company-settings`).
+
+**Fix 1 — Role-based screen hiding in sidebar (`src/components/layout/sidebar.tsx`)**
+- Added `import { useSession } from 'next-auth/react'`.
+- Added `import { useMemo } from 'react'` (already had `useState`).
+- Defined a `Role` type matching the NextAuth augmentation.
+- Added two policy tables:
+  - `EXCLUDED_ITEMS_BY_ROLE` — per-cycle item exclusions:
+    - ACCOUNTANT: hide `settings` inside `settings-cycle` (keeps clients/suppliers/inventory/accounting-mapping).
+    - MANAGER: hide `settings` + `accounting-mapping` inside `settings-cycle`.
+    - ADMIN/VIEWER: no per-item exclusions (cycles excluded at the group level).
+  - `EXCLUDED_CYCLES_BY_ROLE` — whole-cycle hiding:
+    - ADMIN: [] (sees all 9 cycles).
+    - ACCOUNTANT: hide `users-cycle`.
+    - MANAGER: hide `accounting-cycle` + `users-cycle`.
+    - VIEWER: hide `users-cycle` + `accounting-cycle` (no journal entries).
+- Added `filterNavGroupsForRole(role)` helper that returns `navGroups` filtered by the policy; groups with 0 surviving items are dropped entirely.
+- In both `Sidebar` (desktop) and `MobileSidebar` (mobile), wired `useSession()` → `role`, computed `visibleNavGroups = useMemo(() => filterNavGroupsForRole(role), [role])`, and replaced `navGroups.map(...)` with `visibleNavGroups.map(...)`.
+- The standalone Dashboard button is rendered unconditionally (always visible to all roles).
+- Sidebar visual design left untouched (fixed width `w-72`, 9-cycle structure, no numbers/arrows/badges, RTL preserved, Arabic labels preserved).
+
+**Fix 2 — `defaultVatRate` from settings, not hardcoded (7 sites)**
+- Created `src/lib/settings.ts` exporting `getDefaultVatRate(): Promise<number>` with a 60-second in-memory cache and a `0.15` fallback (defensive try/catch around the Prisma call so a transient SQLite lock never breaks invoice creation). The cache TTL mirrors the request envelope; the server always re-applies the lookup on save.
+- API routes (server-side — uses the cached helper):
+  - `src/app/api/sales-invoices/route.ts`:
+    - Imported `getDefaultVatRate`.
+    - Rental/timesheet invoice path (line ~374): `const vatRate = await getDefaultVatRate()`.
+    - Manual invoice path (line ~536): replaced the destructuring default `vatRate = 0.15` with `vatRate: vatRateRaw` + `const vatRate = vatRateRaw != null ? Number(vatRateRaw) : await getDefaultVatRate()`. Removed the downstream `as number` casts (`vatRate` is now properly typed as `number`).
+  - `src/app/api/supplier-invoices/route.ts`:
+    - Imported `getDefaultVatRate`.
+    - POST handler (line ~76): same pattern — `vatRate: vatRateRaw` + `const vatRate = vatRateRaw != null ? Number(vatRateRaw) : await getDefaultVatRate()`.
+- Client components (preview math — uses `useCompany().company.defaultVatRate ?? 0.15` so the value is reactive; the server re-applies the lookup on save so a stale client value is harmless):
+  - `src/components/modules/rental-invoices.tsx`:
+    - Imported `useCompany` from `@/contexts/company-context`.
+    - `CreateRentalInvoicePage` now calls `useCompany()` and reads `company.defaultVatRate ?? 0.15`.
+    - Updated the JE-preview `useMemo` to use the same reactive rate and added `company.defaultVatRate` to its dep array.
+  - `src/components/modules/service-invoices.tsx`:
+    - Imported `useCompany`; `ServiceInvoiceFormPage` reads `company.defaultVatRate ?? 0.15`.
+  - `src/components/modules/supplier-invoices.tsx`:
+    - Imported `useCompany`; `InvoiceCreateView` reads `company.defaultVatRate ?? 0.15`.
+  - `src/components/modules/sales.tsx`:
+    - Imported `useCompany`; the create-flow component reads `company.defaultVatRate ?? 0.15` for the timesheet-source VAT preview (`tsVatRate`).
+- Note: a few other `0.15` literals exist in the codebase outside the audit's 7 listed sites (`expenses/route.ts`, `purchase-orders/route.ts`, `print/route.ts`, `seed/route.ts`, `rental-contracts/route.ts`, `purchase-invoices/route.ts`, `print-button.tsx`, `timesheets.tsx`, `purchase-orders.tsx`, plus seed data). Per the task scope ("Replace each with a settings lookup" referring to the 7 listed files), I did NOT touch those — they were not called out by the audit. They remain as a known follow-up.
+
+**Fix 3 — Role auth on fiscal-years + accounts/role-mapping routes**
+- Imported `requireRoleApi` from `@/lib/auth-helpers` (same import path used by `journal-entries/[id]/reverse/route.ts`).
+- `src/app/api/fiscal-years/route.ts` — added `await requireRoleApi('ADMIN', 'ACCOUNTANT')` guard at the top of `POST`.
+- `src/app/api/fiscal-years/[id]/route.ts` — added the same guard to `PUT` and `DELETE`. (GET left open — year list/detail is needed by the dashboard.)
+- `src/app/api/fiscal-years/[id]/periods/[periodId]/route.ts` — added the guard to `PATCH` (was previously open to any authenticated user; a VIEWER could otherwise reopen a closed period, defeating the IFRS/GAAP control the educational banner promises).
+- `src/app/api/fiscal-years/[id]/closing-preview/route.ts` — added the guard to `GET` (closing preview discloses full revenue/expense balances).
+- `src/app/api/accounts/role-mapping/route.ts` — added the guard to `PUT` (changing account-role mapping redirects every future journal entry; was previously open to any authenticated user per AUDIT-SETTINGS Q4). GET and POST (validate) left open — they're read-only / used by the accounting-mapping UI.
+
+**Fix 4 — Self-deletion guard (`src/app/api/users/[id]/route.ts`)**
+- Changed `const { response } = await requireRoleApi('ADMIN')` to `const { user, response } = await requireRoleApi('ADMIN')` so we have the typed session user.
+- After the existing protected-account check, added a comparison: if `user.id === existing.id` OR `user.username === existing.username`, return 403 with `"لا يمكن حذف حسابك الخاص"`. This closes the gap where an ADMIN with a non-protected username (e.g. a second admin created via POST) could DELETE their own id and lock themselves out.
+
+**Fix 5 — Depreciation entryNo collision (`src/lib/accounting/depreciation-engine.ts`)**
+- Imported `getNextEntryNo` from `@/lib/accounting/guard` (the standard `JE-NNNNNN` sequential generator used everywhere else — confirmed via Grep; `auto-journal.ts`, `closing-engine.ts`, `journal-entries/route.ts`, `expenses/route.ts`, `goods-receipt/route.ts`, `period-closing/route.ts`, `provisions/route.ts`, and `fixed-assets/depreciate/route.ts` all use it).
+- Replaced the line-723 `entryNo: \`JE-DEP-${asset.assetCode.replace('AST-', '')}-${year}${String(month).padStart(2, '0')}-${Date.now().toString().slice(-6)}\`` with `const stdEntryNo = await getNextEntryNo(t)` followed by `entryNo: stdEntryNo`.
+- This eliminates the same-millisecond collision risk that would otherwise trip the guard's R7 uniqueness check and fail the entire bulk-depreciation run atomically.
+
+**Verification:**
+- `bun run lint` → exit 0, no errors.
+- `tail -50 /home/z/my-project/dev.log` → recent requests return 200 (`GET / 200`, `GET /api/users 200`, `POST /api/users 201`, `GET /api/company-settings 200`, `GET /api/dashboard 200`). One transient `ReferenceError: expandedGroups is not defined` appears earlier in the log — it was a Fast Refresh stale-state artifact during editing (an intermediate edit referenced an `expandedGroups` variable that was renamed); the file was saved with the correct `visibleNavGroups.map(...)` and the dev server subsequently did a full reload + successful recompile. The most recent `GET / 200` confirms the production bundle compiles and renders cleanly.
+- No Prisma schema changes → `bun run db:generate` was not required.
+
+**Constraints honored:**
+- Sidebar visual design untouched (still fixed width `w-72`, 9 cycles, clean sequential list, no numbers/arrows/badges, RTL preserved, Arabic labels preserved).
+- No existing functionality removed (the filters only hide items for non-ADMIN roles; ADMIN sees everything as before).
+- No new dependencies added.
+- RTL and Arabic labels preserved everywhere (including the new 403 message `لا يمكن حذف حسابك الخاص`).
+- No test code written.
+
+Stage Summary:
+- All 5 audit-driven fixes applied with no lint errors and a clean dev server.
+- RBAC is now enforced both in the UI (sidebar filters by `session.user.role`) and at 6 previously-open API endpoints (5 fiscal-year mutation/preview routes + 1 account-role-mapping route).
+- `defaultVatRate` is now sourced from `CompanySetting` for all 7 audit-listed sites (3 server routes via cached `getDefaultVatRate()`, 4 client components via `useCompany()`). Changing the rate in Settings now propagates to invoice creation within ~60s on the server and instantly on the client.
+- Self-deletion is now blocked at the API trust boundary, not just in the UI.
+- Depreciation JEs now use the sequential `JE-NNNNNN` format, eliminating the bulk-run collision risk identified in AUDIT-ACCT Q7.
+- Known follow-ups (out of scope per task): other `0.15` literals in `expenses/route.ts`, `purchase-orders/*`, `print/*`, `timesheets.tsx`, `seed/route.ts`, `rental-contracts/route.ts`, `purchase-invoices/route.ts`, `print-button.tsx` — none of these were in the audit's 7-site list, but a future hardening pass could route them through `getDefaultVatRate()` too.

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 
 // ============ PATCH: Toggle period status (admin override) ============
@@ -7,6 +8,11 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; periodId: string }> }
 ) {
+  // FIX-RBAC-VAT / AUDIT-SETTINGS Q5: only ADMIN/ACCOUNTANT may toggle a period —
+  // otherwise a VIEWER could reopen a closed period (defeats IFRS/GAAP controls).
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id, periodId } = await params
     const body = await request.json()

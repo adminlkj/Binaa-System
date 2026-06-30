@@ -3,6 +3,7 @@ import { createSalesInvoiceJournalEntry, type PrismaTransaction } from '@/lib/au
 import { reverseEntry } from '@/lib/accounting/engine'
 import { generateZatcaQRForInvoice } from '@/lib/zatca-qr'
 import { toNumber } from '@/lib/decimal'
+import { getDefaultVatRate } from '@/lib/settings'
 import { NextResponse } from 'next/server'
 
 /**
@@ -370,7 +371,7 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
   const deliveryFeesTaxable = rental?.deliveryFeesTaxable ?? timesheet.contract.deliveryFeesTaxable ?? true
   const includeDelivery = deliveryFees > 0
 
-  const vatRate = 0.15
+  const vatRate = await getDefaultVatRate()
   let deliveryVat = 0
   if (includeDelivery && deliveryFeesTaxable) {
     deliveryVat = Math.round(deliveryFees * vatRate * 100) / 100
@@ -533,11 +534,15 @@ async function createInvoiceFromTimesheet(body: Record<string, unknown>) {
 async function createInvoiceManual(body: Record<string, unknown>) {
   const {
     clientId, projectId, contractId, date, dueDate, notes, items,
-    vatRate = 0.15, discountRate = 0, discountAmount = 0,
+    vatRate: vatRateRaw, discountRate = 0, discountAmount = 0,
     invoiceType = 'TAX_INVOICE', paymentTerms,
     referenceNo, contractNo, contractType, contractPeriodStart, contractPeriodEnd,
     deliveryMonth, includeDelivery = false, deliveryAmount = 0, includeVat = true,
   } = body as Record<string, unknown>
+
+  // Use the client-provided rate if present, otherwise fall back to the
+  // configured company default (FIX-RBAC-VAT / AUDIT-SETTINGS Q3).
+  const vatRate = vatRateRaw != null ? Number(vatRateRaw) : await getDefaultVatRate()
 
   const typedItems = items as Array<{ description: string; descriptionEn?: string; quantity: number; unit?: string; unitPrice: number; itemType?: string }> | undefined
 
@@ -553,7 +558,7 @@ async function createInvoiceManual(body: Record<string, unknown>) {
   const finalDiscountAmount = (discountAmount as number) || (subtotal * (discountRate as number))
   const netAmount = subtotal - finalDiscountAmount
   const deliveryTotal = includeDelivery ? (deliveryAmount as number) : 0
-  const vatAmount = includeVat ? (netAmount + deliveryTotal) * (vatRate as number) : 0
+  const vatAmount = includeVat ? (netAmount + deliveryTotal) * vatRate : 0
   const totalAmount = netAmount + deliveryTotal + vatAmount
 
   // Auto-generate invoice number: TYPE-YEAR-SEQ format
@@ -598,7 +603,7 @@ async function createInvoiceManual(body: Record<string, unknown>) {
         discountRate: discountRate as number,
         discountAmount: finalDiscountAmount,
         netAmount,
-        vatRate: vatRate as number,
+        vatRate,
         vatAmount,
         totalAmount,
         paidAmount: 0,

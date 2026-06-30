@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getRoleAccountMapping, ACCOUNT_ROLES, AccountRoleKey } from '@/lib/account-roles'
+import { requireRoleApi } from '@/lib/auth-helpers'
 
 // ============================================================================
 // GET /api/accounts/role-mapping
@@ -25,6 +26,11 @@ export async function GET() {
 // Body: { accountId: string, accountRole: string }
 // ============================================================================
 export async function PUT(request: NextRequest) {
+  // FIX-RBAC-VAT / AUDIT-SETTINGS Q4: account-role mapping rewrites every future
+  // journal entry — restrict to ADMIN/ACCOUNTANT.
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { accountId, accountRole } = body

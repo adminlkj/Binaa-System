@@ -138,7 +138,9 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { response } = await requireRoleApi('ADMIN')
+  // requireRoleApi returns the typed session user (with `.id` and `.username`)
+  // so we can compare against the target user before deleting.
+  const { user, response } = await requireRoleApi('ADMIN')
   if (response) return response
 
   const { id } = await params
@@ -156,6 +158,17 @@ export async function DELETE(
     if (PROTECTED_USERNAMES.includes(existing.username)) {
       return NextResponse.json(
         { success: false, error: `لا يمكن حذف الحساب الدائم (${existing.username})` },
+        { status: 403 }
+      )
+    }
+
+    // FIX-RBAC-VAT / AUDIT-PERM Q3: block self-deletion. The UI disables the
+    // button for the current user, but the API is the trust boundary — an
+    // ADMIN with a non-protected username could otherwise DELETE their own id
+    // and lock themselves out.
+    if (user && (user.id === existing.id || user.username === existing.username)) {
+      return NextResponse.json(
+        { success: false, error: 'لا يمكن حذف حسابك الخاص' },
         { status: 403 }
       )
     }

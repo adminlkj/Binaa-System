@@ -23,6 +23,7 @@ import { Separator } from '@/components/ui/separator'
 import { MoneyDisplay } from '@/components/ui/money-display'
 import { ModuleLayout } from '@/components/shared/module-layout'
 import { useAppStore, formatDate, formatNumber } from '@/stores/app-store'
+import { useCompany } from '@/contexts/company-context'
 import { exportToCSV, type CSVColumn } from '@/lib/export-csv'
 import { ProjectTypeBadge } from '@/components/shared/project-type-badge'
 import { AccountingEntryDisplay } from '@/components/shared/accounting-entry-display'
@@ -81,6 +82,7 @@ function TableSkeleton({ rows = 5 }: { rows?: number }) {
 function InvoiceCreateView({ onBack }: { onBack: () => void }) {
   const { lang } = useAppStore()
   const queryClient = useQueryClient()
+  const { company } = useCompany()
 
   const [goodsReceiptId, setGoodsReceiptId] = useState('')
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
@@ -107,7 +109,8 @@ function InvoiceCreateView({ onBack }: { onBack: () => void }) {
     return selectedGR.items.reduce((s, i) => s + Number(i.totalPrice || 0), 0)
   }, [selectedGR])
 
-  const vatRate = 0.15
+  // VAT rate comes from company settings (FIX-RBAC-VAT / AUDIT-SETTINGS Q3).
+  const vatRate = company.defaultVatRate ?? 0.15
   const vatAmount = subtotal * vatRate
   const totalAmount = subtotal + vatAmount
 
