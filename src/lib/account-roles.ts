@@ -418,8 +418,9 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     role: 'CONTRACT_ASSET',
     labelAr: 'أصل العقد (مستحقات غير مفوترة)',
     labelEn: 'Contract Asset (Unbilled Receivable)',
-    description: 'أصل العقد — الإيراد المعترف به غير المفوتر بعد (IFRS 15.105)',
-    defaultCodes: ['1310'],
+    description: 'أصل العقد — الإيراد المعترف به غير المفوتر بعد (IFRS 15.105). حساب 1610 (أصول عقود المشاريع).',
+    // FIXED: كان ['1310'] وهو "مواد خام" (مخزون). الصحيح 1610 (أصول عقود المشاريع).
+    defaultCodes: ['1610'],
   },
   CONTRACT_LIABILITY: {
     role: 'CONTRACT_LIABILITY',
@@ -434,8 +435,9 @@ export const ACCOUNT_ROLES: Record<AccountRoleKey, AccountRoleInfo> = {
     role: 'UNBILLED_REVENUE',
     labelAr: 'إيراد غير مفوتر',
     labelEn: 'Unbilled Revenue',
-    description: 'الإيراد المعترف به وفق POC ولم يُفوتر بعد',
-    defaultCodes: ['4210'],
+    description: 'الإيراد المعترف به وفق POC ولم يُفوتر بعد. حساب 6130 (إيرادات المطالبات).',
+    // FIXED: كان ['4210'] وهذا الحساب غير موجود. الصحيح 6130 (إيرادات المطالبات).
+    defaultCodes: ['6130'],
   },
   FX_GAIN: {
     role: 'FX_GAIN',

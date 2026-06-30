@@ -8400,3 +8400,247 @@ Stage Summary:
 - نظام RBAC: ADMIN (كل شيء), ACCOUNTANT (مالية), MANAGER (مشاريع), VIEWER (مشاهدة)
 - بيانات الـ admin الافتراضي: admin / Admin@123 (يجب تغييرها في الإنتاج)
 - ملاحظة: Next.js 16 يفضل proxy.ts بدل middleware.ts (يعمل لكن مع تحذير deprecation)
+
+---
+Task ID: B2-EXPLORE
+Agent: Explore (IFRS15 gap analysis)
+Task: Audit revenue recognition / project profitability code for IFRS 15 compliance gap (GAP-1 / Barrier 2)
+
+Work Log:
+- قرأت worklog.md بالكامل لمعرفة عمل الـ agents السابقين: Barrier 1 (auth/RBAC) تم إصلاحه، وإصلاحات سابقة لـ double-revenue-recognition على المستخلصات (progress-claims) التي أزالت createProgressClaimJournalEntry وتركته عند إنشاء الفاتورة فقط.
+- قرأت سطراً سطراً: src/lib/accounting/ifrs15.ts (237 LOC), src/app/api/project-controls/[projectId]/evm/route.ts (85 LOC), src/app/api/project-controls/[projectId]/summary/route.ts (102 LOC), src/app/api/project-controls/[projectId]/backfill/route.ts (163 LOC), src/app/api/reports/project-profitability/route.ts (223 LOC), src/app/api/reports/project-wip/route.ts (160 LOC), src/app/api/reports/project-costs/route.ts (148 LOC), src/app/api/project-ledger/[projectId]/route.ts (78 LOC), src/app/api/account-statement/project/route.ts (456 LOC), src/app/api/progress-claims/route.ts (155 LOC), src/app/api/progress-claims/[id]/route.ts (169 LOC), src/app/api/boq/route.ts (69 LOC), src/app/api/cost-entries/route.ts (165 LOC), src/app/api/labor-costs/route.ts (108 LOC), src/app/api/sales-invoices/route.ts (الأول 300 سطر), src/lib/report-engine.ts (compat shim), src/lib/accounting/queries.ts (getProjectBalances), src/lib/account-roles.ts (lines 405–440), src/lib/accounting/chart-of-accounts.ts (بحث عن أكواد 1310/1320/4210/6130/3410/1610).
+- قرأت نماذج Prisma: Project (817–890), Contract (895–953), BOQItem (1018–1041), ProgressClaim (1045–1081), CostEntry (2454–2490), CostCodeBudget (2493–2513), ProjectLedger (2516–2542), Commitment (2545–2566), Measurement (2687–2727), JournalEntry (1957–1981).
+- grep شامل على src/ للكلمات: autoEntryIFRS15Revenue, calculatePOC, calculatePeriodRevenue, ifrs15.
+- grep على chart-of-accounts.ts للتأكد من وجود أكواد حسابات PROJECT_WIP/CONTRACT_ASSET/UNBILLED_REVENUE/CONTRACT_LIABILITY.
+
+Key findings (CURRENT STATE):
+
+1. محرك IFRS 15 POC موجود لكنه معطّل (DEAD CODE):
+   - src/lib/accounting/ifrs15.ts يحتوي على 3 دوال: calculatePOC, calculatePeriodRevenue, autoEntryIFRS15Revenue.
+   - calculatePOC يطبّق طريقة Cost-to-Cost الصحيحة: POC = TotalActualCost / TotalEstimatedCost; RevenueToDate = POC × contractValue; PeriodRevenue = RevenueToDate − PreviouslyRecognizedRevenue.
+   - **caller واحد فقط**: /api/project-controls/[projectId]/evm/route.ts — للاستعلام READ-ONLY لـ EVM metrics (PV/EV/AC/CPI/SPI/ETC/EAC).
+   - **autoEntryIFRS15Revenue لا يُستدعى من أي مكان في الكود** (تأكدت بـ grep على src/ كله). لم يُرحَّل قيد IFRS 15 واحد إلى GL في تاريخ النظام.
+
+2. الإيراد يُعترف به عند إصدار الفاتورة فقط (INVOICE-TIME REVENUE):
+   - src/app/api/progress-claims/[id]/route.ts PUT handler: تعليق صريح "Creating a JE at claim approval would double-count revenue because the invoice conversion creates its own JE". لا JE عند اعتماد المستخلص.
+   - src/app/api/sales-invoices/route.ts createInvoiceFromExtract: ينشئ SalesInvoice بـ status=DRAFT بدون JE (P6-CRIT-002 fix).
+   - JE يُنشأ فقط عند PATCH /api/sales-invoices/[id] لتحويل DRAFT → SENT عبر createSalesInvoiceJournalEntry (Dr CUSTOMER_AR / Cr PROJECT_REVENUE 6110 / Cr VAT_OUTPUT 3110).
+   - **النتيجة**: الإيراد في GL = مجموع قيم الفواتير المُرسلة (billed revenue) فقط. لا يوجد "earned revenue" مُعترف به على أساس نسبة الإنجاز.
+
+3. تقارير الربحية تستخدم مصادر متضاربة (لا واحد منها IFRS 15-compliant):
+
+   أ) /api/reports/project-profitability (route.ts:171-174):
+      - totalRevenue = revenueFromJournal (إن وُجد) أو revenueFromInvoices (sum of SalesInvoice.netAmount).
+      - totalCost = costFromJournal (إن وُجد) أو totalDirectCosts (sum of 7 operational tables).
+      - grossProfit = totalRevenue − totalCost.
+      - **لا يستدعي calculatePOC إطلاقاً. لا يستخدم contractValue ولا estimatedTotalCost لحساب الإيراد.**
+      - مع contractValue مأخوذ فقط للمعلومة (display).
+
+   ب) /api/reports/project-wip (route.ts:88-141):
+      - يستخدم getProjectBalances من queries.ts — يجمع REVENUE/EXPENSE من JournalLine حسب costCenter.
+      - يعرض netWip = incurredCosts − recognizedRevenue، profitToDate = recognizedRevenue − incurredCosts.
+      - completionPercent = incurredCosts / estimatedTotalCost × 100 (طريقة Cost-to-Cost للحظية لكنها للعرض فقط).
+      - **العيب الجوهري**: recognizedRevenue مصدره GL = billed revenue فقط (بما أن IFRS15 JE لا يُرحَّل). إذا كانت فواتير أقل من الإيراد المستحق (POC × contractValue)، سيكون netWip مبالغ فيه وprofitToDate منخفض زوراً. وإذا أُصدرت فواتير مقدماً (advance billing)، سيكون recognizedRevenue > الإيراد المستحق فيظهر خسارة وهمية.
+      - يقرأ أرصدة حسابات PROJECT_WIP (1320) + CONTRACT_ASSET/UNBILLED_REVENUE + CONTRACT_LIABILITY من GL، لكن بما أنه لا قيد IFRS15 يُرحَّل، هذه الأرصدة = 0 دائماً.
+
+   ج) /api/reports/project-costs (route.ts:61-63):
+      - **BUG حرج**: grossProfit = (revenueFromJournal > 0 ? revenueFromJournal : contractValue) − totalCost.
+      - أي إذا لم يوجد إيراد في GL (مشروع جديد لم يُفوتر بعد)، يستخدم contractValue كاملاً كـ "إيراد" → يظهر ربح ضخم وهمي = contractValue − totalCost.
+      - لا POC، لا calculatePOC، لا تفريق بين billed/earned.
+
+   د) /api/account-statement/project (route.ts:300-301):
+      - grossProfit = totalInvoiced − totalCosts.
+      - يعتمد كلياً على totalInvoiced (billed) — لا POC.
+
+   هـ) /api/project-ledger/[projectId] (route.ts):
+      - يعرض ProjectLedger rows (ledgerType: COST/REVENUE/WIP/CONTRACT_ASSET/...).
+      - لكن ProjectLedger لا يُغذّى بقيد IFRS 15 (لا أحد يكتب rows بـ ledgerType='REVENUE' أو 'CONTRACT_ASSET'). الجدول شبه فارغ إلا من cost entries.
+
+   و) /api/project-controls/[projectId]/summary (route.ts:91-92):
+      - percentComplete = (earned / planned) × 100 — يستخدم earned من Measurement.certifiedAmount (إن وُجدت) أو fallback إلى actual cost.
+      - لا يستدعي calculatePOC. يعرض Planned/Committed/Actual/Earned فقط (للعرض، لا تأثير على GL).
+
+4. تضارب defaultCodes للأدوار المحاسبية IFRS 15 (CRITICAL data-integrity gap):
+   - CONTRACT_ASSET.defaultCodes = ['1310'] لكن 1310 في chart-of-accounts.ts هو "Raw Materials" (مواد خام)! الحساب المُوسوم فعلاً بـ CONTRACT_ASSET هو **1610** (Construction Contract Assets).
+   - CONTRACT_LIABILITY.defaultCodes = ['3410'] لكن 3410 مُوسوم بـ CUSTOMER_ADVANCE (وليس CONTRACT_LIABILITY). لا يوجد أي حساب بمRole=CONTRACT_LIABILITY.
+   - UNBILLED_REVENUE.defaultCodes = ['4210'] لكن **4210 غير موجود في chart-of-accounts.ts إطلاقاً**. الحساب المُوسوم فعلاً بـ UNBILLED_REVENUE هو **6130** (Claims Revenue — نوع REVENUE).
+   - **النتيجة**: لو استُدعي autoEntryIFRS15Revenue الآن: سيDebit حساب 1310 (مواد خام!) وCredit حساب 4210 (غير موجود → getAccountCodeByRole يُرجع '4210' → createJournalEntry يفشل). هذا يفسّر لماذا الـ POC engine لم يُفعّل أبداً.
+
+5. نموذج Project يحوي حقول IFRS 15 لكنها غير مُحدّثة (cached & stale):
+   - contractValue Decimal @default(0) — يُستخدم من calculatePOC ✅.
+   - estimatedTotalCost Decimal? @default(0) — يُستخدم من calculatePOC و project-wip ✅.
+   - **committedCost Decimal? — غير محدّث آلياً (لا trigger يكتبه)**.
+   - **actualCost Decimal? — غير محدّث آلياً (calculatePOC يحسبه من CostEntry بدلاً منه)**.
+   - **progressPercent Decimal? — غير محدّث آلياً (calculatePOC يعيد حسابه كل مرة)**.
+   - الموجود data بدون backfill يجعل هذه الحقول = 0 دائماً، فيعتمد الكود على fallbacks (مجموع BOQ، أو 80% من contractValue، أو expenses+laborCost+sub+equipment).
+
+6. BOQ لا يتتبع التنفيذ الفعلي:
+   - BOQItem يحوي: code, description, unit, quantity, unitPrice, totalPrice, category, projectId.
+   - **لا يوجد executedQuantity أو actualQuantity أو completedQuantity**.
+   - تتبع التنفيذ يحدث في نموذج منفصل: Measurement (cumulativeQuantity, certifiedQuantity) — مرتبط اختيارياً بـ boqItemId.
+   - حساب الإيراد POC يعتمد حالياً على التكاليف الفعلية (CostEntry) وليس على Measurements (الطريقة الأكثر دقة IFRS 15) — هذا مقبول لـ IFRS 15 (Cost-to-Cost method) لكنه يتطلب CostEntry مكتملة.
+
+7. CostEntry هو المصدر الصحيح لكنه غير مُلأ تلقائياً:
+   - POST /api/cost-entries: ينشئ CostEntry + JE (autoEntryManualCost) + يحدّث CostCodeBudget.actualAmount — atomically in $transaction ✅.
+   - **لكن**: العمليات الأخرى (Expense, LaborCost, SubcontractorInvoice, EquipmentCost) لا تنشئ CostEntry تلقائياً. يجب تشغيل /api/project-controls/[projectId]/backfill يدوياً لنقلها.
+   - حتى بعد backfill، CostEntry.date منفصل عن تاريخ JE الأصلي، وCostEntry.journalEntryId يربط فقط بـ JE الأصلي للـ EXPENSE، ولا يُربط لـ LABOR_COST/SUBCONTRACTOR_INVOICE/EQUIPMENT_COST (backfill لا ينسخ journalEntryId لها — انظر backfill/route.ts:75-80, 105-110, 138-142).
+
+8. SalesInvoice.flow يؤكد INVOICE-TIME REVENUE:
+   - MODE A (من ProgressClaim): claim.approved → invoice DRAFT → PATCH SENT → createSalesInvoiceJournalEntry → Dr 1210 CUSTOMER_AR / Cr 6110 PROJECT_REVENUE / Cr 3110 VAT_OUTPUT.
+   - **لا تمييز بين billed وearned. لا قيد فرق (CONTRACT_ASSET/UNBILLED_REVENUE) عند الفوترة المتقدمة أو المتأخرة.**
+   - retentionAmount وadvanceDeduction تُخصم من قيمة الفاتورة لكن لا تُعالج محاسبياً كـ CONTRACT_LIABILITY أو retention receivable.
+
+Stage Summary:
+
+**الوضع الحالي (Current State)**:
+- يوجد محرك IFRS 15 POC كامل في src/lib/accounting/ifrs15.ts (calculatePOC + calculatePeriodRevenue + autoEntryIFRS15Revenue) لكنه **معطّل** — autoEntryIFRS15Revenue لا يُستدعى من أي مكان.
+- الإيراد يُعترف به عند إصدار الفاتورة (SENT status) فقط — Dr CUSTOMER_AR / Cr PROJECT_REVENUE 6110 / Cr VAT_OUTPUT 3110. لا توجد آلية للاعتراف بالإيراد على أساس نسبة الإنجاز over time.
+- تقارير الربحية (project-profitability, project-wip, project-costs, account-statement/project) تستخدم مصادر متضاربة: GL revenue (billed only) أو sum of SalesInvoice.netAmount أو حتى contractValue كـ "إيراد" عند غياب GL revenue (project-costs:61).
+- الحسابات الـ IFRS 15 (PROJECT_WIP 1320, CONTRACT_ASSET 1610, UNBILLED_REVENUE 6130) موجودة في chart-of-accounts لكن defaultCodes في account-roles.ts تُشير إلى أكواد خاطئة (1310, 4210) → لو فُعّل autoEntryIFRS15Revenue سيفشل أو يرحّل إلى حسابات خاطئة.
+
+**الـ GAP-1 (IFRS 15 gap)**:
+1. لا اعتراف بالإيراد over time — المقاولات تتطلب Percentage-of-Completion per IAS 11 / IFRS 15 (over-time recognition when criteria met: enforceable rights, payment, right to enforce performance, reliable measurement).
+2. لا قيد IFRS 15 شهري/دوري يُرحّل إلى GL — الإيراد في GL = billed only.
+3. لا تمييز بين Earned Revenue (POC × contractValue) وBilled Revenue (invoices) وUnbilled Revenue (CONTRACT_ASSET) في الميزانية.
+4. لا حساب Costs in Excess of Billings أو Billings in Excess of Costs (CONTRACT_LIABILITY) — كلاهما IFRS 15 requirements.
+5. لا recognizing of losses onerous contracts (LossProvision model موجود لكنه غير مربوط بمحرك IFRS 15).
+6. تقارير الربحية تُظهر أرقاماً غير صحيحة في 3 سيناريوهات:
+   - مشروع جديد لم يُفوتر بعد: project-costs يُظهر ربح = contractValue − cost (وهمي).
+   - مشروع متقدم التكلفة لكن الفواتير متأخرة: project-wip يُظهر خسارة وهمية.
+   - مشروع فواتيره مقدّمة (advance billing): يظهر ربح مقدم ثم يختفي.
+
+**الملفات التي تحتاج تعديل**:
+1. **src/lib/account-roles.ts** (lines 417-438): إصلاح defaultCodes للأدوار:
+   - CONTRACT_ASSET: ['1310'] → ['1610']
+   - CONTRACT_LIABILITY: ['3410'] → ['3410'] مع إضافة accountRole='CONTRACT_LIABILITY' على 3410 في chart-of-accounts.ts (أو إنشاء حساب 3420 جديد).
+   - UNBILLED_REVENUE: ['4210'] → ['6130']
+2. **src/lib/accounting/chart-of-accounts.ts**: إضافة accountRole='CONTRACT_LIABILITY' على 3410 (أو 3420).
+3. **src/lib/accounting/ifrs15.ts**:
+   - إصلاح cost calculation: تجميع التكاليف من GL (cost center) بدلاً من CostEntry فقط — ليشمل العمليات الأخرى التي تنشئ JE مباشرة (LaborCost, Expense, SubcontractorInvoice) حتى لو لم تُعمل backfill.
+   - إضافة فحص "loss-making contract": إذا كان (estimatedTotalCost > contractValue) يجب اعتراف بكامل الخسارة فوراً per IFRS 15.
+   - إضافة منع الترحيل المزدوج: فحص أن periodRevenue > 0 وغير مُرحَّل مسبقاً للفترة نفسها.
+4. **NEW: src/app/api/ifrs15/recognize/route.ts** — endpoint لترحيل قيد IFRS 15 لمشروع/فترة (POST projectId + asOfDate) يستدعي autoEntryIFRS15Revenue.
+5. **NEW: src/app/api/ifrs15/cron/route.ts** أو cron job — تشغيل شهري تلقائي (optional).
+6. **src/app/api/reports/project-profitability/route.ts**: استبدال totalRevenue بـ max(revenueFromJournal, calculatePOC().revenueToDate) وعرض billed vs earned.
+7. **src/app/api/reports/project-wip/route.ts**: استبدال `recognizedRevenue = bal.revenue` بـ `calculatePOC().revenueToDate` — حالياً bal.revenue = billed only. عرض netWip بشكل صحيح = (earned − billed) → CONTRACT_ASSET إذا موجب، CONTRACT_LIABILITY إذا سالب.
+8. **src/app/api/reports/project-costs/route.ts:61**: إزالة الـ fallback إلى contractValue كـ "إيراد" — استبداله بـ calculatePOC().revenueToDate (earned).
+9. **src/app/api/sales-invoices/route.ts** + **src/app/api/sales-invoices/[id]/route.ts**: عند PATCH SENT (إنشاء JE)، إذا كان cumulative billed > earned (POC × contractValue)، يُرحَّل الفرق كـ CONTRACT_LIABILITY (advance billing) بدلاً من PROJECT_REVENUE بالكامل. والعكس إذا billed < earned، يُرحَّل差额 كـ CONTRACT_ASSET (unbilled). هذا يحوّل النظام من cash/invoice basis إلى accrual/POC basis.
+10. **src/app/api/progress-claims/[id]/route.ts**: عند اعتماد المستخلص (DRAFT → APPROVED)، يُحدّث Project.progressPercent (cached) ويتحقق من تجاوز الـ 100%.
+11. **prisma/schema.prisma**: إضافة trigger أو محدّث آلي لـ Project.actualCost / progressPercent عند إنشاء CostEntry — أو إزالتها نهائياً والاعتماد على calculatePOC.
+12. **src/lib/auto-journal.ts**: إضافة createIFRS15RevenueJournalEntry wrapper يستدعي calculatePOC + autoEntryIFRS15Revenue بشكل آمن (مع فحص sourceType=IFRS15_REVENUE لمنع التكرار).
+13. **اختياري**: ربط ifrs15.ts بـ LossProvision model — إذا calculatePOC يُظهر خسارة متوقعة (estimatedTotalCost > contractValue)، يتم اعتراف LossProvision تلقائياً.
+
+**النهج المُوصى به (Recommended Approach)**:
+
+المرحلة 1 — إصلاح البيانات الأساسية (Data Foundation):
+- إصلاح defaultCodes في account-roles.ts (CONTRACT_ASSET→1610, UNBILLED_REVENUE→6130, CONTRACT_LIABILITY→3410 أو 3420 جديد).
+- إضافة accountRole على 1610 (CONTRACT_ASSET) — مفقود حالياً رغم وجود comment يصفه.
+- إضافة accountRole على 6130 (UNBILLED_REVENUE) — موجود بالفعل ✅.
+- تشغيل seed chart-of-accounts لإعادة بناء الـ roles.
+
+المرحلة 2 — تفعيل محرك POC:
+- إنشاء POST /api/ifrs15/recognize لترحيل قيد IFRS 15 لمشروع/تاريخ.
+- استدعاؤه يدوياً من الـ UI (زر "اعتراف بإيراد الفترة") أو تلقائياً عند كل POST /api/cost-entries وكل PATCH /api/sales-invoices/[id] SENT.
+- إضافة cron job شهري لترحيل IFRS 15 لكل المشاريع النشطة (آخر يوم من الشهر).
+
+المرحلة 3 — إصلاح التقارير:
+- تحديث project-wip ليعرض earnedRevenue من calculatePOC (وليس bal.revenue).
+- تحديث project-profitability ليعرض ثلاثة أرقام: Billed / Earned / Collected.
+- تحديث project-costs لإزالة الـ fallback إلى contractValue.
+
+المرحلة 4 — ربط الفوترة بـ IFRS 15:
+- عند PATCH sales-invoice SENT: احسب cumulativeBilled وcumulativeEarned. الفرق يُرحّل كـ CONTRACT_ASSET (if earned > billed) أو CONTRACT_LIABILITY (if billed > earned)، وصافي PROJECT_REVENUE = earned − previouslyRecognizedRevenue.
+
+المرحلة 5 — LossProvision & Onerous Contracts:
+- ربط ifrs15.ts بـ LossProvision model — اعتراف فوري بالخسائر المتوقعة.
+
+الأولوية: CRITICAL — هذا هو GAP-1 / Barrier 2 الذي يُسبب "المشروع سيعطي ربحية خاطئة" كما وصفها المستخدم. كل تقرير ربحية حالي يُعطي أرقاماً مضلّلة في سيناريوهات شائعة (مشاريع قيد التنفيذ، فواتير متأخرة، فواتير مقدّمة).
+
+
+---
+Task ID: B2-REPORTS
+Agent: full-stack-developer (IFRS15 reports fix)
+Task: Fix 3 project profitability reports to use POC-based earned revenue
+
+Work Log:
+- قرأت worklog.md لمعرفة عمل الـ agents السابقين (Barrier 1 auth، B2-EXPLORE gap analysis لـ IFRS 15). الـ GAP-1 يؤكد أن تقارير الربحية تستخدم billed/GL revenue بدلاً من POC-based earned revenue، وأن calculatePOC موجود في src/lib/accounting/ifrs15.ts لكنه غير مُستخدم في التقارير.
+- قرأت fully الملفات الأربعة: src/lib/accounting/ifrs15.ts (237 LOC) و src/app/api/reports/project-profitability/route.ts (223 LOC) و src/app/api/reports/project-wip/route.ts (160 LOC) و src/app/api/reports/project-costs/route.ts (148 LOC) و src/lib/decimal.ts.
+
+**1. src/app/api/reports/project-profitability/route.ts:**
+- أضفت `import { calculatePOC } from '@/lib/accounting/ifrs15'`.
+- asOfDate = dateTo ? new Date(dateTo) : new Date().
+- حسبت `earnedRevenue = poc.revenueToDate` داخل try/catch (fallback: revenueFromJournal > 0 ? revenueFromJournal : billedRevenue).
+- `billedRevenue = revenueFromInvoices`، `totalRevenue = earnedRevenue` (POC-based)، `grossProfit = earnedRevenue - totalCost`، `profitMargin = (grossProfit/earnedRevenue)*100`.
+- أضفت حقولاً جديدة إلى `revenue` block: earnedRevenue, billedRevenue, percentComplete, pocContractValue, estimatedTotalCost, pocGrossProfit, pocGrossProfitPercent.
+- أضفت حقولاً جديدة إلى `summary` block: earnedRevenue, billedRevenue, percentComplete, contractValue, estimatedTotalCost, revenueSource='ifrs15-poc'.
+- حافظت على كل الحقول القديمة (fromJournalEntries, fromInvoices, vatCollected, totalCollected, totalClaimed, totalRetention, totalAdvanceDeduction, direct costs breakdown, costToRevenueRatio, collectionRate).
+
+**2. src/app/api/reports/project-wip/route.ts:**
+- أضفت `import { calculatePOC } from '@/lib/accounting/ifrs15'`.
+- أضفت `db.salesInvoice.groupBy({ by: ['projectId'] })` لإنشاء billedByProject map في استعلام واحد (تفادي N+1).
+- asOfDate = range?.to ?? new Date().
+- حوّلت `rows = projects.map(p => {...})` من sync إلى `rows = await Promise.all(projects.map(async (p) => {...}))` لاستدعاء calculatePOC لكل مشروع.
+- لكل مشروع: try/catch حول `await calculatePOC(p.id, asOfDate)` (fallback: bal.revenue).
+- `earnedRevenue = poc.revenueToDate`، `recognizedRevenue = earnedRevenue` (alias للحقل القديم)، `billedRevenue = billedByProject.get(p.id) || 0`.
+- **netWip الآن = earnedRevenue - billedRevenue** (تعريف IFRS 15 الصحيح: موجب=Contract Asset، سالب=Contract Liability). كان سابقاً incurredCosts - recognizedRevenue.
+- `profitToDate = earnedRevenue - incurredCosts`، `completionPercent = poc.percentComplete * 100`.
+- contractValue و estimatedTotalCost الآن من calculatePOC (مع fallback).
+- أضفت لكل صف: earnedRevenue, billedRevenue, percentComplete. وأضفت للـ totals: earnedRevenue, billedRevenue.
+- حافظت على الحقول القديمة كلها: recognizedRevenue, wipBalance, contractAssetBalance, contractLiabilityBalance, incurredCosts, costCenterId.
+- source تغيّر من 'posted-journal-entries' إلى 'ifrs15-poc'.
+
+**3. src/app/api/reports/project-costs/route.ts:**
+- أضفت `import { calculatePOC } from '@/lib/accounting/ifrs15'`.
+- **أزلت الـ bug الحرِج في السطر 61 القديم:** `(revenueFromJournal > 0 ? revenueFromJournal : contractValue) - totalCost` الذي كان يعتبر contractValue إيراداً كاملاً عند غياب إيراد GL — يُضخّم الربح بشكل خاطئ.
+- أضفت `db.salesInvoice.findMany` لحساب billedRevenue = sum(netAmount).
+- asOfDate = range?.to ?? new Date().
+- try/catch حول `await calculatePOC(project.id, asOfDate)` (fallback: revenueFromJournal — وليس contractValue).
+- `earnedRevenue = poc.revenueToDate`، `grossProfit = earnedRevenue - totalCost`، `profitMargin = (grossProfit/earnedRevenue)*100`.
+- أضفت حقولاً جديدة: estimatedTotalCost, billedRevenue, earnedRevenue, percentComplete.
+- contractValue (في الـ project و top-level) الآن من pocContractValue (مع fallback).
+- source تغيّر من 'posted-journal-entries' إلى 'ifrs15-poc'.
+
+Stage Summary:
+- الـ 3 تقارير ربحية المشروع الآن IFRS 15-compliant: تستخدم `calculatePOC().revenueToDate` كإيراد معترف به (earned) لحساب الربح، مع عرض billed revenue كحقل منفصل للمقارنة.
+- الـ bug في project-costs (معاملة contractValue كإيراد) أُزيل — كان يُضخّم الربح بقيمة العقد كاملة في المشاريع بلا إيراد GL.
+- WIP position في project-wip الآن = earned − billed (التعريف الصحيح IFRS 15: Contract Asset إذا موجب، Contract Liability إذا سالب).
+- كل calculatePOC ملفوف بـ try/catch مع fallback للحساب القديم + console.error — لا تعطُّل للتقارير إذا فشل POC لمشروع.
+- `bun run lint` نجح بلا أخطاء ولا تحذيرات.
+- dev.log سليم بعد التعديلات.
+- لم يتم تعديل أي frontend code (كما هو مطلوب).
+- جميع الحقول القديمة محفوظة (backward compatibility) — أضفنا حقولاً جديدة فقط.
+
+---
+Task ID: B2-IMPL
+Agent: Code Agent (main) + full-stack-developer
+Task: Barrier 2 — تفعيل محرك IFRS 15 وإصلاح ربحية المشاريع (GAP-1)
+
+Work Log:
+- استكشاف شامل: محرك POC موجود في ifrs15.ts لكنه معطّل (لا يُستدعى أبداً)
+- المشكلة الجذرية: الإيرادات تُعترف بها عند الفوترة فقط، لا عبر الزمن (POC)
+- إصلاح أكواد الحسابات في account-roles.ts:
+  - CONTRACT_ASSET: ['1310'] (مواد خام) → ['1610'] (أصول عقود المشاريع)
+  - UNBILLED_REVENUE: ['4210'] (غير موجود) → ['6130'] (إيرادات المطالبات)
+- إنشاء src/app/api/ifrs15/preview/route.ts — معاينة POC بدون قيد (GET)
+- إنشاء src/app/api/ifrs15/recognize/route.ts — اعتراف بإيراد الفترة (POST, ADMIN/ACCOUNTANT)
+- تفويض وكيل لإصلاح 3 تقارير:
+  - project-profitability: استخدام calculatePOC().revenueToDate كـ earnedRevenue
+  - project-wip: استخدام earnedRevenue، netWip = earned - billed
+  - project-costs: إزالة bug استخدام contractValue كإيراد، استخدام earnedRevenue
+
+الاختبار بـ Agent Browser:
+- /api/ifrs15/preview — يرجع POC صحيح (0.43%, earnedRevenue=13,800) ✅
+- /api/ifrs15/recognize (POST) — أنشأ قيد cmr0eccd50000ordk25gjgeuv بمبلغ 13,800 ✅
+- /api/ifrs15/recognize (ثاني استدعاء) — idempotent: "لا يوجد إيراد جديد" ✅
+- project-profitability — earnedRevenue=13,800 vs billedRevenue=420,000 ✅
+- project-wip — earnedRevenue + netWip ✅
+- project-costs — earnedRevenue + billedRevenue ✅
+- lint نظيف ✅
+
+Stage Summary:
+- محرك IFRS 15 مُفعّل: calculatePOC (Cost-to-Cost) + autoEntryIFRS15Revenue
+- endpoint جديد: /api/ifrs15/preview (GET) + /api/ifrs15/recognize (POST)
+- 3 تقارير مُصلحة: تستخدم earnedRevenue (POC) بدل billedRevenue
+- القيد: مدين CONTRACT_ASSET (1610) / دائن UNBILLED_REVENUE (6130)
+- Idempotency: periodRevenue = revenueToDate - previouslyRecognizedRevenue (لا ازدواج)
+- الفرق الواضح: مشروع PRJ-002 — billed=420,000 لكن earned=13,800 (كانت الربحية خاطئة!)

@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { toNumber } from '@/lib/decimal'
 import { getProjectCostBreakdown } from '@/lib/report-engine'
+import { calculatePOC } from '@/lib/accounting/ifrs15'
 
 // GET: Project Cost Sheet Report
 // المصدر الحقيقي الوحيد: القيود اليومية المرحّلة (JournalEntry.status = 'POSTED')
@@ -58,9 +59,44 @@ export async function GET(request: Request) {
         .filter(c => c.status === 'ACTIVE' || c.status === 'DRAFT')
         .reduce((s, c) => s + toNumber(c.totalValue), 0)
 
-    const grossProfit = (revenueFromJournal > 0 ? revenueFromJournal : contractValue) - totalCost
-    const profitMarginBase = revenueFromJournal > 0 ? revenueFromJournal : contractValue
-    const profitMargin = profitMarginBase > 0 ? (grossProfit / profitMarginBase) * 100 : 0
+    // ===== الإيراد المُفوتر (billed) من فواتير المبيعات =====
+    const salesInvoices = await db.salesInvoice.findMany({
+      where: {
+        projectId,
+        status: { not: 'CANCELLED' },
+        ...(range && (range.from || range.to) && {
+          date: {
+            ...(range.from && { gte: range.from }),
+            ...(range.to && { lte: range.to }),
+          },
+        }),
+      },
+      select: { netAmount: true },
+    })
+    const billedRevenue = salesInvoices.reduce((s, i) => s + toNumber(i.netAmount), 0)
+
+    // ===== الإيراد المكتسب (POC) — IFRS 15 =====
+    // استبدلنا الـ fallback القديم (contractValue كإيراد) بحساب POC الصحيح
+    const asOfDate = range?.to ?? new Date()
+    let earnedRevenue = 0
+    let percentComplete = 0
+    let estimatedTotalCost = toNumber(project.estimatedTotalCost) || contractValue
+    let pocContractValue = contractValue
+    try {
+      const poc = await calculatePOC(project.id, asOfDate)
+      earnedRevenue = poc.revenueToDate
+      percentComplete = poc.percentComplete
+      estimatedTotalCost = poc.totalEstimatedCost || estimatedTotalCost
+      pocContractValue = poc.contractValue || contractValue
+    } catch (err) {
+      // fallback: استخدم إيراد GL لو فشل calculatePOC (لا نستخدم contractValue كإيراد)
+      console.error('[API] project-costs calculatePOC failed:', err)
+      earnedRevenue = revenueFromJournal
+    }
+
+    // ===== الربح = الإيراد المكتسب − التكلفة الإجمالية (IFRS 15 compliant) =====
+    const grossProfit = earnedRevenue - totalCost
+    const profitMargin = earnedRevenue > 0 ? (grossProfit / earnedRevenue) * 100 : 0
 
     // ===== الضريبة من القيود المرحّلة =====
     const vatInput = await getProjectVAT(projectId, range, 'VAT_INPUT')
@@ -74,7 +110,7 @@ export async function GET(request: Request) {
         nameAr: project.nameAr,
         status: project.status,
         clientName: project.client.nameAr || project.client.name,
-        contractValue,
+        contractValue: pocContractValue,
       },
       costs: {
         materials,
@@ -89,13 +125,19 @@ export async function GET(request: Request) {
         equipmentUsages: 0, // مُدمج في equipmentOperations
       },
       totalCost,
-      contractValue,
+      contractValue: pocContractValue,
+      estimatedTotalCost,
+      // الإيراد المُفوتر من الفواتير
+      billedRevenue,
+      // الإيراد المكتسب وفق IFRS 15 (POC)
+      earnedRevenue,
+      percentComplete: Math.round(percentComplete * 10000) / 100,
       revenueFromJournal,
       grossProfit,
       profitMargin: Math.round(profitMargin * 100) / 100,
       inputVat,
       costCenterId: gl.costCenterId,
-      source: 'posted-journal-entries',
+      source: 'ifrs15-poc',
     })
   } catch (error) {
     console.error('Error generating project cost report:', error)

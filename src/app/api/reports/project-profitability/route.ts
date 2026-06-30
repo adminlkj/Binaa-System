@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
+import { calculatePOC } from '@/lib/accounting/ifrs15'
 
 // GET /api/reports/project-profitability?projectId=...
 // تقرير ربحية المشروع من مركز التكلفة - يجمع الإيرادات والتكاليف من القيود المحاسبية
@@ -168,8 +169,37 @@ export async function GET(request: Request) {
 
     // ========== الحساب النهائي ==========
     const totalDirectCosts = materials + subcontractors + salaries + projectExpenses + equipmentCosts + labor + fuel
-    const totalRevenue = revenueFromJournal > 0 ? revenueFromJournal : revenueFromInvoices
+    const billedRevenue = revenueFromInvoices
+    // التكلفة الإجمالية: من القيود إن وُجدت، وإلا التكاليف المباشرة المُجمَّعة
     const totalCost = costFromJournal > 0 ? costFromJournal : totalDirectCosts
+
+    // ========== الإيراد المكتسب (POC) — IFRS 15 ==========
+    // استخدم calculatePOC للحصول على الإيراد المعترف به وفق نسبة الإنجاز
+    const asOfDate = dateTo ? new Date(dateTo) : new Date()
+    let earnedRevenue = 0
+    let percentComplete = 0
+    let pocContractValue = 0
+    let estimatedTotalCost = 0
+    let pocGrossProfit = 0
+    let pocGrossProfitPercent = 0
+    try {
+      const poc = await calculatePOC(project.id, asOfDate)
+      earnedRevenue = poc.revenueToDate
+      percentComplete = poc.percentComplete
+      pocContractValue = poc.contractValue
+      estimatedTotalCost = poc.totalEstimatedCost
+      pocGrossProfit = poc.grossProfitToDate
+      pocGrossProfitPercent = poc.grossProfitPercent
+    } catch (err) {
+      // fallback: استخدم الإيراد المُفوتر أو من القيود إذا فشل calculatePOC
+      console.error('[API] project-profitability calculatePOC failed:', err)
+      earnedRevenue = revenueFromJournal > 0 ? revenueFromJournal : billedRevenue
+      pocContractValue = toNumber(project.contractValue) || contractValue
+      estimatedTotalCost = toNumber(project.estimatedTotalCost) || pocContractValue
+    }
+
+    // الإيراد الإجمالي للربحية = الإيراد المكتسب (POC-based) — IFRS 15 compliant
+    const totalRevenue = earnedRevenue
     const grossProfit = totalRevenue - totalCost
     const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0
 
@@ -187,6 +217,14 @@ export async function GET(request: Request) {
       revenue: {
         fromJournalEntries: revenueFromJournal,
         fromInvoices: revenueFromInvoices,
+        // IFRS 15 — الإيراد المكتسب وفق نسبة الإنجاز
+        earnedRevenue,
+        billedRevenue,
+        percentComplete: Math.round(percentComplete * 10000) / 100, // نسبة مئوية (0-100)
+        pocContractValue,
+        estimatedTotalCost,
+        pocGrossProfit,
+        pocGrossProfitPercent: Math.round(pocGrossProfitPercent * 100) / 100,
         vatCollected: vatFromInvoices,
         totalCollected: collectedFromInvoices,
         totalClaimed,
@@ -208,11 +246,18 @@ export async function GET(request: Request) {
       },
       summary: {
         totalRevenue,
+        // الإيراد المكتسب (POC) والإيراد المُفوتر — للمقارنة
+        earnedRevenue,
+        billedRevenue,
+        percentComplete: Math.round(percentComplete * 10000) / 100,
+        contractValue: pocContractValue || contractValue,
+        estimatedTotalCost,
         totalCost,
         grossProfit,
         profitMargin: Math.round(profitMargin * 100) / 100,
         collectionRate: totalRevenue > 0 ? Math.round((collectedFromInvoices / (totalRevenue + vatFromInvoices)) * 10000) / 100 : 0,
         costToRevenueRatio: totalRevenue > 0 ? Math.round((totalCost / totalRevenue) * 10000) / 100 : 0,
+        revenueSource: 'ifrs15-poc',
       },
     })
   } catch (error) {
