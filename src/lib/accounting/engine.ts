@@ -78,6 +78,7 @@ export {
 import type { PrismaTransaction } from './constants'
 import { CHART_OF_ACCOUNTS_TEMPLATE } from './chart-of-accounts'
 import type { AccountTemplate } from './constants'
+import { getUsagePropertiesForRole } from '@/lib/account-usage-mapping'
 
 // ============ STANDARD CHART OF ACCOUNTS TEMPLATE ============
 // Based on Saudi SOCPA standards for construction & equipment rental companies
@@ -123,6 +124,9 @@ export interface JournalEntryTemplate {
 export async function ensureAccountExists(template: AccountTemplate, tx?: PrismaTransaction) {
   const client = tx || db
   const existing = await client.account.findUnique({ where: { code: template.code } })
+  // P4-FIX: compute usage properties from the role at seed time so newly
+  // seeded accounts immediately appear in the right operational screens.
+  const usageProps = getUsagePropertiesForRole(template.accountRole)
   if (existing) {
     // Update existing account with new fields if they are missing
     if (
@@ -145,6 +149,7 @@ export async function ensureAccountExists(template: AccountTemplate, tx?: Prisma
           level: template.level || 0,
           accountRole: template.accountRole || existing.accountRole,
           parentCode: template.parentId || existing.parentCode,
+          ...usageProps,
         },
       })
     }
@@ -171,6 +176,7 @@ export async function ensureAccountExists(template: AccountTemplate, tx?: Prisma
       isSystem: template.isSystem || false,
       allowPosting: template.allowPosting || false,
       level: template.level || 0,
+      ...usageProps,
     },
   })
 }
@@ -203,6 +209,10 @@ export async function initializeChartOfAccounts(tx?: PrismaTransaction) {
   })
 
   for (const tmpl of sorted) {
+    // P4-FIX: compute usage properties from the role at seed time so newly
+    // seeded accounts immediately appear in the right operational screens
+    // and are usable in the right journal-entry operations.
+    const usageProps = getUsagePropertiesForRole(tmpl.accountRole)
     const existing = await client.account.findUnique({ where: { code: tmpl.code } })
     if (existing) {
       // Update existing account with new fields
@@ -219,6 +229,7 @@ export async function initializeChartOfAccounts(tx?: PrismaTransaction) {
           allowPosting: tmpl.allowPosting || false,
           level: tmpl.level || 0,
           isActive: true,
+          ...usageProps,
         },
       })
       // Update parent reference if needed
@@ -247,6 +258,7 @@ export async function initializeChartOfAccounts(tx?: PrismaTransaction) {
           allowPosting: tmpl.allowPosting || false,
           level: tmpl.level || 0,
           activityType: tmpl.activityType || null,
+          ...usageProps,
         },
       })
       created++

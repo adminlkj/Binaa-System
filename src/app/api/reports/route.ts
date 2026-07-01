@@ -272,9 +272,10 @@ export async function GET(request: Request) {
         // GL-based totals (canonical)
         const glRevenueTotal = await getGLBalanceByType('REVENUE')
         // CUSTOMER_AR credits = payments collected (cash received against AR)
+        // P4-FIX: NO hardcoded ['1210'] fallback — purely role-based.
         const arCodes = (await getAccountsByRoles([AccountRole.CUSTOMER_AR])).map(a => a.code)
         const arAccounts = await db.account.findMany({
-          where: { code: { in: arCodes.length > 0 ? arCodes : ['1210'] }, isActive: true },
+          where: { code: { in: arCodes }, isActive: true },
           select: { id: true },
         })
         let totalPaid = 0
@@ -318,15 +319,16 @@ export async function GET(request: Request) {
 
         // GL-based totals (canonical)
         // totalPIs from EXPENSE + VAT_INPUT debits
-        const totalPIs = await getGLBalanceByType('EXPENSE') + await getGLBalanceForCodes(
-          (await getAccountsByRoles([AccountRole.VAT_INPUT])).map(a => a.code).length > 0
-            ? (await getAccountsByRoles([AccountRole.VAT_INPUT])).map(a => a.code)
-            : ['3120']
-        )
+        // P4-FIX: NO hardcoded ['3120'] fallback — if no VAT_INPUT account
+        // is mapped to the role, the VAT-input portion of the total is 0.
+        const vatInputCodes = (await getAccountsByRoles([AccountRole.VAT_INPUT])).map(a => a.code)
+        const totalPIs = await getGLBalanceByType('EXPENSE') + await getGLBalanceForCodes(vatInputCodes)
         // AP totals from GL
+        // P4-FIX: NO hardcoded ['3210', '3220'] fallback — if no SUPPLIER_AP
+        // or SUBCONTRACTOR_AP account is mapped, the AP total is 0.
         const apCodes = (await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])).map(a => a.code)
         const apAccounts = await db.account.findMany({
-          where: { code: { in: apCodes.length > 0 ? apCodes : ['3210', '3220'] }, isActive: true },
+          where: { code: { in: apCodes }, isActive: true },
           select: { id: true },
         })
         let totalPaid = 0
@@ -959,8 +961,9 @@ export async function GET(request: Request) {
         }
 
         // GL-based AP total for verification (canonical)
+        // P4-FIX: NO hardcoded ['3210', '3220'] fallback — purely role-based.
         const apCodes = (await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])).map(a => a.code)
-        const glPayableTotal = await getGLBalanceForCodes(apCodes.length > 0 ? apCodes : ['3210', '3220'])
+        const glPayableTotal = await getGLBalanceForCodes(apCodes)
 
         const totalPurchases = [...glByProject.values()].reduce((s, v) => s + v, 0)
         return NextResponse.json({

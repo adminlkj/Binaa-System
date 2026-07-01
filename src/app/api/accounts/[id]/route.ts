@@ -2,6 +2,7 @@ import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { ACCOUNT_ROLES, AccountRoleKey } from '@/lib/account-roles'
+import { getUsagePropertiesForRole } from '@/lib/account-usage-mapping'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(
@@ -151,6 +152,43 @@ export async function PUT(
     if (body.activityType !== undefined) updateData.activityType = body.activityType || null
     if (body.description !== undefined) updateData.description = body.description || null
     if (body.descriptionAr !== undefined) updateData.descriptionAr = body.descriptionAr || null
+
+    // P4-FIX: Accept the 20 usage/selection/behavior properties on PUT.
+    // Behavior:
+    //   - Any explicitly-provided boolean property is persisted as-is.
+    //   - If the caller changes `accountRole` AND doesn't provide any explicit
+    //     usage properties, auto-compute them from the new role. This keeps
+    //     the account's "appear in the right screens" behavior in sync with
+    //     its role.
+    //   - If the caller passes explicit properties, those override the role
+    //     defaults (so an accountant can fine-tune individual flags).
+    const USAGE_PROPERTY_KEYS = [
+      'usableInExpenses', 'usableInProjects', 'usableInRental', 'usableInPayroll',
+      'usableInAdvances', 'usableInMaintenance', 'usableInFuel', 'usableInPurchases',
+      'usableInRevenue', 'showInCash', 'showInBank',
+      'allowsProject', 'allowsCostCenter', 'allowsEmployee', 'allowsEquipment',
+      'allowsSupplier', 'allowsClient',
+      'requiresEmployee', 'requiresProject', 'requiresEquipment', 'requiresContract',
+      'allowsVat',
+    ] as const
+
+    let hasExplicitUsageProp = false
+    for (const key of USAGE_PROPERTY_KEYS) {
+      if (typeof body[key] === 'boolean') {
+        updateData[key] = body[key]
+        hasExplicitUsageProp = true
+      }
+    }
+
+    // Role changed + no explicit usage props → auto-compute from the new role
+    const roleChanged = body.accountRole !== undefined
+    if (roleChanged && !hasExplicitUsageProp) {
+      const newRole = body.accountRole || null
+      const roleProps = getUsagePropertiesForRole(newRole)
+      for (const [k, v] of Object.entries(roleProps)) {
+        updateData[k] = v
+      }
+    }
 
     // Allow moving the account to a different parent (re-parenting)
     if (body.parentId !== undefined) {

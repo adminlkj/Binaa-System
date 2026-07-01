@@ -10,12 +10,15 @@ const NORMAL_BALANCE: Record<string, 'DEBIT' | 'CREDIT'> = {
 }
 
 /**
- * Resolve account codes for a set of roles, falling back to default codes if no role-mapped accounts exist.
+ * P4-FIX: Resolve account codes for a set of roles via the canonical
+ * role-based lookup. There is NO hardcoded fallback anymore — if no
+ * account is mapped to a role, the dashboard shows 0 for that role's
+ * balance rather than silently reporting the balance of a hardcoded
+ * account code that the accountant may not have intended.
  */
-async function resolveAccountCodes(roles: string[], defaultCodes: string[]): Promise<string[]> {
+async function resolveAccountCodes(roles: string[]): Promise<string[]> {
   const accounts = await getAccountsByRoles(roles)
-  if (accounts.length > 0) return accounts.map(a => a.code)
-  return defaultCodes
+  return accounts.map(a => a.code)
 }
 
 /**
@@ -87,6 +90,9 @@ export async function GET() {
     const now = new Date()
 
     // ===== Resolve account codes by role (single query per role group) =====
+    // P4-FIX: NO hardcoded fallback codes — if a role has no mapped accounts,
+    // the corresponding balance will simply be 0 (the dashboard shows the
+    // real state of the chart of accounts, never a silent fallback).
     const [
       cashCodes, bankCodes, pettyCashCodes,
       arCodes, retentionCodes, employeeAdvanceCodes,
@@ -95,21 +101,21 @@ export async function GET() {
       salariesPayableCodes, otherAccruedCodes,
       outputVatCodes, inputVatCodes, vatDueCodes,
     ] = await Promise.all([
-      resolveAccountCodes([AccountRole.CASH], ['1110']),
-      resolveAccountCodes([AccountRole.BANK], ['1120']),
-      resolveAccountCodes([AccountRole.CASH], ['1130']),
-      resolveAccountCodes([AccountRole.CUSTOMER_AR], ['1210']),
-      resolveAccountCodes([AccountRole.RETENTION_RECEIVABLE], ['1220']),
-      resolveAccountCodes([AccountRole.EMPLOYEE_ADVANCE], ['1230']),
-      resolveAccountCodes([AccountRole.EMPLOYEE_ADVANCE], ['1240']),
-      resolveAccountCodes([AccountRole.CUSTOMER_AR], ['1250']),
-      resolveAccountCodes([AccountRole.SUPPLIER_AP], ['3210']),
-      resolveAccountCodes([AccountRole.SUBCONTRACTOR_AP], ['3220']),
-      resolveAccountCodes([AccountRole.SALARIES_PAYABLE], ['3310']),
-      resolveAccountCodes([AccountRole.GOSI_PAYABLE], ['3320']),
-      resolveAccountCodes([AccountRole.VAT_OUTPUT], ['3110']),
-      resolveAccountCodes([AccountRole.VAT_INPUT], ['3120']),
-      resolveAccountCodes([AccountRole.VAT_DUE], ['3130']),
+      resolveAccountCodes([AccountRole.CASH]),
+      resolveAccountCodes([AccountRole.BANK]),
+      resolveAccountCodes([AccountRole.CASH]),
+      resolveAccountCodes([AccountRole.CUSTOMER_AR]),
+      resolveAccountCodes([AccountRole.RETENTION_RECEIVABLE]),
+      resolveAccountCodes([AccountRole.EMPLOYEE_ADVANCE]),
+      resolveAccountCodes([AccountRole.EMPLOYEE_ADVANCE]),
+      resolveAccountCodes([AccountRole.CUSTOMER_AR]),
+      resolveAccountCodes([AccountRole.SUPPLIER_AP]),
+      resolveAccountCodes([AccountRole.SUBCONTRACTOR_AP]),
+      resolveAccountCodes([AccountRole.SALARIES_PAYABLE]),
+      resolveAccountCodes([AccountRole.GOSI_PAYABLE]),
+      resolveAccountCodes([AccountRole.VAT_OUTPUT]),
+      resolveAccountCodes([AccountRole.VAT_INPUT]),
+      resolveAccountCodes([AccountRole.VAT_DUE]),
     ])
 
     // All role-resolved codes combined (for the single balance query)

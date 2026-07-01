@@ -64,6 +64,37 @@ export interface AccountSelectorProps {
    * This is the preferred mode going forward.
    */
   filterByProperty?: Record<string, boolean>
+  /**
+   * Convenience props: pass any of these as `true` to filter accounts that
+   * have the corresponding usage/selection/behavior property set to true.
+   * These are merged with `filterByProperty` (direct props take precedence
+   * on key collision). This lets callers write:
+   *   <AccountSelector usableInExpenses value={...} onValueChange={...} />
+   * instead of the more verbose:
+   *   <AccountSelector filterByProperty={{ usableInExpenses: true }} ... />
+   */
+  usableInExpenses?: boolean
+  usableInProjects?: boolean
+  usableInRental?: boolean
+  usableInPayroll?: boolean
+  usableInAdvances?: boolean
+  usableInMaintenance?: boolean
+  usableInFuel?: boolean
+  usableInPurchases?: boolean
+  usableInRevenue?: boolean
+  showInCash?: boolean
+  showInBank?: boolean
+  allowsProject?: boolean
+  allowsCostCenter?: boolean
+  allowsEmployee?: boolean
+  allowsEquipment?: boolean
+  allowsSupplier?: boolean
+  allowsClient?: boolean
+  requiresEmployee?: boolean
+  requiresProject?: boolean
+  requiresEquipment?: boolean
+  requiresContract?: boolean
+  allowsVat?: boolean
   /** Currently selected account ID */
   value: string | null
   /** Callback when the user selects an account — receives FULL account object */
@@ -88,6 +119,29 @@ export interface AccountSelectorProps {
 export function AccountSelector({
   roles = [],
   filterByProperty,
+  // P4-FIX: direct usage-property convenience props
+  usableInExpenses,
+  usableInProjects,
+  usableInRental,
+  usableInPayroll,
+  usableInAdvances,
+  usableInMaintenance,
+  usableInFuel,
+  usableInPurchases,
+  usableInRevenue,
+  showInCash,
+  showInBank,
+  allowsProject,
+  allowsCostCenter,
+  allowsEmployee,
+  allowsEquipment,
+  allowsSupplier,
+  allowsClient,
+  requiresEmployee,
+  requiresProject,
+  requiresEquipment,
+  requiresContract,
+  allowsVat,
   value,
   onValueChange,
   label,
@@ -96,13 +150,55 @@ export function AccountSelector({
   parentCode,
   className,
 }: AccountSelectorProps) {
+  // Merge direct usage-property props into filterByProperty (direct props win).
+  const mergedFilter = React.useMemo(() => {
+    const merged: Record<string, boolean> = { ...(filterByProperty || {}) }
+    const directProps: Record<string, boolean | undefined> = {
+      usableInExpenses,
+      usableInProjects,
+      usableInRental,
+      usableInPayroll,
+      usableInAdvances,
+      usableInMaintenance,
+      usableInFuel,
+      usableInPurchases,
+      usableInRevenue,
+      showInCash,
+      showInBank,
+      allowsProject,
+      allowsCostCenter,
+      allowsEmployee,
+      allowsEquipment,
+      allowsSupplier,
+      allowsClient,
+      requiresEmployee,
+      requiresProject,
+      requiresEquipment,
+      requiresContract,
+      allowsVat,
+    }
+    for (const [k, v] of Object.entries(directProps)) {
+      if (v === true) merged[k] = true
+    }
+    return merged
+  }, [
+    filterByProperty,
+    usableInExpenses, usableInProjects, usableInRental, usableInPayroll,
+    usableInAdvances, usableInMaintenance, usableInFuel, usableInPurchases,
+    usableInRevenue, showInCash, showInBank,
+    allowsProject, allowsCostCenter, allowsEmployee, allowsEquipment,
+    allowsSupplier, allowsClient,
+    requiresEmployee, requiresProject, requiresEquipment, requiresContract,
+    allowsVat,
+  ])
+
   // Build the query URL based on the mode
   const queryString = React.useMemo(() => {
     const params = new URLSearchParams()
 
     // NEW: Property-based mode takes priority
-    if (filterByProperty) {
-      for (const [key, val] of Object.entries(filterByProperty)) {
+    if (Object.keys(mergedFilter).length > 0) {
+      for (const [key, val] of Object.entries(mergedFilter)) {
         if (val) params.set(key, 'true')
       }
     } else if (parentCode) {
@@ -115,15 +211,15 @@ export function AccountSelector({
       params.set('activityType', activityType)
     }
     return params.toString()
-  }, [roles, filterByProperty, parentCode, activityType])
+  }, [roles, mergedFilter, parentCode, activityType])
 
   // Query key reflects the mode
   const queryKey = React.useMemo(() => {
-    if (filterByProperty) {
-      return ['accounts-by-property', JSON.stringify(filterByProperty), activityType]
+    if (Object.keys(mergedFilter).length > 0) {
+      return ['accounts-by-property', JSON.stringify(mergedFilter), activityType]
     }
     return ['accounts-by-role', roles.join(','), parentCode, activityType]
-  }, [roles, filterByProperty, parentCode, activityType])
+  }, [roles, mergedFilter, parentCode, activityType])
 
   const { data: accounts = [], isLoading, isError } = useQuery<AccountOption[]>({
     queryKey,

@@ -221,6 +221,39 @@ export async function POST(request: Request) {
       }
     }
 
+    // P4-FIX: Accept the 20 usage/selection/behavior properties from the
+    // request body. If the user provides an `accountRole` but does NOT
+    // explicitly pass any usage property, auto-compute them from the role
+    // via getUsagePropertiesForRole(). This guarantees that a newly-created
+    // account immediately shows up in the right screens.
+    const { getUsagePropertiesForRole } = await import('@/lib/account-usage-mapping')
+    const USAGE_PROPERTY_KEYS = [
+      'usableInExpenses', 'usableInProjects', 'usableInRental', 'usableInPayroll',
+      'usableInAdvances', 'usableInMaintenance', 'usableInFuel', 'usableInPurchases',
+      'usableInRevenue', 'showInCash', 'showInBank',
+      'allowsProject', 'allowsCostCenter', 'allowsEmployee', 'allowsEquipment',
+      'allowsSupplier', 'allowsClient',
+      'requiresEmployee', 'requiresProject', 'requiresEquipment', 'requiresContract',
+      'allowsVat',
+    ] as const
+
+    const explicitUsageProps: Record<string, boolean> = {}
+    let anyExplicit = false
+    for (const key of USAGE_PROPERTY_KEYS) {
+      if (typeof body[key] === 'boolean') {
+        explicitUsageProps[key] = body[key]
+        anyExplicit = true
+      }
+    }
+
+    // Auto-compute from role if no explicit props provided (and a role exists)
+    const roleUsageProps = body.accountRole
+      ? getUsagePropertiesForRole(body.accountRole as string)
+      : {}
+    const finalUsageProps = anyExplicit
+      ? explicitUsageProps
+      : roleUsageProps
+
     const account = await db.account.create({
       data: {
         code,
@@ -239,6 +272,7 @@ export async function POST(request: Request) {
         level: body.level ?? 0,
         description: body.description || null,
         descriptionAr: body.descriptionAr || null,
+        ...finalUsageProps,
       },
       include: {
         parent: { select: { id: true, code: true, name: true, nameAr: true } },
