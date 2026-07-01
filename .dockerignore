@@ -1,15 +1,66 @@
+# ============================================================
+# .dockerignore — Binaa System (Web App)
+# ============================================================
+# Excludes files not needed in the production Docker image.
+# IMPORTANT: scripts/seed-admin.ts and scripts/seed-coa.ts ARE needed
+# by render.yaml buildCommand, so they are explicitly included below.
+# ============================================================
+
+# Dependencies (regenerated in build stage)
 node_modules
+
+# Build artifacts
 .next
 .git
+
+# Logs
 *.log
+dev-test.log
+
+# Database files (SQLite dev only — production uses PostgreSQL)
 db/*.db
 db/*.db-journal
+
+# Environment files (secrets)
 .env
 .env.local
 .env.*.local
-scripts/
+
+# Development-only scripts (keep seed-*.ts and verification scripts for build)
+scripts/test-*.ts
+scripts/check-*.ts
+scripts/cleanup-*.ts
+scripts/backfill-*.ts
+scripts/e2e-*.ts
+scripts/add-idempotency-indexes.ts
+scripts/verify-props.ts
+
+# Development directories
 examples/
 skills/
 mini-services/
-docs/
-README.md
+
+# Documentation (not needed at runtime, but kept for reference)
+# docs/  ← keep docs in image for reference
+
+# Test artifacts
+test-screens/
+test-screenshots/
+screenshots/
+*.png
+
+# Research files
+*_article.json
+invoice_research*.json
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Build cache
+tsconfig.tsbuildinfo
+
+# Agent context (internal dev metadata)
+agent-ctx/

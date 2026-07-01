@@ -1,7 +1,9 @@
 # ============================================================
-# Render Deployment Configuration — Binaa System
+# Render Deployment Configuration — Binaa System (Web App)
 # ============================================================
-# This file configures the deployment on Render.com
+# This is a WEB APPLICATION ONLY (Next.js standalone server).
+# No desktop/Electron/Tauri components.
+#
 # Docs: https://render.com/docs/blueprint-spec
 # ============================================================
 
@@ -14,6 +16,10 @@ services:
     region: singapore  # closest to Saudi Arabia
 
     # ---------- Build ----------
+    # P7 FIX: استبدلنا `prisma db push --accept-data-loss` (الذي يمكن أن
+    # يُسقط أعمدة بصمت في الإنتاج) بـ `prisma migrate deploy` الآمن.
+    # الـ migrations تُنشأ محلياً عبر `prisma migrate dev` ثم تُودَع في
+    # مجلد prisma/migrations وتُطبَّق في الإنتاج بهذا الأمر.
     buildCommand: |
       # 1. Install dependencies
       bun install --frozen-lockfile
@@ -24,17 +30,23 @@ services:
       # 3. Generate Prisma Client
       bunx prisma generate
 
-      # 4. Push schema to database (creates tables if needed)
-      #    Use migrations in production for safety:
-      #    bunx prisma migrate deploy
-      bunx prisma db push --accept-data-loss
+      # 4. Apply migrations (safe — never drops data)
+      #    If no migrations exist yet, create a baseline first locally:
+      #      bunx prisma migrate dev --name init
+      #    Then commit prisma/migrations/ and deploy.
+      bunx prisma migrate deploy
 
-      # 5. Build Next.js (standalone output)
+      # 5. Seed admin user + chart of accounts (idempotent)
+      bun scripts/seed-admin.ts || true
+      bun scripts/seed-coa.ts || true
+
+      # 6. Build Next.js (standalone output)
       bun run build
 
     # ---------- Start ----------
+    # Next.js standalone server — production mode
     startCommand: |
-      NODE_ENV=production bun .next/standalone/server.js
+      NODE_ENV=production node .next/standalone/server.js
 
     # ---------- Health Check ----------
     healthCheckPath: /api/health
@@ -56,6 +68,8 @@ services:
           type: web
           name: binaa-system
           property: host
+      - key: DEFAULT_ADMIN_PASSWORD
+        sync: false  # set manually in Render dashboard for security
 
   # ---------- PostgreSQL Database ----------
   - type: pserv

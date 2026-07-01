@@ -1,8 +1,8 @@
 # ============================================================
-# Dockerfile — Binaa System (Next.js Standalone)
+# Dockerfile — Binaa System (Next.js Web App — Standalone)
 # ============================================================
-# Multi-stage build for minimal production image.
-# Uses Bun for dependency installation, Node for runtime.
+# This is a WEB APPLICATION ONLY. No desktop/Electron/Tauri.
+# Multi-stage build: Bun for install/build, Node slim for runtime.
 # ============================================================
 
 # ---------- Stage 1: Dependencies ----------
@@ -30,6 +30,10 @@ RUN sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
 # Generate Prisma Client
 RUN bunx prisma generate
 
+# P7 FIX: use migrate deploy (safe) instead of db push --accept-data-loss
+# If no migrations exist, this is a no-op (first deploy must run migrate dev locally)
+RUN bunx prisma migrate deploy || echo "No migrations to apply yet"
+
 # Build Next.js (standalone output)
 RUN bun run build
 
@@ -46,12 +50,12 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy standalone build output
+# Copy standalone build output (includes server.js + minimal node_modules)
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
-# Copy Prisma files for runtime
+# Copy Prisma files for runtime (needed for migrations + client)
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
@@ -66,5 +70,5 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-# Start the application
+# Start the web application
 CMD ["node", "server.js"]

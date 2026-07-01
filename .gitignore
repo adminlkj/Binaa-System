@@ -88,3 +88,21 @@ verify-*.png
 bug-reproduction.png
 *.png.bak
 audit-screenshots/
+
+# P7: Test screenshots and research files (never commit)
+test-screens/
+test-screenshots/
+screenshots/
+*_article.json
+invoice_research*.json
+
+# P7: Sandbox-only process management scripts (not for web deployment)
+start-dev.sh
+keep-alive.sh
+update-zip.sh
+test-nav.sh
+.dev.pid
+dev-test.log
+
+# P7: Build cache
+tsconfig.tsbuildinfo
