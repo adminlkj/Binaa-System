@@ -148,9 +148,12 @@ export async function PUT(
           const activityNameAr =
             activity === 'PROJECT' ? 'مشاريع' : activity === 'RENTAL' ? 'تأجير' : 'إدارية'
 
-          // P4-CRIT-009 FIX: gross salary expense = totalNet + totalDeductions + totalGosi
-          // (was: only totalNet, which understated expense and missed advance recovery).
-          const grossExpense = totals.totalNet + totals.totalDeductions + totals.totalGosi
+          // P3-4-CRIT-001 FIX: gross salary expense = totalNet + totalDeductions (NOT totalGosi).
+          // GOSI is posted SEPARATELY as Dr GOSI_EXPENSE below, so including it here
+          // double-counts GOSI and makes the JE unbalanced by exactly `totalGosi`.
+          // The correct accounting: gross = net (to employee) + deductions (advances/penalties).
+          // GOSI company portion is a separate expense line (Dr GOSI_EXPENSE, Cr GOSI_PAYABLE).
+          const grossExpense = totals.totalNet + totals.totalDeductions
 
           const jeLines = [
             {
