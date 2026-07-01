@@ -41,6 +41,10 @@
     "scripts",
     "examples",
     "skills",
-    "mini-services"
+    "mini-services",
+    "docs",
+    "audit-reports",
+    "agent-ctx",
+    "prisma"
   ]
 }
