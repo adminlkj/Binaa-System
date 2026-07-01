@@ -201,7 +201,7 @@ function ProjectInstances({ instances, lang, onNavigate }: {
             <Badge variant="secondary" className="text-xs" title={lang === 'ar' ? 'الفواتير' : 'Invoices'}>{p.progress.invoices} 🧾</Badge>
           </div>
           {p.contractValue > 0 && (
-            <MoneyDisplay amount={p.contractValue} className="text-sm font-semibold shrink-0" />
+            <MoneyDisplay value={p.contractValue} className="text-sm font-semibold shrink-0" />
           )}
           <Button variant="ghost" size="icon" className="shrink-0" onClick={() => onNavigate('projects')}>
             {lang === 'ar' ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}
@@ -284,7 +284,7 @@ function HRInstances({ instances, lang, onNavigate }: {
             </div>
           </div>
           {p.totalNet > 0 && (
-            <MoneyDisplay amount={p.totalNet} className="text-sm font-semibold shrink-0" />
+            <MoneyDisplay value={p.totalNet} className="text-sm font-semibold shrink-0" />
           )}
           <Button variant="ghost" size="icon" className="shrink-0" onClick={() => onNavigate('payroll-runs')}>
             {lang === 'ar' ? <ArrowLeft className="h-4 w-4" /> : <ArrowRight className="h-4 w-4" />}

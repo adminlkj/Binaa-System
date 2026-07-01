@@ -465,7 +465,7 @@ function PasswordDialog({
     }
   }, [open])
 
-  const mismatch = password && confirm && password !== confirm
+  const mismatch = Boolean(password && confirm && password !== confirm)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

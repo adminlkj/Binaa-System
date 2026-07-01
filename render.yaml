@@ -16,10 +16,8 @@ services:
     region: singapore  # closest to Saudi Arabia
 
     # ---------- Build ----------
-    # P7 FIX: استبدلنا `prisma db push --accept-data-loss` (الذي يمكن أن
-    # يُسقط أعمدة بصمت في الإنتاج) بـ `prisma migrate deploy` الآمن.
-    # الـ migrations تُنشأ محلياً عبر `prisma migrate dev` ثم تُودَع في
-    # مجلد prisma/migrations وتُطبَّق في الإنتاج بهذا الأمر.
+    # Migrations and seeds run at STARTUP (not build) because DATABASE_URL
+    # is only available at runtime. See scripts/startup.sh.
     buildCommand: |
       # 1. Install dependencies
       bun install --frozen-lockfile
@@ -27,30 +25,22 @@ services:
       # 2. Switch Prisma to PostgreSQL for production
       sed -i 's/provider = "sqlite"/provider = "postgresql"/' prisma/schema.prisma
 
-      # 3. Generate Prisma Client
+      # 3. Generate Prisma Client (needed for build — types)
       bunx prisma generate
 
-      # 4. Apply migrations (safe — never drops data)
-      #    If no migrations exist yet, create a baseline first locally:
-      #      bunx prisma migrate dev --name init
-      #    Then commit prisma/migrations/ and deploy.
-      bunx prisma migrate deploy
-
-      # 5. Seed admin user + chart of accounts (idempotent)
-      bun scripts/seed-admin.ts || true
-      bun scripts/seed-coa.ts || true
-
-      # 6. Build Next.js (standalone output)
+      # 4. Build Next.js (standalone output)
+      #    prebuild hook auto-skips DB verification (no DATABASE_URL at build time)
       bun run build
 
     # ---------- Start ----------
-    # Next.js standalone server — production mode
+    # Runs migrations + seeds + server in sequence.
+    # See scripts/startup.sh for details.
     startCommand: |
-      NODE_ENV=production node .next/standalone/server.js
+      bash scripts/startup.sh
 
     # ---------- Health Check ----------
     healthCheckPath: /api/health
-    healthCheckTimeout: 30
+    healthCheckTimeout: 60
     autoDeploy: true
 
     # ---------- Environment Variables ----------

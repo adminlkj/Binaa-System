@@ -140,7 +140,7 @@ export async function GET() {
         _count: {
           select: {
             contracts: true,
-            bOQItems: true,
+            boqItems: true,
             progressClaims: true,
             salesInvoices: true,
           },
