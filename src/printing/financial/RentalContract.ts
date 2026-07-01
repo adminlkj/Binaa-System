@@ -7,6 +7,7 @@ import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, formatDate, getMonthName, getCurrencySymbol } from '../shared/utils'
 import { bankInfoSection, signaturesSection, amountInWordsSection } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'financial',
@@ -81,7 +82,7 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'رقم العقد / Contract No' : 'Contract No'}</div>
-          <div class="info-value">${data.contractNo || '—'}</div>
+          <div class="info-value">${escapeHtml(data.contractNo || '—')}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'نوع التسعير / Pricing Type' : 'Pricing Type'}</div>
@@ -104,13 +105,13 @@ export const template: DocumentTemplate = {
       <div class="parties-section">
         <div class="party-card">
           <div class="party-card-title">${lang === 'ar' ? 'بيانات المعدة / Equipment Details' : 'Equipment Details'}</div>
-          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'المعدة / Equipment' : 'Equipment'}</span><span class="value">${data.equipmentName || data.equipmentNameAr || '—'}</span></div>
-          ${data.equipmentCode ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الكود / Code' : 'Code'}</span><span class="value">${data.equipmentCode}</span></div>` : ''}
+          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'المعدة / Equipment' : 'Equipment'}</span><span class="value">${escapeHtml(data.equipmentName || data.equipmentNameAr || '—')}</span></div>
+          ${data.equipmentCode ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الكود / Code' : 'Code'}</span><span class="value">${escapeHtml(data.equipmentCode)}</span></div>` : ''}
         </div>
         <div class="party-card">
           <div class="party-card-title">${lang === 'ar' ? 'العميل / Client' : 'Client'}</div>
-          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم / Name' : 'Name'}</span><span class="value">${data.clientName || '—'}</span></div>
-          ${data.clientPhone ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الهاتف / Phone' : 'Phone'}</span><span class="value">${data.clientPhone}</span></div>` : ''}
+          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم / Name' : 'Name'}</span><span class="value">${escapeHtml(data.clientName || '—')}</span></div>
+          ${data.clientPhone ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الهاتف / Phone' : 'Phone'}</span><span class="value">${escapeHtml(data.clientPhone)}</span></div>` : ''}
         </div>
       </div>
 
@@ -120,11 +121,11 @@ export const template: DocumentTemplate = {
         <div class="info-grid">
           <div class="info-item">
             <div class="info-label">${lang === 'ar' ? 'المشروع / Project' : 'Project'}</div>
-            <div class="info-value">${data.projectName}</div>
+            <div class="info-value">${escapeHtml(data.projectName)}</div>
           </div>
           ${data.projectCode ? `<div class="info-item">
             <div class="info-label">${lang === 'ar' ? 'كود المشروع / Project Code' : 'Project Code'}</div>
-            <div class="info-value">${data.projectCode}</div>
+            <div class="info-value">${escapeHtml(data.projectCode)}</div>
           </div>` : ''}
         </div>
       </div>` : ''}
@@ -139,11 +140,11 @@ export const template: DocumentTemplate = {
           </div>` : ''}
           ${data.salesOrderNo ? `<div class="info-item">
             <div class="info-label">${lang === 'ar' ? 'رقم طلب البيع / Sales Order' : 'Sales Order'}</div>
-            <div class="info-value">${data.salesOrderNo}</div>
+            <div class="info-value">${escapeHtml(data.salesOrderNo)}</div>
           </div>` : ''}
           ${data.purchaseOrderNo ? `<div class="info-item">
             <div class="info-label">${lang === 'ar' ? 'رقم أمر الشراء / Purchase Order' : 'Purchase Order'}</div>
-            <div class="info-value">${data.purchaseOrderNo}</div>
+            <div class="info-value">${escapeHtml(data.purchaseOrderNo)}</div>
           </div>` : ''}
         </div>
       </div>` : ''}
@@ -178,7 +179,7 @@ export const template: DocumentTemplate = {
       ${data.additionalTerms ? `
       <div class="terms-section">
         <div class="terms-title">${lang === 'ar' ? 'الشروط الإضافية / Additional Terms' : 'Additional Terms'}</div>
-        ${data.additionalTerms}
+        ${escapeHtml(data.additionalTerms)}
       </div>` : ''}
 
       ${bankInfoSection(settings, lang)}

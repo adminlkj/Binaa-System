@@ -1,5 +1,6 @@
 import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
+import { getDefaultVatRate } from '@/lib/settings'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -73,7 +74,10 @@ export async function POST(request: Request) {
     const origVal = parseFloat(originalValue) || 0
     const chgVal = parseFloat(changeValue) || 0
     const newVal = origVal + chgVal
-    const vatRate = Number(contract.vatRate) || 0.15
+    // AUDIT-2 S1 FIX: honor configured company default VAT rate instead of hardcoding 0.15.
+    // Use the contract's VAT rate when present; otherwise fall back to the system default.
+    // A legitimate zero rate (tax-exempt contract) is preserved via `!= null` check.
+    const vatRate = contract.vatRate != null ? Number(contract.vatRate) : await getDefaultVatRate()
     const vatAmount = Math.round(chgVal * vatRate * 100) / 100
     const totalChangeValue = Math.round((chgVal + vatAmount) * 100) / 100
 

@@ -11,6 +11,7 @@ import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, getCurrencySymbol } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'report',
@@ -61,12 +62,12 @@ export const template: DocumentTemplate = {
 
     // Currency badge display
     const currencyBadge = showCurrency
-      ? `<div class="gt-currency-badge">${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${currency}</div>`
+      ? `<div class="gt-currency-badge">${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${escapeHtml(currency)}</div>`
       : ''
 
     // Section title if provided
     const sectionTitleHtml = sectionTitle
-      ? `<div class="gt-section-title">${sectionTitle}</div>`
+      ? `<div class="gt-section-title">${escapeHtml(sectionTitle)}</div>`
       : ''
 
     // Determine if a column is an amount column
@@ -82,8 +83,8 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         ${(data.infoItems as Array<{ label: string; value: string }>).map(item => `
           <div class="info-item">
-            <div class="info-label">${item.label}</div>
-            <div class="info-value">${item.value}</div>
+            <div class="info-label">${escapeHtml(item.label)}</div>
+            <div class="info-value">${escapeHtml(item.value)}</div>
           </div>
         `).join('')}
       </div>` : ''}
@@ -93,7 +94,7 @@ export const template: DocumentTemplate = {
         <thead>
           <tr>
             <th>#</th>
-            ${columns.map(col => `<th class="${isAmountCol(col) ? 'amount-header' : ''}">${col.label}</th>`).join('')}
+            ${columns.map(col => `<th class="${isAmountCol(col) ? 'amount-header' : ''}">${escapeHtml(col.label)}</th>`).join('')}
           </tr>
         </thead>
         <tbody>
@@ -108,7 +109,7 @@ export const template: DocumentTemplate = {
                 if (isAmt) {
                   return `<td class="amount-cell">${isEmpty ? '-' : fmtMoney(isNaN(numVal) ? 0 : numVal, settings, lang)}</td>`
                 }
-                return `<td>${isEmpty ? '' : val}</td>`
+                return `<td>${isEmpty ? '' : escapeHtml(val)}</td>`
               }).join('')}
             </tr>
           `).join('')}
@@ -120,7 +121,7 @@ export const template: DocumentTemplate = {
         <div class="totals-box">
           ${(data.totals as Array<{ label: string; value: number; isGrand?: boolean }>).map(t => `
             <div class="total-row ${t.isGrand ? 'grand' : ''}">
-              <span class="label">${t.label}</span>
+              <span class="label">${escapeHtml(t.label)}</span>
               <span class="value">${fmtMoney(t.value, settings, lang)}</span>
             </div>
           `).join('')}

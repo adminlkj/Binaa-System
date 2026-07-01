@@ -112,11 +112,44 @@ export async function GET(request: NextRequest) {
     let data: Record<string, unknown> = {}
 
     if (type === 'service-invoice' || type === 'sales-invoice' || type === 'rental-invoice') {
+      // FIX-A (AUDIT-1 D3 — Rental Invoice Data): for rental-invoice, fetch the linked
+      // Timesheet → EquipmentRental → EquipmentDeliveryOrder → Equipment so we can populate
+      // the rental-specific fields the RentalInvoice template expects (equipmentName,
+      // operatingHours, workLocation, deliveryMonth, timesheetNo, deliveryOrderNo,
+      // salesOrderNo, purchaseOrderNo, paymentTerms). Without this, the template's
+      // `hasRentalData` check fails and the entire Rental Data section is hidden.
+      const includeForRental = type === 'rental-invoice'
       const invoice = await db.salesInvoice.findUnique({
         where: { id },
-        include: { client: true, items: true, project: true, contract: true },
+        include: {
+          client: true,
+          items: true,
+          project: true,
+          contract: true,
+          ...(includeForRental
+            ? {
+                timesheet: {
+                  include: {
+                    rental: {
+                      select: {
+                        id: true,
+                        salesOrderNo: true,
+                        purchaseOrderNo: true,
+                        workLocation: true,
+                        workCity: true,
+                        paymentDuration: true,
+                      },
+                    },
+                    deliveryOrder: { select: { id: true, orderNo: true } },
+                    equipment: { select: { id: true, name: true, nameAr: true, code: true } },
+                  },
+                },
+              }
+            : {}),
+        },
       })
       if (invoice) {
+        // Base fields shared by all invoice types
         data = {
           id: invoice.id,
           invoiceNo: invoice.invoiceNo,
@@ -143,6 +176,60 @@ export async function GET(request: NextRequest) {
           terms: invoice.notes,
           // Use stored ZATCA QR if available
           ...(invoice.zatcaQr ? { _zatcaTlvBase64: invoice.zatcaQr } : {}),
+        }
+
+        // Rental-specific fields — populate from invoice columns + linked Timesheet chain.
+        // SalesInvoice already stores equipmentName, operatingHours, hourlyRate,
+        // deliveryMonth, salesOrderNo, contractNo, paymentTerms at creation time
+        // (see POST /api/sales-invoices — the timesheet-invoice flow). We expose those
+        // plus enrich with workLocation, purchaseOrderNo, deliveryOrderNo, timesheetNo
+        // from the linked Timesheet → Rental / DeliveryOrder records.
+        if (type === 'rental-invoice') {
+          const ts = invoice.timesheet as
+            | {
+                id: string
+                month: number
+                year: number
+                operatingHours: unknown
+                rental: {
+                  salesOrderNo: string | null
+                  purchaseOrderNo: string | null
+                  workLocation: string | null
+                  workCity: string | null
+                  paymentDuration: string | null
+                } | null
+                deliveryOrder: { orderNo: string | null } | null
+                equipment: { name: string; nameAr: string | null; code: string } | null
+              }
+            | null
+
+          // Synthesize a human-readable timesheet number — Timesheet model has no `code`
+          // column, so we build one from year/month + short id (last 6 chars).
+          const timesheetNo = ts
+            ? `TS-${ts.year}-${String(ts.month).padStart(2, '0')}-${ts.id.slice(-6).toUpperCase()}`
+            : null
+
+          data.equipmentName =
+            invoice.equipmentName || ts?.equipment?.nameAr || ts?.equipment?.name || null
+          data.equipmentCode = ts?.equipment?.code || null
+          data.operatingHours =
+            invoice.operatingHours != null
+              ? Number(invoice.operatingHours)
+              : ts
+                ? Number(ts.operatingHours)
+                : null
+          data.hourlyRate = invoice.hourlyRate != null ? Number(invoice.hourlyRate) : null
+          data.deliveryMonth = invoice.deliveryMonth || null
+          data.contractNo = invoice.contractNo || null
+          data.salesOrderNo =
+            invoice.salesOrderNo || ts?.rental?.salesOrderNo || null
+          data.purchaseOrderNo = ts?.rental?.purchaseOrderNo || null
+          data.deliveryOrderNo = ts?.deliveryOrder?.orderNo || null
+          data.timesheetNo = timesheetNo
+          data.workLocation =
+            ts?.rental?.workLocation || ts?.rental?.workCity || null
+          data.paymentTerms =
+            invoice.paymentTerms || ts?.rental?.paymentDuration || null
         }
       }
     } else if (type === 'supplier-invoice') {

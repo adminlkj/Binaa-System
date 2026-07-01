@@ -8,6 +8,7 @@ import { fmtMoney, getCurrencySymbol } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'
 import { getAccountingCSS } from '../shared/css'
 import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'accounting',
@@ -161,8 +162,8 @@ export const template: DocumentTemplate = {
     }
 
     const periodInfo = period
-      ? `<div class="acct-header-subtitle">${lbl.period}: ${period} &nbsp;|&nbsp; ${lbl.currency}: ${currency}</div>`
-      : `<div class="acct-header-subtitle">${lbl.currency}: ${currency}</div>`
+      ? `<div class="acct-header-subtitle">${lbl.period}: ${escapeHtml(period)} &nbsp;|&nbsp; ${lbl.currency}: ${escapeHtml(currency)}</div>`
+      : `<div class="acct-header-subtitle">${lbl.currency}: ${escapeHtml(currency)}</div>`
 
     const isLoss = netProfit < 0
 

@@ -15,6 +15,7 @@ import { fmtPrint, formatDate } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'
 import { getAccountingCSS } from '../shared/css'
 import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
+import { escapeHtml } from '@/lib/escape-html'
 
 // ============ Color helpers ============
 /**
@@ -484,8 +485,8 @@ export const template: DocumentTemplate = {
         ${status === 'CANCELLED' ? `
           <div class="vat-cancelled-banner">
             ${lang === 'ar'
-              ? `✗ تم إلغاء هذا الإقرار${cancelledReason ? ` — السبب: ${cancelledReason}` : ''}${cancelledAt ? ` — بتاريخ: ${formatDate(cancelledAt, lang)}` : ''}`
-              : `✗ This return has been CANCELLED${cancelledReason ? ` — Reason: ${cancelledReason}` : ''}${cancelledAt ? ` — Date: ${formatDate(cancelledAt, lang)}` : ''}`}
+              ? `✗ تم إلغاء هذا الإقرار${cancelledReason ? ` — السبب: ${escapeHtml(cancelledReason)}` : ''}${cancelledAt ? ` — بتاريخ: ${formatDate(cancelledAt, lang)}` : ''}`
+              : `✗ This return has been CANCELLED${cancelledReason ? ` — Reason: ${escapeHtml(cancelledReason)}` : ''}${cancelledAt ? ` — Date: ${formatDate(cancelledAt, lang)}` : ''}`}
           </div>
         ` : ''}
 
@@ -493,19 +494,19 @@ export const template: DocumentTemplate = {
         <div class="vat-info-grid">
           <div class="vat-info-box">
             <div class="vat-info-label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT Number'}</div>
-            <div class="vat-info-value" dir="ltr">${settings.taxNumber || '—'}</div>
+            <div class="vat-info-value" dir="ltr">${escapeHtml(settings.taxNumber || '—')}</div>
           </div>
           <div class="vat-info-box">
             <div class="vat-info-label">${lang === 'ar' ? 'السجل التجاري' : 'Commercial Reg.'}</div>
-            <div class="vat-info-value" dir="ltr">${settings.commercialReg || '—'}</div>
+            <div class="vat-info-value" dir="ltr">${escapeHtml(settings.commercialReg || '—')}</div>
           </div>
           <div class="vat-info-box">
             <div class="vat-info-label">${lang === 'ar' ? 'فترة الإقرار' : 'Tax Period'}</div>
-            <div class="vat-info-value">${quarterName} - ${year}</div>
+            <div class="vat-info-value">${escapeHtml(quarterName)} - ${escapeHtml(String(year))}</div>
           </div>
           <div class="vat-info-box">
             <div class="vat-info-label">${lang === 'ar' ? 'حالة الإقرار' : 'Status'}</div>
-            <div class="vat-info-value">${statusLabel}</div>
+            <div class="vat-info-value">${escapeHtml(statusLabel)}</div>
           </div>
         </div>
 
@@ -687,7 +688,7 @@ export const template: DocumentTemplate = {
             </div>
             ${paymentRef ? `
               <div class="vat-payment-info-row">
-                <span><strong>${lang === 'ar' ? 'رقم مرجع السداد:' : 'Payment Reference:'}</strong> <span dir="ltr">${paymentRef}</span></span>
+                <span><strong>${lang === 'ar' ? 'رقم مرجع السداد:' : 'Payment Reference:'}</strong> <span dir="ltr">${escapeHtml(paymentRef)}</span></span>
                 <span></span>
               </div>
             ` : ''}

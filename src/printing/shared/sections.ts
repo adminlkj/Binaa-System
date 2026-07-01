@@ -5,10 +5,16 @@
 
 import type { PrintSettings } from './types'
 import { numberToArabicWords, numberToEnglishWords } from './utils'
+import { escapeHtml } from '@/lib/escape-html'
 
 // ============ Bank Info Section ============
 
 export function bankInfoSection(settings: PrintSettings, lang: 'ar' | 'en', prefix = 'doc'): string {
+  // AUDIT-2 S2 FIX: respect the `invoiceShowBankDetails` toggle.
+  // The toggle defaults to `true` (bank info shown when banks are configured).
+  // When explicitly `false`, return empty string — even if bankName/bankIban exist.
+  if (settings.invoiceShowBankDetails === false) return ''
+
   if (!settings.bankName && !settings.bankIban) return ''
 
   if (prefix === 'ri') {
@@ -18,15 +24,15 @@ export function bankInfoSection(settings: PrintSettings, lang: 'ar' | 'en', pref
         <div class="ri-bank-grid">
           <div>
             <div class="ri-bank-item-label">${lang === 'ar' ? 'اسم البنك / Bank Name' : 'Bank Name'}</div>
-            <div class="ri-bank-item-value">${settings.bankName || '-'}</div>
+            <div class="ri-bank-item-value">${escapeHtml(settings.bankName || '-')}</div>
           </div>
           <div>
             <div class="ri-bank-item-label">${lang === 'ar' ? 'الآيبان / IBAN' : 'IBAN'}</div>
-            <div class="ri-bank-item-value">${settings.bankIban || '-'}</div>
+            <div class="ri-bank-item-value">${escapeHtml(settings.bankIban || '-')}</div>
           </div>
           <div>
             <div class="ri-bank-item-label">${lang === 'ar' ? 'اسم الحساب / Account Name' : 'Account Name'}</div>
-            <div class="ri-bank-item-value">${settings.bankAccountName || '-'}</div>
+            <div class="ri-bank-item-value">${escapeHtml(settings.bankAccountName || '-')}</div>
           </div>
         </div>
       </div>
@@ -37,9 +43,9 @@ export function bankInfoSection(settings: PrintSettings, lang: 'ar' | 'en', pref
     <div class="bank-info">
       <div class="bank-info-title">${lang === 'ar' ? 'معلومات البنك / Bank Details' : 'Bank Details'}</div>
       <div class="bank-info-row">
-        ${settings.bankName ? `<span>${lang === 'ar' ? 'البنك' : 'Bank'}: ${settings.bankName}</span>` : ''}
-        ${settings.bankIban ? `<span>IBAN: ${settings.bankIban}</span>` : ''}
-        ${settings.bankAccountName ? `<span>${lang === 'ar' ? 'الحساب' : 'Account'}: ${settings.bankAccountName}</span>` : ''}
+        ${settings.bankName ? `<span>${lang === 'ar' ? 'البنك' : 'Bank'}: ${escapeHtml(settings.bankName)}</span>` : ''}
+        ${settings.bankIban ? `<span>IBAN: ${escapeHtml(settings.bankIban)}</span>` : ''}
+        ${settings.bankAccountName ? `<span>${lang === 'ar' ? 'الحساب' : 'Account'}: ${escapeHtml(settings.bankAccountName)}</span>` : ''}
       </div>
     </div>
   `
@@ -47,6 +53,23 @@ export function bankInfoSection(settings: PrintSettings, lang: 'ar' | 'en', pref
 
 // ============ Signatures Section ============
 
+/**
+ * AUDIT-2 S3 FIX: render the company stamp according to `settings.stampPosition`.
+ *
+ * Positions:
+ *   • 'after-signatures'  (default) — stamp rendered inside the signatures area
+ *                    (alongside the signature boxes). Backward-compatible.
+ *   • 'before-signatures' — stamp rendered in its own block above the signatures row.
+ *   • 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left' | 'center' | 'after-totals'
+ *                    — stamp rendered as an absolutely-positioned overlay anchored
+ *                      to the `.page` wrapper (the nearest positioned ancestor).
+ *                      The signatures row is rendered WITHOUT the stamp area.
+ *
+ * The function still returns only the signatures section markup. The overlay
+ * markup is appended at the end of the same return value so callers don't need
+ * to be modified — the overlay anchors to `.page` regardless of where in the
+ * body it appears.
+ */
 export function signaturesSection(settings: PrintSettings, lang: 'ar' | 'en', prefix = 'doc'): string {
   // Read stamp placement/size from settings (with sensible defaults)
   const stampW = settings.stampWidth ?? 140
@@ -57,53 +80,115 @@ export function signaturesSection(settings: PrintSettings, lang: 'ar' | 'en', pr
   const stampOffsetY = settings.stampOffsetY ?? 0
   const showStamp = settings.invoiceShowStamp ?? false
   const showSignature = settings.invoiceShowSignature ?? true
-  // Only render the stamp image if the user has enabled it AND it exists
+  const stampPosition = settings.stampPosition || 'after-signatures'
+
+  // Build the stamp <img> tag with inline styles. Used by both inline and overlay layouts.
   const stampImg = showStamp && settings.stamp
-    ? `<img class="stamp-img" src="${settings.stamp}" alt="Stamp" style="width:${stampW}px;height:${stampH}px;object-fit:contain;opacity:${stampOpacity};transform:rotate(${stampRotation}deg) translate(${stampOffsetX}px,${stampOffsetY}px);" />`
+    ? `<img class="stamp-img" src="${escapeHtml(settings.stamp)}" alt="Stamp" style="width:${stampW}px;height:${stampH}px;object-fit:contain;opacity:${stampOpacity};transform:rotate(${stampRotation}deg) translate(${stampOffsetX}px,${stampOffsetY}px);" />`
     : ''
+
+  // AUDIT-2 S3: when stampPosition is a corner / center / after-totals overlay,
+  // the stamp is rendered as an absolutely-positioned <div> anchored to `.page`.
+  // For these positions, the signatures row is rendered WITHOUT a stamp-area.
+  const overlayPositions = new Set([
+    'top-right', 'top-left', 'bottom-right', 'bottom-left', 'center', 'after-totals'
+  ])
+  const isOverlay = overlayPositions.has(stampPosition)
+
+  // Build the overlay stamp HTML — appended after the signatures markup so it
+  // visually anchors to the `.page` wrapper (which has `position: relative`).
+  const buildOverlay = () => {
+    if (!showStamp || !settings.stamp || !isOverlay) return ''
+    // Determine corner offsets (px). Offset semantics mirror the on-screen preview.
+    const top = `calc(20px + ${stampOffsetY}px)`
+    const bottom = `calc(20px - ${stampOffsetY}px)`
+    const left = `calc(20px + ${stampOffsetX}px)`
+    const right = `calc(20px - ${stampOffsetX}px)`
+    let posCss = ''
+    if (stampPosition === 'top-right')      posCss = `top:${top};right:${right};`
+    else if (stampPosition === 'top-left')  posCss = `top:${top};left:${left};`
+    else if (stampPosition === 'bottom-right') posCss = `bottom:${bottom};right:${right};`
+    else if (stampPosition === 'bottom-left')  posCss = `bottom:${bottom};left:${left};`
+    else if (stampPosition === 'center') {
+      // Center: use transform to true-center, then apply user offsets + rotation.
+      posCss = `top:50%;left:50%;transform:translate(-50%, -50%) rotate(${stampRotation}deg) translate(${stampOffsetX}px, ${stampOffsetY}px);`
+      return `<div class="stamp-overlay" style="position:absolute;z-index:5;pointer-events:none;${posCss}">${stampImg}</div>`
+    } else if (stampPosition === 'after-totals') {
+      // After-totals: place near the bottom of the page (above the footer).
+      posCss = `bottom:80px;right:${right};`
+    }
+    return `<div class="stamp-overlay" style="position:absolute;z-index:5;pointer-events:none;${posCss}">${stampImg}</div>`
+  }
 
   if (!showSignature && !showStamp) return ''
 
   if (prefix === 'ri') {
+    // Rental-invoice layout — only render stamp inside signatures when position is
+    // 'after-signatures' (default) or 'before-signatures'. For overlay positions,
+    // signatures row is rendered without the stamp image.
+    const stampInside = (stampPosition === 'after-signatures') && stampImg
+    const stampBefore = (stampPosition === 'before-signatures') && stampImg
+    const stampBeforeHtml = stampBefore
+      ? `<div class="ri-signatures" style="grid-template-columns:1fr;margin-bottom:8px;">
+           <div class="ri-sign-box" style="display:flex;justify-content:center;align-items:center;min-height:${stampH + 20}px;">
+             ${stampImg}
+             <div class="sign-label">${lang === 'ar' ? 'ختم الشركة / Company Stamp' : 'Company Stamp'}</div>
+           </div>
+         </div>`
+      : ''
+
     if (!showSignature) {
-      // Only show the stamp area
-      return `
+      // Only show the stamp area (only when not an overlay — overlay handled separately)
+      if (isOverlay) return buildOverlay()
+      return `${stampBeforeHtml}
         <div class="ri-signatures" style="grid-template-columns:1fr;">
           <div class="ri-sign-box" style="display:flex;justify-content:center;align-items:center;min-height:${stampH + 20}px;">
-            ${stampImg}
+            ${stampInside || ''}
             <div class="sign-label">${lang === 'ar' ? 'ختم الشركة / Company Stamp' : 'Company Stamp'}</div>
           </div>
-        </div>
-      `
+        </div>`
     }
-    return `
+    return `${stampBeforeHtml}
       <div class="ri-signatures">
         <div class="ri-sign-box" style="min-height:${stampH + 20}px;">
-          ${stampImg}
+          ${stampInside || ''}
           <div class="sign-label">${lang === 'ar' ? 'ختم وتوقيع الشركة / Company Stamp & Signature' : 'Company Stamp & Signature'}</div>
         </div>
         <div class="ri-sign-box">
           <div class="sign-label">${lang === 'ar' ? 'ختم وتوقيع العميل / Customer Stamp & Signature' : 'Customer Stamp & Signature'}</div>
         </div>
       </div>
-    `
+      ${buildOverlay()}`
   }
 
-  return `
-    <div class="signatures-section">
-      <div class="stamp-area" style="min-height:${stampH + 10}px;">
-        ${stampImg}
+  // Default (non-rental) layout
+  const stampInside = (stampPosition === 'after-signatures') && stampImg
+  const stampBefore = (stampPosition === 'before-signatures') && stampImg
+  const stampBeforeHtml = stampBefore
+    ? `<div class="stamp-area" style="min-height:${stampH + 10}px;text-align:${lang === 'ar' ? 'right' : 'left'};margin-bottom:8px;">
+         ${stampImg}
+       </div>`
+    : ''
+
+  // For overlay positions, skip the inline stamp-area entirely (only render signatures).
+  const showInlineStampArea = !isOverlay && stampInside
+  const signaturesRow = showSignature
+    ? `
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'توقيع المدير المالي' : 'CFO Signature'}</div>
       </div>
-      ${showSignature ? `
-        <div class="signature-box">
-          <div class="signature-line">${lang === 'ar' ? 'توقيع المدير المالي' : 'CFO Signature'}</div>
-        </div>
-        <div class="signature-box">
-          <div class="signature-line">${lang === 'ar' ? 'توقيع المدير العام' : 'GM Signature'}</div>
-        </div>
-      ` : ''}
+      <div class="signature-box">
+        <div class="signature-line">${lang === 'ar' ? 'توقيع المدير العام' : 'GM Signature'}</div>
+      </div>
+    `
+    : ''
+
+  return `${stampBeforeHtml}
+    <div class="signatures-section">
+      ${showInlineStampArea ? `<div class="stamp-area" style="min-height:${stampH + 10}px;">${stampImg}</div>` : ''}
+      ${signaturesRow}
     </div>
-  `
+    ${buildOverlay()}`
 }
 
 // ============ Amount in Words Section ============
@@ -143,7 +228,7 @@ export function termsSection(terms: string | null | undefined, settings: PrintSe
     return `
       <div class="ri-terms">
         <div class="ri-terms-title">${lang === 'ar' ? 'الشروط والأحكام / Terms & Conditions' : 'Terms & Conditions'}</div>
-        ${content}
+        ${escapeHtml(content)}
       </div>
     `
   }
@@ -151,7 +236,7 @@ export function termsSection(terms: string | null | undefined, settings: PrintSe
   return `
     <div class="terms-section">
       <div class="terms-title">${lang === 'ar' ? 'الشروط والأحكام / Terms & Conditions' : 'Terms & Conditions'}</div>
-      ${content}
+      ${escapeHtml(content)}
     </div>
   `
 }

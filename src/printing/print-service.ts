@@ -198,6 +198,24 @@ export function generatePrintHTML(options: PrintOptions): string {
     .header-doc-title-section { background: ${primaryColor} !important; }
     .header-doc-title { color: white !important; }
     .stamp-img { max-width: ${settings.stampWidth ?? 140}px !important; max-height: ${settings.stampHeight ?? 140}px !important; opacity: ${Number(settings.stampOpacity ?? 0.9)} !important; transform: rotate(${settings.stampRotation ?? 0}deg) translate(${settings.stampOffsetX ?? 0}px, ${settings.stampOffsetY ?? 0}px) !important; }
+
+    /* AUDIT-2 S4 FIX: extend color override to cover the non-rental document
+       selectors that were previously left emerald-green regardless of the
+       user-chosen primary color. Without these overrides, the table headers,
+       grand-total rows, section titles, and info-item borders in
+       service/supplier/purchase/progress/payment templates stayed emerald
+       even when the user picked a different brand color. */
+    .doc-table thead { background: ${primaryColor} !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .doc-table thead th { border-bottom: 2px solid ${primaryDark} !important; color: white !important; }
+    .doc-table thead tr { background: ${primaryColor} !important; }
+    .doc-table thead tr th { background: ${primaryColor} !important; border-color: ${primaryDark} !important; }
+    .total-row.grand { background: ${primaryColor} !important; color: white !important; }
+    .total-row.grand .label { color: rgba(255,255,255,0.88) !important; }
+    .total-row.grand .value { color: white !important; }
+    .section-title { color: ${primaryColor} !important; border-left: 3px solid ${primaryColor} !important; border-right: 3px solid ${primaryColor} !important; }
+    .info-item { border-left: 3px solid ${primaryColor} !important; border-right: 3px solid ${primaryColor} !important; }
+    /* Totals-section header bar (used by some templates) */
+    .totals-section .totals-box { border-color: ${primaryColor} !important; }
   `
 
   // Font family override

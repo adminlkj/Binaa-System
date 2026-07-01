@@ -1,7 +1,14 @@
 import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
-import { createSalaryAccrualJournalEntry } from '../route'
 import { NextResponse } from 'next/server'
+
+// FIX-A (AUDIT-2 Part A — HR Duplication Fix):
+// Salary accrual JEs are posted ONLY by payroll-runs approval (PUT /api/payroll-runs/[id]
+// with status=APPROVED). This screen no longer posts accrual JEs on approve — the salary
+// record can be approved without posting a JE. This avoids double-posting when both the
+// salaries and payroll-runs screens are used for the same employee/month. The helper
+// `createSalaryAccrualJournalEntry` is no longer imported here (it remains exported from
+// ../route.ts for backward compatibility with E2E tests that call it directly).
 
 export async function GET(
   request: Request,
@@ -63,8 +70,10 @@ export async function PUT(
 
     let projectCostCreated = false
 
-    // When approving: create accrual JE + project cost atomically.
-    // R1 enforced — if the JE fails, the status update is rolled back too.
+    // When approving: create project cost entry atomically (NO salary accrual JE).
+    // FIX-A (AUDIT-2 Part A — HR Duplication Fix): the salary accrual JE is now posted
+    // ONLY by payroll-runs approval. Approving a salary here just flips the status and
+    // (optionally) records the project cost — no GL impact.
     if (body.status === 'APPROVED' && existing.status === 'DRAFT') {
       const result = await db.$transaction(async (tx) => {
         const employee = await tx.employee.findUnique({
@@ -75,7 +84,6 @@ export async function PUT(
         const salaryDate = new Date(existing.year, existing.month - 1, 1)
 
         // Resolve cost center from project allocation
-        let costCenterId: string | undefined
         const allocation = await tx.resourceAllocation.findFirst({
           where: {
             resourceType: 'EMPLOYEE',
@@ -84,30 +92,8 @@ export async function PUT(
             OR: [{ endDate: null }, { endDate: { gte: salaryDate } }],
           },
         })
-        if (allocation) {
-          const project = await tx.project.findUnique({
-            where: { id: allocation.projectId },
-            select: { code: true },
-          })
-          if (project) {
-            const costCenter = await tx.costCenter.findFirst({
-              where: { code: project.code },
-            })
-            if (costCenter) costCenterId = costCenter.id
-          }
-        }
 
-        // Accrual JE: Dr Payroll / Cr Salaries Payable
-        const entry = await createSalaryAccrualJournalEntry({
-          employeeName: employee?.nameAr || employee?.name || '',
-          netSalary: Number(existing.netSalary),
-          salaryDate,
-          month: existing.month,
-          year: existing.year,
-          costCenterId,
-          salaryId: existing.id,
-        }, tx)
-
+        // Project cost entry if employee is allocated (independent of GL accrual)
         if (allocation) {
           await tx.equipmentCost.create({
             data: {
@@ -124,7 +110,6 @@ export async function PUT(
           where: { id },
           data: {
             status: 'APPROVED',
-            journalEntryId: entry.id,
           },
           include: {
             employee: { select: { id: true, code: true, name: true, nameAr: true } },

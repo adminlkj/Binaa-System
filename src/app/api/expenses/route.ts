@@ -5,6 +5,7 @@ import { reverseEntry } from '@/lib/accounting/engine'
 import { postJournalEntry, getNextEntryNo } from '@/lib/accounting/guard'
 import { getDefaultAccountByRole, AccountRole } from '@/lib/account-roles'
 import { toNumber } from '@/lib/decimal'
+import { getDefaultVatRate } from '@/lib/settings'
 import { NextResponse } from 'next/server'
 
 // ============================================================================
@@ -213,7 +214,9 @@ export async function POST(request: Request) {
     const projectId = expenseType === 'INTERNAL' ? null : (body.projectId || null)
 
     // Calculate VAT — when VAT is disabled (vatRate === 0), vatAmount is 0
-    const vatRate = body.vatRate !== undefined ? parseFloat(body.vatRate) : 0.15
+    // AUDIT-2 S1 FIX: fall back to configured company default instead of hardcoding 0.15.
+    // A zero rate (tax-exempt) is preserved via `!== undefined` check; falls back to system default.
+    const vatRate = body.vatRate !== undefined ? parseFloat(body.vatRate) : await getDefaultVatRate()
     const vatAmount = body.vatAmount !== undefined
       ? parseFloat(body.vatAmount)
       : Math.round(amount * vatRate * 100) / 100

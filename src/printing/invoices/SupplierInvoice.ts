@@ -7,6 +7,7 @@ import type { DocumentTemplate, PrintSettings } from '../shared/types'
 import { fmtMoney, formatDate, formatMoneyPrint, getCurrencySymbol, encodeZATCATLV } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
 import { signaturesSection, amountInWordsSection, totalsSection, qrCodeSection, qrCodeScript } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 // ============ Template Implementation ============
 
@@ -37,7 +38,7 @@ export const SupplierInvoiceTemplate: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'رقم الفاتورة / Invoice No' : 'Invoice No'}</div>
-          <div class="info-value">${data.invoiceNo || data.id || ''}</div>
+          <div class="info-value">${escapeHtml(data.invoiceNo || data.id || '')}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'التاريخ / Date' : 'Date'}</div>
@@ -51,8 +52,8 @@ export const SupplierInvoiceTemplate: DocumentTemplate = {
       <div class="parties-section">
         <div class="party-card">
           <div class="party-card-title">${lang === 'ar' ? 'المورد / Supplier' : 'Supplier'}</div>
-          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${data.supplierName || ''}</span></div>
-          ${data.supplierTaxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${data.supplierTaxNumber}</span></div>` : ''}
+          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الاسم' : 'Name'}</span><span class="value">${escapeHtml(data.supplierName || '')}</span></div>
+          ${data.supplierTaxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${escapeHtml(data.supplierTaxNumber)}</span></div>` : ''}
         </div>
         <div class="party-card">
           <div class="party-card-title">${lang === 'ar' ? 'المشتري / Buyer' : 'Buyer'}</div>
@@ -78,7 +79,7 @@ export const SupplierInvoiceTemplate: DocumentTemplate = {
           ${items.map((item, i) => `
             <tr>
               <td class="row-num">${i + 1}</td>
-              <td>${item.description || ''}</td>
+              <td>${escapeHtml(item.description || '')}</td>
               <td style="text-align:center;">${item.quantity || 0}</td>
               <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
               <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>

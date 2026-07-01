@@ -7,6 +7,7 @@ import type { DocumentTemplate, PrintSettings } from '../shared/types'
 import { fmtMoney, formatDate, getCurrencySymbol } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
 import { bankInfoSection, signaturesSection, amountInWordsSection } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'project',
@@ -123,8 +124,8 @@ export const template: DocumentTemplate = {
           ${changeOrders.map((co, i) => `
             <tr>
               <td class="row-num">${i + 1}</td>
-              <td>${co.orderNo || co.changeOrderNo || ''}</td>
-              <td>${co.description || ''}</td>
+              <td>${escapeHtml(co.orderNo || co.changeOrderNo || '')}</td>
+              <td>${escapeHtml(co.description || '')}</td>
               <td class="amount-cell">${fmtMoney(Number(co.changeAmount || co.amount) || 0, settings, lang)}</td>
             </tr>
           `).join('')}
@@ -136,7 +137,7 @@ export const template: DocumentTemplate = {
     const scopeHtml = description ? `
       <div class="section-title">${lbl.scopeOfWork}</div>
       <div style="padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;font-size:10px;line-height:1.7;">
-        ${description}
+        ${escapeHtml(description)}
       </div>
     ` : ''
 
@@ -145,7 +146,7 @@ export const template: DocumentTemplate = {
     const paymentTermsHtml = paymentTermsText ? `
       <div class="section-title">${lbl.paymentTerms}</div>
       <div style="padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;font-size:10px;line-height:1.7;">
-        ${paymentTermsText}
+        ${escapeHtml(paymentTermsText)}
       </div>
     ` : ''
 
@@ -155,7 +156,7 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lbl.contractNo}</div>
-          <div class="info-value">${contractNo}</div>
+          <div class="info-value">${escapeHtml(contractNo)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lbl.date}</div>
@@ -168,11 +169,11 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lbl.projectName}</div>
-          <div class="info-value">${projectName}</div>
+          <div class="info-value">${escapeHtml(projectName)}</div>
         </div>
         ${projectCode ? `<div class="info-item">
           <div class="info-label">${lbl.projectCode}</div>
-          <div class="info-value">${projectCode}</div>
+          <div class="info-value">${escapeHtml(projectCode)}</div>
         </div>` : ''}
       </div>
 
@@ -180,11 +181,11 @@ export const template: DocumentTemplate = {
       <div class="section-title">${lbl.clientInfo}</div>
       <div class="parties-section">
         <div class="party-card">
-          <div class="party-card-row"><span class="label">${lbl.clientName}</span><span class="value">${clientName}</span></div>
-          ${clientAddress ? `<div class="party-card-row"><span class="label">${lbl.clientAddress}</span><span class="value">${clientAddress}</span></div>` : ''}
-          ${clientTaxNumber ? `<div class="party-card-row"><span class="label">${lbl.clientTaxNumber}</span><span class="value">${clientTaxNumber}</span></div>` : ''}
-          ${clientPhone ? `<div class="party-card-row"><span class="label">${lbl.clientPhone}</span><span class="value">${clientPhone}</span></div>` : ''}
-          ${clientEmail ? `<div class="party-card-row"><span class="label">${lbl.clientEmail}</span><span class="value">${clientEmail}</span></div>` : ''}
+          <div class="party-card-row"><span class="label">${lbl.clientName}</span><span class="value">${escapeHtml(clientName)}</span></div>
+          ${clientAddress ? `<div class="party-card-row"><span class="label">${lbl.clientAddress}</span><span class="value">${escapeHtml(clientAddress)}</span></div>` : ''}
+          ${clientTaxNumber ? `<div class="party-card-row"><span class="label">${lbl.clientTaxNumber}</span><span class="value">${escapeHtml(clientTaxNumber)}</span></div>` : ''}
+          ${clientPhone ? `<div class="party-card-row"><span class="label">${lbl.clientPhone}</span><span class="value">${escapeHtml(clientPhone)}</span></div>` : ''}
+          ${clientEmail ? `<div class="party-card-row"><span class="label">${lbl.clientEmail}</span><span class="value">${escapeHtml(clientEmail)}</span></div>` : ''}
         </div>
       </div>
 

@@ -6,6 +6,7 @@
 import type { DocumentTemplate, PrintSettings } from '../shared/types'
 import { fmtMoney, formatDate, getCurrencySymbol } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'report',
@@ -223,15 +224,15 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lbl.projectName}</div>
-          <div class="info-value">${projectName}</div>
+          <div class="info-value">${escapeHtml(projectName)}</div>
         </div>
         ${projectCode ? `<div class="info-item">
           <div class="info-label">${lbl.projectCode}</div>
-          <div class="info-value">${projectCode}</div>
+          <div class="info-value">${escapeHtml(projectCode)}</div>
         </div>` : ''}
         <div class="info-item">
           <div class="info-label">${lbl.clientName}</div>
-          <div class="info-value">${clientName}</div>
+          <div class="info-value">${escapeHtml(clientName)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lbl.contractValue}</div>
@@ -304,7 +305,7 @@ export const template: DocumentTemplate = {
             return `
               <tr>
                 <td class="row-num">${i + 1}</td>
-                <td>${name}</td>
+                <td>${escapeHtml(name)}</td>
                 <td class="amount-cell">${fmtMoney(item.amount, settings, lang)}</td>
                 <td style="text-align:center;">${pct}${lbl.percentage}</td>
               </tr>

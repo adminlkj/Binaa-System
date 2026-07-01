@@ -8,6 +8,7 @@ import { fmtMoney, formatMoneyPrint, getCurrencySymbol, formatDate, formatDelive
 import { getRentalInvoiceCSS } from '../shared/css'
 import { bankInfoSection, signaturesSection, amountInWordsSection, termsSection, qrCodeSection, qrCodeScript } from '../shared/sections'
 import { generateRentalInvoiceHeader, generateRentalInvoiceFooter } from '../shared/headers-footers'
+import { escapeHtml } from '@/lib/escape-html'
 
 // ============ Template Implementation ============
 
@@ -39,7 +40,7 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
       <div class="ri-info-section">
         <div class="ri-info-item">
           <div class="ri-info-label">${lang === 'ar' ? 'رقم الفاتورة / Invoice No' : 'Invoice No'}</div>
-          <div class="ri-info-value">${data.invoiceNo || data.id || ''}</div>
+          <div class="ri-info-value">${escapeHtml(data.invoiceNo || data.id || '')}</div>
         </div>
         <div class="ri-info-item">
           <div class="ri-info-label">${lang === 'ar' ? 'تاريخ الفاتورة / Invoice Date' : 'Invoice Date'}</div>
@@ -51,7 +52,7 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
         </div>
         <div class="ri-info-item">
           <div class="ri-info-label">${lang === 'ar' ? 'شروط السداد / Payment Terms' : 'Payment Terms'}</div>
-          <div class="ri-info-value">${(data.paymentTerms as string) || (lang === 'ar' ? 'حسب العقد' : 'As per contract')}</div>
+          <div class="ri-info-value">${escapeHtml((data.paymentTerms as string) || (lang === 'ar' ? 'حسب العقد' : 'As per contract'))}</div>
         </div>
       </div>
     `
@@ -64,23 +65,23 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
         <div class="ri-rental-data-grid">
           ${data.contractNo ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'رقم العقد / Contract No' : 'Contract No'}</div>
-            <div class="ri-rental-data-value">${data.contractNo}</div>
+            <div class="ri-rental-data-value">${escapeHtml(data.contractNo)}</div>
           </div>` : ''}
           ${data.salesOrderNo ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'رقم طلب البيع / Sales Order' : 'Sales Order'}</div>
-            <div class="ri-rental-data-value">${data.salesOrderNo}</div>
+            <div class="ri-rental-data-value">${escapeHtml(data.salesOrderNo)}</div>
           </div>` : ''}
           ${data.purchaseOrderNo ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'رقم طلب شراء العميل / Customer PO' : 'Customer PO'}</div>
-            <div class="ri-rental-data-value">${data.purchaseOrderNo}</div>
+            <div class="ri-rental-data-value">${escapeHtml(data.purchaseOrderNo)}</div>
           </div>` : ''}
           ${data.deliveryOrderNo ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'رقم أمر التوصيل / Delivery Order' : 'Delivery Order'}</div>
-            <div class="ri-rental-data-value">${data.deliveryOrderNo}</div>
+            <div class="ri-rental-data-value">${escapeHtml(data.deliveryOrderNo)}</div>
           </div>` : ''}
           ${data.timesheetNo ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'رقم التايم شيت / Timesheet' : 'Timesheet'}</div>
-            <div class="ri-rental-data-value">${data.timesheetNo}</div>
+            <div class="ri-rental-data-value">${escapeHtml(data.timesheetNo)}</div>
           </div>` : ''}
           ${data.deliveryMonth ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'شهر التشغيل / Operating Month' : 'Operating Month'}</div>
@@ -88,7 +89,7 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
           </div>` : ''}
           ${data.equipmentName ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'المعدة / Equipment' : 'Equipment'}</div>
-            <div class="ri-rental-data-value">${data.equipmentName}</div>
+            <div class="ri-rental-data-value">${escapeHtml(data.equipmentName)}</div>
           </div>` : ''}
           ${data.operatingHours != null ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'ساعات التشغيل / Operating Hours' : 'Operating Hours'}</div>
@@ -96,7 +97,7 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
           </div>` : ''}
           ${data.workLocation ? `<div class="ri-rental-data-item">
             <div class="ri-rental-data-label">${lang === 'ar' ? 'الموقع / Location' : 'Location'}</div>
-            <div class="ri-rental-data-value">${data.workLocation}</div>
+            <div class="ri-rental-data-value">${escapeHtml(data.workLocation)}</div>
           </div>` : ''}
         </div>
       </div>
@@ -108,15 +109,15 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
         <div class="ri-party-card">
           <div class="ri-party-title">${lang === 'ar' ? 'من / From' : 'From'}</div>
           <div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
-          ${settings.address ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
-          ${settings.taxNumber ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${settings.taxNumber}</span></div>` : ''}
-          ${settings.commercialReg ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'سجل تجاري' : 'CR No'}</span><span class="value">${settings.commercialReg}</span></div>` : ''}
+          ${settings.address ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${escapeHtml(settings.address)}</span></div>` : ''}
+          ${settings.taxNumber ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${escapeHtml(settings.taxNumber)}</span></div>` : ''}
+          ${settings.commercialReg ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'سجل تجاري' : 'CR No'}</span><span class="value">${escapeHtml(settings.commercialReg)}</span></div>` : ''}
         </div>
         <div class="ri-party-card">
           <div class="ri-party-title">${lang === 'ar' ? 'إلى / To' : 'To'}</div>
-          <div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${data.clientName || ''}</span></div>
-          ${data.clientAddress ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${data.clientAddress}</span></div>` : ''}
-          ${data.clientTaxNumber ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${data.clientTaxNumber}</span></div>` : ''}
+          <div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${escapeHtml(data.clientName || '')}</span></div>
+          ${data.clientAddress ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${escapeHtml(data.clientAddress)}</span></div>` : ''}
+          ${data.clientTaxNumber ? `<div class="ri-party-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${escapeHtml(data.clientTaxNumber)}</span></div>` : ''}
         </div>
       </div>
     `
@@ -125,9 +126,9 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
     const tableRows = items.map((item, i) => `
       <tr>
         <td class="row-num">${i + 1}</td>
-        <td>${item.description || ''}</td>
+        <td>${escapeHtml(item.description || '')}</td>
         <td style="text-align:center;">${item.quantity || 0}</td>
-        <td>${(item.unit as string) || (lang === 'ar' ? 'ساعة' : 'hr')}</td>
+        <td>${escapeHtml((item.unit as string) || (lang === 'ar' ? 'ساعة' : 'hr'))}</td>
         <td class="amount-cell">${fmtMoney(Number(item.unitPrice) || 0, settings, lang)}</td>
         <td class="amount-cell">${fmtMoney(Number(item.totalPrice) || 0, settings, lang)}</td>
       </tr>
@@ -220,12 +221,14 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
   },
 
   getExtraScripts(data: Record<string, unknown>, settings: PrintSettings, lang: 'ar' | 'en'): string {
+    // FIX-A (AUDIT-1 XSS): use JSON.stringify to safely embed user-controlled invoiceNo in JS string context
     const invNo = (data.invoiceNo as string) || (data.id as string) || 'invoice'
 
     return `
       <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
       <script>
+        var invNo = ${JSON.stringify(invNo)};
         function exportAsImage(format) {
           var page = document.getElementById('invoice-page');
           if (!page) return;
@@ -249,7 +252,7 @@ export const RentalInvoiceTemplate: DocumentTemplate = {
             if (btnPng) btnPng.classList.remove('ri-export-loading');
             var link = document.createElement('a');
             var ext = format === 'jpeg' ? 'jpg' : 'png';
-            link.download = '${invNo}.' + ext;
+            link.download = invNo + '.' + ext;
             link.href = canvas.toDataURL('image/' + format, 0.95);
             link.click();
           }).catch(function(err) {

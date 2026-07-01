@@ -7,6 +7,7 @@ import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, getCurrencySymbol } from '../shared/utils'
 import { signaturesSection, amountInWordsSection, totalsSection } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'financial',
@@ -30,7 +31,7 @@ export const template: DocumentTemplate = {
       <div class="info-grid-3">
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'الموظف / Employee' : 'Employee'}</div>
-          <div class="info-value">${data.employeeName || ''}</div>
+          <div class="info-value">${escapeHtml(data.employeeName || '')}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'الشهر / Month' : 'Month'}</div>

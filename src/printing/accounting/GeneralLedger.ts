@@ -8,6 +8,7 @@ import { fmtMoney, formatDate, getCurrencySymbol } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'
 import { getAccountingCSS } from '../shared/css'
 import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'accounting',
@@ -94,9 +95,9 @@ export const template: DocumentTemplate = {
     // Period info with currency
     let periodInfo = ''
     if (period) {
-      periodInfo = `<div class="acct-header-subtitle">${lbl.period}: ${period} &nbsp;|&nbsp; ${lbl.currency}: ${currency}</div>`
+      periodInfo = `<div class="acct-header-subtitle">${lbl.period}: ${escapeHtml(period)} &nbsp;|&nbsp; ${lbl.currency}: ${escapeHtml(currency)}</div>`
     } else {
-      periodInfo = `<div class="acct-header-subtitle">${lbl.currency}: ${currency}</div>`
+      periodInfo = `<div class="acct-header-subtitle">${lbl.currency}: ${escapeHtml(currency)}</div>`
     }
 
     // Check if any entry has a reference
@@ -108,8 +109,8 @@ export const template: DocumentTemplate = {
         <tr>
           <td class="row-num">${i + 1}</td>
           <td style="white-space:nowrap;">${formatDate(entry.date, lang)}</td>
-          ${hasRef ? `<td class="code-cell">${entry.reference || ''}</td>` : ''}
-          <td>${entry.description}</td>
+          ${hasRef ? `<td class="code-cell">${escapeHtml(entry.reference || '')}</td>` : ''}
+          <td>${escapeHtml(entry.description)}</td>
           <td class="amount-cell">${entry.debit ? fmtMoney(entry.debit, settings, lang) : '-'}</td>
           <td class="amount-cell">${entry.credit ? fmtMoney(entry.credit, settings, lang) : '-'}</td>
           <td class="amount-cell">${fmtMoney(entry.balance, settings, lang)}</td>
@@ -120,11 +121,11 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lbl.account}</div>
-          <div class="info-value">${accountDisplay}</div>
+          <div class="info-value">${escapeHtml(accountDisplay)}</div>
         </div>
         ${accountCode ? `<div class="info-item">
           <div class="info-label">${lbl.accountCode}</div>
-          <div class="info-value gl-account-code">${accountCode}</div>
+          <div class="info-value gl-account-code">${escapeHtml(accountCode)}</div>
         </div>` : ''}
         <div class="info-item">
           <div class="info-label">${lbl.openingBalance}</div>

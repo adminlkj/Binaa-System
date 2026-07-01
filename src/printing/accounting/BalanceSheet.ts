@@ -8,6 +8,7 @@ import { fmtMoney, getCurrencySymbol } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'
 import { getAccountingCSS } from '../shared/css'
 import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
+import { escapeHtml } from '@/lib/escape-html'
 
 interface BalanceSheetItem {
   name: string
@@ -194,8 +195,8 @@ export const template: DocumentTemplate = {
     }
 
     const periodInfo = period
-      ? `<div class="acct-header-subtitle">${lbl.asOfDate}: ${period} &nbsp;|&nbsp; ${lbl.currency}: ${currency}</div>`
-      : `<div class="acct-header-subtitle">${lbl.currency}: ${currency}</div>`
+      ? `<div class="acct-header-subtitle">${lbl.asOfDate}: ${escapeHtml(period)} &nbsp;|&nbsp; ${lbl.currency}: ${escapeHtml(currency)}</div>`
+      : `<div class="acct-header-subtitle">${lbl.currency}: ${escapeHtml(currency)}</div>`
 
     // Helper: render items list
     const renderItemRows = (items: BalanceSheetItem[]): string => {
@@ -203,7 +204,7 @@ export const template: DocumentTemplate = {
         const displayName = lang === 'ar' ? item.name : (item.nameEn || item.name)
         return `
           <div class="bs-row bs-indent">
-            <span class="bs-label">${item.code ? `<span style="color:#64748b;font-family:'Inter',sans-serif;font-size:8px;direction:ltr;">${item.code}</span> - ` : ''}${displayName}</span>
+            <span class="bs-label">${item.code ? `<span style="color:#64748b;font-family:'Inter',sans-serif;font-size:8px;direction:ltr;">${escapeHtml(item.code)}</span> - ` : ''}${escapeHtml(displayName)}</span>
             <span class="bs-amount">${fmtMoney(item.amount, settings, lang)}</span>
           </div>`
       }).join('')

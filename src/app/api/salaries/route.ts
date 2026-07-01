@@ -36,7 +36,23 @@ export async function GET(request: Request) {
 }
 
 /**
- * Salary accrual journal entry.
+ * Salary accrual journal entry helper.
+ *
+ * IMPORTANT (FIX-A / AUDIT-2 Part A — HR Duplication Fix):
+ * This helper is RETAINED for backward compatibility with existing E2E tests
+ * (scripts/e2e-payroll-cycle.ts calls it directly to verify the accounting
+ * model). However, it is NO LONGER called by the salaries API routes
+ * (POST /api/salaries, PUT /api/salaries/[id]).
+ *
+ * Salary accrual JEs are now posted ONLY by the payroll-runs approval flow
+ * (PUT /api/payroll-runs/[id] with status=APPROVED). That flow correctly posts
+ * Dr PAYROLL_EXPENSE + Dr GOSI_EXPENSE / Cr SALARIES_PAYABLE + Cr GOSI_PAYABLE
+ * (with optional Cr EMPLOYEE_ADVANCE for deductions) and is the single source
+ * of truth for salary accruals. The salaries screen creates salary records
+ * (DRAFT / APPROVED) that can be included in a payroll run — it no longer
+ * posts accrual JEs to avoid double-posting when both screens are used for
+ * the same employee/month.
+ *
  * Accounting model (correct double-entry):
  *   Dr PAYROLL_EXPENSE     netSalary      (expense recognized)
  *   Cr SALARIES_PAYABLE    netSalary      (liability until paid)
@@ -102,10 +118,15 @@ export async function POST(request: Request) {
 
     const netSalary = basicSalary + housingAllowance + transportAllowance + otherAllowances + overtimeAmount - deductions
 
-    // Atomic: salary record + accrual JE + project cost in one transaction.
-    // R1 enforced — if the JE fails, the salary record is rolled back too.
+    // FIX-A (AUDIT-2 Part A — HR Duplication Fix):
+    // Salary accrual JEs are posted ONLY by payroll-runs approval (PUT /api/payroll-runs/[id]
+    // with status=APPROVED). This screen creates salary records that can be included in a
+    // payroll run — it no longer posts accrual JEs to avoid double-posting when both screens
+    // are used for the same employee/month. The salary record is created as a DRAFT (or
+    // APPROVED — but with no JE posted in either case). Project cost tracking (EquipmentCost)
+    // is preserved when the salary is approved, as it is independent of the GL accrual.
     const { salary, projectCostCreated } = await db.$transaction(async (tx: PrismaTransaction) => {
-      // Create the salary record first so we have a stable sourceId for the JE
+      // Create the salary record first so we have a stable sourceId for any downstream links.
       const created = await tx.salary.create({
         data: {
           employeeId: body.employeeId,
@@ -125,16 +146,15 @@ export async function POST(request: Request) {
         },
       })
 
-      let journalEntryId: string | null = null
       let projectCostCreated = false
 
-      // If status is APPROVED, create accrual JE + project cost entry
+      // If status is APPROVED, create the project cost entry (EquipmentCost) only.
+      // NO salary accrual JE is posted from this screen — see comment above.
       if (body.status === 'APPROVED') {
         const employee = created.employee
         const salaryDate = new Date(body.year, body.month - 1, 1)
 
         // Resolve cost center from project allocation (NOT projectId-as-costCenterId)
-        let costCenterId: string | undefined
         const allocation = await tx.resourceAllocation.findFirst({
           where: {
             resourceType: 'EMPLOYEE',
@@ -143,32 +163,8 @@ export async function POST(request: Request) {
             OR: [{ endDate: null }, { endDate: { gte: salaryDate } }],
           },
         })
-        if (allocation) {
-          const project = await tx.project.findUnique({
-            where: { id: allocation.projectId },
-            select: { id: true, code: true, name: true },
-          })
-          if (project) {
-            const costCenter = await tx.costCenter.findFirst({
-              where: { code: project.code },
-            })
-            if (costCenter) costCenterId = costCenter.id
-          }
-        }
 
-        // Accrual JE: Dr Payroll / Cr Salaries Payable (NO cash movement yet)
-        const entry = await createSalaryAccrualJournalEntry({
-          employeeName: employee.nameAr || employee.name || '',
-          netSalary,
-          salaryDate,
-          month: parseInt(body.month),
-          year: parseInt(body.year),
-          costCenterId,
-          salaryId: created.id,
-        }, tx)
-        journalEntryId = entry.id
-
-        // Project cost entry if employee is allocated
+        // Project cost entry if employee is allocated (independent of GL accrual)
         if (allocation) {
           await tx.equipmentCost.create({
             data: {
@@ -180,14 +176,6 @@ export async function POST(request: Request) {
           })
           projectCostCreated = true
         }
-      }
-
-      // Attach journalEntryId
-      if (journalEntryId) {
-        await tx.salary.update({
-          where: { id: created.id },
-          data: { journalEntryId },
-        })
       }
 
       const withJe = await tx.salary.findUniqueOrThrow({

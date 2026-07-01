@@ -8,6 +8,7 @@ import { fmtMoney, formatDate, getCurrencySymbol } from '../shared/utils'
 import { getAccountingCSS } from '../shared/css'
 import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
 import { signaturesSection } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'accounting',
@@ -142,8 +143,8 @@ export const template: DocumentTemplate = {
     const descriptionHtml = description ? `
       <div class="je-description-box">
         <div class="je-description-label">${lbl.description}</div>
-        <div>${description}</div>
-        ${source ? `<div class="je-source">${lbl.source}: ${source}</div>` : ''}
+        <div>${escapeHtml(description)}</div>
+        ${source ? `<div class="je-source">${lbl.source}: ${escapeHtml(source)}</div>` : ''}
       </div>
     ` : ''
 
@@ -154,8 +155,8 @@ export const template: DocumentTemplate = {
       return `
         <tr>
           <td class="row-num">${i + 1}</td>
-          ${hasCodes ? `<td class="code-cell">${line.accountCode || ''}</td>` : ''}
-          <td>${displayName}</td>
+          ${hasCodes ? `<td class="code-cell">${escapeHtml(line.accountCode || '')}</td>` : ''}
+          <td>${escapeHtml(displayName)}</td>
           <td class="amount-cell">${line.debit ? fmtMoney(line.debit, settings, lang) : '-'}</td>
           <td class="amount-cell">${line.credit ? fmtMoney(line.credit, settings, lang) : '-'}</td>
         </tr>

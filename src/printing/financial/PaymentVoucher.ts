@@ -9,6 +9,7 @@ import type { DocumentTemplate } from '../shared/types'
 import { getDefaultCSS } from '../shared/css'
 import { fmtMoney, formatDateShort, getCurrencySymbol } from '../shared/utils'
 import { bankInfoSection, signaturesSection, amountInWordsSection } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'financial',
@@ -40,7 +41,7 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'رقم السند / Voucher No' : 'Voucher No'}</div>
-          <div class="info-value">${data.paymentNo || data.receiptNo || data.id || ''}</div>
+          <div class="info-value">${escapeHtml(data.paymentNo || data.receiptNo || data.id || '')}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'التاريخ / Date' : 'Date'}</div>
@@ -48,11 +49,11 @@ export const template: DocumentTemplate = {
         </div>
         <div class="info-item">
           <div class="info-label">${partyLabel}</div>
-          <div class="info-value">${data.clientName || data.supplierName || '-'}</div>
+          <div class="info-value">${escapeHtml(data.clientName || data.supplierName || '-')}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'طريقة الدفع / Payment Method' : 'Payment Method'}</div>
-          <div class="info-value">${data.paymentMethod || (lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer')}</div>
+          <div class="info-value">${escapeHtml(data.paymentMethod || (lang === 'ar' ? 'تحويل بنكي' : 'Bank Transfer'))}</div>
         </div>
       </div>
 
@@ -60,18 +61,18 @@ export const template: DocumentTemplate = {
       <div class="info-grid" style="margin-top:4px;">
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'رقم المرجع / Reference' : 'Reference No'}</div>
-          <div class="info-value">${data.referenceNo}</div>
+          <div class="info-value">${escapeHtml(data.referenceNo)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'الحساب البنكي / Bank Account' : 'Bank Account'}</div>
-          <div class="info-value">${data.bankAccount || '-'}</div>
+          <div class="info-value">${escapeHtml(data.bankAccount || '-')}</div>
         </div>
       </div>` : ''}
 
       ${data.description ? `
       <div style="margin:8px 0;padding:6px 10px;background:#f8fafc;border-radius:3px;border:1px solid #e2e8f0;">
         <div style="font-size:7px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:2px;">${lang === 'ar' ? 'البيان / Description' : 'Description'}</div>
-        <div style="font-size:9.5px;font-weight:500;color:#1e293b;">${data.description}</div>
+        <div style="font-size:9.5px;font-weight:500;color:#1e293b;">${escapeHtml(data.description)}</div>
       </div>` : ''}
 
       <div class="totals-section">

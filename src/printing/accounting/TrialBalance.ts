@@ -8,6 +8,7 @@ import { fmtMoney, formatDate, getCurrencySymbol } from '../shared/utils'
 import { signaturesSection } from '../shared/sections'
 import { getAccountingCSS } from '../shared/css'
 import { generateAccountingHeader, generateAccountingFooter } from '../shared/headers-footers'
+import { escapeHtml } from '@/lib/escape-html'
 
 export const template: DocumentTemplate = {
   category: 'accounting',
@@ -84,11 +85,11 @@ export const template: DocumentTemplate = {
     // Period/date info line with currency
     let periodInfo = ''
     if (period) {
-      periodInfo = `<div class="acct-header-subtitle">${lang === 'ar' ? 'الفترة / Period' : 'Period'}: ${period} &nbsp;|&nbsp; ${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${currency}</div>`
+      periodInfo = `<div class="acct-header-subtitle">${lang === 'ar' ? 'الفترة / Period' : 'Period'}: ${escapeHtml(period)} &nbsp;|&nbsp; ${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${escapeHtml(currency)}</div>`
     } else if (date) {
-      periodInfo = `<div class="acct-header-subtitle">${lang === 'ar' ? 'التاريخ / Date' : 'Date'}: ${formatDate(date, lang)} &nbsp;|&nbsp; ${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${currency}</div>`
+      periodInfo = `<div class="acct-header-subtitle">${lang === 'ar' ? 'التاريخ / Date' : 'Date'}: ${formatDate(date, lang)} &nbsp;|&nbsp; ${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${escapeHtml(currency)}</div>`
     } else {
-      periodInfo = `<div class="acct-header-subtitle">${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${currency}</div>`
+      periodInfo = `<div class="acct-header-subtitle">${lang === 'ar' ? 'العملة / Currency' : 'Currency'}: ${escapeHtml(currency)}</div>`
     }
 
     // Check if any account has a code
@@ -99,8 +100,8 @@ export const template: DocumentTemplate = {
       return `
         <tr>
           <td class="row-num">${i + 1}</td>
-          ${hasCodes ? `<td class="code-cell">${acc.code || ''}</td>` : ''}
-          <td>${displayName}</td>
+          ${hasCodes ? `<td class="code-cell">${escapeHtml(acc.code || '')}</td>` : ''}
+          <td>${escapeHtml(displayName)}</td>
           <td class="amount-cell">${acc.debit ? fmtMoney(acc.debit, settings, lang) : '-'}</td>
           <td class="amount-cell">${acc.credit ? fmtMoney(acc.credit, settings, lang) : '-'}</td>
         </tr>`

@@ -5,6 +5,7 @@
 
 import type { PrintSettings } from './types'
 import { getCurrencySymbol } from './utils'
+import { escapeHtml } from '@/lib/escape-html'
 
 // ============ Default Header ============
 
@@ -12,27 +13,27 @@ export function generateDefaultHeader(settings: PrintSettings, lang: 'ar' | 'en'
   const currency = getCurrencySymbol(settings, lang)
 
   if (settings.headerImage) {
-    return `<div class="custom-header"><img src="${settings.headerImage}" alt="Header" /></div>`
+    return `<div class="custom-header"><img src="${escapeHtml(settings.headerImage)}" alt="Header" /></div>`
   }
 
   return `
     <div class="doc-header">
-      ${settings.logoUrl ? `<img class="header-logo" src="${settings.logoUrl}" alt="Logo" />` : '<div class="header-logo" style="display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#047857;background:#f0fdf4;">ب</div>'}
+      ${settings.logoUrl ? `<img class="header-logo" src="${escapeHtml(settings.logoUrl)}" alt="Logo" />` : '<div class="header-logo" style="display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#047857;background:#f0fdf4;">ب</div>'}
       <div class="header-company">
-        <div class="header-company-name">${lang === 'ar' ? settings.nameAr : settings.nameEn}</div>
+        <div class="header-company-name">${escapeHtml(lang === 'ar' ? settings.nameAr : settings.nameEn)}</div>
         <div class="header-company-details">
-          ${settings.taxNumber ? `<span>${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
-          ${settings.commercialReg ? `<span>${lang === 'ar' ? 'س.ت' : 'CR'}: ${settings.commercialReg}</span>` : ''}
-          ${settings.address ? `<span>${settings.address}</span>` : ''}
-          ${settings.phone ? `<span>${settings.phone}</span>` : ''}
-          ${settings.email ? `<span>${settings.email}</span>` : ''}
-          ${settings.website ? `<span>${settings.website}</span>` : ''}
-          <span>${currency}</span>
+          ${settings.taxNumber ? `<span>${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${escapeHtml(settings.taxNumber)}</span>` : ''}
+          ${settings.commercialReg ? `<span>${lang === 'ar' ? 'س.ت' : 'CR'}: ${escapeHtml(settings.commercialReg)}</span>` : ''}
+          ${settings.address ? `<span>${escapeHtml(settings.address)}</span>` : ''}
+          ${settings.phone ? `<span>${escapeHtml(settings.phone)}</span>` : ''}
+          ${settings.email ? `<span>${escapeHtml(settings.email)}</span>` : ''}
+          ${settings.website ? `<span>${escapeHtml(settings.website)}</span>` : ''}
+          <span>${escapeHtml(currency)}</span>
         </div>
       </div>
       <div class="header-doc-title-section">
-        <div class="header-doc-title">${docTitle}</div>
-        ${docSubtitle ? `<div class="header-doc-subtitle">${docSubtitle}</div>` : ''}
+        <div class="header-doc-title">${escapeHtml(docTitle)}</div>
+        ${docSubtitle ? `<div class="header-doc-subtitle">${escapeHtml(docSubtitle)}</div>` : ''}
       </div>
     </div>
   `
@@ -42,18 +43,18 @@ export function generateDefaultHeader(settings: PrintSettings, lang: 'ar' | 'en'
 
 export function generateDefaultFooter(settings: PrintSettings, lang: 'ar' | 'en'): string {
   if (settings.footerImage) {
-    return `<div class="custom-footer"><img src="${settings.footerImage}" alt="Footer" /></div>`
+    return `<div class="custom-footer"><img src="${escapeHtml(settings.footerImage)}" alt="Footer" /></div>`
   }
 
   const companyName = lang === 'ar' ? settings.nameAr : settings.nameEn
   return `
     <div class="doc-footer">
       <div class="company-info">
-        <span>${companyName}</span>
-        ${settings.address ? `<span>| ${settings.address}</span>` : ''}
-        ${settings.phone ? `<span>| ${settings.phone}</span>` : ''}
-        ${settings.email ? `<span>| ${settings.email}</span>` : ''}
-        ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
+        <span>${escapeHtml(companyName)}</span>
+        ${settings.address ? `<span>| ${escapeHtml(settings.address)}</span>` : ''}
+        ${settings.phone ? `<span>| ${escapeHtml(settings.phone)}</span>` : ''}
+        ${settings.email ? `<span>| ${escapeHtml(settings.email)}</span>` : ''}
+        ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${escapeHtml(settings.taxNumber)}</span>` : ''}
       </div>
     </div>
   `
@@ -63,24 +64,24 @@ export function generateDefaultFooter(settings: PrintSettings, lang: 'ar' | 'en'
 
 export function generateRentalInvoiceHeader(settings: PrintSettings, lang: 'ar' | 'en'): string {
   if (settings.headerImage) {
-    return `<div class="ri-custom-header"><img src="${settings.headerImage}" alt="Header" /></div>`
+    return `<div class="ri-custom-header"><img src="${escapeHtml(settings.headerImage)}" alt="Header" /></div>`
   }
 
   return `
     <div class="ri-header">
       ${settings.logoUrl
-        ? `<img class="ri-header-logo" src="${settings.logoUrl}" alt="Logo" />`
+        ? `<img class="ri-header-logo" src="${escapeHtml(settings.logoUrl)}" alt="Logo" />`
         : '<div class="ri-header-logo-placeholder">ب</div>'
       }
       <div class="ri-header-company">
-        <div class="ri-header-company-name">${lang === 'ar' ? settings.nameAr : settings.nameEn}</div>
-        <div class="ri-header-company-name-en">${lang === 'ar' ? settings.nameEn : settings.nameAr}</div>
+        <div class="ri-header-company-name">${escapeHtml(lang === 'ar' ? settings.nameAr : settings.nameEn)}</div>
+        <div class="ri-header-company-name-en">${escapeHtml(lang === 'ar' ? settings.nameEn : settings.nameAr)}</div>
         <div class="ri-header-details">
-          ${settings.commercialReg ? `<span>${lang === 'ar' ? 'س.ت' : 'CR'}: ${settings.commercialReg}</span>` : ''}
-          ${settings.taxNumber ? `<span>${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
-          ${settings.address ? `<span>${settings.address}</span>` : ''}
-          ${settings.phone ? `<span>${settings.phone}</span>` : ''}
-          ${settings.email ? `<span>${settings.email}</span>` : ''}
+          ${settings.commercialReg ? `<span>${lang === 'ar' ? 'س.ت' : 'CR'}: ${escapeHtml(settings.commercialReg)}</span>` : ''}
+          ${settings.taxNumber ? `<span>${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${escapeHtml(settings.taxNumber)}</span>` : ''}
+          ${settings.address ? `<span>${escapeHtml(settings.address)}</span>` : ''}
+          ${settings.phone ? `<span>${escapeHtml(settings.phone)}</span>` : ''}
+          ${settings.email ? `<span>${escapeHtml(settings.email)}</span>` : ''}
         </div>
       </div>
       <div class="ri-header-title-box">
@@ -95,18 +96,18 @@ export function generateRentalInvoiceHeader(settings: PrintSettings, lang: 'ar' 
 
 export function generateRentalInvoiceFooter(settings: PrintSettings, lang: 'ar' | 'en'): string {
   if (settings.footerImage) {
-    return `<div class="ri-custom-footer"><img src="${settings.footerImage}" alt="Footer" /></div>`
+    return `<div class="ri-custom-footer"><img src="${escapeHtml(settings.footerImage)}" alt="Footer" /></div>`
   }
 
   const companyName = lang === 'ar' ? settings.nameAr : settings.nameEn
   return `
     <div class="ri-footer">
       <div class="company-info">
-        <span>${companyName}</span>
-        ${settings.address ? `<span>| ${settings.address}</span>` : ''}
-        ${settings.phone ? `<span>| ${settings.phone}</span>` : ''}
-        ${settings.email ? `<span>| ${settings.email}</span>` : ''}
-        ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${settings.taxNumber}</span>` : ''}
+        <span>${escapeHtml(companyName)}</span>
+        ${settings.address ? `<span>| ${escapeHtml(settings.address)}</span>` : ''}
+        ${settings.phone ? `<span>| ${escapeHtml(settings.phone)}</span>` : ''}
+        ${settings.email ? `<span>| ${escapeHtml(settings.email)}</span>` : ''}
+        ${settings.taxNumber ? `<span>| ${lang === 'ar' ? 'ض.ر' : 'VAT'}: ${escapeHtml(settings.taxNumber)}</span>` : ''}
       </div>
     </div>
   `
@@ -119,11 +120,11 @@ export function generateAccountingHeader(settings: PrintSettings, lang: 'ar' | '
 
   return `
     <div class="acct-header">
-      <div class="acct-header-company">${companyName}</div>
-      ${settings.taxNumber ? `<div style="font-size:8px;color:#64748b;">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}: ${settings.taxNumber}</div>` : ''}
-      ${settings.commercialReg ? `<div style="font-size:8px;color:#64748b;">${lang === 'ar' ? 'السجل التجاري' : 'CR'}: ${settings.commercialReg}</div>` : ''}
-      <div class="acct-header-title">${title}</div>
-      ${subtitle ? `<div class="acct-header-subtitle">${subtitle}</div>` : ''}
+      <div class="acct-header-company">${escapeHtml(companyName)}</div>
+      ${settings.taxNumber ? `<div style="font-size:8px;color:#64748b;">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}: ${escapeHtml(settings.taxNumber)}</div>` : ''}
+      ${settings.commercialReg ? `<div style="font-size:8px;color:#64748b;">${lang === 'ar' ? 'السجل التجاري' : 'CR'}: ${escapeHtml(settings.commercialReg)}</div>` : ''}
+      <div class="acct-header-title">${escapeHtml(title)}</div>
+      ${subtitle ? `<div class="acct-header-subtitle">${escapeHtml(subtitle)}</div>` : ''}
     </div>
   `
 }
@@ -135,9 +136,9 @@ export function generateAccountingFooter(settings: PrintSettings, lang: 'ar' | '
   return `
     <div class="doc-footer">
       <div class="company-info">
-        <span>${companyName}</span>
-        ${settings.address ? `<span>| ${settings.address}</span>` : ''}
-        ${settings.phone ? `<span>| ${settings.phone}</span>` : ''}
+        <span>${escapeHtml(companyName)}</span>
+        ${settings.address ? `<span>| ${escapeHtml(settings.address)}</span>` : ''}
+        ${settings.phone ? `<span>| ${escapeHtml(settings.phone)}</span>` : ''}
       </div>
     </div>
   `

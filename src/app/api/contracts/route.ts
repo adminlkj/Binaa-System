@@ -1,5 +1,6 @@
 import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
+import { getDefaultVatRate } from '@/lib/settings'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
@@ -88,7 +89,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'رقم العقد موجود بالفعل' }, { status: 400 })
     }
 
-    const rate = vatRate ?? 0.15
+    // AUDIT-2 S1 FIX: honor configured company default VAT rate instead of hardcoding 0.15.
+    // A zero rate (tax-exempt contract) is preserved via `!= null` check; falls back to system default.
+    const rate = vatRate != null ? Number(vatRate) : await getDefaultVatRate()
     const parsedValue = parseFloat(value) || 0
     const vatAmount = Math.round(parsedValue * rate * 100) / 100
     const totalValue = Math.round((parsedValue + vatAmount) * 100) / 100

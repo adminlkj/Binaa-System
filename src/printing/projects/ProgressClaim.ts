@@ -21,6 +21,7 @@ import type { DocumentTemplate, PrintSettings } from '../shared/types'
 import { fmtMoney, formatDate, formatMoneyPrint, getCurrencySymbol, encodeZATCATLV } from '../shared/utils'
 import { getDefaultCSS } from '../shared/css'
 import { bankInfoSection, signaturesSection, amountInWordsSection, termsSection, totalsSection, qrCodeSection, qrCodeScript } from '../shared/sections'
+import { escapeHtml } from '@/lib/escape-html'
 
 // ============ Template Implementation ============
 export const template: DocumentTemplate = {
@@ -102,7 +103,10 @@ export const template: DocumentTemplate = {
     const amount = Number(data.amount) || 0
     const vatAmount = Number(data.vatAmount) || 0
     const totalAmount = Number(data.totalAmount) || 0
-    const vatRate = Number(data.vatRate ?? settings.defaultVatRate) || 0.15
+    // AUDIT-1/AUDIT-2 FIX: use `??` (nullish-coalesce) instead of `||` (logical-or)
+    // so that a legitimate VAT rate of 0 (zero-rated progress claim) is preserved
+    // rather than silently re-defaulted to 0.15.
+    const vatRate = Number(data.vatRate ?? settings.defaultVatRate ?? 0.15)
     const notes = (data.notes as string | null | undefined) || null
 
     // بيانات العميل (للقسم "إلى / To")
@@ -131,7 +135,7 @@ export const template: DocumentTemplate = {
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'رقم المستخلص / Claim No' : 'Claim No'}</div>
-          <div class="info-value">${claimNo}</div>
+          <div class="info-value">${escapeHtml(claimNo)}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'التاريخ / Date' : 'Date'}</div>
@@ -139,11 +143,11 @@ export const template: DocumentTemplate = {
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'رقم العقد / Contract No' : 'Contract No'}</div>
-          <div class="info-value">${contractNo || '-'}</div>
+          <div class="info-value">${escapeHtml(contractNo || '-')}</div>
         </div>
         <div class="info-item">
           <div class="info-label">${lang === 'ar' ? 'المشروع / Project' : 'Project'}</div>
-          <div class="info-value">${projectName || '-'}</div>
+          <div class="info-value">${escapeHtml(projectName || '-')}</div>
         </div>
       </div>
     `
@@ -154,14 +158,14 @@ export const template: DocumentTemplate = {
         <div class="party-card">
           <div class="party-card-title">${lang === 'ar' ? 'من / From' : 'From'}</div>
           <div class="party-card-row"><span class="label">${lang === 'ar' ? 'الشركة' : 'Company'}</span><span class="value">${lang === 'ar' ? settings.nameAr : settings.nameEn}</span></div>
-          ${settings.address ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${settings.address}</span></div>` : ''}
-          ${settings.taxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${settings.taxNumber}</span></div>` : ''}
+          ${settings.address ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${escapeHtml(settings.address)}</span></div>` : ''}
+          ${settings.taxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${escapeHtml(settings.taxNumber)}</span></div>` : ''}
         </div>
         <div class="party-card">
           <div class="party-card-title">${lang === 'ar' ? 'إلى / To' : 'To'}</div>
-          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${clientName || '-'}</span></div>
-          ${clientAddress ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${clientAddress}</span></div>` : ''}
-          ${clientTaxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${clientTaxNumber}</span></div>` : ''}
+          <div class="party-card-row"><span class="label">${lang === 'ar' ? 'العميل' : 'Client'}</span><span class="value">${escapeHtml(clientName || '-')}</span></div>
+          ${clientAddress ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'العنوان' : 'Address'}</span><span class="value">${escapeHtml(clientAddress)}</span></div>` : ''}
+          ${clientTaxNumber ? `<div class="party-card-row"><span class="label">${lang === 'ar' ? 'الرقم الضريبي' : 'VAT No'}</span><span class="value">${escapeHtml(clientTaxNumber)}</span></div>` : ''}
         </div>
       </div>
     `
@@ -187,13 +191,13 @@ export const template: DocumentTemplate = {
     // ─── جدول البنود (وصف المستخلص + الكمية + سعر الوحدة + الإجمالي) ───
     // نعرض المستخلص كبند واحد مع وصف يوضح المشروع والعقد والنسبة
     // نُجزّئ الوصف لتفادي القوالب النصية المتداخلة (nested template literals)
-    const contractLabelAr = contractNo ? ` - العقد ${contractNo}` : ''
-    const contractLabelEn = contractNo ? ` - Contract ${contractNo}` : ''
-    const notesLabelAr = notes ? ` - ${notes}` : ''
-    const notesLabelEn = notes ? ` - ${notes}` : ''
+    const contractLabelAr = contractNo ? ` - العقد ${escapeHtml(contractNo)}` : ''
+    const contractLabelEn = contractNo ? ` - Contract ${escapeHtml(contractNo)}` : ''
+    const notesLabelAr = notes ? ` - ${escapeHtml(notes)}` : ''
+    const notesLabelEn = notes ? ` - ${escapeHtml(notes)}` : ''
     const itemDescription = lang === 'ar'
-      ? `مستخلص رقم ${claimNo} - ${projectName}${contractLabelAr}${notesLabelAr}`
-      : `Claim No. ${claimNo} - ${projectName}${contractLabelEn}${notesLabelEn}`
+      ? `مستخلص رقم ${escapeHtml(claimNo)} - ${escapeHtml(projectName)}${contractLabelAr}${notesLabelAr}`
+      : `Claim No. ${escapeHtml(claimNo)} - ${escapeHtml(projectName)}${contractLabelEn}${notesLabelEn}`
 
     const items = [
       {
@@ -214,7 +218,7 @@ export const template: DocumentTemplate = {
     const itemsRows = items.map((item, i) => `
             <tr>
               <td class="row-num">${i + 1}</td>
-              <td>${item.description}</td>
+              <td>${escapeHtml(item.description)}</td>
               <td style="text-align:center;">${item.quantity}</td>
               <td class="amount-cell">${fmtMoney(item.unitPrice, settings, lang)}</td>
               <td class="amount-cell">${fmtMoney(item.totalPrice, settings, lang)}</td>

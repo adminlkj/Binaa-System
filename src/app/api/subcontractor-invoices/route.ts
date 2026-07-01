@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireRoleApi, requireAuthApi } from '@/lib/auth-helpers'
 import { autoEntrySubcontractorInvoice, type PrismaTransaction } from '@/lib/accounting/engine'
+import { getDefaultVatRate } from '@/lib/settings'
 
 // ============================================================================
 // Subcontractor Invoices API
@@ -79,7 +80,9 @@ export async function POST(request: Request) {
     }
 
     // Compute VAT / total when not provided
-    const vatRateNum = vatRate !== undefined ? Number(vatRate) : 0.15
+    // AUDIT-2 S1 FIX: honor configured company default VAT rate instead of hardcoding 0.15.
+    // A zero rate (tax-exempt) is preserved via `!== undefined` check; falls back to system default.
+    const vatRateNum = vatRate !== undefined ? Number(vatRate) : await getDefaultVatRate()
     const vatAmountNum = vatAmount !== undefined
       ? Number(vatAmount)
       : Math.round(amountNum * vatRateNum * 100) / 100
