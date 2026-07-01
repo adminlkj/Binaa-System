@@ -1,3 +1,4 @@
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import path from 'path'
 import fs from 'fs/promises'
@@ -8,6 +9,9 @@ import fs from 'fs/promises'
  * Returns a transparent PNG data URL suitable for embedding in print templates.
  */
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { imageUrl } = await request.json()
 

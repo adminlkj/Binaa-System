@@ -1,7 +1,11 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const branches = await db.branch.findMany({
       orderBy: { name: 'asc' },
@@ -14,6 +18,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
 

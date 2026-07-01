@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   generateDocument,
@@ -17,6 +18,9 @@ import { calculateVatForQuarter } from '@/lib/vat-calc'
  * - format=json: Returns document data + company settings as JSON (for the React print page)
  */
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') as UnifiedDocumentType | null

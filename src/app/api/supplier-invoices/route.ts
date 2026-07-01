@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { type PrismaTransaction } from '@/lib/auto-journal'
 import { toNumber } from '@/lib/decimal'
@@ -8,6 +9,9 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const supplierId = searchParams.get('supplierId')
@@ -72,6 +76,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { goodsReceiptId, date, dueDate, supplierInvoiceNo, supplierInvoiceDate, attachmentPath, notes, vatRate: vatRateRaw } = body

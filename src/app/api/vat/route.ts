@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
@@ -26,6 +27,9 @@ function getPeriodEndDate(year: number, quarter: number): Date {
 
 // ============ GET: List VAT returns with optional breakdown ============
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const yearParam = searchParams.get('year')
@@ -94,6 +98,9 @@ export async function GET(request: Request) {
 // والتحقق من المطابقة مع دفتر اليومية. يسمح بإنشاء إقرار جديد للفترة إذا كان
 // الإقرار السابق ملغياً.
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const year = parseInt(body.year)
@@ -201,6 +208,9 @@ export async function POST(request: Request) {
 
 // ============ PATCH: Status transitions + journal entries ============
 export async function PATCH(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { id, action, paymentReference, paymentDate } = body
@@ -358,6 +368,9 @@ export async function PATCH(request: Request) {
 
 // ============ DELETE: Discard a DRAFT VAT return ============
 export async function DELETE(request: Request) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')

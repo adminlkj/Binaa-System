@@ -1,9 +1,13 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { createClientPaymentJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const clientId = searchParams.get('clientId')
@@ -65,6 +69,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { clientId, invoiceId, amount, date, receivedIn, reference, notes } = body

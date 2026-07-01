@@ -1,9 +1,13 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { getCashFlow } from '@/lib/report-engine'
 
 // GET /api/reports/cash-flow-statement?dateFrom=...&dateTo=...
 // قائمة التدفقات النقدية — المصدر: القيود اليومية المرحّلة على حسابات النقدية والبنوك فقط
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const dateFrom = searchParams.get('dateFrom')

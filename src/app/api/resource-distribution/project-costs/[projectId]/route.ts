@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { getProjectCostBreakdown } from '@/lib/accounting/queries'
@@ -21,6 +22,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { projectId } = await params
 

@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
@@ -5,6 +6,9 @@ export const dynamic = 'force-dynamic'
 
 // GET /api/activities?projectId=xxx
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')

@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
@@ -8,6 +9,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { id } = await params
     const timesheet = await db.timesheet.findUnique({
@@ -44,6 +48,9 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -95,6 +102,9 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
+
   try {
     const { id } = await params
 

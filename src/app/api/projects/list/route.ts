@@ -1,7 +1,11 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const projects = await db.project.findMany({
       select: { id: true, code: true, name: true },

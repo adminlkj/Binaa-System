@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getGeneralLedger } from '@/lib/report-engine'
@@ -5,6 +6,9 @@ import { getGeneralLedger } from '@/lib/report-engine'
 // GET /api/reports/general-ledger?accountId=...&dateFrom=...&dateTo=...
 // دفتر الأستاذ العام — المصدر: القيود اليومية المرحّلة فقط
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const accountId = searchParams.get('accountId')

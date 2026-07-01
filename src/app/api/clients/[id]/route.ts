@@ -1,9 +1,13 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
 // GET /api/clients/[id]
 // P6-CRIT-009 FIX: filter out soft-deleted clients.
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { id } = await params
     const client = await db.client.findFirst({
@@ -23,6 +27,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -60,6 +67,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 //   2. If any exist → return 400 with Arabic counts (user must deactivate instead).
 //   3. If none → soft-delete (deletedAt = now, isActive = false).
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
+
   try {
     const { id } = await params
 

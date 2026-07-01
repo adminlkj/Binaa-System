@@ -9521,3 +9521,84 @@ Stage Summary:
 - Self-deletion is now blocked at the API trust boundary, not just in the UI.
 - Depreciation JEs now use the sequential `JE-NNNNNN` format, eliminating the bulk-run collision risk identified in AUDIT-ACCT Q7.
 - Known follow-ups (out of scope per task): other `0.15` literals in `expenses/route.ts`, `purchase-orders/*`, `print/*`, `timesheets.tsx`, `seed/route.ts`, `rental-contracts/route.ts`, `purchase-invoices/route.ts`, `print-button.tsx` — none of these were in the audit's 7-site list, but a future hardening pass could route them through `getDefaultVatRate()` too.
+
+---
+Task ID: P2-1-FIX
+Agent: Code Agent (Z.ai Code)
+Phase: 2 (P0) — Security
+Task: Close the critical RBAC gap — 272 of 314 HTTP handlers across 142 API route files had NO role-based access control. Any authenticated user (including lowest-privilege VIEWER) could create/modify/delete financial data via direct API calls.
+
+Work Log:
+
+**Pre-work reading**
+- `src/lib/auth-helpers.ts` — confirmed the exact API: `requireAuthApi()` returns `{ user, response }` (401 if unauthenticated); `requireRoleApi(...roles)` returns `{ user, response }` (401 unauth, 403 wrong role). Roles typed as `'ADMIN' | 'ACCOUNTANT' | 'MANAGER' | 'VIEWER'`.
+- Previous worklog entries (Task ID: FIX-RBAC-VAT) — confirmed fiscal-years + accounts/role-mapping already protected; subcontractor-* created in P1.2 with proper guards.
+- Wrote a Python audit script that walks `src/app/api/**/route.ts`, splits each file by `export async function METHOD` markers, and checks each handler chunk for `requireRoleApi`/`requireAuthApi` calls. Pre-fix audit: 314 handlers total, 42 already protected, 272 unprotected across 142 files.
+
+**Permission policy applied (consistent across every route)**
+- GET (read) → `requireAuthApi()` — any authenticated user
+- POST (create) → `requireRoleApi('ADMIN', 'ACCOUNTANT')`
+- PUT (update) → `requireRoleApi('ADMIN', 'ACCOUNTANT')`
+- PATCH (status change) → `requireRoleApi('ADMIN', 'ACCOUNTANT')`
+- DELETE → `requireRoleApi('ADMIN')` — admin only (financial data is sensitive)
+
+**Files skipped (already protected or intentionally public)**
+- Public-by-design: `auth/[...nextauth]/route.ts`, `health/route.ts`, `route.ts` (root API index), `seed/route.ts` (4-layer protection).
+- Already fully protected (30 files, 42 handlers): all `subcontractor-*` routes, `users/*`, `fiscal-years/*` (POST/PUT/DELETE/PATCH), `journal-entries/[id]/reverse`, `journal-entries/route.ts` (POST), `period-closing/route.ts` (POST), `company-settings/route.ts` (PUT), `financial-mapping/route.ts` (POST), `accounts/role-mapping/route.ts` (PUT), `accounts/initialize/route.ts` (POST), `ifrs15/*`, `fixed-assets/depreciate*`, `asset-depreciations/[id]/reverse`.
+
+**Files modified (142 files, 272 handlers)**
+Used a Python script (`/tmp/rbac_fix.py`) to perform atomic per-file edits:
+1. Find all `export async function METHOD` markers (METHOD ∈ GET/POST/PUT/PATCH/DELETE).
+2. For each handler chunk, check if it already contains `requireRoleApi`/`requireAuthApi`. If yes → skip. If no → schedule an edit.
+3. Determine which helpers to import (only those actually needed; merge into existing `@/lib/auth-helpers` import line if present, else add new line after the last existing import).
+4. For each scheduled edit, locate the function's opening brace by walking the source char-by-char tracking paren depth (so multi-line signatures with `Promise<{ id: string }>` params are handled correctly), then insert immediately after `{`:
+   ```
+     const { response } = await <helper>(<args>)
+     if (response) return response
+   ```
+5. No business logic touched. Only the import block and the first two lines of each handler body changed.
+
+**Coverage (route groups modified)**:
+- Accounting/financial: account-impact, account-statement, accounting-consistency, accounting-guard/health, accounting-health, dashboard, general-ledger, trial-balance, financial-consistency, expenses, provisions, asset-depreciations (route)
+- Accounts: `[id]`, by-role, initialize (GET only), role-mapping (GET+POST validate), route, statement
+- Sales cycle: clients, projects (incl. list), contracts, boq, change-orders, progress-claims, sales-invoices, client-payments, rental-payments, delivery-orders
+- Equipment: `[id]`, expenses, fuel (root + `[id]`), maintenance (root + `[id]` + `[id]/complete`), operations (root + `[id]`), rental-contracts (root + `[id]`), rentals, route, timesheets (root + `[id]` + `[id]/generate-invoice`), usages
+- HR/payroll: employees, employee-contracts, attendance, salaries (root + `[id]` + auto-calculate), salary-payments, payroll-runs, advances, work-teams, labor-costs, timesheets
+- Procurement: purchase-requests, purchase-orders, purchase-invoices, goods-receipt, supplier-invoices, supplier-payments, subcontractors (master CRUD)
+- Inventory/master: inventory, warehouses, branches, currencies, cost-centers, activities, business-flows, business-flow/validate, resource-distribution (root + project-costs)
+- Banking: bank-accounts, bank-reconciliation, petty-cash
+- Reports (all GET-only, requireAuthApi): account-statement, aging, balance-sheet, cash-flow-statement, client-balances, cost-center-report, general-ledger, income-statement, project-costs, project-profitability, project-wip, route, supplier-balances, trial-balance, vat-reconciliation
+- VAT: root (GET/POST/PATCH/DELETE), `[id]` (GET)
+- Misc: print, generate-qr, remove-bg
+
+**Note on partial-protected files (POST already guarded, GET newly guarded)**:
+- `company-settings/route.ts` — GET added requireAuthApi (PUT was already ADMIN-only).
+- `financial-mapping/route.ts` — GET added requireAuthApi (POST was already ADMIN-only).
+- `fiscal-years/route.ts` — GET added requireAuthApi (POST was already ADMIN+ACCOUNTANT).
+- `fiscal-years/[id]/route.ts` — GET added requireAuthApi (PUT/DELETE were already ADMIN+ACCOUNTANT).
+- `journal-entries/route.ts` — GET added requireAuthApi (POST was already ADMIN+ACCOUNTANT).
+- `period-closing/route.ts` — GET added requireAuthApi (POST was already ADMIN+ACCOUNTANT).
+- `accounts/role-mapping/route.ts` — GET + POST (validate endpoint) added requireAuthApi (PUT was already ADMIN+ACCOUNTANT).
+- `accounts/initialize/route.ts` — GET added requireAuthApi (POST was already ADMIN-only).
+
+**Note on helper exports**: `salaries/route.ts` exports both HTTP handlers (GET, POST) AND a helper function `createSalaryAccrualJournalEntry` that is called from other transactional code. The script correctly distinguished the two — only the HTTP handlers received the auth guard; the helper export was left untouched (it is not an HTTP entry point).
+
+**Verification**
+- `bun run lint` → exit 0, no errors. ESLint (with TypeScript rules) confirms all 142 modified files are syntactically valid and have no unused imports.
+- `bun run test:accounting` → 21/21 passed (BA-02 behavioral accounting tests).
+- `bun run verify:engine` → ALL NUMERICAL CONSISTENCY CHECKS PASSED (TrialBalance, BalanceSheet, I3+I5+I6+I7 invariants).
+- `bun scripts/e2e-accounting-integrity-test.ts` → 29/29 passed (E2E accounting integrity test).
+- Re-audit after fix → 0 unprotected handlers remaining across the entire `src/app/api` tree (excluding the 4 intentionally-public files).
+- Pre-existing TS errors unrelated to RBAC: `npx tsc --noEmit` reports 4 errors in 3 files (`business-flows/route.ts:143` — pre-existing `bOQItems` typo; `business-flows.tsx:204,287` — `MoneyDisplay` `amount` prop naming; `users.tsx:511` — boolean coercion). None are in code touched by this task — verified via `git diff`. The project's quality gate is `bun run lint`, which is clean.
+
+**Stage Summary**
+- Files modified: 142
+- HTTP handlers protected: 272 (was unprotected; now has auth guard)
+- Files already protected (skipped): 30 (42 handlers)
+- Files intentionally public (skipped): 4 (auth, health, root index, seed)
+- Total route files audited: 167
+- Total HTTP handlers in codebase: 314 (272 newly protected + 42 already protected = 314; all now have auth)
+- RBAC gap closed: 100% (was 86% unprotected, now 0% unprotected)
+- All accounting tests still pass: 21/21, 29/29, all numerical consistency invariants ✓
+- Lint clean: exit 0
+- No business logic changed. No Prisma schema changes. No new dependencies. Arabic error messages preserved. The existing 4-layer protection on `seed/route.ts` and the NextAuth handler were both respected.

@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { postJournalEntry, getNextEntryNo } from '@/lib/accounting/guard'
@@ -34,6 +35,9 @@ const PROVISION_TYPE_ROLE_MAP: Record<string, { expenseRole: string; provisionRo
 }
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const provisions = await db.provision.findMany({
       include: {
@@ -49,6 +53,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { code, name, nameAr, type, totalAmount, startDate } = body

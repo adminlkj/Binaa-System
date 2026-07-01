@@ -2,9 +2,12 @@ import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 import { postJournalEntry, getNextEntryNo, AccountingGuardError } from '@/lib/accounting/guard'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')

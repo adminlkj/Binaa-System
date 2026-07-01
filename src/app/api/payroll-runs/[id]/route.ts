@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { createJournalEntry, getSalaryAccountCode, type PrismaTransaction } from '@/lib/accounting/engine'
 import { AccountRole, requireAccountCodeByRole } from '@/lib/account-roles'
@@ -29,6 +30,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { id } = await params
     const payrollRun = await db.payrollRun.findUnique({
@@ -61,6 +65,9 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -398,6 +405,9 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
+
   try {
     const { id } = await params
 

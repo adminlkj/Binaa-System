@@ -1,9 +1,13 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { getCostCenterReport } from '@/lib/report-engine'
 
 // GET /api/reports/cost-center-report?dateFrom=...&dateTo=...
 // تقرير مراكز التكلفة — المصدر: القيود اليومية المرحّلة فقط
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const dateFrom = searchParams.get('dateFrom')

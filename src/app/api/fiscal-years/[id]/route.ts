@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 
 // ============ Helper: live totals for a fiscal year ============
@@ -63,6 +63,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { id } = await params
 

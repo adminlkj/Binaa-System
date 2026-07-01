@@ -1,9 +1,13 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 
 // ============ GET: Depreciation report ============
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const year = searchParams.get('year')

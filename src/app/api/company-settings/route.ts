@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 
 const defaultSettings = {
   nameAr: 'شركة البناء الحديثة للمقاولات',
@@ -37,6 +37,9 @@ const defaultSettings = {
 }
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     let settings = await db.companySetting.findFirst()
     if (!settings) {

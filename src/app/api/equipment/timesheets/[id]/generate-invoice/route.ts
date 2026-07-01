@@ -1,3 +1,4 @@
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { createSalesInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
 import { toNumber } from '@/lib/decimal'
@@ -9,6 +10,9 @@ export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
 

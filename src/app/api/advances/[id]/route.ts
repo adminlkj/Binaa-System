@@ -1,3 +1,4 @@
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { autoEntryAdvanceSettlement, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
@@ -10,6 +11,9 @@ import { NextResponse } from 'next/server'
 // (المستخدم سيد النظام). Falls back to salary deduction + today if not provided.
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
     const body = await request.json()

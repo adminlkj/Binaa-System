@@ -1,3 +1,4 @@
+import { requireRoleApi } from '@/lib/auth-helpers'
 // ============================================================================
 // Business Flow Validation API
 // نظام بِنَاء ERP - Binaa Construction ERP
@@ -37,6 +38,9 @@ import {
 } from '@/lib/business-flow/engine'
 
 export async function POST(request: NextRequest) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { action } = body

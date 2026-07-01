@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
@@ -17,6 +18,9 @@ export const dynamic = 'force-dynamic'
 //    لكن النِّسب تُطبَّق على الرصيد الكلي من GL حتى يتطابق المجموع الكلي
 //    (`summary.totalOutstanding` + `Σ details.total` + `Σ byBucket`).
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || 'client'

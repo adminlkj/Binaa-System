@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { createSalesInvoiceJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
 import { reverseEntry } from '@/lib/accounting/engine'
@@ -34,6 +35,9 @@ async function storeZatcaQR(invoiceId: string, invoiceData: { date: Date; totalA
 }
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const clientId = searchParams.get('clientId')
@@ -114,6 +118,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { sourceType } = body
@@ -679,6 +686,9 @@ async function createInvoiceManual(body: Record<string, unknown>) {
 // PATCH /api/sales-invoices/[id] which enforces proper transition rules + JE reversal.
 // Field updates (notes, dueDate, paymentTerms, etc.) are still allowed.
 export async function PUT(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { id, status: _forbiddenStatus, ...updateData } = body

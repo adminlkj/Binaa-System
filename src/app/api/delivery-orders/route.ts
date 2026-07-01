@@ -1,8 +1,12 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { type PrismaTransaction } from '@/lib/auto-journal'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -103,6 +107,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { equipmentId, clientId, projectId, site, deliveryDate, returnDate, rentalId, notes } = body
@@ -163,6 +170,9 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { id, status } = body

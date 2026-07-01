@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAllFinancialMappings, getFinancialMapping, seedFinancialMappings, resolveOperationAccounts, validateOperationMapping, getRoleMappingOverview } from '@/lib/financial-mapping-engine'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const action = searchParams.get('action')

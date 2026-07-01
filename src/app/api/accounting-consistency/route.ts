@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { verifyNumericalConsistency } from '@/lib/accounting/queries'
 
@@ -11,6 +12,9 @@ import { verifyNumericalConsistency } from '@/lib/accounting/queries'
 //   - CI/CD pipelines (curl this endpoint, fail build if ok=false)
 //   - Periodic monitoring (alert if any invariant breaks)
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const asOfStr = searchParams.get('asOf')

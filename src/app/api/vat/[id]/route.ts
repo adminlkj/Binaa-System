@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
@@ -8,6 +9,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { id } = await params
     const vatReturn = await db.vATReturn.findUnique({ where: { id } })

@@ -1,8 +1,12 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { autoEntryEmployeeAdvance, autoEntryAdvanceSettlement, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const advances = await db.employeeAdvance.findMany({
       include: {
@@ -18,6 +22,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
 
@@ -75,6 +82,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { id, settledAmount, status } = body

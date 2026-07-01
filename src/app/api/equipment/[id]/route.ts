@@ -1,8 +1,12 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { id } = await params
     const equipment = await db.equipment.findUnique({
@@ -72,6 +76,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const { id } = await params
     const body = await request.json()
@@ -118,6 +125,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 // - Reverses the equipment-purchase JE if one exists.
 // - Soft-deletes by setting isActive=false + deletedAt=now().
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
+
   try {
     const { id } = await params
 

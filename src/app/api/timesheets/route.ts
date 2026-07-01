@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
@@ -5,6 +6,9 @@ import { NextResponse } from 'next/server'
 // This route previously referenced 'entries' and 'TimesheetEntry' which don't exist in the schema
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const contractId = searchParams.get('contractId')
@@ -67,6 +71,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { rentalId, contractId, month, year, operatingHours, notes } = body

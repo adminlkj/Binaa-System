@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { toNumber } from '@/lib/decimal'
@@ -8,6 +9,9 @@ import { calculatePOC } from '@/lib/accounting/ifrs15'
 // المصدر الحقيقي الوحيد: القيود اليومية المرحّلة (JournalEntry.status = 'POSTED')
 // مع عرض القيمة التعاقدية والربح من بيانات العقد
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')

@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
@@ -8,6 +9,9 @@ import { NextResponse } from 'next/server'
 // control which accounts appear in which screens by setting properties
 // on the account itself, rather than relying on hardcoded roles.
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const rolesParam = searchParams.get('role') || ''

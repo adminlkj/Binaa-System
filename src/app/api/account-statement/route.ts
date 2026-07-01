@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextRequest, NextResponse } from 'next/server'
@@ -5,6 +6,9 @@ import { getAccountsByRoles, AccountRole } from '@/lib/account-roles'
 import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const entityType = searchParams.get('entityType')

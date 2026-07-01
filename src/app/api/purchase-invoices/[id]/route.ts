@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { type PrismaTransaction } from '@/lib/auto-journal'
 import { reverseEntry } from '@/lib/accounting/engine'
@@ -8,6 +9,9 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { id } = await params
     const invoice = await db.purchaseInvoice.findUnique({
@@ -47,6 +51,9 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { response } = await requireRoleApi('ADMIN')
+  if (response) return response
+
   try {
     const { id } = await params
     const existing = await db.purchaseInvoice.findUnique({

@@ -1,7 +1,11 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 import { runAccountingHealthCheck, getLatestHealthCheck, getHealthSummary, getHealthCheckHistory } from '@/lib/accounting-health-check'
 
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const action = searchParams.get('action')
@@ -35,6 +39,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(_request: NextRequest) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const report = await runAccountingHealthCheck()
     return NextResponse.json({ report })

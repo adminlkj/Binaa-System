@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
@@ -9,6 +10,9 @@ import { getRoleAccountMapping } from '@/lib/account-roles'
 // Query params: accountId (required), dateFrom (optional), dateTo (optional)
 // ============================================================================
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const accountId = searchParams.get('accountId')

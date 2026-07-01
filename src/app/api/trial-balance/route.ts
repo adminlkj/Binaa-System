@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { getTrialBalance } from '@/lib/accounting/queries'
 import { serializeDecimal } from '@/lib/decimal'
@@ -9,6 +10,9 @@ import { serializeDecimal } from '@/lib/decimal'
 // هذا الـ endpoint يستخدم نفس الدالة التي يستخدمها /api/reports/trial-balance
 // لضمان تطابق الأرقام 100%.
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const dateFrom = searchParams.get('dateFrom')

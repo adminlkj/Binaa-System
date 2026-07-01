@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { createSupplierPaymentJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
 import { toNumber } from '@/lib/decimal'
@@ -5,6 +6,9 @@ import { Prisma } from '@prisma/client'
 import { NextResponse } from 'next/server'
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const supplierId = searchParams.get('supplierId')
@@ -61,6 +65,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { supplierId, invoiceId, amount, date, paidFrom, payingAccountId, payingAccountCode, payingAccountName, bankAccount, paymentMethod, reference, notes } = body

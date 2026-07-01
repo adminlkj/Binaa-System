@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
@@ -5,6 +6,9 @@ import { NextResponse } from 'next/server'
 // GET /api/journal-entries/by-account?accountId=...
 // Fetch all journal entries that include a specific account
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const accountId = searchParams.get('accountId')

@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
@@ -9,6 +10,9 @@ import { calculatePOC } from '@/lib/accounting/ifrs15'
 // يحسب لكل مشروع: التكاليف المتراكمة (WIP مدين) والإيراد المعترف به (عقد/غير مفوتر)
 // وصافي WIP = التكاليف - الإيراد المعترف به
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const dateFrom = searchParams.get('dateFrom')

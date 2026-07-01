@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
@@ -10,6 +11,9 @@ import { NextResponse } from 'next/server'
 //    لتوزيع الأرصدة على فئات التقادم (aging buckets) — وليست مصدراً للمجموع
 //    المالي. المجموع الكلي يجب أن يطابق رصيد GL.
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const now = new Date()
 

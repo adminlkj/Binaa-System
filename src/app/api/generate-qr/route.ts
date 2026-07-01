@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 
 /**
@@ -11,6 +12,9 @@ import { NextResponse } from 'next/server'
  * Tag 5: VAT amount
  */
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const sellerName = searchParams.get('seller') || ''

@@ -1,9 +1,13 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET: List all timesheets with contract info (includes equipment, client, project)
 // Supports filtering by status, uninvoiced (APPROVED but not INVOICED)
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -106,6 +110,9 @@ export async function GET(request: NextRequest) {
 
 // POST: Create new timesheet with auto-calculation
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { rentalId, contractId, month, year, operatingHours, notes } = body
@@ -194,6 +201,9 @@ export async function POST(request: Request) {
 
 // PUT: Update timesheet (prevent modifications when INVOICED)
 export async function PUT(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { id, ...updateData } = body

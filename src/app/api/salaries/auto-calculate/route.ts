@@ -1,8 +1,12 @@
+import { requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 
 // POST: Auto-calculate salary for an employee based on contract, attendance, and overtime
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { employeeId, month, year } = body

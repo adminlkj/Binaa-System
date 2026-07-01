@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 // ============================================================================
 // فحص السلامة المالية - Financial Consistency Validation API
 // القاعدة رقم 8: لا يسمح بوجود مستند مالي بدون قيد يومية
@@ -9,6 +10,9 @@ import { validateFinancialConsistency } from '@/lib/accounting/consistency'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const result = await validateFinancialConsistency()
 

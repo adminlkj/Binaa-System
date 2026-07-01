@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 
 // ============ Helper: compute live revenue/expenses/netProfit for a fiscal year ============
@@ -54,6 +54,9 @@ async function computeLiveYearTotals(startDate: Date, endDate: Date) {
 
 // ============ GET: List all fiscal years ============
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const years = await db.fiscalYear.findMany({
       include: {

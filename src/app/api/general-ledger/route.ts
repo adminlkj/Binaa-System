@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { getGeneralLedger, getAccountBalance, getAccountByCode } from '@/lib/accounting/queries'
 import { serializeDecimal } from '@/lib/decimal'
@@ -8,6 +9,9 @@ import { serializeDecimal } from '@/lib/decimal'
 // BA-02 Task 1: تم توحيد جميع قراءات دفتر الأستاذ عبر queries.getGeneralLedger.
 // هذا الـ endpoint الآن يحسب الرصيد الافتتاحي بشكل صحيح (كان يبدأ من 0 سابقاً).
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const accountCode = searchParams.get('accountCode')

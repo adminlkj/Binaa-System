@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { toNumber } from '@/lib/decimal'
@@ -79,6 +80,9 @@ async function getGLBalance(
 }
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const now = new Date()
 

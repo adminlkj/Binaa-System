@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
@@ -15,6 +16,9 @@ import { AccountRole } from '@/lib/account-roles'
 //    بقيم مشتقّة من JournalLine عبر `getProjectCostBreakdown`. لا يوجد
 //    dual-source fallback بعد الآن — دائماً نستخدم القيمة من JournalLine.
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')

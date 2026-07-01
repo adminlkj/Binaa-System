@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { initializeChartOfAccounts } from '@/lib/accounting/engine'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 
 export async function POST() {
   const { response } = await requireRoleApi('ADMIN')
@@ -25,6 +25,9 @@ export async function POST() {
 
 // GET: Return current chart of accounts status
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { initializeChartOfAccounts: _init } = await import('@/lib/accounting/engine')
     const { db } = await import('@/lib/db')

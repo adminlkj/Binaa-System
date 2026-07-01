@@ -2,10 +2,13 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import type { PrismaTransaction } from '@/lib/accounting/engine'
 import { postJournalEntry, getNextEntryNo } from '@/lib/accounting/guard'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { requireAccountByRole, AccountRole } from '@/lib/account-roles'
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const closings = await db.periodClosing.findMany({
       orderBy: [{ year: 'desc' }, { month: 'desc' }],

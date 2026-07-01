@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { NextResponse } from 'next/server'
 import { getGeneralLedger } from '@/lib/report-engine'
 
@@ -5,6 +6,9 @@ import { getGeneralLedger } from '@/lib/report-engine'
 // كشف حساب — نفس دفتر الأستاذ لكن مُسمّى مختلف للاستخدام العملائي
 // المصدر: القيود اليومية المرحّلة فقط
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const accountId = searchParams.get('accountId')

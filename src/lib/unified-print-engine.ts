@@ -13,6 +13,7 @@ import {
 } from '@/printing'
 import { fmtMoney as sharedFmtMoney } from '@/printing/shared/utils'
 import type { PrintDocumentType, PrintOptions, PrintSettings, DocumentTemplate } from '@/printing'
+import { escapeHtml } from '@/lib/escape-html'
 import { generateZatcaTLV } from './zatca-qr'
 
 // ============ Extended Document Types ============
@@ -141,7 +142,7 @@ function generateBOQBody(data: Record<string, unknown>, settings: PrintSettings,
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">${lbl.boqNo}</div>
-        <div class="info-value">${data.boqNo || data.id || ''}</div>
+        <div class="info-value">${escapeHtml(data.boqNo || data.id || '')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.date}</div>
@@ -149,11 +150,11 @@ function generateBOQBody(data: Record<string, unknown>, settings: PrintSettings,
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.projectName}</div>
-        <div class="info-value">${data.projectName || ''}</div>
+        <div class="info-value">${escapeHtml(data.projectName || '')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.contractNo}</div>
-        <div class="info-value">${data.contractNo || '-'}</div>
+        <div class="info-value">${escapeHtml(data.contractNo || '-')}</div>
       </div>
     </div>
 
@@ -205,7 +206,7 @@ function generateBOQBody(data: Record<string, unknown>, settings: PrintSettings,
     ${data.notes ? `
       <div class="terms-section">
         <div class="terms-title">${lbl.notes}</div>
-        ${data.notes}
+        ${escapeHtml(data.notes)}
       </div>
     ` : ''}
 
@@ -292,7 +293,7 @@ function generateChangeOrderBody(data: Record<string, unknown>, settings: PrintS
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">${lbl.changeOrderNo}</div>
-        <div class="info-value">${data.changeOrderNo || data.id || ''}</div>
+        <div class="info-value">${escapeHtml(data.changeOrderNo || data.id || '')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.date}</div>
@@ -305,11 +306,11 @@ function generateChangeOrderBody(data: Record<string, unknown>, settings: PrintS
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">${lbl.projectName}</div>
-        <div class="info-value">${data.projectName || ''}</div>
+        <div class="info-value">${escapeHtml(data.projectName || '')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.contractNo}</div>
-        <div class="info-value">${data.contractNo || ''}</div>
+        <div class="info-value">${escapeHtml(data.contractNo || '')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.originalContractValue}</div>
@@ -321,14 +322,14 @@ function generateChangeOrderBody(data: Record<string, unknown>, settings: PrintS
     ${data.description ? `
       <div class="section-title">${lbl.changeDescription}</div>
       <div style="padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;margin-bottom:12px;font-size:10.5px;">
-        ${data.description}
+        ${escapeHtml(data.description)}
       </div>
     ` : ''}
 
     ${data.reason ? `
       <div class="section-title">${lbl.reason}</div>
       <div style="padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:4px;margin-bottom:12px;font-size:10.5px;">
-        ${data.reason}
+        ${escapeHtml(data.reason)}
       </div>
     ` : ''}
 
@@ -469,7 +470,7 @@ function generateEmployeeContractBody(data: Record<string, unknown>, settings: P
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">${lbl.contractNo}</div>
-        <div class="info-value">${data.contractNo || data.id || ''}</div>
+        <div class="info-value">${escapeHtml(data.contractNo || data.id || '')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.date}</div>
@@ -482,19 +483,19 @@ function generateEmployeeContractBody(data: Record<string, unknown>, settings: P
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">${lbl.employeeName}</div>
-        <div class="info-value">${data.employeeName || ''}</div>
+        <div class="info-value">${escapeHtml(data.employeeName || '')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.nationalId}</div>
-        <div class="info-value">${data.nationalId || '-'}</div>
+        <div class="info-value">${escapeHtml(data.nationalId || '-')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.position}</div>
-        <div class="info-value">${data.position || '-'}</div>
+        <div class="info-value">${escapeHtml(data.position || '-')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.department}</div>
-        <div class="info-value">${data.department || '-'}</div>
+        <div class="info-value">${escapeHtml(data.department || '-')}</div>
       </div>
     </div>
 
@@ -503,7 +504,7 @@ function generateEmployeeContractBody(data: Record<string, unknown>, settings: P
     <div class="info-grid">
       <div class="info-item">
         <div class="info-label">${lbl.contractType}</div>
-        <div class="info-value">${data.contractType || '-'}</div>
+        <div class="info-value">${escapeHtml(data.contractType || '-')}</div>
       </div>
       <div class="info-item">
         <div class="info-label">${lbl.startDate}</div>
@@ -548,7 +549,7 @@ function generateEmployeeContractBody(data: Record<string, unknown>, settings: P
     ${data.terms ? `
       <div class="terms-section">
         <div class="terms-title">${lbl.terms}</div>
-        ${data.terms}
+        ${escapeHtml(data.terms)}
       </div>
     ` : ''}
 

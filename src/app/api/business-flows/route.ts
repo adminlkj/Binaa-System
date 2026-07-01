@@ -1,3 +1,4 @@
+import { requireAuthApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { toNumber } from '@/lib/decimal'
@@ -18,6 +19,9 @@ async function safeCount(promise: Promise<number>): Promise<number> {
 }
 
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const results = await Promise.allSettled([
       db.client.count(),

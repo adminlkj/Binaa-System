@@ -1,9 +1,13 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { type PrismaTransaction } from '@/lib/accounting/engine'
 
 // GET: List all rental contracts with includes
 export async function GET(request: NextRequest) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const status = searchParams.get('status')
@@ -48,6 +52,9 @@ export async function GET(request: NextRequest) {
 // POST: Create new rental contract atomically.
 // P3-CRIT-006 (non-atomic), P3-CRIT-007 (availability check), P3-HIGH-004 (overlapping rental)
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
 

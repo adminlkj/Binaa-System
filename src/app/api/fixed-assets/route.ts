@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { toNumber, serializeDecimal } from '@/lib/decimal'
 import { createAssetWithAcquisition } from '@/lib/accounting/depreciation-engine'
@@ -6,6 +7,9 @@ import { Prisma } from '@prisma/client'
 
 // ============ GET: List fixed assets (with summary) ============
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const category = searchParams.get('category')
@@ -93,6 +97,9 @@ export async function GET(request: Request) {
 //
 // كل شيء آخر يُحسب ويُنشأ تلقائياً عبر createAssetWithAcquisition()
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
 

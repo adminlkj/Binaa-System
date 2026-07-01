@@ -1,3 +1,4 @@
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 import { db } from '@/lib/db'
 import { createExpenseJournalEntry, type PrismaTransaction } from '@/lib/auto-journal'
 import { reverseEntry } from '@/lib/accounting/engine'
@@ -25,6 +26,9 @@ import { NextResponse } from 'next/server'
 // ============================================================================
 
 export async function GET(request: Request) {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const { searchParams } = new URL(request.url)
     const projectId = searchParams.get('projectId')
@@ -185,6 +189,9 @@ async function buildExpenseJournalEntryWithExplicitAccounts(
 }
 
 export async function POST(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
 
@@ -273,6 +280,9 @@ export async function POST(request: Request) {
 
 // PUT: Update an expense (with reversal for posted expenses)
 export async function PUT(request: Request) {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const body = await request.json()
     const { id, ...updateData } = body

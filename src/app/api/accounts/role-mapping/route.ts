@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getRoleAccountMapping, ACCOUNT_ROLES, AccountRoleKey } from '@/lib/account-roles'
-import { requireRoleApi } from '@/lib/auth-helpers'
+import { requireAuthApi, requireRoleApi } from '@/lib/auth-helpers'
 
 // ============================================================================
 // GET /api/accounts/role-mapping
 // Returns all role-to-account mappings
 // ============================================================================
 export async function GET() {
+  const { response } = await requireAuthApi()
+  if (response) return response
+
   try {
     const mappings = await getRoleAccountMapping()
     return NextResponse.json({ mappings })
@@ -98,6 +101,9 @@ export async function PUT(request: NextRequest) {
 // Returns a list of unmapped roles with Arabic error messages
 // ============================================================================
 export async function POST() {
+  const { response } = await requireRoleApi('ADMIN', 'ACCOUNTANT')
+  if (response) return response
+
   try {
     const mappings = await getRoleAccountMapping()
     const unmappedRoles = mappings.filter(
