@@ -207,14 +207,14 @@ async function scenario_4_reversalNetZero() {
     })
     originalId = original.id
 
-    const reversal = await reverseJournalEntry(originalId, undefined, 'Test reversal')
+    const reversal = await db.$transaction(async (tx) => reverseJournalEntry(originalId, tx, 'Test reversal'))
     reversalId = reversal.id
     assert(reversal.isReversal !== undefined, 'reversal should exist')
   })
 
   await test('Double-reversal is blocked', async () => {
     try {
-      await reverseJournalEntry(originalId!)
+      await db.$transaction(async (tx) => reverseJournalEntry(originalId!, tx))
       throw new Error('Should have thrown ALREADY_REVERSED')
     } catch (e: any) {
       assert(e.code === 'ALREADY_REVERSED', `expected ALREADY_REVERSED, got ${e.code}`)

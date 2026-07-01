@@ -59,21 +59,41 @@ export async function GET(request: Request) {
         .filter(c => c.status === 'ACTIVE' || c.status === 'DRAFT')
         .reduce((s, c) => s + toNumber(c.totalValue), 0)
 
-    // ===== الإيراد المُفوتر (billed) من فواتير المبيعات =====
-    const salesInvoices = await db.salesInvoice.findMany({
-      where: {
-        projectId,
-        status: { not: 'CANCELLED' },
-        ...(range && (range.from || range.to) && {
-          date: {
-            ...(range.from && { gte: range.from }),
-            ...(range.to && { lte: range.to }),
+    // ===== الإيراد المُفوتر (billed) من JournalLine على CUSTOMER_AR =====
+    // ⚠️  SSOT (P1-1-FIX / C1): الإيراد المُفوتر مصدره JournalLine على
+    //    حسابات CUSTOMER_AR المدينة على مركز تكلفة المشروع — وليس من
+    //    جدول SalesInvoice.
+    let billedRevenue = 0
+    if (gl.costCenterId) {
+      const arAccounts = await db.account.findMany({
+        where: { accountRole: 'CUSTOMER_AR', isActive: true },
+        select: { id: true },
+      })
+      if (arAccounts.length > 0) {
+        const arAgg = await db.journalLine.aggregate({
+          _sum: { debit: true, credit: true },
+          where: {
+            deletedAt: null,
+            accountId: { in: arAccounts.map(a => a.id) },
+            costCenterId: gl.costCenterId,
+            journalEntry: {
+              status: 'POSTED',
+              deletedAt: null,
+              ...(range && (range.from || range.to) && {
+                date: {
+                  ...(range.from && { gte: range.from }),
+                  ...(range.to && { lte: range.to }),
+                },
+              }),
+            },
           },
-        }),
-      },
-      select: { netAmount: true },
-    })
-    const billedRevenue = salesInvoices.reduce((s, i) => s + toNumber(i.netAmount), 0)
+        })
+        // AR is ASSET (debit normal): billed = net debits
+        const d = toNumber(arAgg._sum.debit)
+        const c = toNumber(arAgg._sum.credit)
+        billedRevenue = Math.max(0, d - c)
+      }
+    }
 
     // ===== الإيراد المكتسب (POC) — IFRS 15 =====
     // استبدلنا الـ fallback القديم (contractValue كإيراد) بحساب POC الصحيح

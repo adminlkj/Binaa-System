@@ -87,23 +87,46 @@ export async function GET(request: Request) {
     for (const [pid, ccid] of ccMap) ccToProject.set(ccid, pid)
 
     // ========== الإيراد المُفوتر لكل مشروع (للمقارنة مع الإيراد المكتسب IFRS 15) ==========
-    const salesInvoiceAgg = await db.salesInvoice.groupBy({
-      by: ['projectId'],
-      where: {
-        projectId: { in: projectIds },
-        status: { not: 'CANCELLED' },
-        ...(range && (range.from || range.to) && {
-          date: {
-            ...(range.from && { gte: range.from }),
-            ...(range.to && { lte: range.to }),
-          },
-        }),
-      },
-      _sum: { netAmount: true },
+    // ⚠️  SSOT (P1-1-FIX / C12): الإيراد المُفوتر مصدره JournalLine على
+    //    حسابات CUSTOMER_AR المدينة على مركز تكلفة كل مشروع — وليس من
+    //    جدول SalesInvoice. الائتمان (الدائن) على AR = تحصيل، والمدين = فوترة.
+    const arAccounts = await db.account.findMany({
+      where: { accountRole: 'CUSTOMER_AR', isActive: true },
+      select: { id: true },
     })
+    const arAccountIds = arAccounts.map(a => a.id)
+    const ccIdsArr = [...ccMap.values()]
     const billedByProject = new Map<string, number>()
-    for (const row of salesInvoiceAgg) {
-      if (row.projectId) billedByProject.set(row.projectId, toNumber(row._sum.netAmount))
+    if (arAccountIds.length > 0 && ccIdsArr.length > 0) {
+      const arLines = await db.journalLine.findMany({
+        where: {
+          deletedAt: null,
+          accountId: { in: arAccountIds },
+          costCenterId: { in: ccIdsArr },
+          journalEntry: {
+            status: 'POSTED',
+            deletedAt: null,
+            ...(range && (range.from || range.to) && {
+              date: {
+                ...(range.from && { gte: range.from }),
+                ...(range.to && { lte: range.to }),
+              },
+            }),
+          },
+        },
+        select: { costCenterId: true, debit: true, credit: true },
+      })
+      // Map ccId → projectId
+      const ccToProject2 = new Map<string, string>()
+      for (const [pid, ccid] of ccMap) ccToProject2.set(ccid, pid)
+      for (const l of arLines) {
+        const pid = ccToProject2.get(l.costCenterId || '')
+        if (!pid) continue
+        const debit = toNumber(l.debit)
+        const credit = toNumber(l.credit)
+        // billed = net debits to AR (invoicing increases AR; collections reduce)
+        billedByProject.set(pid, (billedByProject.get(pid) || 0) + (debit - credit))
+      }
     }
 
     // ========== تاريخ التقييم لـ IFRS 15 ==========

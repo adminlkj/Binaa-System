@@ -6,10 +6,18 @@
 //   POC = Total Actual Cost / Total Estimated Cost
 //   Revenue To Date = POC × Contract Value
 //   Period Revenue = Revenue To Date - Previously Recognized Revenue
+//
+// ⚠️  SSOT: مصدر التكلفة الفعلية هو JournalLine (status='POSTED',
+//    deletedAt IS NULL) على حسابات المصروف المرتبطة بمركز تكلفة المشروع،
+//    عبر الدالة الموحّدة `getProjectCostBreakdown` في
+//    `@/lib/accounting/queries`. لا تُقرأ التكلفة من الجداول التشغيلية
+//    (CostEntry / Expense / LaborCost / SubcontractorInvoice / EquipmentCost)
+//    حتى يتطابق POC مع التقارير المالية.
 // ============================================================================
 
 import { db } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { getProjectCostBreakdown } from '@/lib/accounting/queries'
 
 type TxClient = Prisma.TransactionClient | typeof db
 
@@ -74,47 +82,21 @@ export async function calculatePOC(
     }
   }
 
-  // 2) احسب AC (Actual Cost) من CostEntry (غير committed)
+  // 2) AC (Actual Cost) — من القيود اليومية المرحّلة فقط (SSOT).
+  // نستخدم `getProjectCostBreakdown` التي تجمع بنود المصروف على مركز تكلفة
+  // المشروع من JournalLine WHERE journalEntry.status='POSTED' AND deletedAt IS NULL.
+  // هذا يضمن أن POC يطابق التقارير المالية (ميزان المراجعة، قائمة الدخل،
+  // تقرير تكاليف المشروع، تقرير ربحية المشروع، تقرير الأعمال تحت التنفيذ).
   let totalActualCost = 0
   try {
-    const actualCosts = await client.costEntry.aggregate({
-      where: {
-        projectId,
-        date: { lte: asOfDate },
-        isCommitted: false,
-      },
-      _sum: { amount: true },
-    })
-    totalActualCost = Number(actualCosts._sum.amount || 0)
+    const breakdown = await getProjectCostBreakdown(
+      projectId,
+      { to: asOfDate },
+      client as any
+    )
+    totalActualCost = breakdown.total
   } catch {
-    // CostEntry table might be empty — fallback to legacy sources
-  }
-
-  // Fallback: aggregate from legacy sources
-  if (totalActualCost === 0) {
-    const [expenses, laborCosts, subInvoices, equipmentCosts] = await Promise.all([
-      client.expense.aggregate({
-        where: { projectId, date: { lte: asOfDate } },
-        _sum: { amount: true },
-      }).catch(() => ({ _sum: { amount: 0 } })),
-      client.laborCost.aggregate({
-        where: { projectId, date: { lte: asOfDate } },
-        _sum: { totalAmount: true },
-      }).catch(() => ({ _sum: { totalAmount: 0 } })),
-      client.subcontractorInvoice.aggregate({
-        where: { projectId, date: { lte: asOfDate } },
-        _sum: { amount: true },
-      }).catch(() => ({ _sum: { amount: 0 } })),
-      client.equipmentCost.aggregate({
-        where: { projectId, date: { lte: asOfDate } },
-        _sum: { amount: true },
-      }).catch(() => ({ _sum: { amount: 0 } })),
-    ])
-    totalActualCost =
-      Number(expenses._sum.amount || 0) +
-      Number(laborCosts._sum.totalAmount || 0) +
-      Number(subInvoices._sum.amount || 0) +
-      Number(equipmentCosts._sum.amount || 0)
+    // لم يُعثر على مركز تكلفة للمشروع → التكلفة صفر (يُترك POC = 0)
   }
 
   // 3) POC clamped to [0, 1]
@@ -218,7 +200,6 @@ export async function autoEntryIFRS15Revenue(
   const unbilledRevenueCode = await requireAccountCodeByRole('UNBILLED_REVENUE', 'اعتراف إيراد IFRS 15', client)
 
   const je = await createJournalEntry({
-    entryNo: `IFRS15-${projectId.slice(-6)}-${asOfDate.getTime()}`,
     date: asOfDate,
     description: `اعتراف بإيراد IFRS 15 (POC ${(period.percentComplete * 100).toFixed(2)}%)`,
     descriptionAr: `اعتراف بإيراد IFRS 15 (POC ${(period.percentComplete * 100).toFixed(2)}%)`,

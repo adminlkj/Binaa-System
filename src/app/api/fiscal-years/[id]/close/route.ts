@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server'
 import { closeFiscalYear, ClosingEngineError } from '@/lib/accounting/closing-engine'
 import { requireRoleApi } from '@/lib/auth-helpers'
+import { db } from '@/lib/db'
 
 // ============ POST: Execute year-end closing ============
 // BA-04: Redesigned to use the unified closing-engine.ts.
 // All closing logic (balance computation, JE creation, period closing) now
 // lives in the engine — this route is just a thin HTTP wrapper.
 //
-// Atomic: the engine wraps everything in a $transaction so partial failure
-// cannot leave orphan JEs or inconsistent fiscal year state.
+// P1-4 FIX: الإقفال الآن يُغلَّف في $transaction صراحةً على مستوى الـ route.
+// سابقاً كان يمرر undefined كـ tx مما يجعل المحرك يعمل على db مباشرة — أي قيد
+// إقفال + تحديث FiscalYear + 12 تحديث فترة كعمليات منفصلة. الآن ذرية كاملة.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -31,9 +33,11 @@ export async function POST(
   }
 
   try {
-    const result = await closeFiscalYear(id, undefined, {
-      closedBy: body.closedBy || 'admin',
-      approved: true,
+    const result = await db.$transaction(async (tx) => {
+      return closeFiscalYear(id, tx, {
+        closedBy: body.closedBy || 'admin',
+        approved: true,
+      })
     })
 
     return NextResponse.json({

@@ -251,7 +251,17 @@ export async function closeFiscalYear(
   tx?: PrismaTransaction,
   options?: { closedBy?: string; approved?: boolean }
 ): Promise<ClosingResult> {
-  const client = tx ?? db
+  // P1-4 FIX: الإقفال MUST يتم داخل $transaction. ينشئ قيد إقفال (يستدعي
+  // getNextEntryNo التي تتطلب tx) ويحدّث FiscalYear + 12 فترة. بدونه يمكن
+  // أن يُنشأ القيد دون تحديث الحالة → سنة عالقة في CLOSING للأبد.
+  if (!tx) {
+    throw new ClosingEngineError(
+      'CLOSE_NO_TX',
+      'closeFiscalYear MUST تُستدعى داخل $transaction مع تمرير tx.',
+      { fiscalYearId, hint: 'Wrap the caller in db.$transaction(async (tx) => closeFiscalYear(id, tx, {...}))' }
+    )
+  }
+  const client = tx
 
   // Pre-flight checks (outside tx, read-only)
   const fy = await client.fiscalYear.findUniqueOrThrow({
@@ -425,7 +435,16 @@ export async function reopenFiscalYear(
   reversalEntryNo: string | null
   periodsReopened: number
 }> {
-  const client = tx ?? db
+  // P1-4 FIX: إعادة الفتح MUST يتم داخل $transaction. تعكس قيد الإقفال
+  // (reverseJournalEntry التي تتطلب tx الآن) وتحدّث FiscalYear + 12 فترة.
+  if (!tx) {
+    throw new ClosingEngineError(
+      'REOPEN_NO_TX',
+      'reopenFiscalYear MUST تُستدعى داخل $transaction مع تمرير tx.',
+      { fiscalYearId, hint: 'Wrap the caller in db.$transaction(async (tx) => reopenFiscalYear(id, tx, {...}))' }
+    )
+  }
+  const client = tx
 
   const fy = await client.fiscalYear.findUniqueOrThrow({
     where: { id: fiscalYearId },

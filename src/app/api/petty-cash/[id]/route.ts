@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import { reverseEntry } from '@/lib/accounting/engine'
+import { reverseEntry, type PrismaTransaction } from '@/lib/accounting/engine'
 import { NextResponse } from 'next/server'
 
 export async function GET(
@@ -81,19 +81,21 @@ export async function DELETE(
       return NextResponse.json({ error: 'السلفة النقدية غير موجودة' }, { status: 404 })
     }
 
-    // Reverse the journal entry if it exists using the unified reverseEntry().
-    // This creates a proper reversal (swapped debit/credit) and keeps the original POSTED,
-    // avoiding the double-cancellation bug (original CANCELLED + reversal = distorted GL).
-    if (existing.journalEntryId) {
-      try {
-        await reverseEntry(existing.journalEntryId, db)
-      } catch (accountingError) {
-        console.error('Accounting reversal failed for petty cash delete:', accountingError)
-        throw accountingError
+    // P1-2 HIGH-1 FIX: wrap BOTH the JE reversal and the row delete in a single
+    // db.$transaction. Previously these were two separate non-tx calls — if the
+    // delete failed after the reversal succeeded, the GL would be left with a
+    // reversed JE + the original petty cash record still pointing to the
+    // now-reversed JE (inconsistent state).
+    //
+    // reverseEntry HARD-REQUIRES tx (throws REVERSE_NO_TX without it) — so
+    // passing the tx client is mandatory anyway.
+    await db.$transaction(async (tx: PrismaTransaction) => {
+      if (existing.journalEntryId) {
+        await reverseEntry(existing.journalEntryId, tx)
       }
-    }
+      await tx.pettyCash.delete({ where: { id } })
+    })
 
-    await db.pettyCash.delete({ where: { id } })
     return NextResponse.json({ message: 'تم حذف السلفة النقدية بنجاح' })
   } catch (error) {
     console.error('Error deleting petty cash:', error)

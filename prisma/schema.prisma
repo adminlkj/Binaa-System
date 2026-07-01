@@ -492,6 +492,8 @@ model FiscalYear {
 
   @@index([status])
   @@index([startDate, endDate])
+  @@index([closingJournalEntryId])
+  @@index([openingJournalEntryId])
 }
 
 model FiscalPeriod {
@@ -714,6 +716,7 @@ model Salary {
   @@index([projectId])
   @@index([status])
   @@index([year, month])
+  @@index([journalEntryId])
 }
 
 model WorkTeam {
@@ -780,6 +783,7 @@ model PayrollRun {
   @@index([status])
   @@index([year])
   @@unique([year, month])
+  @@index([journalEntryId])
 }
 
 model PayrollRunLine {
@@ -835,6 +839,7 @@ model SalaryPayment {
   @@index([payrollRunId])
   @@index([employeeId])
   @@index([paymentDate])
+  @@index([journalEntryId])
 }
 
 // ============ PROJECTS ============
@@ -975,6 +980,7 @@ model Contract {
   @@index([contractType])
   @@index([projectId, status])
   @@index([date])
+  @@index([journalEntryId])
 }
 
 // ============ CHANGE ORDERS / VARIATION ORDERS ============
@@ -1103,6 +1109,7 @@ model ProgressClaim {
   @@index([status])
   @@index([date])
   @@index([projectId, status])
+  @@index([journalEntryId])
 }
 
 // ============ SALES / CLIENT INVOICES ============
@@ -1169,6 +1176,7 @@ model SalesInvoice {
   @@index([clientId, status])
   @@index([projectId, status])
   @@index([invoiceType])
+  @@index([journalEntryId])
 }
 
 model SalesInvoiceItem {
@@ -1261,6 +1269,7 @@ model PurchaseOrder {
   @@index([date])
   @@index([supplierId, status])
   @@index([projectId, status])
+  @@index([journalEntryId])
 }
 
 model PurchaseOrderItem {
@@ -1304,6 +1313,7 @@ model GoodsReceipt {
   @@index([projectId])
   @@index([status])
   @@index([date])
+  @@index([journalEntryId])
 }
 
 model GoodsReceiptItem {
@@ -1371,6 +1381,7 @@ model PurchaseInvoice {
   @@index([status])
   @@index([date])
   @@index([supplierId, status])
+  @@index([journalEntryId])
 }
 
 model PurchaseInvoiceItem {
@@ -1446,6 +1457,7 @@ model SubcontractorInvoice {
   @@index([status])
   @@index([date])
   @@index([subcontractorId, status])
+  @@index([journalEntryId])
 }
 
 // ============ EXPENSES ============
@@ -1482,6 +1494,7 @@ model Expense {
   @@index([category])
   @@index([date])
   @@index([expenseType])
+  @@index([journalEntryId])
 }
 
 // ============ LABOR COSTS ============
@@ -1511,6 +1524,7 @@ model LaborCost {
   @@index([projectId])
   @@index([employeeId])
   @@index([date])
+  @@index([journalEntryId])
 }
 
 // ============ EQUIPMENT ============
@@ -1564,6 +1578,7 @@ model Equipment {
   @@index([status])
   @@index([isActive])
   @@index([ownershipType])
+  @@index([journalEntryId])
 }
 
 model EquipmentOperation {
@@ -1627,6 +1642,7 @@ model EquipmentMaintenance {
   @@index([supplierId])
   @@index([date])
   @@index([status])
+  @@index([journalEntryId])
 }
 
 model EquipmentFuelLog {
@@ -1647,6 +1663,7 @@ model EquipmentFuelLog {
   @@index([equipmentId])
   @@index([projectId])
   @@index([date])
+  @@index([journalEntryId])
 }
 
 model EquipmentCost {
@@ -1666,6 +1683,7 @@ model EquipmentCost {
   @@index([projectId])
   @@index([date])
   @@index([costType])
+  @@index([journalEntryId])
 }
 
 // ============ EQUIPMENT RENTAL ============
@@ -1775,6 +1793,7 @@ model EquipmentExpense {
   @@index([equipmentId])
   @@index([category])
   @@index([date])
+  @@index([journalEntryId])
 }
 
 // ============ TIMESHEETS ============
@@ -1838,6 +1857,7 @@ model PettyCash {
   @@index([branchId])
   @@index([date])
   @@index([category])
+  @@index([journalEntryId])
 }
 
 model EmployeeAdvance {
@@ -1871,6 +1891,7 @@ model EmployeeAdvance {
   @@index([employeeId])
   @@index([status])
   @@index([date])
+  @@index([journalEntryId])
 }
 
 // ============ INVENTORY ============
@@ -2009,6 +2030,20 @@ model JournalEntry {
   @@index([isSystem])
 }
 
+// ---------------------------------------------------------------------------
+// Sequence counter — مصدر موحَّد وآمن لتوليد أرقام القيود (JE-NNNNNN)
+// ---------------------------------------------------------------------------
+// يحل مشكلة السباق (race condition) في getNextEntryNo السابقة التي كانت
+// تقرأ max(entryNo)+1 في JS. الآن: INSERT ... ON CONFLICT DO UPDATE RETURNING
+// يضمن الذرية على مستوى الـ database نفسها.
+// ---------------------------------------------------------------------------
+
+model Sequence {
+  id          String   @id @default("default")
+  lastEntryNo Int      @default(0)
+  updatedAt   DateTime @updatedAt
+}
+
 model JournalLine {
   id             String    @id @default(cuid())
   journalEntryId String
@@ -2088,6 +2123,7 @@ model VATReturn {
   @@index([year, quarter])
   @@index([period])
   @@index([amendedFromId])
+  @@index([journalEntryId])
 }
 
 // ============ CLIENT PAYMENTS ============
@@ -2118,6 +2154,7 @@ model ClientPayment {
   @@index([date])
   @@index([clientId, date])
   @@index([paymentType])
+  @@index([journalEntryId])
 }
 
 // ============ SUPPLIER PAYMENTS ============
@@ -2146,6 +2183,7 @@ model SupplierPayment {
   @@index([supplierId])
   @@index([date])
   @@index([supplierId, date])
+  @@index([journalEntryId])
 }
 
 // ============ RESOURCE DISTRIBUTION ============
@@ -2206,6 +2244,7 @@ model FixedAsset {
   @@index([accountId])
   @@index([depExpenseAccountId])
   @@index([accumDepAccountId])
+  @@index([journalEntryId])
 }
 
 model AssetDepreciation {
@@ -2251,6 +2290,7 @@ model Provision {
 
   @@index([status])
   @@index([type])
+  @@index([journalEntryId])
 }
 
 model ProvisionMovement {
@@ -2268,6 +2308,7 @@ model ProvisionMovement {
 
   @@index([provisionId])
   @@index([date])
+  @@index([journalEntryId])
 }
 
 // ============ BANK ACCOUNTS & RECONCILIATION ============
@@ -2310,6 +2351,7 @@ model BankTransaction {
   @@index([bankAccountId])
   @@index([date])
   @@index([reconciled])
+  @@index([journalEntryId])
 }
 
 model BankReconciliation {
@@ -2516,6 +2558,7 @@ model CostEntry {
   @@index([wbsElementId, costCodeId])
   @@index([activityId])
   @@index([costCenterId])
+  @@index([journalEntryId])
 }
 
 // ── Cost Code Budget (WBS × CostCode matrix) ────────────────────────────
@@ -2568,6 +2611,8 @@ model ProjectLedger {
   @@index([ledgerType])
   @@index([wbsElementId])
   @@index([costCodeId])
+  @@index([journalEntryId])
+  @@index([sourceType, sourceId])
 }
 
 // ── Commitment Accounting (PO + Subcontract open commitments) ────────────
@@ -2633,6 +2678,7 @@ model SubcontractorAdvance {
 
   @@index([subcontractorId])
   @@index([projectId])
+  @@index([journalEntryId])
 }
 
 model SubcontractorRetention {
@@ -2656,6 +2702,7 @@ model SubcontractorRetention {
 
   @@index([subcontractorId])
   @@index([projectId])
+  @@index([journalEntryId])
 }
 
 model SubcontractorPayment {
@@ -2679,6 +2726,7 @@ model SubcontractorPayment {
 
   @@index([subcontractorId])
   @@index([subcontractorInvoiceId])
+  @@index([journalEntryId])
 }
 
 // ── Claim Items + Measurements + Certifications (IFRS 15 chain) ─────────
@@ -2792,6 +2840,7 @@ model WIPEntry {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, entryDate])
+  @@index([journalEntryId])
 }
 
 model WIPAdjustment {
@@ -2807,6 +2856,7 @@ model WIPAdjustment {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([journalEntryId])
 }
 
 // ── Project Budget & Forecast (EVM) ─────────────────────────────────────
@@ -2886,6 +2936,7 @@ model LossProvision {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([journalEntryId])
 }
 
 // ── Customer Advance & Recovery ─────────────────────────────────────────
@@ -2907,6 +2958,7 @@ model CustomerAdvance {
 
   @@index([clientId])
   @@index([projectId])
+  @@index([journalEntryId])
 }
 
 model AdvanceRecovery {
@@ -2920,6 +2972,7 @@ model AdvanceRecovery {
   createdAt        DateTime @default(now())
 
   @@index([customerAdvanceId])
+  @@index([journalEntryId])
 }
 
 // ── Stock Movements (Inventory) ─────────────────────────────────────────
@@ -2939,4 +2992,5 @@ model StockMovement {
 
   @@index([inventoryItemId])
   @@index([movementDate])
+  @@index([journalEntryId])
 }

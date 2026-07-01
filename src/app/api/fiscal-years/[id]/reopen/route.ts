@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
 import { reopenFiscalYear, ClosingEngineError } from '@/lib/accounting/closing-engine'
 import { requireRoleApi } from '@/lib/auth-helpers'
+import { db } from '@/lib/db'
 
 // ============ POST: Reopen a closed fiscal year ============
 // BA-04: Redesigned to use the unified closing-engine.ts.
-// Atomic: reversal JE + fiscal year update + period reopening all in one tx.
+// P1-4 FIX: الآن يُغلَّف في $transaction صراحةً (عكس قيد الإقفال + تحديث
+// السنة + 12 إعادة فتح فترة ككتلة ذرية واحدة).
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -20,9 +22,11 @@ export async function POST(
   }
 
   try {
-    const result = await reopenFiscalYear(id, undefined, {
-      reopenedBy: body.reopenedBy || 'admin',
-      reverseClosingJE: body.reverseClosingJE !== false, // default true
+    const result = await db.$transaction(async (tx) => {
+      return reopenFiscalYear(id, tx, {
+        reopenedBy: body.reopenedBy || 'admin',
+        reverseClosingJE: body.reverseClosingJE !== false, // default true
+      })
     })
 
     return NextResponse.json({

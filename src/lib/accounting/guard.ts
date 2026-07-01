@@ -82,6 +82,15 @@ export interface JournalEntryInput {
   lines: JournalLineInput[]
   /** Skip period-open check (used by period-closing entries themselves) */
   skipPeriodGuard?: boolean
+  /**
+   * P1-4c: Set isReversal at creation time (not after).
+   * Needed because the idempotency unique index on (sourceType, sourceId)
+   * WHERE isReversal=false blocks reversal entries that share the original's
+   * source. By setting isReversal=true at creation, the index correctly
+   * excludes the reversal.
+   */
+  isReversal?: boolean
+  reversedEntryId?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +297,8 @@ export async function postJournalEntry(
   const { date, lines } = await assertJournalEntryValid(input, client)
 
   // 2. Create the entry — always POSTED, always with source tracking
+  // P1-4c: isReversal and reversedEntryId are set at creation time (not after)
+  // to comply with the idempotency unique index on (sourceType, sourceId) WHERE isReversal=false.
   const entry = await client.journalEntry.create({
     data: {
       entryNo: input.entryNo,
@@ -296,6 +307,8 @@ export async function postJournalEntry(
       status: 'POSTED', // R1: auto-entries are always posted
       sourceType: input.sourceType ?? 'MANUAL',
       sourceId: input.sourceId ?? null,
+      isReversal: input.isReversal ?? false,
+      reversedEntryId: input.reversedEntryId ?? null,
       isSystem: input.sourceType !== 'MANUAL' && input.sourceType !== null,
       lines: {
         create: lines.map((l) => ({
@@ -329,7 +342,17 @@ export async function reverseJournalEntry(
   tx?: PrismaTransaction,
   reason?: string
 ) {
-  const client = tx ?? db
+  // P1-4 FIX: عكس القيد MUST يتم داخل $transaction لأنه ينشئ قيداً عكسياً
+  // (يستدعي getNextEntryNo التي تتطلب tx) ويحدّث القيد الأصلي. بدونهما يمكن
+  // أن يُنشأ القيد العكسي دون تحديث الرابط → قيد يتيم.
+  if (!tx) {
+    throw new AccountingGuardError(
+      'REVERSE_NO_TX',
+      'reverseJournalEntry MUST تُستدعى داخل $transaction مع تمرير tx.',
+      { entryId, hint: 'Wrap the caller in db.$transaction(async (tx) => reverseJournalEntry(id, tx, reason))' }
+    )
+  }
+  const client = tx
 
   const original = await client.journalEntry.findUnique({
     where: { id: entryId, deletedAt: null },
@@ -357,7 +380,7 @@ export async function reverseJournalEntry(
     )
   }
 
-  // Generate next entry number
+  // Generate next entry number (P1-4: now transaction-safe via Sequence table)
   const nextNo = await getNextEntryNo(client)
 
   // Build reversed lines (flip debit/credit)
@@ -378,24 +401,17 @@ export async function reverseJournalEntry(
       sourceId: original.sourceId,
       lines: reversedLines,
       skipPeriodGuard: true, // reversals can happen in a later period
+      // P1-4c: Set at creation time so the idempotency index (WHERE isReversal=false)
+      // correctly excludes this reversal. Previously these were set via a post-create
+      // update, which conflicted with the unique index.
+      isReversal: true,
+      reversedEntryId: original.id,
     },
     client
   )
 
-  // Mark the reversal entry and link it to the original.
-  // IMPORTANT: We do NOT cancel the original. Both entries remain POSTED
-  // so they net out to zero in the trial balance. This is the correct
-  // accounting treatment — a reversal is a separate dated transaction
-  // that negates the original, not a deletion of the original.
-  // The `isReversal` flag + `reversedEntryId` link provide the audit trail.
-  await client.journalEntry.update({
-    where: { id: reversal.id },
-    data: {
-      isReversal: true,
-      reversedEntryId: original.id,
-    },
-  })
-
+  // No post-create update needed — isReversal and reversedEntryId are set at creation.
+  // Both entries remain POSTED and net out to zero in the trial balance.
   return reversal
 }
 
@@ -518,22 +534,42 @@ export async function assertJournalEntryReversible(
 // ---------------------------------------------------------------------------
 // Next entry number generator (JE-NNNNNN)
 // ---------------------------------------------------------------------------
+//
+// P1-4 FIX: تم استبدال قراءة max(entryNo)+1 في JS (التي كانت عرضة لسباق
+// السباق) بنموذج Sequence مع INSERT ... ON CONFLICT DO UPDATE RETURNING.
+// هذا يضمن الذرية على مستوى الـ database نفسها — لا يمكن لطلبين متزامنين
+// الحصول على نفس الرقم.
+//
+// القاعدة الجديدة: getNextEntryNo MUST تُستدعى داخل $transaction مع تمرير tx.
+// الاستدعاء بدون tx يُخطئ (لم يعد مسموحاً بالـ fallback إلى db).
+// ---------------------------------------------------------------------------
 
 export async function getNextEntryNo(tx?: PrismaTransaction): Promise<string> {
-  const client = tx ?? db
-  const all = await client.journalEntry.findMany({
-    where: { entryNo: { startsWith: 'JE-' } },
-    select: { entryNo: true },
-  })
-  let max = 0
-  for (const je of all) {
-    const match = je.entryNo.match(/^JE-(\d+)$/)
-    if (match) {
-      const n = parseInt(match[1], 10)
-      if (!isNaN(n) && n > max) max = n
-    }
+  if (!tx) {
+    throw new AccountingGuardError(
+      'GET_NEXT_ENTRY_NO_NO_TX',
+      'getNextEntryNo MUST تُستدعى داخل $transaction مع تمرير tx. الاستدعاء بدون tx يعرض أرقام القيود لسباق البيانات.',
+      { hint: 'Wrap the caller in db.$transaction(async (tx) => {...}) and pass tx to getNextEntryNo.' }
+    )
   }
-  return `JE-${(max + 1).toString().padStart(6, '0')}`
+  // Atomic upsert-and-increment. SQLite 3.35+ supports RETURNING.
+  // On first call: inserts (id='default', lastEntryNo=1, updatedAt=now) and returns 1.
+  // On subsequent calls: increments lastEntryNo + bumps updatedAt, returns the new value.
+  // NOTE: must include updatedAt because @updatedAt only auto-fills via Prisma client, not raw SQL.
+  const rows = await tx.$queryRaw<Array<{ nextNo: number }>>`
+    INSERT INTO "Sequence" (id, "lastEntryNo", "updatedAt") VALUES ('default', 1, CURRENT_TIMESTAMP)
+    ON CONFLICT (id) DO UPDATE SET "lastEntryNo" = "Sequence"."lastEntryNo" + 1, "updatedAt" = CURRENT_TIMESTAMP
+    RETURNING "lastEntryNo" AS "nextNo"
+  `
+  const nextNo = rows[0]?.nextNo
+  if (typeof nextNo !== 'number' || !Number.isFinite(nextNo)) {
+    throw new AccountingGuardError(
+      'GET_NEXT_ENTRY_NO_FAILED',
+      'فشل توليد رقم القيد التسلسلي من جدول Sequence.',
+      { rows }
+    )
+  }
+  return `JE-${nextNo.toString().padStart(6, '0')}`
 }
 
 // ---------------------------------------------------------------------------

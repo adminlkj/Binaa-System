@@ -209,7 +209,9 @@ export async function GET(request: Request) {
       }
 
       case 'expenses': {
-        // Keep operational listing for descriptive details
+        // ⚠️  SSOT (P1-1-FIX / C16): GL هو المصدر المعتمد. تجميع المصروفات
+        //    من JournalLine على حسابات EXPENSE، مُجمّعةً حسب accountRole.
+        //    البنود التشغيلية تبقى للعرض التفصيلي فقط.
         const expenses = await db.expense.findMany({
           include: {
             project: { select: { code: true, name: true } },
@@ -217,17 +219,43 @@ export async function GET(request: Request) {
           orderBy: { date: 'desc' },
         })
 
-        // GL-based total for verification
-        const glExpenseTotal = await getGLBalanceByType('EXPENSE')
-
+        // GL-based totals grouped by account role (canonical)
+        const expenseAccounts = await db.account.findMany({
+          where: { type: 'EXPENSE', isActive: true, allowPosting: true },
+          select: { id: true, code: true, accountRole: true },
+        })
+        const expenseAccountIds = expenseAccounts.map(a => a.id)
         const byCategory: Record<string, number> = {}
-        expenses.forEach(e => { byCategory[e.category] = (byCategory[e.category] || 0) + toNumber(e.amount) })
-        const totalExpenses = expenses.reduce((s, e) => s + toNumber(e.amount), 0)
-        return NextResponse.json({ expenses, byCategory, totalExpenses, glExpenseTotal })
+        let totalExpenses = 0
+        if (expenseAccountIds.length > 0) {
+          const agg = await db.journalLine.groupBy({
+            by: ['accountId'],
+            _sum: { debit: true, credit: true },
+            where: {
+              accountId: { in: expenseAccountIds },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
+            },
+          })
+          for (const entry of agg) {
+            const acc = expenseAccounts.find(a => a.id === entry.accountId)
+            if (!acc) continue
+            const amount = toNumber(entry._sum.debit) - toNumber(entry._sum.credit)
+            if (amount === 0) continue
+            const role = acc.accountRole || acc.code
+            byCategory[role] = (byCategory[role] || 0) + amount
+            totalExpenses += amount
+          }
+        }
+        const glExpenseTotal = totalExpenses // الآن GL هو المصدر المعتمد
+        return NextResponse.json({ expenses, byCategory, totalExpenses, glExpenseTotal, source: 'posted-journal-entries' })
       }
 
       case 'sales': {
-        // Keep operational listing for descriptive details
+        // ⚠️  SSOT (P1-1-FIX / C17): GL هو المصدر المعتمد.
+        //    totalSales = REVENUE credit - debit من JournalLine.
+        //    totalPaid = CUSTOMER_AR credits (تحصيل) من JournalLine.
+        //    totalOutstanding = CUSTOMER_AR debit - credit (الرصيد المدين) من GL.
         const invoices = await db.salesInvoice.findMany({
           include: {
             client: { select: { name: true } },
@@ -237,16 +265,39 @@ export async function GET(request: Request) {
           orderBy: { date: 'desc' },
         })
 
-        // GL-based revenue total for verification
+        // GL-based totals (canonical)
         const glRevenueTotal = await getGLBalanceByType('REVENUE')
-
-        const totalSales = invoices.reduce((s, i) => s + toNumber(i.totalAmount), 0)
-        const totalPaid = invoices.reduce((s, i) => s + toNumber(i.paidAmount), 0)
-        return NextResponse.json({ invoices, totalSales, totalPaid, totalOutstanding: totalSales - totalPaid, glRevenueTotal })
+        // CUSTOMER_AR credits = payments collected (cash received against AR)
+        const arCodes = (await getAccountsByRoles([AccountRole.CUSTOMER_AR])).map(a => a.code)
+        const arAccounts = await db.account.findMany({
+          where: { code: { in: arCodes.length > 0 ? arCodes : ['1210'] }, isActive: true },
+          select: { id: true },
+        })
+        let totalPaid = 0
+        let totalOutstanding = 0
+        if (arAccounts.length > 0) {
+          const arAgg = await db.journalLine.aggregate({
+            _sum: { debit: true, credit: true },
+            where: {
+              accountId: { in: arAccounts.map(a => a.id) },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
+            },
+          })
+          // AR is ASSET (debit normal): credits = payments, debit-credit = outstanding
+          totalPaid = toNumber(arAgg._sum.credit)
+          totalOutstanding = toNumber(arAgg._sum.debit) - toNumber(arAgg._sum.credit)
+        }
+        const totalSales = glRevenueTotal // canonical
+        return NextResponse.json({ invoices, totalSales, totalPaid, totalOutstanding, glRevenueTotal, source: 'posted-journal-entries' })
       }
 
       case 'purchases': {
-        // Keep operational listing for descriptive details
+        // ⚠️  SSOT (P1-1-FIX / C18): GL هو المصدر المعتمد.
+        //    totalPIs = EXPENSE debit + VAT_INPUT debit من JournalLine.
+        //    totalPaid = SUPPLIER_AP + SUBCONTRACTOR_AP debits (سداد) من GL.
+        //    totalOutstanding = AP credit - debit (الرصيد الدائن) من GL.
+        //    PO totals تبقى تشغيلية (PO هو التزام قبل الفاتورة - ليس مالي).
         const pos = await db.purchaseOrder.findMany({
           include: {
             supplier: { select: { name: true } },
@@ -261,14 +312,37 @@ export async function GET(request: Request) {
           orderBy: { date: 'desc' },
         })
 
-        // GL-based AP total for verification
+        // GL-based totals (canonical)
+        // totalPIs from EXPENSE + VAT_INPUT debits
+        const totalPIs = await getGLBalanceByType('EXPENSE') + await getGLBalanceForCodes(
+          (await getAccountsByRoles([AccountRole.VAT_INPUT])).map(a => a.code).length > 0
+            ? (await getAccountsByRoles([AccountRole.VAT_INPUT])).map(a => a.code)
+            : ['3120']
+        )
+        // AP totals from GL
         const apCodes = (await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])).map(a => a.code)
-        const glPayableTotal = await getGLBalanceForCodes(apCodes.length > 0 ? apCodes : ['3210', '3220'])
-
-        const totalPOs = pos.reduce((s, p) => s + toNumber(p.totalAmount), 0)
-        const totalPIs = pis.reduce((s, p) => s + toNumber(p.totalAmount), 0)
-        const totalPaid = pis.reduce((s, p) => s + toNumber(p.paidAmount), 0)
-        return NextResponse.json({ purchaseOrders: pos, purchaseInvoices: pis, totalPOs, totalPIs, totalPaid, totalOutstanding: totalPIs - totalPaid, glPayableTotal })
+        const apAccounts = await db.account.findMany({
+          where: { code: { in: apCodes.length > 0 ? apCodes : ['3210', '3220'] }, isActive: true },
+          select: { id: true },
+        })
+        let totalPaid = 0
+        let totalOutstanding = 0
+        if (apAccounts.length > 0) {
+          const apAgg = await db.journalLine.aggregate({
+            _sum: { debit: true, credit: true },
+            where: {
+              accountId: { in: apAccounts.map(a => a.id) },
+              deletedAt: null,
+              journalEntry: { status: 'POSTED', deletedAt: null },
+            },
+          })
+          // AP is LIABILITY (credit normal): debits = payments, credit - debit = outstanding
+          totalPaid = toNumber(apAgg._sum.debit)
+          totalOutstanding = toNumber(apAgg._sum.credit) - toNumber(apAgg._sum.debit)
+        }
+        const totalPOs = pos.reduce((s, p) => s + toNumber(p.totalAmount), 0) // operational (PO is commitment)
+        const glPayableTotal = totalOutstanding // canonical
+        return NextResponse.json({ purchaseOrders: pos, purchaseInvoices: pis, totalPOs, totalPIs, totalPaid, totalOutstanding, glPayableTotal, source: 'posted-journal-entries' })
       }
 
       case 'inventory': {
@@ -612,8 +686,16 @@ export async function GET(request: Request) {
       }
 
       case 'equipment-utilization': {
-        // Equipment-specific: use operational data for descriptive details (hours, status)
-        // but use GL for financial amounts where possible
+        // ⚠️  ARCHITECTURAL GAP (P1-1-FIX / C19): تتطلب هذه القضية بُعد
+        //    "مركز تكلفة لكل معدّة" (per-equipment cost center dimension) على
+        //    JournalLine حتى يمكن اشتقاق الإيراد والتكاليف من القيود المحاسبية.
+        //    هذا البُعد غير متوفر حالياً. تبقى الأرقام من الجداول التشغيلية
+        //    كمؤشرات تشغيلية (Operational View) — وليست تقريراً مالياً معتمداً.
+        //
+        //    TODO (طويل الأمد): أضف عمود `equipmentId` إلى JournalLine أو
+        //    أنشئ مركز تكلفة لكل معدّة. عند توفّر البُعد، أعد كتابة هذا
+        //    التقرير ليستخدم `getBalanceByType('REVENUE', undefined,
+        //    { activityType: 'EQUIPMENT_RENTAL' })` مُصفّاةً بمركز تكلفة المعدة.
         const equipment = await db.equipment.findMany({
           where: { isActive: true },
           include: {
@@ -656,8 +738,11 @@ export async function GET(request: Request) {
       }
 
       case 'rental-revenue-by-client': {
-        // GL-based: get revenue from REVENUE accounts with EQUIPMENT_RENTAL activity type
-        // and join with operational data for client details
+        // ⚠️  SSOT (P1-1-FIX / C20): GL هو المصدر المعتمد.
+        //    نحسب إيراد التأجير من JournalLine على حسابات REVENUE ذات
+        //    activityType=EQUIPMENT_RENTAL، مُجمّعةً حسب مركز التكلفة المرتبط
+        //    بالعميل (client.code → costCenter.code). الفواتير التشغيلية تبقى
+        //    للعرض التفصيلي فقط.
         const rentalInvoices = await db.salesInvoice.findMany({
           where: { sourceType: 'TIMESHEET', status: { not: 'CANCELLED' } },
           include: {
@@ -666,23 +751,86 @@ export async function GET(request: Request) {
           orderBy: { date: 'desc' },
         })
 
-        // Build client-level aggregation from operational data (descriptive)
-        const byClient: Record<string, { id: string; code: string; name: string; nameAr: string | null; revenue: number; invoiceCount: number }> = {}
+        // Get clients and their cost centers
+        const clients = await db.client.findMany({
+          where: { isActive: true },
+          select: { id: true, code: true, name: true, nameAr: true },
+        })
+        const clientCodes = clients.map(c => c.code).filter(Boolean) as string[]
+        const costCenters = clientCodes.length > 0
+          ? await db.costCenter.findMany({
+              where: { code: { in: clientCodes } },
+              select: { id: true, code: true },
+            })
+          : []
+        const codeToCcId = new Map<string, string>()
+        const ccIdToCode = new Map<string, string>()
+        for (const cc of costCenters) {
+          codeToCcId.set(cc.code, cc.id)
+          ccIdToCode.set(cc.id, cc.code)
+        }
+
+        // GL revenue per client cost center on REVENUE accounts with EQUIPMENT_RENTAL activity
+        const revenueAccounts = await db.account.findMany({
+          where: {
+            type: 'REVENUE',
+            isActive: true,
+            allowPosting: true,
+            activityType: { in: ['EQUIPMENT_RENTAL', 'BOTH'] },
+          },
+          select: { id: true },
+        })
+        const revenueAccountIds = revenueAccounts.map(a => a.id)
+        const ccIds = [...codeToCcId.values()]
+
+        const glRevenueByClientId = new Map<string, number>()
+        if (revenueAccountIds.length > 0 && ccIds.length > 0) {
+          const agg = await db.journalLine.groupBy({
+            by: ['costCenterId'],
+            _sum: { debit: true, credit: true },
+            where: {
+              deletedAt: null,
+              accountId: { in: revenueAccountIds },
+              costCenterId: { in: ccIds },
+              journalEntry: { status: 'POSTED', deletedAt: null },
+            },
+          })
+          for (const a of agg) {
+            if (!a.costCenterId) continue
+            const ccCode = ccIdToCode.get(a.costCenterId)
+            const client = clients.find(c => c.code === ccCode)
+            if (!client) continue
+            // REVENUE is CREDIT normal: revenue = credit - debit
+            const revenue = toNumber(a._sum.credit) - toNumber(a._sum.debit)
+            glRevenueByClientId.set(client.id, revenue)
+          }
+        }
+
+        // Build client aggregation from GL (canonical)
+        const byClientMap = new Map<string, { id: string; code: string; name: string; nameAr: string | null; revenue: number; invoiceCount: number }>()
+        for (const c of clients) {
+          const revenue = glRevenueByClientId.get(c.id) || 0
+          if (revenue === 0) continue
+          byClientMap.set(c.id, {
+            id: c.id,
+            code: c.code || '',
+            name: c.name,
+            nameAr: c.nameAr,
+            revenue,
+            invoiceCount: 0,
+          })
+        }
+        // Enrich with operational invoice count (descriptive)
         for (const inv of rentalInvoices) {
           const cid = inv.client.id
-          if (!byClient[cid]) {
-            byClient[cid] = { id: cid, code: inv.client.code, name: inv.client.name, nameAr: inv.client.nameAr, revenue: 0, invoiceCount: 0 }
-          }
-          byClient[cid].revenue += toNumber(inv.totalAmount)
-          byClient[cid].invoiceCount += 1
+          const entry = byClientMap.get(cid)
+          if (entry) entry.invoiceCount += 1
         }
-        const clients = Object.values(byClient)
+        const clientsArr = Array.from(byClientMap.values())
 
-        // GL-based total for verification
-        const glRentalRevenue = await getGLBalanceByType('REVENUE', { activityType: 'EQUIPMENT_RENTAL' })
-
-        const totalRevenue = clients.reduce((s, c) => s + c.revenue, 0)
-        return NextResponse.json({ clients, totalRevenue, glRentalRevenue })
+        const glRentalRevenue = clientsArr.reduce((s, c) => s + c.revenue, 0)
+        const totalRevenue = glRentalRevenue // canonical
+        return NextResponse.json({ clients: clientsArr, totalRevenue, glRentalRevenue, source: 'posted-journal-entries' })
       }
 
       case 'equipment-status': {
@@ -703,7 +851,10 @@ export async function GET(request: Request) {
       }
 
       case 'purchase-summary': {
-        // Keep operational listing for descriptive details
+        // ⚠️  SSOT (P1-1-FIX / C21): GL هو المصدر المعتمد.
+        //    نحسب إجمالي المشتريات من JournalLine على حسابات EXPENSE مُجمّعةً
+        //    حسب مركز التكلفة (per-project). التجميع حسب المورّد يبقى تشغيلياً
+        //    لأن JournalLine لا يحمل بُعد المورّد بشكل مباشر.
         const supplierInvoices = await db.purchaseInvoice.findMany({
           where: { status: { not: 'CANCELLED' } },
           include: {
@@ -713,29 +864,109 @@ export async function GET(request: Request) {
           orderBy: { date: 'desc' },
         })
 
-        const bySupplier: Record<string, { id: string; code: string; name: string; total: number; invoiceCount: number }> = {}
-        const byProject: Record<string, { id: string; code: string; name: string; projectType: string; total: number; invoiceCount: number }> = {}
-        for (const inv of supplierInvoices) {
-          // By supplier
-          const sid = inv.supplier?.id || 'unknown'
-          if (!bySupplier[sid]) bySupplier[sid] = { id: sid, code: inv.supplier?.code || '', name: inv.supplier?.name || 'Unknown', total: 0, invoiceCount: 0 }
-          bySupplier[sid].total += toNumber(inv.totalAmount)
-          bySupplier[sid].invoiceCount += 1
-          // By project
-          if (inv.project) {
-            const pid = inv.project.id
-            if (!byProject[pid]) byProject[pid] = { id: pid, code: inv.project.code, name: inv.project.name, projectType: inv.project.projectType, total: 0, invoiceCount: 0 }
-            byProject[pid].total += toNumber(inv.totalAmount)
-            byProject[pid].invoiceCount += 1
+        // GL aggregation per project cost center (canonical)
+        const projects = await db.project.findMany({
+          where: { deletedAt: null },
+          select: { id: true, code: true, name: true, projectType: true },
+        })
+        const projectCodes = projects.map(p => p.code)
+        const costCenters = projectCodes.length > 0
+          ? await db.costCenter.findMany({
+              where: { code: { in: projectCodes } },
+              select: { id: true, code: true },
+            })
+          : []
+        const codeToCcId = new Map<string, string>()
+        const ccIdToCode = new Map<string, string>()
+        for (const cc of costCenters) {
+          codeToCcId.set(cc.code, cc.id)
+          ccIdToCode.set(cc.id, cc.code)
+        }
+
+        const expenseAccounts = await db.account.findMany({
+          where: { type: 'EXPENSE', isActive: true, allowPosting: true },
+          select: { id: true },
+        })
+        const expenseAccountIds = expenseAccounts.map(a => a.id)
+        const ccIds = [...codeToCcId.values()]
+
+        const glByProject = new Map<string, number>()
+        if (expenseAccountIds.length > 0 && ccIds.length > 0) {
+          const agg = await db.journalLine.groupBy({
+            by: ['costCenterId'],
+            _sum: { debit: true, credit: true },
+            where: {
+              deletedAt: null,
+              accountId: { in: expenseAccountIds },
+              costCenterId: { in: ccIds },
+              journalEntry: { status: 'POSTED', deletedAt: null },
+            },
+          })
+          for (const a of agg) {
+            if (!a.costCenterId) continue
+            const ccCode = ccIdToCode.get(a.costCenterId)
+            const project = projects.find(p => p.code === ccCode)
+            if (!project) continue
+            // EXPENSE is DEBIT normal: cost = debit - credit
+            const total = toNumber(a._sum.debit) - toNumber(a._sum.credit)
+            glByProject.set(project.id, total)
           }
         }
 
-        // GL-based AP total for verification
+        const bySupplier: Record<string, { id: string; code: string; name: string; total: number; invoiceCount: number }> = {}
+        const byProjectMap = new Map<string, { id: string; code: string; name: string; projectType: string; total: number; invoiceCount: number }>()
+        for (const inv of supplierInvoices) {
+          // By supplier (operational - for descriptive detail)
+          const sid = inv.supplier?.id || 'unknown'
+          if (!bySupplier[sid]) bySupplier[sid] = { id: sid, code: inv.supplier?.code || '', name: inv.supplier?.name || 'Unknown', total: 0, invoiceCount: 0 }
+          // للعرض التفصيلي فقط — الإجمالي المعتمد يأتي من GL
+          bySupplier[sid].invoiceCount += 1
+          // By project (use GL canonical total)
+          if (inv.project) {
+            const pid = inv.project.id
+            if (!byProjectMap.has(pid)) {
+              byProjectMap.set(pid, {
+                id: pid,
+                code: inv.project.code,
+                name: inv.project.name,
+                projectType: inv.project.projectType,
+                total: 0,
+                invoiceCount: 0,
+              })
+            }
+            byProjectMap.get(pid)!.invoiceCount += 1
+          }
+        }
+        // املأ totals من GL
+        for (const [pid, total] of glByProject.entries()) {
+          const p = projects.find(pp => pp.id === pid)
+          if (!p) continue
+          if (!byProjectMap.has(pid)) {
+            byProjectMap.set(pid, {
+              id: pid,
+              code: p.code,
+              name: p.name,
+              projectType: p.projectType,
+              total: 0,
+              invoiceCount: 0,
+            })
+          }
+          byProjectMap.get(pid)!.total = total
+        }
+
+        // GL-based AP total for verification (canonical)
         const apCodes = (await getAccountsByRoles([AccountRole.SUPPLIER_AP, AccountRole.SUBCONTRACTOR_AP])).map(a => a.code)
         const glPayableTotal = await getGLBalanceForCodes(apCodes.length > 0 ? apCodes : ['3210', '3220'])
 
-        const totalPurchases = supplierInvoices.reduce((s, i) => s + toNumber(i.totalAmount), 0)
-        return NextResponse.json({ bySupplier: Object.values(bySupplier), byProject: Object.values(byProject), totalPurchases, invoiceCount: supplierInvoices.length, glPayableTotal })
+        const totalPurchases = [...glByProject.values()].reduce((s, v) => s + v, 0)
+        return NextResponse.json({
+          bySupplier: Object.values(bySupplier),
+          byProject: Array.from(byProjectMap.values()),
+          totalPurchases,
+          invoiceCount: supplierInvoices.length,
+          glPayableTotal,
+          source: 'posted-journal-entries',
+        })
       }
 
       case 'revenue-summary': {

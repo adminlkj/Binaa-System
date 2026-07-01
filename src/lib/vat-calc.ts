@@ -168,8 +168,17 @@ export async function getVatGlBalance(
 // ============ الدالة الرئيسية ============
 
 /**
- * يحسب ضريبة القيمة المضافة لربع محدد من العمليات الخاضعة للضريبة فقط،
- * مع تصنيفها حسب معايير هيئة الزكاة والضريبة والتحقق من مطابقتها لدفتر اليومية.
+ * يحسب ضريبة القيمة المضافة لربع محدد.
+ *
+ * ⚠️  SSOT (P1-1-FIX / M5): الإجماليات المالية (outputVat, inputVat,
+ *    totalSales, totalPurchases, netVat) مصدرها JournalLine على:
+ *      - VAT_OUTPUT credits → outputVat (الضريبة المحصّلة)
+ *      - VAT_INPUT debits → inputVat (الضريبة المدفوعة)
+ *      - REVENUE credits - debits → totalSales
+ *      - EXPENSE debits - credits → totalPurchases (excl. VAT)
+ *    البنود التفصيلية (salesInvoices, purchaseInvoices, subcontractorInvoices,
+ *    expenses, progressClaims) تبقى كتفصيل ZATCA للعرض فقط — وليست مصدراً
+ *    للإجماليات المالية. التسامح 0.01 ريال (1 هللة) بدلاً من 0.5.
  */
 export async function calculateVatForQuarter(
   year: number,
@@ -180,7 +189,7 @@ export async function calculateVatForQuarter(
   const startDate = new Date(year, (quarter - 1) * 3, 1)
   const endDate = new Date(year, quarter * 3, 0, 23, 59, 59, 999)
 
-  // ========== المخرجات: فواتير المبيعات + المستخلصات ==========
+  // ========== المخرجات: فواتير المبيعات + المستخلصات (تفصيل ZATCA فقط) ==========
   const salesInvoicesRaw = await client.salesInvoice.findMany({
     where: {
       date: { gte: startDate, lte: endDate },
@@ -241,7 +250,7 @@ export async function calculateVatForQuarter(
     counterpartyName: c.project ? (c.project.nameAr || c.project.name) : undefined,
   }))
 
-  // ========== المدخلات: فواتير المشتريات + مقاولي الباطن + المصروفات ==========
+  // ========== المدخلات: تفصيل ZATCA فقط ==========
   const purchaseInvoicesRaw = await client.purchaseInvoice.findMany({
     where: {
       date: { gte: startDate, lte: endDate },
@@ -331,7 +340,7 @@ export async function calculateVatForQuarter(
     counterpartyName: undefined,
   }))
 
-  // ========== التجميع حسب التصنيف ==========
+  // ========== التجميع التفصيلي (للعرض فقط - ليس مالياً) ==========
   const outputLines = [...salesInvoices, ...progressClaims]
   const inputLines = [...purchaseInvoices, ...subcontractorInvoices, ...expenses]
 
@@ -358,27 +367,72 @@ export async function calculateVatForQuarter(
     exemptPurchases: inputLines
       .filter(l => l.category === 'EXEMPT')
       .reduce((s, l) => s + l.subtotal, 0),
-    importsSubjectToVAT: 0, // يحتاج تتبع خاص بالواردات - يترك 0 حالياً
+    importsSubjectToVAT: 0,
     standardRatedPurchasesVat: inputLines
       .filter(l => l.category === 'STANDARD')
       .reduce((s, l) => s + l.vatAmount, 0),
   }
 
-  // ========== الإجماليات ==========
-  const totalSales = outputLines.reduce((s, l) => s + l.subtotal, 0)
-  const totalPurchases = inputLines.reduce((s, l) => s + l.subtotal, 0)
-  const outputVat = outputLines.reduce((s, l) => s + l.vatAmount, 0)
-  const inputVat = inputLines.reduce((s, l) => s + l.vatAmount, 0)
-  const netVat = outputVat - inputVat
-
-  // ========== التحقق من دفتر اليومية ==========
+  // ========== الإجماليات المعتمدة من JournalLine (SSOT) ==========
+  // outputVat = VAT_OUTPUT credit - debit خلال الفترة (LIABILITY credit normal)
+  // inputVat  = VAT_INPUT debit - credit خلال الفترة (ASSET debit normal)
+  // totalSales = REVENUE credit - debit خلال الفترة
+  // totalPurchases = EXPENSE debit - credit خلال الفترة (excl. VAT)
   const glOutputVat = await getVatGlBalance(AccountRole.VAT_OUTPUT, startDate, endDate, tx)
   const glInputVat = await getVatGlBalance(AccountRole.VAT_INPUT, startDate, endDate, tx)
+  // إيراد الفترة من REVENUE (credit - debit)
+  const revenueAccounts = await client.account.findMany({
+    where: { type: 'REVENUE', isActive: true },
+    select: { id: true },
+  })
+  let totalSales = 0
+  if (revenueAccounts.length > 0) {
+    const revAgg = await client.journalLine.aggregate({
+      _sum: { debit: true, credit: true },
+      where: {
+        deletedAt: null,
+        accountId: { in: revenueAccounts.map(a => a.id) },
+        journalEntry: {
+          status: 'POSTED',
+          deletedAt: null,
+          date: { gte: startDate, lte: endDate },
+        },
+      },
+    })
+    totalSales = toNumber(revAgg._sum.credit) - toNumber(revAgg._sum.debit)
+  }
+  // مشتريات الفترة من EXPENSE (debit - credit)
+  const expenseAccounts = await client.account.findMany({
+    where: { type: 'EXPENSE', isActive: true },
+    select: { id: true },
+  })
+  let totalPurchases = 0
+  if (expenseAccounts.length > 0) {
+    const expAgg = await client.journalLine.aggregate({
+      _sum: { debit: true, credit: true },
+      where: {
+        deletedAt: null,
+        accountId: { in: expenseAccounts.map(a => a.id) },
+        journalEntry: {
+          status: 'POSTED',
+          deletedAt: null,
+          date: { gte: startDate, lte: endDate },
+        },
+      },
+    })
+    totalPurchases = toNumber(expAgg._sum.debit) - toNumber(expAgg._sum.credit)
+  }
 
-  // نسمح بفرق صغير جداً بسبب التقريب
-  const EPSILON = 0.5
-  const glDiffOutput = outputVat - glOutputVat
-  const glDiffInput = inputVat - glInputVat
+  const outputVat = glOutputVat
+  const inputVat = glInputVat
+  const netVat = outputVat - inputVat
+
+  // التحقق من تطابق تفصيل الفواتير مع GL (tolerance 1 halala)
+  const EPSILON = 0.01
+  const operationalOutputVat = outputLines.reduce((s, l) => s + l.vatAmount, 0)
+  const operationalInputVat = inputLines.reduce((s, l) => s + l.vatAmount, 0)
+  const glDiffOutput = operationalOutputVat - glOutputVat
+  const glDiffInput = operationalInputVat - glInputVat
   const glMatch = Math.abs(glDiffOutput) < EPSILON && Math.abs(glDiffInput) < EPSILON
 
   return {

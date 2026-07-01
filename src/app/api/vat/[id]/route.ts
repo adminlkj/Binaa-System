@@ -34,13 +34,15 @@ export async function GET(
       },
     })
 
+    // ⚠️  SSOT (P1-1-FIX / M7): الأرقام الحية المعتمدة من GL تُقارَن
+    //    بالأرقام المُجمّدة (التي هي أيضاً من GL). تفاصيل الفواتير للعرض فقط.
     return NextResponse.json(serializeDecimal({
       declaration: vatReturn,
       liveCalc: {
-        totalSales: liveCalc.totalSales,
-        outputVat: liveCalc.outputVat,
-        totalPurchases: liveCalc.totalPurchases,
-        inputVat: liveCalc.inputVat,
+        totalSales: liveCalc.totalSales,        // GL-derived (REVENUE)
+        outputVat: liveCalc.outputVat,          // GL-derived (VAT_OUTPUT)
+        totalPurchases: liveCalc.totalPurchases, // GL-derived (EXPENSE)
+        inputVat: liveCalc.inputVat,            // GL-derived (VAT_INPUT)
         netVat: liveCalc.netVat,
         glOutputVat: liveCalc.glOutputVat,
         glInputVat: liveCalc.glInputVat,
@@ -57,9 +59,10 @@ export async function GET(
         expenses: liveCalc.expenses,
       },
       periodChain,
+      // المقارنة بين الإجماليات الحية (GL) والمُجمّدة (GL) — كلاهما من نفس المصدر
       hasChangedSinceFiling:
-        Math.abs(liveCalc.outputVat - Number(vatReturn.outputVat)) > 0.5 ||
-        Math.abs(liveCalc.inputVat - Number(vatReturn.inputVat)) > 0.5,
+        Math.abs(liveCalc.outputVat - Number(vatReturn.outputVat)) > 0.01 ||
+        Math.abs(liveCalc.inputVat - Number(vatReturn.inputVat)) > 0.01,
     }))
   } catch (error) {
     console.error('Error fetching VAT return:', error)

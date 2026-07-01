@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { getProjectCostBreakdown } from '@/lib/accounting/queries'
 
 export async function GET(
   _request: Request,
@@ -116,21 +117,36 @@ export async function GET(
     }
 
     // Compute cost sheet for "كرت المشروع"
+    // ⚠️  SSOT (P1-1-FIX / C22): جميع المجاميع المالية مصدرها JournalLine
+    //    (status='POSTED', deletedAt IS NULL) عبر `getProjectCostBreakdown`.
+    //    الجداول التشغيلية المضمّنة أعلاه تبقى للعرض التفصيلي (items) فقط،
+    //    وليست مصدراً للمجاميع المالية.
     const contractValue = project.contractValue || 0
-    const progressClaimsTotal = project.progressClaims.reduce((sum, c) => sum + Number(c.amount || 0), 0)
-    const salesInvoicesTotal = project.salesInvoices.reduce((sum, si) => sum + Number(si.totalAmount || 0), 0)
-    const purchases = project.purchaseInvoices.reduce((sum, p) => sum + Number(p.totalAmount || 0), 0)
-    const subcontractors = project.subcontractorInvoices.reduce((sum, s) => sum + Number(s.totalAmount || 0), 0)
-    const labor = project.laborCosts.reduce((sum, l) => sum + Number(l.totalAmount || 0), 0)
-    const equipment = project.equipmentCosts.reduce((sum, e) => sum + Number(e.amount || 0), 0) +
-      project.equipmentUsages.reduce((sum, e) => sum + Number(e.cost || 0), 0)
-    const projectExpenses = project.expenses.reduce((sum, e) => sum + Number(e.totalAmount || 0), 0)
-    const totalCosts = purchases + subcontractors + labor + equipment + projectExpenses
-    const totalRevenue = progressClaimsTotal + salesInvoicesTotal
+    const breakdown = await getProjectCostBreakdown(id)
+    const role = (key: string): number => breakdown.byRole.get(key) || 0
+
+    const progressClaimsTotal = breakdown.revenue // GL-derived revenue (extracts recognized)
+    const purchases = role('PROJECT_COST')
+    const subcontractors = role('SUBCONTRACTOR_COST')
+    const labor = role('PAYROLL_EXPENSE')
+    const equipment =
+      role('DRIVER_EXPENSE') +
+      role('TRANSPORT_EXPENSE') +
+      role('RENTAL_DEPRECIATION') +
+      role('MAINTENANCE_EXPENSE')
+    const projectExpenses =
+      role('ADMIN_EXPENSE') +
+      role('GOSI_EXPENSE') +
+      role('DEPRECIATION_EXPENSE') +
+      role('ZAKAT_EXPENSE') +
+      role('FUEL_EXPENSE') +
+      role('OTHER')
+    const totalCosts = breakdown.total
+    const totalRevenue = breakdown.revenue
     const profit = totalRevenue - totalCosts
     const profitMargin = totalRevenue > 0 ? ((profit / totalRevenue) * 100) : 0
 
-    // Service invoices (non-extract based)
+    // Service invoices (non-extract based) — مؤشر تشغيلي فقط
     const serviceInvoicesTotal = project.salesInvoices
       .filter(si => si.sourceType === 'TIMESHEET')
       .reduce((sum, si) => sum + Number(si.totalAmount || 0), 0)

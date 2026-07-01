@@ -151,8 +151,8 @@ export async function POST(request: Request) {
         }
 
         // Single consolidated JE for the whole payment batch.
+        // P1-4 FIX: entryNo now auto-generated via getNextEntryNo(tx) → JE-NNNNNN
         const entry = await createJournalEntry({
-          entryNo: `JE-SAL-PAYRUN-${run.code}-${Date.now()}`,
           date: new Date(),
           description: `سداد مسير رواتب ${run.code} - ${run.month}/${run.year}`,
           descriptionAr: `سداد مسير رواتب ${run.code} - ${run.month}/${run.year}`,

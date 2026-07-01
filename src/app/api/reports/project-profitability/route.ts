@@ -2,9 +2,18 @@ import { db } from '@/lib/db'
 import { toNumber } from '@/lib/decimal'
 import { NextResponse } from 'next/server'
 import { calculatePOC } from '@/lib/accounting/ifrs15'
+import { getProjectCostBreakdown, getBalanceByRole } from '@/lib/accounting/queries'
+import { AccountRole } from '@/lib/account-roles'
 
 // GET /api/reports/project-profitability?projectId=...
-// تقرير ربحية المشروع من مركز التكلفة - يجمع الإيرادات والتكاليف من القيود المحاسبية
+// تقرير ربحية المشروع — المصدر الموحّد: القيود اليومية المرحّلة فقط
+// (JournalLine WHERE journalEntry.status='POSTED' AND deletedAt IS NULL)
+//
+// ⚠️  SSOT (P1-1-FIX / C2-C11): تم استبدال جميع المجاميع التشغيلية
+//    (salesInvoice / purchaseInvoice / subcontractorInvoice / salary / expense
+//     / equipmentCost / laborCost / equipmentFuelLog / progressClaim totals)
+//    بقيم مشتقّة من JournalLine عبر `getProjectCostBreakdown`. لا يوجد
+//    dual-source fallback بعد الآن — دائماً نستخدم القيمة من JournalLine.
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -29,136 +38,119 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
     }
 
-    const dateFilter: Record<string, unknown> = {}
-    if (dateFrom || dateTo) {
-      dateFilter.date = {
-        ...(dateFrom && { gte: new Date(dateFrom) }),
-        ...(dateTo && { lte: new Date(dateTo) }),
-      }
-    }
+    const range = (dateFrom || dateTo) ? {
+      from: dateFrom ? new Date(dateFrom) : undefined,
+      to: dateTo ? new Date(dateTo) : undefined,
+    } : undefined
 
-    // ========== الإيرادات من القيود المحاسبية ==========
-    // إذا كان المشروع يملك مركز تكلفة، اجمع من القيود المرتبطة به
-    let revenueFromJournal = 0
-    let costFromJournal = 0
+    // ===== المصدر الموحّد: getProjectCostBreakdown (JournalLine POSTED) =====
+    const breakdown = await getProjectCostBreakdown(projectId, range)
+    const role = (key: string): number => breakdown.byRole.get(key) || 0
 
-    if (project.costCenterId) {
-      // إيرادات: بنود القيود الدائنة في حسابات الإيرادات (6xxx) المرتبطة بمركز التكلفة
-      const revenueLines = await db.journalLine.findMany({
-        where: {
-          costCenterId: project.costCenterId,
-          deletedAt: null,
-          journalEntry: {
-            status: 'POSTED',
-            deletedAt: null,
-            ...dateFilter,
-          },
-          account: {
-            type: 'REVENUE',
-          },
-        },
-        include: { account: true },
-      })
-      revenueFromJournal = revenueLines.reduce((sum, line) => sum + toNumber(line.credit) - toNumber(line.debit), 0)
+    // ===== التكاليف حسب الدور المحاسبي =====
+    const materials = role('PROJECT_COST')
+    const subcontractors = role('SUBCONTRACTOR_COST')
+    const salaries = role('PAYROLL_EXPENSE')
+    const labor = role('PAYROLL_EXPENSE') // labor = نفس بند الأجور
+    const projectExpenses =
+      role('ADMIN_EXPENSE') +
+      role('GOSI_EXPENSE') +
+      role('DEPRECIATION_EXPENSE') +
+      role('ZAKAT_EXPENSE') +
+      role('OTHER')
+    const equipmentCosts =
+      role('FUEL_EXPENSE') +
+      role('MAINTENANCE_EXPENSE') +
+      role('DRIVER_EXPENSE') +
+      role('TRANSPORT_EXPENSE') +
+      role('RENTAL_DEPRECIATION')
+    const fuel = role('FUEL_EXPENSE')
 
-      // تكاليف: بنود القيود المدينة في حسابات المصروفات (7xxx/8xxx) المرتبطة بمركز التكلفة
-      const costLines = await db.journalLine.findMany({
-        where: {
-          costCenterId: project.costCenterId,
-          deletedAt: null,
-          journalEntry: {
-            status: 'POSTED',
-            deletedAt: null,
-            ...dateFilter,
-          },
-          account: {
-            type: 'EXPENSE',
-          },
-        },
-        include: { account: true },
-      })
+    const totalDirectCosts = breakdown.total
+    const totalCost = breakdown.total // دائماً من JournalLine — لا fallback
 
-      // تجميع التكاليف حسب نوع الحساب
-      const costBreakdown: Record<string, { accountCode: string; accountName: string; amount: number }> = {}
-      for (const line of costLines) {
-        const code = line.account.code
-        const key = code.substring(0, 4) // Group by first 4 digits
-        if (!costBreakdown[key]) {
-          costBreakdown[key] = { accountCode: code, accountName: line.account.nameAr || line.account.name, amount: 0 }
+    // ===== الإيرادات والضريبة من JournalLine =====
+    const revenueFromJournal = breakdown.revenue
+    const costFromJournal = breakdown.total
+
+    // VAT من القيود المحاسبية على مركز تكلفة المشروع (SSOT)
+    // (تُجمَع ضريبة المخرجات/المدخلات من حسابات VAT_OUTPUT/VAT_INPUT على CC)
+    let vatCollected = 0
+    let totalCollected = 0
+    try {
+      const ccId = breakdown.costCenterId
+      if (ccId) {
+        const vatOutputAccounts = await db.account.findMany({
+          where: { accountRole: AccountRole.VAT_OUTPUT, isActive: true },
+          select: { id: true },
+        })
+        if (vatOutputAccounts.length > 0) {
+          const vatAgg = await db.journalLine.aggregate({
+            _sum: { debit: true, credit: true },
+            where: {
+              deletedAt: null,
+              accountId: { in: vatOutputAccounts.map(a => a.id) },
+              costCenterId: ccId,
+              journalEntry: {
+                status: 'POSTED',
+                deletedAt: null,
+                ...(range && (range.from || range.to) && {
+                  date: {
+                    ...(range.from && { gte: range.from }),
+                    ...(range.to && { lte: range.to }),
+                  },
+                }),
+              },
+            },
+          })
+          // VAT_OUTPUT is LIABILITY (credit normal)
+          vatCollected = toNumber(vatAgg._sum.credit) - toNumber(vatAgg._sum.debit)
         }
-        costBreakdown[key].amount += toNumber(line.debit) - toNumber(line.credit)
+
+        // التحصيل = دائن CUSTOMER_AR على مركز تكلفة المشروع
+        const collectedAR = await getBalanceByRole(
+          [AccountRole.CUSTOMER_AR],
+          range,
+        )
+        // ملاحظة: getBalanceByRole يُرجع الرصيد الموقّع لكل النظام. للحصول على
+        // تحصيل المشروع نحتاج إلى تجميع الائتمان على CC المحدد. نُجمّع يدوياً:
+        const arAccounts = await db.account.findMany({
+          where: { accountRole: AccountRole.CUSTOMER_AR, isActive: true },
+          select: { id: true },
+        })
+        if (arAccounts.length > 0) {
+          const arAgg = await db.journalLine.aggregate({
+            _sum: { credit: true },
+            where: {
+              deletedAt: null,
+              accountId: { in: arAccounts.map(a => a.id) },
+              costCenterId: ccId,
+              journalEntry: {
+                status: 'POSTED',
+                deletedAt: null,
+                ...(range && (range.from || range.to) && {
+                  date: {
+                    ...(range.from && { gte: range.from }),
+                    ...(range.to && { lte: range.to }),
+                  },
+                }),
+              },
+            },
+          })
+          totalCollected = toNumber(arAgg._sum.credit)
+        }
+        void collectedAR // غير مُستخدم مباشرة (التحصيل يُحتسب على مستوى CC)
       }
-      costFromJournal = Object.values(costBreakdown).reduce((sum, c) => sum + Number(c.amount || 0), 0)
+    } catch (err) {
+      console.error('[API] project-profitability VAT/AR aggregation failed:', err)
     }
 
-    // ========== الإيرادات من الفواتير (طريقة بديلة) ==========
-    const salesInvoices = await db.salesInvoice.findMany({
-      where: {
-        projectId,
-        status: { not: 'CANCELLED' },
-        ...dateFilter,
-      },
-      select: { netAmount: true, vatAmount: true, totalAmount: true, paidAmount: true, invoiceNo: true, date: true },
-    })
-    const revenueFromInvoices = salesInvoices.reduce((s, i) => s + toNumber(i.netAmount), 0)
-    const vatFromInvoices = salesInvoices.reduce((s, i) => s + toNumber(i.vatAmount), 0)
-    const collectedFromInvoices = salesInvoices.reduce((s, i) => s + toNumber(i.paidAmount), 0)
-
-    // ========== التكاليف التفصيلية (طريقة مباشرة) ==========
-    // مواد
-    const purchaseInvoices = await db.purchaseInvoice.findMany({
-      where: { projectId, status: { not: 'CANCELLED' } },
-      select: { subtotal: true },
-    })
-    const materials = purchaseInvoices.reduce((s, i) => s + toNumber(i.subtotal), 0)
-
-    // مقاولو باطن
-    const subInvoices = await db.subcontractorInvoice.findMany({
-      where: { projectId, status: { not: 'CANCELLED' } },
-      select: { amount: true },
-    })
-    const subcontractors = subInvoices.reduce((s, i) => s + toNumber(i.amount), 0)
-
-    // رواتب
-    const salaryRecords = await db.salary.findMany({
-      where: { projectId, status: { in: ['APPROVED', 'PAID'] } },
-      select: { netSalary: true },
-    })
-    const salaries = salaryRecords.reduce((s, sal) => s + toNumber(sal.netSalary), 0)
-
-    // مصروفات
-    const expenses = await db.expense.findMany({
-      where: { projectId },
-      select: { amount: true },
-    })
-    const projectExpenses = expenses.reduce((s, e) => s + toNumber(e.amount), 0)
-
-    // تكاليف معدات
-    const equipCosts = await db.equipmentCost.findMany({
-      where: { projectId },
-      select: { amount: true },
-    })
-    const equipmentCosts = equipCosts.reduce((s, e) => s + toNumber(e.amount), 0)
-
-    // تكاليف عمالة
-    const laborCosts = await db.laborCost.findMany({
-      where: { projectId },
-      select: { totalAmount: true },
-    })
-    const labor = laborCosts.reduce((s, l) => s + toNumber(l.totalAmount), 0)
-
-    // وقود
-    const fuelLogs = await db.equipmentFuelLog.findMany({
-      where: { projectId },
-      select: { totalCost: true },
-    })
-    const fuel = fuelLogs.reduce((s, f) => s + toNumber(f.totalCost), 0)
-
-    // ========== قيمة العقد والمستخلصات ==========
+    // ===== قيمة العقد والمستخلصات (بيانات تعاقدية - ليست مالية) =====
     const contractValue = project.contracts
       .filter(c => c.status === 'ACTIVE' || c.status === 'DRAFT')
       .reduce((s, c) => s + toNumber(c.totalValue), 0)
 
+    // المستخلصات كمؤشرات تعاقدية (وليست إيراداً مالياً)
     const progressClaims = await db.progressClaim.findMany({
       where: { projectId, status: { not: 'REJECTED' } },
       select: { amount: true, totalAmount: true, retentionAmount: true, advanceDeduction: true },
@@ -167,14 +159,44 @@ export async function GET(request: Request) {
     const totalRetention = progressClaims.reduce((s, c) => s + toNumber(c.retentionAmount), 0)
     const totalAdvanceDeduction = progressClaims.reduce((s, c) => s + toNumber(c.advanceDeduction), 0)
 
-    // ========== الحساب النهائي ==========
-    const totalDirectCosts = materials + subcontractors + salaries + projectExpenses + equipmentCosts + labor + fuel
-    const billedRevenue = revenueFromInvoices
-    // التكلفة الإجمالية: من القيود إن وُجدت، وإلا التكاليف المباشرة المُجمَّعة
-    const totalCost = costFromJournal > 0 ? costFromJournal : totalDirectCosts
+    // ===== الإيراد المُفوتر من JournalLine (CUSTOMER_AR مدين على CC) =====
+    let billedRevenue = 0
+    try {
+      const ccId = breakdown.costCenterId
+      if (ccId) {
+        const arAccounts = await db.account.findMany({
+          where: { accountRole: AccountRole.CUSTOMER_AR, isActive: true },
+          select: { id: true },
+        })
+        if (arAccounts.length > 0) {
+          const arAgg = await db.journalLine.aggregate({
+            _sum: { debit: true, credit: true },
+            where: {
+              deletedAt: null,
+              accountId: { in: arAccounts.map(a => a.id) },
+              costCenterId: ccId,
+              journalEntry: {
+                status: 'POSTED',
+                deletedAt: null,
+                ...(range && (range.from || range.to) && {
+                  date: {
+                    ...(range.from && { gte: range.from }),
+                    ...(range.to && { lte: range.to }),
+                  },
+                }),
+              },
+            },
+          })
+          // AR is ASSET (debit normal): المدين = فوترة، الدائن = تحصيل
+          billedRevenue = toNumber(arAgg._sum.debit) - toNumber(arAgg._sum.credit)
+          if (billedRevenue < 0) billedRevenue = 0
+        }
+      }
+    } catch (err) {
+      console.error('[API] project-profitability billed revenue aggregation failed:', err)
+    }
 
-    // ========== الإيراد المكتسب (POC) — IFRS 15 ==========
-    // استخدم calculatePOC للحصول على الإيراد المعترف به وفق نسبة الإنجاز
+    // ===== الإيراد المكتسب (POC) — IFRS 15 =====
     const asOfDate = dateTo ? new Date(dateTo) : new Date()
     let earnedRevenue = 0
     let percentComplete = 0
@@ -191,9 +213,9 @@ export async function GET(request: Request) {
       pocGrossProfit = poc.grossProfitToDate
       pocGrossProfitPercent = poc.grossProfitPercent
     } catch (err) {
-      // fallback: استخدم الإيراد المُفوتر أو من القيود إذا فشل calculatePOC
+      // fallback: استخدم إيراد GL (لا نستخدم billedRevenue كـ fallback مالي)
       console.error('[API] project-profitability calculatePOC failed:', err)
-      earnedRevenue = revenueFromJournal > 0 ? revenueFromJournal : billedRevenue
+      earnedRevenue = revenueFromJournal
       pocContractValue = toNumber(project.contractValue) || contractValue
       estimatedTotalCost = toNumber(project.estimatedTotalCost) || pocContractValue
     }
@@ -216,17 +238,17 @@ export async function GET(request: Request) {
       },
       revenue: {
         fromJournalEntries: revenueFromJournal,
-        fromInvoices: revenueFromInvoices,
+        fromInvoices: billedRevenue, // الآن من GL (CUSTOMER_AR مدين على CC)
         // IFRS 15 — الإيراد المكتسب وفق نسبة الإنجاز
         earnedRevenue,
         billedRevenue,
-        percentComplete: Math.round(percentComplete * 10000) / 100, // نسبة مئوية (0-100)
+        percentComplete: Math.round(percentComplete * 10000) / 100,
         pocContractValue,
         estimatedTotalCost,
         pocGrossProfit,
         pocGrossProfitPercent: Math.round(pocGrossProfitPercent * 100) / 100,
-        vatCollected: vatFromInvoices,
-        totalCollected: collectedFromInvoices,
+        vatCollected,
+        totalCollected,
         totalClaimed,
         totalRetention,
         totalAdvanceDeduction,
@@ -246,7 +268,6 @@ export async function GET(request: Request) {
       },
       summary: {
         totalRevenue,
-        // الإيراد المكتسب (POC) والإيراد المُفوتر — للمقارنة
         earnedRevenue,
         billedRevenue,
         percentComplete: Math.round(percentComplete * 10000) / 100,
@@ -255,9 +276,10 @@ export async function GET(request: Request) {
         totalCost,
         grossProfit,
         profitMargin: Math.round(profitMargin * 100) / 100,
-        collectionRate: totalRevenue > 0 ? Math.round((collectedFromInvoices / (totalRevenue + vatFromInvoices)) * 10000) / 100 : 0,
+        collectionRate: totalRevenue > 0 ? Math.round((totalCollected / (totalRevenue + vatCollected)) * 10000) / 100 : 0,
         costToRevenueRatio: totalRevenue > 0 ? Math.round((totalCost / totalRevenue) * 10000) / 100 : 0,
         revenueSource: 'ifrs15-poc',
+        costSource: 'posted-journal-entries',
       },
     })
   } catch (error) {

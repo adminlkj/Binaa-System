@@ -1,7 +1,22 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { getProjectCostBreakdown } from '@/lib/accounting/queries'
 
 // GET: Aggregated project costs for the Project Cost Sheet
+//
+// ⚠️  SSOT (P1-1-FIX / C23): جميع المجاميع المالية مصدرها JournalLine
+//    (status='POSTED', deletedAt IS NULL) عبر `getProjectCostBreakdown` في
+//    `@/lib/accounting/queries`. الجداول التشغيلية السابقة (GoodsReceiptItem,
+//    EquipmentCost, EquipmentOperation, EquipmentFuelLog, EquipmentMaintenance,
+//    SubcontractorInvoice, LaborCost, Salary, Expense, ResourceAllocation) لم
+//    تعد مصدراً للمجاميع المالية. خريطة byRole إلى الفئات التسع:
+//      PROJECT_COST → materials
+//      DRIVER_EXPENSE + TRANSPORT_EXPENSE + RENTAL_DEPRECIATION → equipmentCosts / equipmentOperations
+//      FUEL_EXPENSE → fuel
+//      MAINTENANCE_EXPENSE → maintenance
+//      SUBCONTRACTOR_COST → subcontractors
+//      PAYROLL_EXPENSE → labor + salaries
+//      ADMIN_EXPENSE + GOSI_EXPENSE + DEPRECIATION_EXPENSE + ZAKAT_EXPENSE + OTHER → expenses
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
@@ -18,89 +33,37 @@ export async function GET(
       return NextResponse.json({ error: 'المشروع غير موجود' }, { status: 404 })
     }
 
-    // 1. Material costs (from GoodsReceipt items where destination=PROJECT)
-    const goodsReceiptItems = await db.goodsReceiptItem.findMany({
-      where: {
-        destination: 'PROJECT',
-        goodsReceipt: { projectId },
-      },
-      include: {
-        goodsReceipt: { select: { receiptNo: true, date: true } },
-      },
-    })
-    const materialCosts = goodsReceiptItems.reduce((sum, item) => sum + Number(item.totalPrice), 0)
+    // ===== المصدر الموحّد: JournalLine المرحّلة على مركز تكلفة المشروع =====
+    const breakdown = await getProjectCostBreakdown(projectId)
+    const role = (key: string): number => breakdown.byRole.get(key) || 0
 
-    // 2. Equipment costs (from EquipmentCost table)
-    const equipmentCosts = await db.equipmentCost.findMany({ where: { projectId } })
-    const equipmentCostTotal = equipmentCosts.reduce((sum, c) => sum + Number(c.amount || 0), 0)
+    const materialCosts = role('PROJECT_COST')
+    const equipmentCostTotal =
+      role('DRIVER_EXPENSE') +
+      role('TRANSPORT_EXPENSE') +
+      role('RENTAL_DEPRECIATION')
+    const equipmentOperationTotal = equipmentCostTotal // مُدمج
+    const fuelCostTotal = role('FUEL_EXPENSE')
+    const maintenanceCostTotal = role('MAINTENANCE_EXPENSE')
+    const subcontractorCostTotal = role('SUBCONTRACTOR_COST')
+    const laborCostTotal = role('PAYROLL_EXPENSE')
+    const salaryCostTotal = role('PAYROLL_EXPENSE') // رواتب = نفس بند الأجور في النظام المحاسبي
+    const expenseTotal =
+      role('ADMIN_EXPENSE') +
+      role('GOSI_EXPENSE') +
+      role('DEPRECIATION_EXPENSE') +
+      role('ZAKAT_EXPENSE') +
+      role('OTHER')
 
-    // 3. Equipment operations (from EquipmentOperation linked to project)
-    const equipmentOperations = await db.equipmentOperation.findMany({
-      where: { projectId },
-      include: { equipment: { select: { name: true, hourlyRate: true } } },
-    })
-    const equipmentOperationCosts = equipmentOperations.map(op => ({
-      ...op,
-      calculatedCost: Number(op.hours) * (Number(op.equipment.hourlyRate) || 0),
-    }))
-    const equipmentOperationTotal = equipmentOperationCosts.reduce((sum, op) => sum + op.calculatedCost, 0)
-
-    // 4. Equipment fuel (from EquipmentFuelLog linked to project)
-    const fuelLogs = await db.equipmentFuelLog.findMany({ where: { projectId } })
-    const fuelCostTotal = fuelLogs.reduce((sum, f) => sum + Number(f.totalCost), 0)
-
-    // 5. Equipment maintenance (where equipment has allocation to project)
-    const equipmentAllocations = await db.resourceAllocation.findMany({
-      where: { resourceType: 'EQUIPMENT', projectId },
-      select: { resourceId: true },
-    })
-    const equipmentIds = equipmentAllocations.map(a => a.resourceId)
-    const maintenanceRecords = equipmentIds.length > 0
-      ? await db.equipmentMaintenance.findMany({
-          where: { equipmentId: { in: equipmentIds } },
-        })
-      : []
-    const maintenanceCostTotal = maintenanceRecords.reduce((sum, m) => sum + Number(m.cost || 0), 0)
-
-    // 6. Subcontractor costs (from SubcontractorInvoice linked to project)
-    const subcontractorInvoices = await db.subcontractorInvoice.findMany({
-      where: { projectId },
-      include: { subcontractor: { select: { name: true } } },
-    })
-    const subcontractorCostTotal = subcontractorInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0)
-
-    // 7. Labor costs (from LaborCost linked to project)
-    const laborCosts = await db.laborCost.findMany({ where: { projectId } })
-    const laborCostTotal = laborCosts.reduce((sum, lc) => sum + Number(lc.totalAmount || 0), 0)
-
-    // 8. Salary costs (from Salary where employee has allocation to project)
-    const employeeAllocations = await db.resourceAllocation.findMany({
-      where: { resourceType: 'EMPLOYEE', projectId },
-      select: { resourceId: true },
-    })
-    const employeeIds = employeeAllocations.map(a => a.resourceId)
-    const salaryCosts = employeeIds.length > 0
-      ? await db.salary.findMany({
-          where: {
-            employeeId: { in: employeeIds },
-            status: { in: ['APPROVED', 'PAID'] },
-          },
-          include: { employee: { select: { name: true } } },
-        })
-      : []
-    const salaryCostTotal = salaryCosts.reduce((sum, s) => sum + Number(s.netSalary), 0)
-
-    // 9. Project expenses (from Expense linked to project)
-    const expenses = await db.expense.findMany({ where: { projectId } })
-    const expenseTotal = expenses.reduce((sum, e) => sum + Number(e.totalAmount || 0), 0)
-
-    // Total project cost
-    const totalCost = materialCosts + equipmentCostTotal + equipmentOperationTotal + fuelCostTotal + maintenanceCostTotal + subcontractorCostTotal + laborCostTotal + salaryCostTotal + expenseTotal
+    const totalCost = breakdown.total
 
     // Contract value and profit margin
     const contractValue = Number(project.contractValue) || 0
-    const profitLoss = contractValue - totalCost
-    const profitMargin = contractValue > 0 ? ((profitLoss / contractValue) * 100) : 0
+    // الإيراد من القيود المحاسبية (المصدر الموحّد) — ليس من contractValue
+    const profitLoss = breakdown.revenue - totalCost
+    const profitMargin = breakdown.revenue > 0
+      ? ((profitLoss / breakdown.revenue) * 100)
+      : 0
 
     return NextResponse.json({
       project: {
@@ -111,21 +74,25 @@ export async function GET(
         contractValue,
       },
       costs: {
-        materials: { total: materialCosts, items: goodsReceiptItems },
-        equipmentCosts: { total: equipmentCostTotal, items: equipmentCosts },
-        equipmentOperations: { total: equipmentOperationTotal, items: equipmentOperationCosts },
-        fuel: { total: fuelCostTotal, items: fuelLogs },
-        maintenance: { total: maintenanceCostTotal, items: maintenanceRecords },
-        subcontractors: { total: subcontractorCostTotal, items: subcontractorInvoices },
-        labor: { total: laborCostTotal, items: laborCosts },
-        salaries: { total: salaryCostTotal, items: salaryCosts },
-        expenses: { total: expenseTotal, items: expenses },
+        materials: { total: materialCosts, items: [] },
+        equipmentCosts: { total: equipmentCostTotal, items: [] },
+        equipmentOperations: { total: equipmentOperationTotal, items: [] },
+        fuel: { total: fuelCostTotal, items: [] },
+        maintenance: { total: maintenanceCostTotal, items: [] },
+        subcontractors: { total: subcontractorCostTotal, items: [] },
+        labor: { total: laborCostTotal, items: [] },
+        salaries: { total: salaryCostTotal, items: [] },
+        expenses: { total: expenseTotal, items: [] },
       },
       totalCost,
       contractValue,
+      // الإيراد من القيود المحاسبية (المصدر الموحّد)
+      revenue: breakdown.revenue,
       profitLoss,
       profitMargin: Math.round(profitMargin * 100) / 100,
       budgetUtilization: contractValue > 0 ? Math.round((totalCost / contractValue) * 10000) / 100 : 0,
+      costCenterId: breakdown.costCenterId,
+      source: 'posted-journal-entries',
     })
   } catch (error) {
     console.error('Error fetching project costs:', error)

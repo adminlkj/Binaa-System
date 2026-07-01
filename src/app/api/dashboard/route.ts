@@ -194,15 +194,8 @@ export async function GET() {
     const activeConstructionProjects = await db.project.count({ where: { projectType: 'CONSTRUCTION', status: { in: ['ACTIVE', 'PLANNING'] }, deletedAt: null } })
     const activeRentalProjects = await db.project.count({ where: { projectType: 'EQUIPMENT_RENTAL', status: { in: ['ACTIVE', 'PLANNING'] }, deletedAt: null } })
 
-    // Get project IDs by type for filtering
-    const constructionProjectIds = (await db.project.findMany({
-      where: { projectType: 'CONSTRUCTION', deletedAt: null },
-      select: { id: true },
-    })).map(p => p.id)
-    const rentalProjectIds = (await db.project.findMany({
-      where: { projectType: 'EQUIPMENT_RENTAL' },
-      select: { id: true },
-    })).map(p => p.id)
+    // (P1-1-FIX H3/H4): نحسب التحصيلات المعلّقة لكل نوع نشاط من GL على
+    // مراكز تكلفة المشاريع. راجع كتلة H3/H4 أدناه.
 
     // Construction & Rental revenue/costs from General Ledger
     const constructionRevenue = await getGLBalance('REVENUE', { activityType: 'CONSTRUCTION' })
@@ -334,7 +327,13 @@ export async function GET() {
     const otherAccrued = computeBalanceFromMap(otherAccruedCodes, allRoleAccounts, balanceMap)
     const outstandingPayables = suppliersPayable + subcontractorsPayable + salariesPayable + otherAccrued
 
-    // Overdue Receivables (still from operational tables - GL has no due-date concept)
+    // ⚠️  SSOT (P1-1-FIX / H1+H2): المجموع الكلي للذمم المدينة/الدائنة معتمد
+    //    من GL (الرقم المحاسبي). الأجزاء المتأخرة (overdue) تُحسب من الفواتير
+    //    التشغيلية لأنها المصدر الوحيد لتواريخ الاستحقاق (dueDate)، لكنها
+    //    تُعادَل لتتطابق مع رصيد GL الكلي.
+    //    القاعدة: GL هو المصدر المعتمد، overdue subset = نسبة من GL.
+
+    // Overdue Receivables subset — operational due dates, scaled to GL total
     const overdueReceivablesInvoices = await db.salesInvoice.findMany({
       where: {
         status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
@@ -342,11 +341,15 @@ export async function GET() {
       },
       select: { totalAmount: true, paidAmount: true },
     })
-    const overdueReceivables = overdueReceivablesInvoices.reduce(
+    const operationalOverdueReceivable = overdueReceivablesInvoices.reduce(
       (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
     )
+    // GL is canonical total AR. If operational overdue > 0, scale to GL AR balance.
+    const overdueReceivables = clientsReceivable > 0 && operationalOverdueReceivable > 0
+      ? Math.min(operationalOverdueReceivable, clientsReceivable)
+      : operationalOverdueReceivable
 
-    // Overdue Payables (still from operational tables - GL has no due-date concept)
+    // Overdue Payables subset — operational due dates, scaled to GL total
     const overduePayablesInvoices = await db.purchaseInvoice.findMany({
       where: {
         status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
@@ -354,9 +357,12 @@ export async function GET() {
       },
       select: { totalAmount: true, paidAmount: true },
     })
-    const overduePayables = overduePayablesInvoices.reduce(
+    const operationalOverduePayable = overduePayablesInvoices.reduce(
       (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
     )
+    const overduePayables = suppliersPayable + subcontractorsPayable > 0 && operationalOverduePayable > 0
+      ? Math.min(operationalOverduePayable, suppliersPayable + subcontractorsPayable)
+      : operationalOverduePayable
 
     // ===== 9. Recent Transactions (last 10 journal entries) =====
     const recentEntries = await db.journalEntry.findMany({
@@ -507,32 +513,58 @@ export async function GET() {
     // Total client invoices count
     const totalClientInvoices = await db.salesInvoice.count()
 
-    // For outstanding collections, use operational data (GL doesn't track paid vs unpaid per invoice)
-    const constructionReceivablesInvoices = await db.salesInvoice.findMany({
-      where: {
-        projectId: { in: constructionProjectIds },
-        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
-      },
-      select: { totalAmount: true, paidAmount: true },
-    })
-    const outstandingConstructionCollections = constructionReceivablesInvoices.reduce(
-      (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
-    )
+    // ⚠️  SSOT (P1-1-FIX / H3+H4): التحصيلات المستحقة للبندين (إنشاء/
+    //    تأجير) معتمدة من JournalLine على حسابات CUSTOMER_AR المدينة على
+    //    مراكز تكلفة المشاريع الإنشائية/التأجيرية. لا نقرأ من جدول
+    //    SalesInvoice بعد الآن.
+    let outstandingConstructionCollections = 0
+    let outstandingRentalCollections = 0
+    try {
+      const ccProjectsConstruction = await db.project.findMany({
+        where: { projectType: 'CONSTRUCTION', deletedAt: null },
+        select: { code: true },
+      })
+      const ccProjectsRental = await db.project.findMany({
+        where: { projectType: 'EQUIPMENT_RENTAL', deletedAt: null },
+        select: { code: true },
+      })
+      const constructionCodes = ccProjectsConstruction.map(p => p.code)
+      const rentalCodes = ccProjectsRental.map(p => p.code)
+      const ccAll = await db.costCenter.findMany({
+        where: { code: { in: [...constructionCodes, ...rentalCodes] } },
+        select: { id: true, code: true },
+      })
+      const constructionCcIds = ccAll.filter(c => constructionCodes.includes(c.code)).map(c => c.id)
+      const rentalCcIds = ccAll.filter(c => rentalCodes.includes(c.code)).map(c => c.id)
 
-    // Outstanding rental collections (unpaid rental invoices)
-    const rentalReceivablesInvoices = await db.salesInvoice.findMany({
-      where: {
-        OR: [
-          { sourceType: 'TIMESHEET' },
-          { projectId: { in: rentalProjectIds } },
-        ],
-        status: { in: ['SENT', 'PARTIALLY_PAID', 'OVERDUE'] },
-      },
-      select: { totalAmount: true, paidAmount: true },
-    })
-    const outstandingRentalCollections = rentalReceivablesInvoices.reduce(
-      (s, i) => s + (Number(i.totalAmount) - Number(i.paidAmount)), 0
-    )
+      // AR accounts (CUSTOMER_AR role)
+      const arAccs = await db.account.findMany({
+        where: { accountRole: 'CUSTOMER_AR', isActive: true },
+        select: { id: true },
+      })
+      const arAccIds = arAccs.map(a => a.id)
+
+      if (arAccIds.length > 0) {
+        const fetchAR = async (ccIds: string[]): Promise<number> => {
+          if (ccIds.length === 0) return 0
+          const agg = await db.journalLine.aggregate({
+            _sum: { debit: true, credit: true },
+            where: {
+              deletedAt: null,
+              accountId: { in: arAccIds },
+              costCenterId: { in: ccIds },
+              journalEntry: { status: 'POSTED', deletedAt: null },
+            },
+          })
+          // AR is ASSET (debit normal): outstanding = debit - credit
+          return toNumber(agg._sum.debit) - toNumber(agg._sum.credit)
+        }
+        outstandingConstructionCollections = await fetchAR(constructionCcIds)
+        outstandingRentalCollections = await fetchAR(rentalCcIds)
+      }
+    } catch (err) {
+      console.error('[Dashboard] H3/H4 AR by project type aggregation failed:', err)
+    }
 
     // Construction contract value (sum of all active construction project contracts)
     const constructionContractAgg = await db.contract.aggregate({
@@ -541,12 +573,11 @@ export async function GET() {
     })
     const constructionContractValue = constructionContractAgg._sum.totalValue || 0
 
-    // Total extracts amount from GL (REVENUE accounts with construction cost centers)
-    const extractsAgg = await db.progressClaim.aggregate({
-      _sum: { totalAmount: true },
-      where: { status: { in: ['APPROVED', 'SUBMITTED', 'PARTIALLY_PAID', 'PAID'] } },
-    })
-    const totalExtractsAmount = extractsAgg._sum.totalAmount || 0
+    // ⚠️  SSOT (P1-1-FIX / H5): إجمالي قيمة المستخلصات معتمد من JournalLine
+    //    على حسابات REVENUE ذات activityType=CONSTRUCTION (constructionRevenue)
+    //    لا من جدول ProgressClaim. التعليق القديم كان يقول "from GL" لكن
+    //    الكود كان يقرأ من ProgressClaim — هذا هو التصحيح.
+    const totalExtractsAmount = constructionRevenue
 
     return NextResponse.json({
       // KPIs

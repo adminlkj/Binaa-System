@@ -191,10 +191,9 @@ export async function PUT(
           }
 
           try {
-            // P4-CRIT-002 FIX: use unique suffix to prevent entryNo collisions on re-approval
-            // (rare case where the original JE was reversed first).
+            // P1-4 FIX: entryNo now auto-generated via getNextEntryNo(tx) → JE-NNNNNN
+            // (was JE-PAY-...-${Date.now()} which was non-sequential and collision-prone).
             const entry = await createJournalEntry({
-              entryNo: `JE-PAY-${existing.code}-${activity}-${Date.now()}`,
               date: salaryDate,
               description: `مسير رواتب ${existing.code} - ${activityNameAr} - ${existing.month}/${existing.year}`,
               descriptionAr: `مسير رواتب ${existing.code} - ${activityNameAr} - ${existing.month}/${existing.year}`,
@@ -281,7 +280,6 @@ export async function PUT(
 
         try {
           const entry = await createJournalEntry({
-            entryNo: `JE-PAYP-${existing.code}-${Date.now()}`,
             date: salaryDate,
             description: `سداد مسير رواتب ${existing.code} - ${existing.month}/${existing.year}`,
             descriptionAr: `سداد مسير رواتب ${existing.code} - ${existing.month}/${existing.year}`,

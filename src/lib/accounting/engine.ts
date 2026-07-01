@@ -18,6 +18,7 @@ import {
 import {
   postJournalEntry as guardedPost,
   reverseJournalEntry as guardedReverse,
+  getNextEntryNo,
 } from '@/lib/accounting/guard'
 
 // ============================================================================
@@ -94,7 +95,12 @@ import type { AccountTemplate } from './constants'
 // Maps business transactions to their debit/credit accounts
 
 export interface JournalEntryTemplate {
-  entryNo: string
+  /**
+   * رقم القيد. إذا تُرك فارغاً أو undefined، يتم توليده تلقائياً عبر getNextEntryNo(tx)
+   * بصيغة JE-NNNNNN التسلسلية الموحَّدة. هذا يضمن أن كل القيود لها رقم فريد
+   * ومتسلسل ولا يستخدم Date.now() (الذي كان يخلق أرقاماً غير متسلسلة وقابلة للتصادم).
+   */
+  entryNo?: string
   date: Date
   description: string
   descriptionAr: string
@@ -280,9 +286,15 @@ export async function reverseEntry(journalEntryId: string, tx: PrismaTransaction
 // لا يجوز لأي كود في النظام أن يستدعي db.journalEntry.create مباشرةً.
 
 export async function createJournalEntry(template: JournalEntryTemplate, tx?: PrismaTransaction) {
+  // P1-4 FIX: توليد رقم القيد تلقائياً إذا لم يُمرَّر. هذا يضمن أن كل القيود
+  // تستخدم JE-NNNNNN التسلسلية الموحَّدة من جدول Sequence بدلاً من Date.now().
+  // يجب تمرير tx لأن getNextEntryNo تتطلبه.
+  const entryNo = template.entryNo && template.entryNo.trim() !== ''
+    ? template.entryNo
+    : await getNextEntryNo(tx)
   return guardedPost(
     {
-      entryNo: template.entryNo,
+      entryNo,
       date: template.date,
       description: template.description,
       descriptionAr: template.descriptionAr,
@@ -354,7 +366,6 @@ export async function autoEntrySalesInvoice(data: {
   }
 
   return createJournalEntry({
-    entryNo: `JE-SI-${Date.now()}`,
     date: data.date,
     description: `Sales Invoice ${data.invoiceNo}`,
     descriptionAr: `فاتورة مبيعات ${data.invoiceNo}`,
@@ -496,7 +507,6 @@ export async function autoEntryExpense(data: {
   lines.push({ accountCode: cashAccountCode, debit: 0, credit: totalCashOut })
 
   return createJournalEntry({
-    entryNo: `JE-EXP-${Date.now()}`,
     date: data.date,
     description: `Expense: ${data.description}`,
     descriptionAr: `مصروف: ${data.description}`,
@@ -523,7 +533,6 @@ export async function autoEntryClientPayment(data: {
   const arCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_AR, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-CP-${Date.now()}`,
     date: data.date,
     description: `Payment received from ${data.clientName}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
     descriptionAr: `تحصيل من ${data.clientName}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
@@ -553,7 +562,6 @@ export async function autoEntrySupplierPayment(data: {
   const cashAccountCode = await resolvePaymentAccountCode(data.paidFrom === 'BANK' ? 'BANK' : 'TREASURY', tx)
 
   return createJournalEntry({
-    entryNo: `JE-SP-${Date.now()}`,
     date: data.date,
     description: `Payment to ${data.supplierName}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
     descriptionAr: `دفع إلى ${data.supplierName}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
@@ -614,7 +622,6 @@ export async function autoEntryEmployeeAdvance(data: {
   const descAr = data.description || `سلفة لموظف ${data.employeeName} - ${creditLabel}`
 
   return createJournalEntry({
-    entryNo: `JE-EA-${Date.now()}`,
     date: data.date,
     description: `Advance to ${data.employeeName}`,
     descriptionAr: descAr,
@@ -670,7 +677,6 @@ export async function autoEntryAdvanceSettlement(data: {
   }
 
   return createJournalEntry({
-    entryNo: `JE-AS-${Date.now()}`,
     date: data.date,
     description: `Advance settlement - ${data.employeeName}`,
     descriptionAr: `تسوية سلفة - ${data.employeeName} - ${debitLabel}`,
@@ -715,7 +721,6 @@ export async function autoEntrySubcontractorInvoice(data: {
   lines.push({ accountCode: apCode, debit: 0, credit: data.totalAmount })
 
   return createJournalEntry({
-    entryNo: `JE-SCI-${Date.now()}`,
     date: data.date,
     description: `Subcontractor Invoice ${data.invoiceNo} - ${data.subcontractorName}`,
     descriptionAr: `فاتورة مقاول باطن ${data.invoiceNo} - ${data.subcontractorName}`,
@@ -752,7 +757,6 @@ export async function autoEntryEquipmentCost(data: {
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
-    entryNo: `JE-EQC-${Date.now()}`,
     date: data.date,
     description: `Equipment ${data.costType} cost - ${data.equipmentName}`,
     descriptionAr: `تكلفة ${data.costType === 'OPERATION' ? 'تشغيل' : data.costType === 'MAINTENANCE' ? 'صيانة' : data.costType === 'FUEL' ? 'وقود' : 'أخرى'} معدات - ${data.equipmentName}`,
@@ -785,7 +789,6 @@ export async function autoEntryEquipmentPurchase(data: {
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
-    entryNo: `JE-EQP-${Date.now()}`,
     date: data.date,
     description: `Equipment Purchase - ${data.equipmentCode} ${data.equipmentName}`,
     descriptionAr: `شراء معدات - ${data.equipmentCode} ${data.equipmentName}`,
@@ -827,7 +830,6 @@ export async function autoEntryRentalInvoice(data: {
   }
 
   return createJournalEntry({
-    entryNo: `JE-RI-${Date.now()}`,
     date: data.date,
     description: `Rental Invoice ${data.invoiceNo}`,
     descriptionAr: `فاتورة تأجير ${data.invoiceNo}`,
@@ -863,7 +865,6 @@ export async function autoEntryPettyCash(data: {
       || (await requireAccountCodeByRole(AccountRole.BANK, 'تغذية صندوق نثرية', tx))
 
     return createJournalEntry({
-      entryNo: `JE-PTC-${Date.now()}`,
       date: data.date,
       description: `Petty Cash Fund: ${data.description}`,
       descriptionAr: `تغذية صندوق نثرية: ${data.description}`,
@@ -893,7 +894,6 @@ export async function autoEntryPettyCash(data: {
   const pettyCashCode = await requireAccountCodeByRole(AccountRole.PETTY_CASH, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-PTC-${Date.now()}`,
     date: data.date,
     description: `Petty Cash: ${data.description}`,
     descriptionAr: `صندوق نقدي: ${data.description}`,
@@ -946,7 +946,6 @@ export async function autoEntrySalary(data: {
   lines.push({ accountCode: gosiPayableCode, debit: 0, credit: data.gosiEmployeeDeduction + data.gosiEmployerContribution })
 
   return createJournalEntry({
-    entryNo: `JE-SAL-${Date.now()}`,
     date: data.date,
     description: `Salary payment - ${data.employeeName}`,
     descriptionAr: `صرف راتب - ${data.employeeName}`,
@@ -973,7 +972,6 @@ export async function autoEntryGOSI(data: {
   const totalGOSI = data.employeeContribution + data.employerContribution
 
   return createJournalEntry({
-    entryNo: `JE-GOSI-${Date.now()}`,
     date: data.date,
     description: `GOSI contribution - Employer: ${data.employerContribution}, Employee: ${data.employeeContribution}`,
     descriptionAr: `اشتراك تأمينات اجتماعية - صاحب العمل: ${data.employerContribution}, الموظف: ${data.employeeContribution}`,
@@ -1010,7 +1008,6 @@ export async function autoEntryDepreciation(data: {
   const accumulatedCode = await requireAccountCodeByRole(mapping.accumulated, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-DEP-${Date.now()}`,
     date: data.date,
     description: `Depreciation - ${data.assetType}`,
     descriptionAr: `إهلاك - ${data.assetType === 'CONSTRUCTION_EQUIPMENT' ? 'معدات إنشاء' : data.assetType === 'VEHICLES' ? 'مركبات' : data.assetType === 'OFFICE' ? 'أثاث' : 'برمجيات'}`,
@@ -1038,7 +1035,6 @@ export async function autoEntryRentalDepreciation(data: {
   const accumDepCode = await requireAccountCodeByRole(AccountRole.ACCUM_DEPRECIATION, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-RDEP-${Date.now()}`,
     date: data.date,
     description: 'Rental equipment depreciation',
     descriptionAr: 'إهلاك معدات التأجير',
@@ -1080,7 +1076,6 @@ export async function autoEntryDeliveryFees(data: {
   }
 
   return createJournalEntry({
-    entryNo: `JE-DF-${Date.now()}`,
     date: data.date,
     description: 'Delivery fees',
     descriptionAr: 'رسوم نقل وتوصيل',
@@ -1108,7 +1103,6 @@ export async function autoEntryContractAdvance(data: {
   const advanceAccountCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_ADVANCE, 'دفعة مقدمة عقد', tx)
 
   return createJournalEntry({
-    entryNo: `JE-CA-${Date.now()}`,
     date: data.date,
     description: `Contract advance from ${data.clientName}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
     descriptionAr: `مقدمة عقد من ${data.clientName}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
@@ -1137,7 +1131,6 @@ export async function autoEntryRetention(data: {
   const arCode = await requireAccountCodeByRole(AccountRole.CUSTOMER_AR, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-RET-${Date.now()}`,
     date: data.date,
     description: `Retention withheld by ${data.clientName}`,
     descriptionAr: `احتجاز لدى ${data.clientName}`,
@@ -1164,7 +1157,6 @@ export async function autoEntryZakat(data: {
   const zakatPayableCode = await requireAccountCodeByRole(AccountRole.ZAKAT_PAYABLE, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-ZAK-${Date.now()}`,
     date: data.date,
     description: 'Zakat provision',
     descriptionAr: 'مخصص الزكاة',
@@ -1192,7 +1184,6 @@ export async function autoEntryEndOfService(data: {
   const eosCode = await requireAccountCodeByRole(AccountRole.EOS_PROVISION, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-EOS-${Date.now()}`,
     date: data.date,
     description: 'End of service benefits provision',
     descriptionAr: 'مخصص مكافأة نهاية الخدمة',
@@ -1242,7 +1233,6 @@ export async function autoEntryAssetDisposal(data: {
   }
 
   return createJournalEntry({
-    entryNo: `JE-DSP-${Date.now()}`,
     date: data.date,
     description: `Asset disposal - ${data.assetAccountCode}`,
     descriptionAr: `التخلص من أصل - ${data.assetAccountCode}`,
@@ -1297,7 +1287,6 @@ export async function autoEntryVATDeclaration(data: {
   }
 
   return createJournalEntry({
-    entryNo: `JE-VAT-${Date.now()}`,
     date: data.date,
     description: `VAT Declaration - ${data.period}`,
     descriptionAr: `إقرار ضريبي - ${data.period}`,
@@ -1323,7 +1312,6 @@ export async function autoEntryVATPayment(data: {
   const bankCode = await resolvePaymentAccountCode('BANK', tx)
 
   return createJournalEntry({
-    entryNo: `JE-VTP-${Date.now()}`,
     date: data.date,
     description: `VAT Payment - ${data.period}${data.reference ? ` - Ref: ${data.reference}` : ''}`,
     descriptionAr: `سداد ضريبي - ${data.period}${data.reference ? ` - مرجع: ${data.reference}` : ''}`,
@@ -1392,7 +1380,6 @@ export async function autoEntrySubcontractorAdvance(data: {
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
-    entryNo: `JE-SCA-${Date.now()}`,
     date: data.date,
     description: `Subcontractor Advance ${data.advanceNo} - ${data.subcontractorName}`,
     descriptionAr: `سلفة مقاول باطن ${data.advanceNo} - ${data.subcontractorName}`,
@@ -1428,7 +1415,6 @@ export async function autoEntrySubcontractorPayment(data: {
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
-    entryNo: `JE-SCP-${Date.now()}`,
     date: data.date,
     description: `Subcontractor Payment ${data.paymentNo} - ${data.subcontractorName}`,
     descriptionAr: `سداد لمقاول باطن ${data.paymentNo} - ${data.subcontractorName}`,
@@ -1460,7 +1446,6 @@ export async function autoEntrySubcontractorRetention(data: {
   const retentionCode = await requireAccountCodeByRole(AccountRole.SUBCONTRACTOR_RETENTION_PAYABLE, 'العملية المحاسبية', tx)
 
   return createJournalEntry({
-    entryNo: `JE-SRT-${Date.now()}`,
     date: data.date,
     description: `Subcontractor Retention ${data.retentionNo} - ${data.subcontractorName}`,
     descriptionAr: `احتجاز ضمان مقاول باطن ${data.retentionNo} - ${data.subcontractorName}`,
@@ -1495,7 +1480,6 @@ export async function autoEntryManualCost(data: {
     : (await resolvePaymentAccountCode('TREASURY', tx))
 
   return createJournalEntry({
-    entryNo: `JE-MCE-${Date.now()}`,
     date: data.date,
     description: `Manual Cost Entry - ${data.description}`,
     descriptionAr: `قيد تكلفة يدوية - ${data.description}`,
@@ -1542,7 +1526,6 @@ export async function autoEntryLaborCost(data: {
   }
 
   return createJournalEntry({
-    entryNo: `JE-LC-${Date.now()}`,
     date: data.date,
     description: `Labor Cost - ${data.description}`,
     descriptionAr: `تكلفة عمالة - ${data.description}`,

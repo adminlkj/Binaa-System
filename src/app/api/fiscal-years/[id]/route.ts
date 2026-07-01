@@ -190,8 +190,49 @@ export async function DELETE(
       return NextResponse.json({ error: 'السنة المالية غير موجودة' }, { status: 404 })
     }
 
-    // Admin override: allow deleting closed years too
-    // (closing JE remains in the ledger as historical record)
+    // P1-3 FIX (CRIT-B): لا يُسمح بحذف سنة مغلقة مباشرةً. يجب إعادة فتحها أولاً
+    // (مما يعكس قيد الإقفال) ثم الحذف. حذف سنة مغلقة يترك قيد الإقفال يتيماً
+    // في GL دون رابط للسنة.
+    if (existing.status === 'CLOSED') {
+      return NextResponse.json(
+        {
+          error: `لا يمكن حذف سنة مالية مُقفلة (${existing.name}). أعد فتحها أولاً (POST /api/fiscal-years/${id}/reopen) ثم احذفها.`,
+          code: 'CANNOT_DELETE_CLOSED_YEAR',
+          hint: 'POST /api/fiscal-years/[id]/reopen → then DELETE',
+        },
+        { status: 423 }
+      )
+    }
+
+    // P1-3 FIX: إذا كانت السنة في حالة CLOSING، ارفض الحذف (عملية إقفال جارية)
+    if (existing.status === 'CLOSING') {
+      return NextResponse.json(
+        { error: `السنة المالية ${existing.name} قيد الإقفال — لا يمكن حذفها`, code: 'YEAR_CLOSING' },
+        { status: 423 }
+      )
+    }
+
+    // P1-3 FIX: تحقق من عدم وجود قيود مرحّلة في هذه السنة. إذا وجدت، ارفض الحذف
+    // (لا يمكن حذف سنة لها قيود مالية — يجب عكس القيود أولاً).
+    const jeCount = await db.journalEntry.count({
+      where: {
+        date: { gte: existing.startDate, lte: existing.endDate },
+        deletedAt: null,
+        status: 'POSTED',
+      },
+    })
+    if (jeCount > 0) {
+      return NextResponse.json(
+        {
+          error: `لا يمكن حذف السنة المالية ${existing.name} — تحتوي على ${jeCount} قيد مرحّل. اعكس القيود أولاً.`,
+          code: 'YEAR_HAS_POSTED_ENTRIES',
+          jeCount,
+        },
+        { status: 423 }
+      )
+    }
+
+    // Safe to delete: OPEN status, no posted JEs, no closing JE
     await db.fiscalYear.delete({ where: { id } })
     return NextResponse.json({ success: true })
   } catch (error) {

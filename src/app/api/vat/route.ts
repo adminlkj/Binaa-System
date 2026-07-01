@@ -135,34 +135,36 @@ export async function POST(request: Request) {
       orderBy: { createdAt: 'desc' },
     })
 
-    // أنشئ الإقرار كلقطط مجمّد
+    // ⚠️  SSOT (P1-1-FIX / M6): إجماليات الإقرار المُجمّدة معتمدة من GL
+    //    (calc.glOutputVat, calc.glInputVat, calc.totalSales من REVENUE،
+    //    calc.totalPurchases من EXPENSE). تفاصيل الفواتير تُخزَّن للعرض فقط.
     const vatReturn = await db.vATReturn.create({
       data: {
         period,
         year,
         quarter,
-        // الإجماليات
+        // الإجماليات المعتمدة (GL-derived)
         totalSales: calc.totalSales,
-        outputVat: calc.outputVat,
+        outputVat: calc.outputVat, // = calc.glOutputVat
         totalPurchases: calc.totalPurchases,
-        inputVat: calc.inputVat,
+        inputVat: calc.inputVat,   // = calc.glInputVat
         netVat: calc.netVat,
-        // تصنيف المبيعات
+        // تصنيف المبيعات (تفصيلي - من الفواتير للعرض)
         standardRatedSales: calc.categories.standardRatedSales,
         zeroRatedSales: calc.categories.zeroRatedSales,
         exemptSales: calc.categories.exemptSales,
         standardRatedSalesVat: calc.categories.standardRatedSalesVat,
-        // تصنيف المشتريات
+        // تصنيف المشتريات (تفصيلي - من الفواتير للعرض)
         standardRatedPurchases: calc.categories.standardRatedPurchases,
         zeroRatedPurchases: calc.categories.zeroRatedPurchases,
         exemptPurchases: calc.categories.exemptPurchases,
         importsSubjectToVAT: calc.categories.importsSubjectToVAT,
         standardRatedPurchasesVat: calc.categories.standardRatedPurchasesVat,
-        // التحقق من دفتر اليومية
+        // التحقق من دفتر اليومية (مطابقة الفواتير مع GL)
         glOutputVat: calc.glOutputVat,
         glInputVat: calc.glInputVat,
         glMatch: calc.glMatch,
-        // قوائم المعرفات
+        // قوائم المعرفات (للإشارة إلى الفواتير المُغطّاة بالإقرار)
         salesInvoiceIds: JSON.stringify(calc.salesInvoiceIds),
         purchaseInvoiceIds: JSON.stringify(calc.purchaseInvoiceIds),
         expenseIds: JSON.stringify(calc.expenseIds),

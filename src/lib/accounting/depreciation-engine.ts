@@ -24,6 +24,7 @@ import {
   PrismaTransaction,
 } from '@/lib/accounting/engine'
 import { getNextEntryNo } from '@/lib/accounting/guard'
+import { mulMoney, divMoney, subMoney, addMoney, round2Money } from '@/lib/safe-money'
 import {
   AccountRole,
   getAccountCodeByRole,
@@ -119,6 +120,7 @@ export function calculateDepreciation(input: {
   residualValue?: number
   accumulatedDepreciation?: number
 }): DepreciationCalculation {
+  // P1-4b FIX: استخدم Decimal.js للحسابات لمنع تراكم أخطاء التقريب عبر 60 شهراً
   const acquisitionCost = Math.max(0, Number(input.acquisitionCost) || 0)
   const providedYears = Number(input.usefulLifeYears) || 0
   const providedMonths = Number(input.usefulLifeMonths) || 0
@@ -141,10 +143,11 @@ export function calculateDepreciation(input: {
     depreciationRate = 100 / usefulLifeYears
   }
 
-  // الإهلاك السنوي والشهري
-  const annualDepreciation = acquisitionCost * (depreciationRate / 100)
+  // P1-4b FIX: استخدم Decimal.js للإهلاك السنوي/الشهري لمنع تراكم أخطاء التقريب
+  // عبر 60 شهراً (الإهلاك الشهري يُخزَّن ويُجمع شهرياً في قاعدة البيانات)
+  const annualDepreciation = round2Money(mulMoney(acquisitionCost, divMoney(depreciationRate, 100))).toNumber()
   const monthlyDepreciation = usefulLifeMonths > 0
-    ? (acquisitionCost * (depreciationRate / 100)) / 12
+    ? round2Money(divMoney(mulMoney(acquisitionCost, divMoney(depreciationRate, 100)), 12)).toNumber()
     : 0
 
   // القيمة المتبقية التقديرية = التكلفة - (الإهلاك السنوي × عدد السنوات)
@@ -459,7 +462,6 @@ export async function createAssetWithAcquisition(
 
       try {
         const je = await createJournalEntry({
-          entryNo: `JE-AST-${assetCode.replace('AST-', '')}-${Date.now()}`,
           date: acquisitionDate,
           description: `Acquisition of ${input.name}`,
           descriptionAr: `تملك أصل ثابت: ${assetName}`,
@@ -750,9 +752,10 @@ export async function runDepreciationForAsset(
       }
     }
 
-    // سجل الإهلاك
-    const newAccumDep = currentAccumDep + depreciationAmount
-    const newNBV = acquisitionCost - newAccumDep
+    // P1-4b FIX: استخدم Decimal.js للإهلاك المتراكم وصافي القيمة الدفترية
+    // لمنع تراكم أخطاء التقريب عبر أشهر الإهلاك المتعددة
+    const newAccumDep = round2Money(addMoney(currentAccumDep, depreciationAmount)).toNumber()
+    const newNBV = round2Money(subMoney(acquisitionCost, newAccumDep)).toNumber()
     const isFullyDepreciated = newNBV <= residualValue + 0.01
 
     await t.assetDepreciation.create({

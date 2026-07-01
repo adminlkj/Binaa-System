@@ -1107,22 +1107,30 @@ function round2(value: number): number {
 
 /**
  * calculateProjectProfitability - Returns revenue, costs breakdown, profit, margin
+ *
+ * ⚠️  SSOT (P1-1-FIX / M1): جميع الإيرادات والتكاليف مصدرها JournalLine
+ *    (status='POSTED', deletedAt IS NULL) عبر الدالة الموحّدة
+ *    `getProjectCostBreakdown` في `@/lib/accounting/queries`. لا تُقرأ
+ *    الأرقام من الجداول التشغيلية (ProgressClaim / SalesInvoice /
+ *    PurchaseInvoice / LaborCost / EquipmentCost / SubcontractorInvoice /
+ *    EquipmentUsage / EquipmentFuelLog / Expense) حتى تتطابق الربحية مع
+ *    القوائم المالية وميزان المراجعة.
+ *
+ *    خريطة byRole → الحقول:
+ *      PROJECT_COST → materials + purchases
+ *      SUBCONTRACTOR_COST → subcontractors
+ *      PAYROLL_EXPENSE → labor (salaries + labor)
+ *      FUEL_EXPENSE → fuel
+ *      MAINTENANCE_EXPENSE → maintenance
+ *      DRIVER_EXPENSE + TRANSPORT_EXPENSE + RENTAL_DEPRECIATION → equipment
+ *      ADMIN_EXPENSE + GOSI_EXPENSE + DEPRECIATION_EXPENSE + ZAKAT_EXPENSE + OTHER → expenses + other
  */
 export async function calculateProjectProfitability(projectId: string): Promise<ProfitabilityResult> {
   const project = await db.project.findUnique({
     where: { id: projectId },
-    include: {
-      contracts: true,
-      progressClaims: true,
-      salesInvoices: true,
-      expenses: true,
-      laborCosts: true,
-      equipmentCosts: true,
-      equipmentUsages: true,
-      subcontractorInvoices: true,
-      purchaseInvoices: true,
-      fuelLogs: true,
-      equipmentOperations: true,
+    select: {
+      id: true,
+      contracts: { select: { totalValue: true, status: true } },
     },
   })
 
@@ -1140,73 +1148,33 @@ export async function calculateProjectProfitability(projectId: string): Promise<
     }
   }
 
-  // === REVENUE ===
-  // From progress claims (approved or paid)
-  const claimRevenue = project.progressClaims
-    .filter((c) => ['APPROVED', 'PARTIALLY_PAID', 'PAID'].includes(c.status))
-    .reduce((sum, c) => sum + Number(c.amount), 0)
+  // === المصدر الموحّد: JournalLine المرحّلة على مركز تكلفة المشروع ===
+  const { getProjectCostBreakdown } = await import('@/lib/accounting/queries')
+  const breakdown = await getProjectCostBreakdown(projectId)
+  const role = (key: string): number => breakdown.byRole.get(key) || 0
 
-  // From sales invoices
-  const invoiceRevenue = project.salesInvoices
-    .filter((i) => i.status !== 'CANCELLED')
-    .reduce((sum, i) => sum + Number(i.subtotal), 0)
+  const revenue = round2(breakdown.revenue)
 
-  // Use the larger of the two (avoid double counting since invoices come from claims)
-  const revenue = round2(Math.max(claimRevenue, invoiceRevenue))
-
-  // === COSTS ===
-  const materials = round2(
-    project.purchaseInvoices
-      .filter((pi) => pi.status !== 'CANCELLED')
-      .reduce((sum, pi) => sum + Number(pi.subtotal), 0)
-  )
-
-  const labor = round2(
-    project.laborCosts.reduce((sum, lc) => sum + Number(lc.totalAmount), 0) +
-    project.equipmentCosts.reduce((sum, ec) => sum + Number(ec.amount), 0)
-  )
-
-  const subcontractors = round2(
-    project.subcontractorInvoices
-      .filter((si) => si.status !== 'CANCELLED')
-      .reduce((sum, si) => sum + Number(si.amount), 0)
-  )
-
+  const materials = round2(role('PROJECT_COST'))
+  const subcontractors = round2(role('SUBCONTRACTOR_COST'))
+  const labor = round2(role('PAYROLL_EXPENSE'))
+  const fuel = round2(role('FUEL_EXPENSE'))
+  const maintenance = round2(role('MAINTENANCE_EXPENSE'))
   const equipment = round2(
-    project.equipmentUsages.reduce((sum, eu) => sum + Number(eu.cost), 0) +
-    project.equipmentOperations.reduce((sum, _eo) => sum + 0, 0) // operations logged but cost via usage
+    role('DRIVER_EXPENSE') +
+    role('TRANSPORT_EXPENSE') +
+    role('RENTAL_DEPRECIATION')
   )
-
-  const fuel = round2(
-    project.fuelLogs.reduce((sum, fl) => sum + Number(fl.totalCost), 0)
-  )
-
-  // Maintenance costs (from expenses categorized as MAINTENANCE and linked to this project)
-  const maintenance = round2(
-    project.expenses
-      .filter((e) => e.category === 'MAINTENANCE')
-      .reduce((sum, e) => sum + Number(e.amount), 0)
-  )
-
-  const expenses = round2(
-    project.expenses
-      .filter((e) => e.expenseType === 'PROJECT')
-      .reduce((sum, e) => sum + Number(e.amount), 0)
-  )
-
-  const purchases = round2(
-    project.purchaseInvoices
-      .filter((pi) => pi.status !== 'CANCELLED')
-      .reduce((sum, pi) => sum + Number(pi.subtotal), 0)
-  )
-
+  const expenses = round2(role('ADMIN_EXPENSE'))
+  const purchases = materials // نفس بند تكاليف المواد في النظام المحاسبي
   const other = round2(
-    project.expenses
-      .filter((e) => e.expenseType === 'INTERNAL')
-      .reduce((sum, e) => sum + Number(e.amount), 0)
+    role('GOSI_EXPENSE') +
+    role('DEPRECIATION_EXPENSE') +
+    role('ZAKAT_EXPENSE') +
+    role('OTHER')
   )
 
-  const totalCosts = round2(materials + labor + subcontractors + equipment + fuel + expenses + other)
+  const totalCosts = round2(breakdown.total)
   const profit = round2(revenue - totalCosts)
   const margin = revenue > 0 ? round2((profit / revenue) * 100) : 0
 
@@ -1232,6 +1200,22 @@ export async function calculateProjectProfitability(projectId: string): Promise<
 
 /**
  * calculateEquipmentProfitability - Returns revenue, costs breakdown, profit, margin
+ *
+ * ⚠️  ARCHITECTURAL GAP (P1-1-FIX / M2): تتطلب هذه الدالة بُعد "مركز تكلفة
+ *    لكل معدة" (per-equipment cost center dimension) على JournalLine حتى
+ *    يمكن اشتقاق الإيراد والتكاليف من القيود المحاسبية. هذا البُعد غير
+ *    متوفر حالياً في النظام، لذلك تبقى هذه الدالة تقرأ من الجداول التشغيلية
+ *    كمؤشر تشغيلي (Operational View) — وليست تقريراً مالياً معتمداً.
+ *
+ *    TODO (طويل الأمد): أضف عمود `equipmentId` إلى JournalLine، أو أنشئ
+ *    مركز تكلفة لكل معدّة واربطه بحقل `equipment.costCenterId`. عند توفّر
+ *    هذا البُعد، أعد كتابة هذه الدالة لتستخدم
+ *    `getBalanceByType('REVENUE', undefined, { activityType: 'EQUIPMENT_RENTAL' })`
+ *    مُصفّاةً بمركز تكلفة المعدة.
+ *
+ *    بالكامل تعتمد هذه الدالة على EquipmentRental/Timesheet/EquipmentFuelLog
+ *    /EquipmentMaintenance/EquipmentOperatorLog/EquipmentUsage + إهلاك مقدّر
+ *    من Equipment.purchasePrice. جميعها مصادر تشغيلية وليست مالية.
  */
 export async function calculateEquipmentProfitability(equipmentId: string): Promise<EquipmentProfitabilityResult> {
   const equipment = await db.equipment.findUnique({
