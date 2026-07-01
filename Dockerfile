@@ -45,17 +45,23 @@ RUN bun run build
 FROM node:20-slim AS runner
 WORKDIR /app
 
-# Install bun in the runner (needed for prisma + seed scripts at startup)
-RUN npm install -g bun
+# P7-FIX3: Install OpenSSL (required by Prisma engines) + bun
+# node:20-slim doesn't include OpenSSL by default, which Prisma needs.
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends openssl ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g bun
 
 # Set production environment
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+# Tell Prisma which OpenSSL version to use (avoids auto-detection warning)
+ENV PRISMA_QUERY_ENGINE_BINARY_TYPE=debian-openssl-3.0.x
 
 # Create non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+    adduser --system --uid 1001 --ingroup nodejs nextjs
 
 # Copy standalone build output (includes server.js + minimal node_modules)
 COPY --from=builder /app/.next/standalone ./
@@ -79,8 +85,12 @@ COPY --from=builder /app/src ./src
 # Copy tsconfig.json (needed for @/ path alias resolution in bun)
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 
-# Ensure startup script is executable
-RUN chmod +x scripts/startup.sh
+# P7-FIX3: Ensure startup script is executable AND fix ownership so the
+# nextjs user can write to node_modules/@prisma/engines (prisma generate
+# at runtime needs write access). All files copied via COPY are owned by
+# root by default — chown to nextjs so the non-root user can run migrations.
+RUN chmod +x scripts/startup.sh && \
+    chown -R nextjs:nodejs /app
 
 # Switch to non-root user
 USER nextjs
