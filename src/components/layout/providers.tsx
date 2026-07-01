@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SessionProvider } from 'next-auth/react'
+import { ThemeProvider } from 'next-themes'
 import { useState, useEffect } from 'react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { CompanyProvider, useCompany } from '@/contexts/company-context'
@@ -58,26 +59,28 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionProvider>
-      <QueryClientProvider client={queryClient}>
-        <CompanyProvider>
-          <CurrencySettingsInitializer />
-          <TooltipProvider>
-            {children}
-          </TooltipProvider>
-        {/* Global toast notifications — success/error messages for every operation */}
-        <SonnerToaster
-          position="top-center"
-          richColors
-          closeButton
-          dir="rtl"
-          toastOptions={{
-            style: {
-              fontFamily: 'var(--font-cairo), Cairo, sans-serif',
-            },
-          }}
-        />
-        </CompanyProvider>
-      </QueryClientProvider>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+        <QueryClientProvider client={queryClient}>
+          <CompanyProvider>
+            <CurrencySettingsInitializer />
+            <TooltipProvider>
+              {children}
+            </TooltipProvider>
+          {/* Global toast notifications — success/error messages for every operation */}
+          <SonnerToaster
+            position="top-center"
+            richColors
+            closeButton
+            dir="rtl"
+            toastOptions={{
+              style: {
+                fontFamily: 'var(--font-cairo), Cairo, sans-serif',
+              },
+            }}
+          />
+          </CompanyProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </SessionProvider>
   )
 }

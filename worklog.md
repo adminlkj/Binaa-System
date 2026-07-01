@@ -9602,3 +9602,64 @@ Used a Python script (`/tmp/rbac_fix.py`) to perform atomic per-file edits:
 - All accounting tests still pass: 21/21, 29/29, all numerical consistency invariants ✓
 - Lint clean: exit 0
 - No business logic changed. No Prisma schema changes. No new dependencies. Arabic error messages preserved. The existing 4-layer protection on `seed/route.ts` and the NextAuth handler were both respected.
+
+---
+
+## P5-3 — Shared Form Abstraction + Accessibility (Phase 5, Task 3)
+
+**Agent**: P5.3  •  **Task ID**: P5-3  •  **Status**: COMPLETE ✅
+
+### Context
+The 47 ERP modules each hand-rolled form state with `useState(form)` + `setForm(f => ({...f, field: value}))` + `useMutation` + `queryClient.invalidateQueries` boilerplate. `react-hook-form` + `zod` are installed but unused in the frontend. No shared `<FormDialog>` or `useEntityForm` hook existed. No skip-to-content link. Icon-only sidebar buttons relied on `title=` or had no accessible name at all.
+
+### Tasks Completed
+1. **`src/hooks/use-entity-form.ts`** (NEW) — `useEntityForm<T>` hook. Owns form values, per-field errors (cleared automatically when the field is edited), submitting flag, validation+submit+reset. NOT built on react-hook-form (RHF migration is a separate per-module refactor — this hook is a stepping-stone that removes 80% of the boilerplate today). Returns `{ values, setField, errors, submitting, submit, reset, setValues }`.
+
+2. **`src/components/shared/form-dialog.tsx`** (NEW) — Bilingual (AR/EN) `<FormDialog>` wrapper. Owns dialog open/close plumbing, title/description, Save/Cancel footer with submitting-state `Loader2` spinner, default bilingual labels (Save/Cancel, حفظ/إلغاء). Capped at `max-h-[90vh]` with overflow-y-auto. RTL-aware (`dir` on `DialogContent`, spinner margin flips with language). `maxWidthClass` prop lets modules override the default `max-w-2xl`.
+
+3. **`src/components/shared/form-field.tsx`** (NEW) — Bilingual `<FormField>` wrapper. Label + control + optional error/hint. Required-asterisk uses `text-destructive` + `aria-hidden="true"` (visual duplicate of the "required" semantic). Optional `hint` prop for non-error guidance text.
+
+4. **`src/components/layout/app-shell.tsx`** (MODIFIED) — Added skip-to-content link as the first element in the layout. `sr-only` by default; `focus:not-sr-only focus:absolute focus:top-4 focus:right-4 focus:z-50 focus:px-4 focus:py-2 focus:bg-primary focus:text-primary-foreground focus:rounded-md focus:shadow-lg` when keyboard-focused. Added `id="main-content"` + `tabIndex={-1}` + `focus:outline-none` to the `<main>` element. Wired `useAppStore()` for bilingual text ("تخطَّ إلى المحتوى" / "Skip to content").
+
+5. **`src/components/layout/sidebar.tsx`** (MODIFIED) — A11y pass:
+   - Desktop cycle headers: added `aria-expanded`, `aria-controls={\`cycle-panel-${group.key}\`}`, `aria-label` describing the action. Added matching `id` on the panel `<div>`.
+   - Desktop language toggle: added `aria-label` describing the action (visible text only names the destination language, not the action).
+   - Mobile cycle headers: same pattern with `mobile-cycle-panel-` id prefix (avoids DOM ID collision with desktop, since both render in the tree).
+   - Mobile X close button: added `aria-label` (was the only truly icon-only button with no accessible name).
+   - Mobile language toggle: same aria-label as desktop.
+   - ThemeToggle: already had a dynamic aria-label in `theme-toggle.tsx` — left untouched with an in-code comment.
+
+### Verification Results
+- **`bun run lint`**: clean (exit 0) ✓
+- **`bun run test:accounting`**: 21/21 passed ✓ — all 10 behavioural scenarios pass; the new shared form components are presentation-only and don't touch the accounting engine.
+- **Dev server log** (`/home/z/my-project/dev.log`): "✓ Compiled in 287ms" with no errors; homepage serving 200 OK. (Pre-existing 404s for `/api/subcontractors` and `/api/health` are unrelated to this task — they predate it.)
+
+### Output Files
+1. `src/hooks/use-entity-form.ts` (NEW)
+2. `src/components/shared/form-dialog.tsx` (NEW)
+3. `src/components/shared/form-field.tsx` (NEW)
+4. `src/components/layout/app-shell.tsx` (MODIFIED — skip-to-content link + `id="main-content"`)
+5. `src/components/layout/sidebar.tsx` (MODIFIED — aria-expanded/aria-controls/aria-label on cycle headers + language toggles + X close button)
+6. `agent-ctx/P5-3-shared-form-a11y.md` (this work record, copied to `/home/z/my-project/agent-ctx/`)
+
+### Key Architectural Findings
+1. **`react-hook-form` migration should be per-module, not a big-bang refactor.** RHF + zod are installed but unused in the frontend. Migrating 47 modules in one pass would require rewriting every module's validation as a zod schema and every `setForm(f => ...)` call site as `setValue(...)`. The `useEntityForm` hook is a stepping-stone: it removes 80% of the boilerplate (the `useState(form)` + `setForm(f => ({...f, field: value}))` + `setSubmitting(true/false)` + `setErrors(...)` + `reset()` dance) while leaving the per-module `onSubmit` closure intact (where the `useMutation` + `queryClient.invalidateQueries` + `toast.success(...)` chain lives — that part is module-specific and not safely abstractable). A later per-module migration to RHF can happen without breaking the shared `<FormDialog>`/`<FormField>` presentation components.
+
+2. **The skip-to-content link must be the first focusable element in the DOM.** It sits as the first child of the root `<div>` in AppShell, BEFORE `<Sidebar />`. Because it's `sr-only` by default, it takes zero visual space. When keyboard-focused, it's `position: absolute` so it overlays the viewport without reflowing the layout. Tab from the browser chrome lands on it before any sidebar nav item — which is exactly the WCAG 2.4.1 Bypass Blocks requirement.
+
+3. **`tabIndex={-1}` on `<main>` is required for the skip link to work.** Non-interactive elements like `<main>` cannot receive programmatic focus by default. `tabIndex={-1}` makes the element focusable via `element.focus()` (which the browser calls when the skip-link anchor is activated) but keeps it OUT of the normal Tab order. The `focus:outline-none` class suppresses the focus ring that `tabIndex={-1}` would otherwise draw on the scrollable container.
+
+4. **For collapsible-region toggles, `aria-expanded` + `aria-controls` is strictly better than `aria-label` alone.** The strictly-correct ARIA pattern announces the open/closed state automatically ("Projects, expanded" / "Projects, collapsed"). I added BOTH: `aria-expanded`+`aria-controls` (proper state semantics) AND `aria-label` (descriptive action name including the section name + action verb, per the task spec). The visible group-label text remains the visual affordance for sighted users.
+
+5. **Icon-only buttons need `aria-label`, not `title=`.** The `title` attribute shows a hover tooltip but is NOT reliably announced by screen readers (VoiceOver on iOS ignores it entirely; NVDA on Windows announces it only in certain browse modes). The `aria-label` attribute is the accessible-name property — it's what screen readers announce as the button's name. The mobile X close button in the sidebar had NEITHER — that was the worst case (screen readers announced just "button"). The desktop sidebar's ThemeToggle already had a dynamic `aria-label` in `theme-toggle.tsx`, so it needed no change.
+
+6. **The required-asterisk should be `aria-hidden`.** The asterisk is a visual duplicate of the "required" semantic. If exposed to screen readers, they'd announce "asterisk" after the label text, which is noise. The "required" semantic is better conveyed to AT users via the `required` attribute on the actual form control (which the caller is responsible for). Marking the asterisk `aria-hidden="true"` keeps it visible to sighted users but silent to AT users.
+
+7. **`useEntityForm` deliberately re-throws errors from `onSubmit`.** The hook's `onSubmit` callback typically contains the `fetch`/`useMutation` call, the `queryClient.invalidateQueries`, and the `toast.success`/`toast.error`. If `onSubmit` throws, the hook sets `submitting` back to `false` (via the `finally` block) and re-throws so the caller's `try/catch` around `form.submit()` can handle it. The hook does NOT call `onSuccess` or `reset` on error — those only run on success. This means the caller controls all user-facing error handling while the hook controls all form state.
+
+### Stage Summary
+- Phase 5, Task 3 (Shared Form Abstraction + Accessibility): **COMPLETE ✅**
+- 3 new shared modules (`useEntityForm`, `<FormDialog>`, `<FormField>`) are now available for the 47 modules to consume — a future task can migrate modules incrementally without breaking anything.
+- 1 new accessibility feature (skip-to-content link) is live for all keyboard users.
+- 5 icon-only/toggle buttons across desktop + mobile sidebars now have proper accessible names + ARIA state semantics.
+- No regressions: lint clean, accounting tests 21/21, dev server compiles without errors.

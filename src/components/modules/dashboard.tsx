@@ -7,7 +7,7 @@ import {
   Users, Package, Wrench, Calculator,
   FileText, Clock, TrendingUp, TrendingDown, Wallet,
   ArrowRight, ArrowUpDown, CreditCard, Shield,
-  Calendar, DollarSign, Link2,
+  Calendar, DollarSign, Link2, BarChart3, PieChart as PieChartIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,12 @@ import {
 } from '@/stores/app-store'
 import type { NavItem } from '@/stores/app-store'
 import { MoneyDisplay } from '@/components/ui/money-display'
+import {
+  RevenueExpensesChart,
+  FinancialPositionChart,
+  ProjectStatusChart,
+  TopExpensesChart,
+} from '@/components/dashboard/charts'
 
 // ============ Types ============
 interface RecentProject {
@@ -91,6 +97,7 @@ interface DashboardData {
   projectProfitability: { id: string; code: string; name: string; status: string; projectType: string; clientName: string; contractValue: number; totalCosts: number; totalRevenue: number; profit: number; margin: number }[]
   recentTransactions: { id: string; entryNo: string; date: string; description: string; totalDebit: number; totalCredit: number; sourceType: string | null }[]
   projectStatusDistribution: { status: string; count: number }[]
+  topExpenseCategories: { category: string; amount: number }[]
   alerts: { type: string; title: string; detail: string; date: string; severity: string }[]
 }
 
@@ -719,6 +726,74 @@ export function DashboardModule() {
 
       {/* Financial Summary Row */}
       <FinancialSummaryRow data={dashboard!} lang={lang} />
+
+      {/* ===== CHARTS SECTION (P5-2) — real recharts visualisations ===== */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <TrendingUp className="size-4 text-emerald-600" />
+              {t('الإيرادات والمصروفات الشهرية', 'Monthly Revenue & Expenses', lang)}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {t('آخر 6 أشهر من دفتر الأستاذ العام', 'Last 6 months from General Ledger', lang)}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <RevenueExpensesChart data={dashboard?.monthlyData} lang={lang} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <BarChart3 className="size-4 text-cyan-600" />
+              {t('المركز المالي', 'Financial Position', lang)}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {t('النقدية والذمم المدينة والدائنة', 'Cash, Receivables & Payables', lang)}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <FinancialPositionChart
+              cashPosition={dashboard?.cashPosition}
+              receivables={dashboard?.outstandingReceivables}
+              payables={dashboard?.outstandingPayables}
+              lang={lang}
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <PieChartIcon className="size-4 text-violet-600" />
+              {t('حالة المشاريع', 'Project Status', lang)}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {t('توزيع المشاريع حسب الحالة', 'Distribution of projects by status', lang)}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <ProjectStatusChart data={dashboard?.projectStatusDistribution} lang={lang} />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Wallet className="size-4 text-rose-600" />
+              {t('أكبر 5 مصروفات', 'Top 5 Expenses', lang)}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              {t('حسب فئة المصروف', 'By expense category', lang)}
+            </p>
+          </CardHeader>
+          <CardContent>
+            <TopExpensesChart data={dashboard?.topExpenseCategories} lang={lang} />
+          </CardContent>
+        </Card>
+      </div>
 
       {/* ===== TWO HUB PANELS ===== */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

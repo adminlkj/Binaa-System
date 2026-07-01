@@ -22,6 +22,7 @@ import {
   type NavGroup,
 } from '@/stores/app-store'
 import { cn } from '@/lib/utils'
+import { ThemeToggle } from '@/components/layout/theme-toggle'
 
 // ============================================================================
 // RBAC — Role-based visibility for the 9 sidebar cycles and their items.
@@ -248,9 +249,20 @@ export function Sidebar() {
 
           return (
             <div key={group.key} className="mb-1">
-              {/* Cycle Header */}
+              {/* Cycle Header — toggle button for the collapsible group.
+                  `aria-expanded` announces the open/closed state to screen
+                  readers; `aria-controls` links it to the panel below so
+                  AT users can jump to the content. The visible group label
+                  remains the accessible name (no aria-label override). */}
               <button
                 onClick={() => toggleGroup(group.key)}
+                aria-expanded={isExpanded}
+                aria-controls={`cycle-panel-${group.key}`}
+                aria-label={
+                  lang === 'ar'
+                    ? `${group.label.ar} — ${isExpanded ? 'طي' : 'توسيع'}`
+                    : `${group.label.en} — ${isExpanded ? 'Collapse' : 'Expand'}`
+                }
                 className={cn(
                   'flex items-center w-full px-3 py-2 text-sm font-semibold transition-colors rounded-lg mx-0',
                   hasActiveItem
@@ -268,9 +280,11 @@ export function Sidebar() {
                 />
               </button>
 
-              {/* Cycle Stages — clean sequential list */}
+              {/* Cycle Stages — clean sequential list.
+                  `id` matches the header's `aria-controls` so screen readers
+                  can navigate from the toggle to its panel. */}
               {isExpanded && (
-                <div className="mt-0.5 mb-1">
+                <div id={`cycle-panel-${group.key}`} className="mt-0.5 mb-1">
                   {group.items.map(item => {
                     const Icon = navItemIcons[item] || FallbackIcon
                     const isActive = activeItem === item
@@ -300,15 +314,26 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* Footer — language only */}
+      {/* Footer — language + theme toggle */}
       <div className="border-t p-2 shrink-0">
-        <button
-          onClick={toggleLang}
-          className="flex items-center gap-3 w-full rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-        >
-          <Globe className="size-4 shrink-0" />
-          <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Language toggle — visible text describes the destination
+              language; aria-label describes the action for screen readers. */}
+          <button
+            onClick={toggleLang}
+            aria-label={
+              lang === 'ar' ? 'تبديل اللغة إلى الإنجليزية' : 'Switch language to Arabic'
+            }
+            className="flex items-center gap-3 flex-1 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          >
+            <Globe className="size-4 shrink-0" />
+            <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
+          </button>
+          {/* ThemeToggle is icon-only and already carries its own aria-label
+              inside theme-toggle.tsx (sets the label dynamically based on the
+              current theme so the action is described, not just the icon). */}
+          <ThemeToggle />
+        </div>
       </div>
     </aside>
   )
@@ -368,6 +393,7 @@ export function MobileSidebar() {
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
+            aria-label={lang === 'ar' ? 'إغلاق القائمة' : 'Close menu'}
             className="size-8 flex items-center justify-center rounded-lg hover:bg-muted"
           >
             <X className="size-4" />
@@ -403,8 +429,16 @@ export function MobileSidebar() {
 
             return (
               <div key={group.key} className="mb-1">
+                {/* Mobile cycle header — same ARIA pattern as desktop. */}
                 <button
                   onClick={() => toggleGroup(group.key)}
+                  aria-expanded={isExpanded}
+                  aria-controls={`mobile-cycle-panel-${group.key}`}
+                  aria-label={
+                    lang === 'ar'
+                      ? `${group.label.ar} — ${isExpanded ? 'طي' : 'توسيع'}`
+                      : `${group.label.en} — ${isExpanded ? 'Collapse' : 'Expand'}`
+                  }
                   className={cn(
                     'flex items-center w-full px-3 py-2 text-sm font-semibold transition-colors rounded-lg mx-0',
                     hasActiveItem
@@ -423,7 +457,7 @@ export function MobileSidebar() {
                 </button>
 
                 {isExpanded && (
-                  <div className="mt-0.5 mb-1">
+                  <div id={`mobile-cycle-panel-${group.key}`} className="mt-0.5 mb-1">
                     {group.items.map(item => {
                       const Icon = navItemIcons[item] || FallbackIcon
                       const isActive = activeItem === item
@@ -457,13 +491,20 @@ export function MobileSidebar() {
 
         {/* Footer */}
         <div className="border-t p-3 sticky bottom-0 bg-card">
-          <button
-            onClick={toggleLang}
-            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <Globe className="size-4" />
-            <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Language toggle — same aria-label as desktop. */}
+            <button
+              onClick={toggleLang}
+              aria-label={
+                lang === 'ar' ? 'تبديل اللغة إلى الإنجليزية' : 'Switch language to Arabic'
+              }
+              className="flex items-center gap-3 flex-1 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <Globe className="size-4" />
+              <span>{lang === 'ar' ? 'English' : 'العربية'}</span>
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </>

@@ -491,6 +491,23 @@ export async function GET() {
       count: s._count.status,
     }))
 
+    // ===== 15b. Top 5 Expense Categories (P5-2 dashboard charts) =====
+    // Aggregate non-soft-deleted expenses by category, return top 5 by total amount.
+    // Used by the "Top 5 Expenses" horizontal bar chart on the dashboard.
+    const expenseCategoryAgg = await db.expense.groupBy({
+      by: ['category'],
+      _sum: { totalAmount: true },
+      where: { deletedAt: null },
+      orderBy: { _sum: { totalAmount: 'desc' } },
+      take: 5,
+    })
+    const topExpenseCategories = expenseCategoryAgg
+      .map(e => ({
+        category: e.category,
+        amount: toNumber(e._sum.totalAmount || 0),
+      }))
+      .filter(e => e.amount > 0)
+
     // ===== 16. Hub-specific data =====
     // Recent construction projects (last 5)
     const recentConstructionProjects = await db.project.findMany({
@@ -660,6 +677,7 @@ export async function GET() {
       projectProfitability,
       recentTransactions,
       projectStatusDistribution,
+      topExpenseCategories,
       alerts,
     })
   } catch (error) {
